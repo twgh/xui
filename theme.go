@@ -70,5 +70,15 @@ func (t *Theme) Pill(h int32) int32 { return h / 2 }
 // Disabled 返回禁用态下的文字色(约 50% 透明度的前景色)。
 func (t *Theme) Disabled() Color { return t.Foreground.WithAlpha(128) }
 
+// IsDark 报告主题底色是否偏暗。
+// 组件需要按 shadcn 的 dark:* 规则换色时用它——shadcn 允许对同一个部件在
+// 亮/暗主题下指定不同令牌(如 switch 的滑块), 而主题结构体里没有"亮暗"标记,
+// 只能按底色亮度推断。
+func (t *Theme) IsDark() bool {
+	r, g, b, _ := t.Background.RGBA()
+	// Rec.601 感知亮度
+	return float64(r)*0.299+float64(g)*0.587+float64(b)*0.114 < 127.5
+}
+
 // Overlay 返回弹层遮罩色(黑色 55% 透明)。
 func (t *Theme) Overlay() Color { return RGBA(0, 0, 0, 140) }

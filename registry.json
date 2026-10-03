@@ -32,6 +32,30 @@
     "card": {
       "files": ["card.go"],
       "deps": ["label"]
+    },
+    "switch": {
+      "files": ["switch.go"],
+      "deps": []
+    },
+    "progress": {
+      "files": ["progress.go"],
+      "deps": []
+    },
+    "slider": {
+      "files": ["slider.go"],
+      "deps": []
+    },
+    "tabs": {
+      "files": ["tabs.go"],
+      "deps": []
+    },
+    "tooltip": {
+      "files": ["tooltip.go"],
+      "deps": []
+    },
+    "combobox": {
+      "files": ["combobox.go"],
+      "deps": []
     }
   }
 }
