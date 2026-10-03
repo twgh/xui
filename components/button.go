@@ -67,6 +67,12 @@ func WithVariant(v ButtonVariant) ButtonOption { return func(b *Button) { b.vari
 // WithSize 设置按钮尺寸预设。
 func WithSize(s ButtonSize) ButtonOption { return func(b *Button) { b.size = s } }
 
+// pressShift 是按下位移量(逻辑像素), 对应 shadcn 的 active:translate-y-px。
+// 元素的创建高度比视觉高度多这么多, 多出的部分留作位移空间: 元素绘制被裁剪在
+// 自身客户区内, 若按下时把底边推出客户区, 越界的 1px 会被切掉(看起来底部被削平),
+// 预留后整体位移始终落在客户区内, 与原版"整块下沉"的观感一致。
+const pressShift int32 = 1
+
 // NewButton 创建自绘按钮。cy 传 0 时按尺寸预设自适应高度。
 func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOption) *Button {
 	b := &Button{size: ButtonSizeDefault}
@@ -74,6 +80,7 @@ func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOptio
 	if auto {
 		cy = buttonSpecs[b.size].height
 	}
+	cy += pressShift // 底部预留按下位移空间
 	b.Button = widget.NewButton(x, y, cx, cy, text, hParent)
 	if b.Button == nil {
 		return nil
@@ -83,7 +90,7 @@ func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOptio
 	}
 	// WithSize 可能改变预设, 自适应模式下以最终预设为准
 	if auto {
-		b.SetHeight(buttonSpecs[b.size].height)
+		b.SetHeight(buttonSpecs[b.size].height + pressShift)
 	}
 
 	// 灭掉原生外观, 交给 onPaint
@@ -187,20 +194,27 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	t := xui.Current()
 	st := xui.StateOf(hEle)
 
-	// active:translate-y-px —— 按下时整体(含文字)下沉 1 逻辑像素
+	// active:translate-y-px —— 按下时整体(壳体与文字一起)下沉 1 逻辑像素。
+	// 正常态壳体画到预留边之上; 按下时整块下移, 底边恰好落在客户区底边(见 pressShift)。
+	shell := p.Rc
+	shell.Bottom -= pressShift
+	textRc := shell
 	if st.Pressed && !st.Disabled {
-		p.Rc.Top++
-		p.Rc.Bottom++
+		shell.Top += pressShift
+		shell.Bottom += pressShift
+		textRc.Top += pressShift
+		textRc.Bottom += pressShift
 	}
 	*pbHandled = true // 文字自己画, 才能与壳体一起下沉
 
 	bg, border := b.resolve(t, st)
 	// focus-visible: 鼠标点击不显示焦点框, Tab 切换才显示
+	p.Rc = shell
 	if st.Focused && !st.Disabled && xui.FocusedByKeyboard() {
 		p.FocusFrame(t.Ring, bg, t.RadiusLg())
 	} else {
-		p.FillRound(&p.Rc, bg, t.RadiusLg())
-		p.StrokeRound(&p.Rc, border, t.RadiusLg(), 1)
+		p.FillRound(&shell, bg, t.RadiusLg())
+		p.StrokeRound(&shell, border, t.RadiusLg(), 1)
 	}
 
 	// 文字: 手动绘制(字体 = 主题字体 + 尺寸预设), 颜色随状态
@@ -210,6 +224,11 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}); f != 0 {
 		p.Draw.SetFont(f)
 	}
-	p.TextCenter(b.GetText(), b.textColor(t, st))
+	// DrawText 的 Vcenter 按字体行高(含降部空间)居中, 字形整体偏下(实测 14pt 下
+	// 上留白 8.6px / 下留白 3.7px), 文字矩形上移 1px 回补; 上移 2px 会明显偏上。
+	textRc.Top--
+	textRc.Bottom--
+	p.Text(b.GetText(), &textRc, b.textColor(t, st),
+		xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 	return 0
 }
