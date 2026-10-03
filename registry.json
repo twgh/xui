@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/twgh/xui/main/registry.schema.json",
+  "components": {
+    "button": {
+      "files": ["button.go"],
+      "deps": []
+    },
+    "checkbox": {
+      "files": ["checkbox.go"],
+      "deps": []
+    },
+    "radio": {
+      "files": ["radio.go"],
+      "deps": []
+    },
+    "input": {
+      "files": ["input.go"],
+      "deps": []
+    },
+    "label": {
+      "files": ["label.go"],
+      "deps": []
+    },
+    "separator": {
+      "files": ["separator.go"],
+      "deps": []
+    },
+    "badge": {
+      "files": ["separator.go"],
+      "deps": []
+    },
+    "card": {
+      "files": ["card.go"],
+      "deps": ["label"]
+    }
+  }
+}
