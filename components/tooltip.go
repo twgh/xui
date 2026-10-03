@@ -12,10 +12,12 @@ import (
 
 // 提示气泡的几何常量(对应 shadcn tooltip.tsx: rounded-md px-3 py-1.5 text-xs + size-2.5 旋转方块箭头)
 const (
-	tipPadX   int32 = 12 // px-3
-	tipPadY   int32 = 6  // py-1.5
-	tipArrow  int32 = 10 // size-2.5 旋转 45° 后的对角线尺寸
-	tipGap    int32 = 6  // 气泡与目标元素的间距
+	tipPadX int32 = 12 // px-3
+	tipPadY int32 = 6  // py-1.5
+	// tipArrow 既是箭头露出的三角形高度, 也是气泡与目标元素之间的间距 ——
+	// 箭头(45° 菱形)恰好把这段间距填满, 尖端顶到元素边缘, 所以两者必须相等。
+	// 菱形对角线的另一半被气泡盖住, 因此露出的三角形底宽 = 2*tipArrow。
+	tipArrow  int32 = 10
 	tipMaxW   int32 = 280
 	tipRadius int32 = 6 // rounded-md
 )
@@ -111,11 +113,13 @@ func (t *Tooltip) show(hEle int) {
 	sx, sy := wr.Left+cr.Left+rc.Left, wr.Top+cr.Top+rc.Top
 	ex, ey := rc.Right-rc.Left, rc.Bottom-rc.Top
 
+	// 窗口整高 = 气泡 + 箭头, 箭头恰好填满这段间距, 所以窗口边缘要贴住元素边缘
+	// (不再额外加间距, 否则箭头尖端会悬在半空, 看起来"提示框飘得太高")。
 	x := sx + ex/2 - ww/2
-	y := sy - wh - tipGap
+	y := sy - wh
 	t.below = false
 	if y < 0 { // 上方放不下 -> 翻到下方
-		y = sy + ey + tipGap
+		y = sy + ey
 		t.below = true
 	}
 	if sw := screenWidth(hWnd); x+ww > sw {
@@ -181,13 +185,14 @@ func (t *Tooltip) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		bubble.Top = p.Rc.Top + tipArrow
 	}
 
-	// 箭头: 45° 旋转的方块(菱形), 画在气泡边线的中点; 先画箭头再画气泡, 气泡压住内侧一半
+	// 箭头: 45° 旋转的方块(菱形), 中心压在气泡边线上; 先画箭头再画气泡, 气泡盖住内侧一半,
+	// 露出的三角形高 tipArrow(底宽 2*tipArrow), 尖端正好落在窗口边缘 = 目标元素边缘上。
 	cx := (p.Rc.Left + p.Rc.Right) / 2
 	cy := bubble.Bottom - 1
 	if t.below {
 		cy = bubble.Top + 1
 	}
-	half := tipArrow / 2
+	half := tipArrow
 	p.Draw.SetBrushColor(uint32(th.Foreground))
 	p.Draw.FillPolygon([]xc.POINT{
 		{X: cx, Y: cy - half},
