@@ -92,10 +92,11 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	var fill, border, dot xui.Color
 	switch {
 	case st.Disabled && checked:
-		a := byte(128)
-		fill, border, dot = t.Primary.WithAlpha(a), t.Primary.WithAlpha(a), t.PrimaryFore.WithAlpha(a)
+		fill, border, dot = t.Primary.ScaleAlpha(0.5), t.Primary.ScaleAlpha(0.5), t.PrimaryFore.ScaleAlpha(0.5)
 	case st.Disabled:
-		fill, border, dot = idleFill.WithAlpha(128), t.Input.WithAlpha(128), t.Input.WithAlpha(128)
+		// 禁用 = 上述颜色再 ×50%: 注意是"乘"不是覆盖(暗色 input 自带 15% alpha,
+		// 覆盖成 50% 会画出一个亮的实心灰盘)
+		fill, border, dot = idleFill.ScaleAlpha(0.5), t.Input.ScaleAlpha(0.5), t.Input.ScaleAlpha(0.5)
 	case checked:
 		fill, border, dot = t.Primary, t.Primary, t.PrimaryFore
 	default:
@@ -135,8 +136,11 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if f := xui.FontHandle(t.FontDefault); f != 0 {
 		p.Draw.SetFont(f)
 	}
-	// 文字保持原色: shadcn 里禁用只作用于圆点(RadioGroupItem 的 disabled:opacity-50),
-	// Label 不跟随禁用(实测参考页禁用项文字核心仍接近纯黑), 只有圆点变淡。
-	p.Text(r.GetText(), &textRC, t.Foreground, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+	// 禁用时文字同样变淡: 参考页暗色下禁用项文字 ≈ #8a8a8a(实测), 亮色下是黑字 50%
+	textColor := t.Foreground
+	if st.Disabled {
+		textColor = t.Foreground.ScaleAlpha(0.5)
+	}
+	p.Text(r.GetText(), &textRC, textColor, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	return 0
 }
