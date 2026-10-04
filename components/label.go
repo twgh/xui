@@ -10,9 +10,10 @@ import (
 // 原生 ShapeText 无事件且换肤不便, 用 Button 载体统一管理。
 type Label struct {
 	*widget.Button
-	muted bool  // 弱化文字(说明性文本)
-	bold  bool  // 粗体(标题)
-	size  int32 // 字号覆盖(逻辑像素; 0 = 主题默认)
+	muted  bool  // 弱化文字(说明性文本)
+	bold   bool  // 粗体(标题, 字号 +1)
+	medium bool  // 中等字重(粗体字形但不加字号)
+	size   int32 // 字号覆盖(逻辑像素; 0 = 主题默认)
 }
 
 // NewLabel 创建文本标签。h 为行高(逻辑像素), 可传 0 使用默认 24。
@@ -24,7 +25,9 @@ func NewLabel(x, y, cx, h int32, text string, hParent int) *Label {
 	if btn == nil {
 		return nil
 	}
-	l := &Label{Button: btn}
+	// 与 shadcn 的 Label 对齐: text-sm font-medium(500), 即"粗体字形但不加字号";
+	// SetMuted 的说明性文本(对应 CardDescription 之类)保持常规字重
+	l := &Label{Button: btn, medium: true}
 	// NoWrap + 省略号: 文字超出宽度时截断显示省略号。
 	// 不加 NoWrap 时长文本会换行, 而 Label 只有单行高度, 换出的行被裁剪,
 	// 视觉上呈现为笔画撕裂状的"乱码"。
@@ -49,9 +52,17 @@ func (l *Label) SetMuted() *Label {
 	return l
 }
 
-// SetBold 使用主题字体的粗体(标题用)。
+// SetBold 使用主题字体的粗体(标题用, 字号 +1, 更接近浏览器 font-semibold 观感)。
 func (l *Label) SetBold() *Label {
 	l.bold = true
+	l.applyTheme(xui.Current())
+	return l
+}
+
+// SetMedium 中等字重(= shadcn 的 font-medium/500): 用粗体字形但不动字号,
+// 中文下比 Bold 轻一档, 比常规重一档, 用于 Label 与对话框描述这类文本。
+func (l *Label) SetMedium() *Label {
+	l.medium = true
 	l.applyTheme(xui.Current())
 	return l
 }
@@ -72,6 +83,8 @@ func (l *Label) applyTheme(t *xui.Theme) {
 	if l.bold {
 		spec.Bold = true
 		spec.Size += 1
+	} else if l.medium && !l.muted {
+		spec.Bold = true // 同字号下的粗体字形 = 中间字重(500)
 	}
 	if h := xui.FontHandle(spec); h != 0 {
 		l.SetFont(h)

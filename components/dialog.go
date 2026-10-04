@@ -110,7 +110,8 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	d.overlay.AddEvent_Paint(d.onPaint)
 	d.overlay.AddEvent_LButtonDown(d.onOverlayDown)
 
-	d.title = NewLabel(0, 0, 0, dlgTitleH, "", d.overlay.Handle).SetBold()
+	// shadcn: text-base font-medium(500) —— 16px + 中等字重(不是 Bold 的 17px)
+	d.title = NewLabel(0, 0, 0, dlgTitleH, "", d.overlay.Handle).SetMedium()
 	d.title.SetFontSize(16)
 	d.desc = NewLabel(0, 0, 0, dlgDescH, "", d.overlay.Handle).SetMuted()
 
@@ -206,6 +207,7 @@ func (d *Dialog) AddFooter(text string, variant ButtonVariant, onClick func()) *
 	if f := xui.FontHandle(xui.FontSpec{
 		Family: xui.Current().FontDefault.Family,
 		Size:   buttonSpecs[ButtonSizeDefault].font,
+		Bold:   true, // 与按钮绘制用的字体保持一致, 否则量出的宽度偏窄
 	}); f != 0 {
 		var sz xc.SIZE
 		app.GetTextShowRect(text, -1, f, 0, 0, &sz)

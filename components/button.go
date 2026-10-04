@@ -230,10 +230,12 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		return 0
 	}
 
-	// 文字: 手动绘制(字体 = 主题字体 + 尺寸预设), 颜色随状态
+	// 文字: 手动绘制(字体 = 主题字体 + 尺寸预设), 颜色随状态。
+	// Bold 对齐 shadcn 的 font-medium(500): 同字号粗体字形, 比 regular 重一档
 	if f := xui.FontHandle(xui.FontSpec{
 		Family: t.FontDefault.Family,
 		Size:   b.Spec().font,
+		Bold:   true,
 	}); f != 0 {
 		p.Draw.SetFont(f)
 	}
