@@ -36,8 +36,10 @@ func main() {
 	applyTitle(xui.Current())
 	xui.OnThemeChange(applyTitle)
 
-	dark := false
-	toggle := ui.NewButton(340, 9, 100, 28, "Dark", w.Handle, ui.WithVariant(ui.ButtonOutline))
+	// 默认以暗色启动(暗色对照验收用; 点标题栏按钮切回亮色)
+	dark := true
+	xui.SetTheme(xui.Dark())
+	toggle := ui.NewButton(340, 9, 100, 28, "Light", w.Handle, ui.WithVariant(ui.ButtonOutline))
 	toggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		dark = !dark
 		if dark {

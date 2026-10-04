@@ -83,15 +83,23 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// shadcn 源码(data-checked): 选中 = bg-primary 圆 + border-primary,
 	// 指示器为 size-2 的 bg-primary-foreground 白色圆点(直径 50%)。
+	// 未选: border-input 描边 + 暗色额外 dark:bg-input/30 的淡填充(radio-group.tsx);
+	// 禁用是 disabled:opacity-50 —— 指示器整体半透明(标签文字不跟随)
+	idleFill := t.Background
+	if t.IsDark() {
+		idleFill = t.Input.ScaleAlpha(0.30)
+	}
 	var fill, border, dot xui.Color
 	switch {
-	case st.Disabled: // disabled:opacity-50
+	case st.Disabled && checked:
 		a := byte(128)
-		fill, border, dot = t.Background.WithAlpha(a), t.Input.WithAlpha(a), t.Input
+		fill, border, dot = t.Primary.WithAlpha(a), t.Primary.WithAlpha(a), t.PrimaryFore.WithAlpha(a)
+	case st.Disabled:
+		fill, border, dot = idleFill.WithAlpha(128), t.Input.WithAlpha(128), t.Input.WithAlpha(128)
 	case checked:
 		fill, border, dot = t.Primary, t.Primary, t.PrimaryFore
 	default:
-		fill, border, dot = t.Background, t.Input, t.Input
+		fill, border, dot = idleFill, t.Input, t.Input
 	}
 
 	if !fill.IsNone() {
