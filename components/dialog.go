@@ -207,7 +207,6 @@ func (d *Dialog) AddFooter(text string, variant ButtonVariant, onClick func()) *
 	if f := xui.FontHandle(xui.FontSpec{
 		Family: xui.Current().FontDefault.Family,
 		Size:   buttonSpecs[ButtonSizeDefault].font,
-		Bold:   true, // 与按钮绘制用的字体保持一致, 否则量出的宽度偏窄
 	}); f != 0 {
 		var sz xc.SIZE
 		app.GetTextShowRect(text, -1, f, 0, 0, &sz)

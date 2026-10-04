@@ -25,9 +25,9 @@ func NewLabel(x, y, cx, h int32, text string, hParent int) *Label {
 	if btn == nil {
 		return nil
 	}
-	// 与 shadcn 的 Label 对齐: text-sm font-medium(500), 即"粗体字形但不加字号";
-	// SetMuted 的说明性文本(对应 CardDescription 之类)保持常规字重
-	l := &Label{Button: btn, medium: true}
+	// 字重用常规: shadcn 的 Label 虽是 font-medium(500), 但中文下 500 由系统回落到
+	// 常规字重——用粗体字形会明显更粗(实测对比), 需要更重时用 SetMedium/SetBold
+	l := &Label{Button: btn}
 	// NoWrap + 省略号: 文字超出宽度时截断显示省略号。
 	// 不加 NoWrap 时长文本会换行, 而 Label 只有单行高度, 换出的行被裁剪,
 	// 视觉上呈现为笔画撕裂状的"乱码"。
