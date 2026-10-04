@@ -217,7 +217,9 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 图标按钮: lucide 图标按 size-4(16px)居中绘制, 不画文字
 	if b.icon != "" {
-		const iconSize int32 = 16
+		// 18 而非 16: 我们的描边图标墨迹只覆盖路径范围(无 stroke 外扩), 16px 时
+		// 视觉上比浏览器 size-4(16px) 小一圈, 实测取 18 后墨迹与参考一致
+		const iconSize int32 = 18
 		midX := (textRc.Left + textRc.Right) / 2
 		midY := (textRc.Top + textRc.Bottom) / 2
 		iconRc := xc.RECT{

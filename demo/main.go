@@ -133,14 +133,22 @@ func itemMarginTop(ele layoutItem, m int32) {
 func buildPage(hParent int) {
 	// ===== 左卡: 表单类 =====
 	card1 := ui.NewCard(24, 48, 340, 470, hParent)
-	v1 := vStack(card1, 14)
+	// 结构对齐 shadcn App.tsx 的 Account 卡: CardContent space-y-4(16) 分组,
+	// 组内 CardHeader/space-y-2 是 8 —— 用 SetSpace(8) 打底 + itemMarginTop 补到组间距
+	v1 := vStack(card1, 8)
 
 	itemFill(ui.NewCardTitle(0, 0, 0, "Account", v1.Handle), 24)
 	itemFill(ui.NewLabel(0, 0, 0, 0, "修改你的账户信息, 保存后立即生效。", v1.Handle).SetMuted(), 24)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "邮箱地址", v1.Handle), 24)
+
+	lblEmail := ui.NewLabel(0, 0, 0, 0, "邮箱地址", v1.Handle)
+	itemFill(lblEmail, 24)
+	itemMarginTop(lblEmail, 8) // 组边界: 8 + 8 = 16
 	email := ui.NewInput(0, 0, 0, 0, v1.Handle, ui.WithPlaceholder("m@example.com"))
 	itemFill(email, email.GetHeight())
-	itemFill(ui.NewLabel(0, 0, 0, 0, "个人简介", v1.Handle), 24)
+
+	lblBio := ui.NewLabel(0, 0, 0, 0, "个人简介", v1.Handle)
+	itemFill(lblBio, 24)
+	itemMarginTop(lblBio, 8)
 	bio := ui.NewInput(0, 0, 0, 72, v1.Handle,
 		ui.WithPlaceholder("介绍一下自己..."), ui.WithMultiline())
 	itemFill(bio, bio.GetHeight())
@@ -148,10 +156,13 @@ func buildPage(hParent int) {
 	c1 := ui.NewCheckbox(0, 0, 0, 0, "接收邮件通知", v1.Handle)
 	c1.SetChecked(true)
 	itemFill(c1, c1.GetHeight())
+	itemMarginTop(c1, 8)
 	cb2 := ui.NewCheckbox(0, 0, 0, 0, "公开展示个人主页", v1.Handle)
 	itemFill(cb2, cb2.GetHeight())
+	itemMarginTop(cb2, 4) // 开关组内 gap-3(12)
 
 	rowFormBtns := hRow(v1.Handle, 36, 8)
+	itemMarginTop(rowFormBtns, 16) // 组间距 16 + pt-2(8)
 	saveBtn := ui.NewButton(0, 0, 0, 0, "保存", rowFormBtns.Handle)
 	itemFixed(saveBtn, 96, saveBtn.GetHeight())
 	cancelBtn := ui.NewButton(0, 0, 0, 0, "取消", rowFormBtns.Handle, ui.WithVariant(ui.ButtonOutline))
@@ -159,7 +170,9 @@ func buildPage(hParent int) {
 
 	// ===== 右卡: 展示类 =====
 	card2 := ui.NewCard(392, 48, 380, 470, hParent)
-	v2 := vStack(card2, 14)
+	// shadcn App.tsx 的 Components 卡: CardContent space-y-5(20) 分组,
+	// 组内的按钮行/徽章行各自有 hRow 间距
+	v2 := vStack(card2, 20)
 
 	itemFill(ui.NewCardTitle(0, 0, 0, "Components", v2.Handle), 24)
 
