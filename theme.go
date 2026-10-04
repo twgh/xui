@@ -3,7 +3,7 @@ package xui
 // FontSpec 描述主题中的一套字体方案。组件按需从中选取字段。
 type FontSpec struct {
 	Family string // 字体名, 如 "微软雅黑"、"Segoe UI"
-	Size   int32  // 字号(逻辑像素, 交付给 font 包时按 DPI 缩放由组件负责)
+	Size   int32  // 字号(逻辑像素; xcgui 字体单位是 pt, FontHandle 内部按 px×0.75 换算)
 	Bold   bool
 	Italic bool
 }

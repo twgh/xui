@@ -1,6 +1,7 @@
 package xui
 
 import (
+	"math"
 	"sync"
 
 	"github.com/twgh/xcgui/font"
@@ -17,6 +18,12 @@ var fonts = &fontCache{cache: map[FontSpec]int{}}
 
 // FontHandle 返回主题字体对应的炫彩字体句柄, 相同规格全局复用。
 // 组件在构造或主题回调中调用 SetFont(xui.FontHandle(t.FontDefault))。
+//
+// 单位换算: xcgui 字体的 size 单位是 pt(磅, 见 font.NewEX 文档), 渲染尺寸 =
+// pt×DPI/72 物理像素; 主题令牌的 Size 是逻辑像素(= px×DPI/96 物理)。联立得
+// pt = px×72/96(= ×0.75, 与 DPI 无关)。此前把 14 直接当 pt 传入, 144 DPI 下
+// 渲染出 18.7 逻辑像素的文字(墨迹实测 26-27 物理像素), 全组件文字放大了 1.33×。
+// pt 只能取整, 14px→11pt=14.67px(+0.67), 12/16px 等恰好取整。
 func FontHandle(spec FontSpec) int {
 	fonts.mu.Lock()
 	defer fonts.mu.Unlock()
@@ -30,7 +37,8 @@ func FontHandle(spec FontSpec) int {
 	if spec.Italic {
 		style |= xcc.FontStyle_Italic
 	}
-	f := font.NewEX(spec.Family, spec.Size, style)
+	sizePt := int32(math.Round(float64(spec.Size) * 72.0 / 96.0))
+	f := font.NewEX(spec.Family, sizePt, style)
 	if f == nil {
 		return 0
 	}

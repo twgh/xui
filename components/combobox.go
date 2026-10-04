@@ -67,10 +67,11 @@ func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboB
 	// 滚轮无响应; 禁用后事件交给父元素, 弹层 ListBox 是独立元素不受影响。
 	cb.EnableEvent_XE_MOUSEWHEEL(false)
 	// 弹层高度: 条目数 × 条目高 + p-1 上下边距, 在构造时设置(实测必须在弹层打开前
-	// 设置才生效; 固定模式原生才使用该值)。超过 10 项给最大高度, 交给滚动条。
+	// 设置才生效; 固定模式原生才使用该值)。+4 余量: 高度恰好等于内容时视口差 1-2px
+	// 也会出滚动条(实测)。超过 10 项给最大高度, 交给滚动条。
 	if n := int32(len(items)); n > 0 {
-		h := n*comboItemH + 8
-		if maxH := int32(10)*comboItemH + 8; h > maxH {
+		h := n*comboItemH + 8 + 4
+		if maxH := int32(10)*comboItemH + 8 + 4; h > maxH {
 			h = maxH
 		}
 		cb.EnableDropHeightFixed(true)
@@ -259,6 +260,11 @@ func applyComboPopupStyle() {
 	lb.SetPadding(4, 4, 4, 4) // p-1: 条目距弹层边缘 4px
 	lb.SetDrawItemBkFlags(0)  // 原生项背景(方角灰块)全弃, 交给 DrawItem 自绘
 	lb.EnableAutoShowScrollBar(true)
+	// 滚动条显隐: 原生的显示判定在打开时用旧条目高算好, 我们把条目调矮后它不会
+	// 自己收起(实测残影), 用滚动视级开关显式控制。≤10 项内容必然装得下; 单列文本
+	// 永远不需要横向滚动。
+	lb.ShowSBarV(lb.GetCount_AD() > 10)
+	lb.ShowSBarH(false)
 	// 弹层底色 + ring-1 ring-foreground/10: 元素背景对象置圆角(select.tsx 的
 	// rounded-lg + ring), 窗口异型透明后圆角外真透明。
 	if b := lb.GetBkManagerObj(); b != nil {
