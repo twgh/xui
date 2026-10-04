@@ -179,9 +179,6 @@ var comboPopup = struct {
 	once  bool
 }{}
 
-// comboPopupBound 记录已注册过事件的弹层列表(窗口复用, 避免重复注册)。
-var comboPopupBound = map[int]bool{}
-
 // comboItemH 是弹层条目高度: shadcn SelectItem = text-sm(20) + py-1(4×2)。
 const comboItemH int32 = 28
 
@@ -203,36 +200,33 @@ func styleComboPopup(hCombo, hWindow, hListBox int) {
 	if lb == nil {
 		return
 	}
-	// 事件只注册一次: 弹层窗口/列表在多次开关间复用, 每次弹出都注册会累积回调。
-	if !comboPopupBound[hListBox] {
-		comboPopupBound[hListBox] = true
-		lb.AddEvent_ListBox_DrawItem(comboPopupDrawItem)
-		// ring-1 ring-foreground/10: 元素背景的 border 对象是方角, 圆角处会被窗口
-		// 区域裁掉(实测), 改在 paint 事件里自绘圆角描边(bk 之后、条目之前绘制,
-		// 条目内容距边缘 4px 不会盖住它)。
-		lb.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
-			p := xui.BeginPaint(hEle, hDraw)
-			if p == nil {
-				return 0
-			}
-			t := xui.Current()
-			p.StrokeRound(&p.Rc, t.Foreground.WithAlpha(26), t.RadiusLg(), 1)
+	// 弹层窗口/ListBox 每次弹出都是新建的(退出即销毁), 事件在这里注册即可, 不会重复。
+	lb.AddEvent_ListBox_DrawItem(comboPopupDrawItem)
+	// ring-1 ring-foreground/10: 元素背景的 border 对象是方角, 圆角处会被窗口
+	// 区域裁掉(实测), 改在 paint 事件里自绘圆角描边(bk 之后、条目之前绘制,
+	// 条目内容距边缘 4px 不会盖住它)。
+	lb.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
 			return 0
-		})
-		lb.AddEvent_ListBox_Temp_Create_End(func(hEle int, pItem *xc.ListBox_Item_, nFlag int32, pbHandled *bool) int {
-			if nFlag != 1 || pItem == nil {
-				return 0
-			}
-			if h := lb.GetTemplateObject(pItem.Index, 1); h != 0 {
-				xc.XShapeText_SetTextColor(h, uint32(xui.Current().PopoverFore))
-				if f := xui.FontHandle(xui.Current().FontDefault); f != 0 {
-					xc.XShapeText_SetFont(h, f)
-				}
-				xc.XWidget_LayoutItem_SetMargin(h, 8, 0, 0, 0) // px-2
-			}
+		}
+		t := xui.Current()
+		p.StrokeRound(&p.Rc, t.Foreground.WithAlpha(26), t.RadiusLg(), 1)
+		return 0
+	})
+	lb.AddEvent_ListBox_Temp_Create_End(func(hEle int, pItem *xc.ListBox_Item_, nFlag int32, pbHandled *bool) int {
+		if nFlag != 1 || pItem == nil {
 			return 0
-		})
-	}
+		}
+		if h := lb.GetTemplateObject(pItem.Index, 1); h != 0 {
+			xc.XShapeText_SetTextColor(h, uint32(xui.Current().PopoverFore))
+			if f := xui.FontHandle(xui.Current().FontDefault); f != 0 {
+				xc.XShapeText_SetFont(h, f)
+			}
+			xc.XWidget_LayoutItem_SetMargin(h, 8, 0, 0, 0) // px-2
+		}
+		return 0
+	})
 }
 
 // applyComboPopupStyle 按当前主题刷新弹层配色(窗口 + 列表 + 滚动条)。
