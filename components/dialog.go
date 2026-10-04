@@ -211,7 +211,9 @@ func (d *Dialog) AddFooter(text string, variant ButtonVariant, onClick func()) *
 	}); f != 0 {
 		var sz xc.SIZE
 		app.GetTextShowRect(text, -1, f, 0, 0, &sz)
-		w = sz.CX
+		// 该 API 的返回值约为实际绘制宽度的一半(144 DPI 实测: "保存" 返回 14.7 逻辑,
+		// 实际绘制 29.3), 直接拿它算宽度会导致按钮挤到文字上, 这里 ×2 校正
+		w = sz.CX * 2
 	}
 	if w <= 0 {
 		w = 40
