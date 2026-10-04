@@ -133,7 +133,6 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 
 ## 已知待办 / 注意事项
 
-- 切到暗色主题后标题栏会出现原生三键(light 下没有), 疑似 SetTheme 触发标题栏样式重算, 与布局化无关, 待查
 - shadcn dev server 由会话后台启动,机器重启后需按上文命令重启
 - Button Link 变体(下划线)未实现;text 手绘后 Input 仍是原生文字;hover 过渡动画未做(ani 包可用)
 - 用户项目须 `app.New(true)`(D2D)+ `EnableAutoDPI`,demo 是标准样板
