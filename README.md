@@ -73,9 +73,14 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 
 | 组件 | 说明 |
 |---|---|
-| Button | 5 变体(Primary/Secondary/Outline/Ghost/Destructive)× 3 尺寸,hover/按下/禁用/焦点环 |
+| Button | 5 变体(Primary/Secondary/Outline/Ghost/Destructive)× 3 尺寸,hover/按下/禁用/焦点环;`WithIcon` 可做图标按钮 |
 | Checkbox / Radio | 自绘指示器 + 原生状态管理 |
 | Input | 原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环,占位符随主题 |
+| Switch / Progress / Slider | 开关 / 进度条 / 滑块 |
+| Tabs | 标签页(下划线指示条随活动页滑动) |
+| ComboBox | 下拉框(列表由独立透明弹出窗口承载) |
+| Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点) |
+| Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述 + 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环 |
 | Label / Card / Badge / Separator | 静态展示组件 |
 
 每个组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环。

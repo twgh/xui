@@ -19,6 +19,12 @@ func NotePointerPress() {
 	focusSrc.mouse = true
 }
 
+// NoteKeyboard 由组件在键盘导航时调用(例如对话框内的 Tab 焦点循环在自行搬焦点前):
+// 随后获得的焦点视为键盘焦点, 组件会绘制焦点框。
+func NoteKeyboard() {
+	focusSrc.mouse = false
+}
+
 // FocusedByKeyboard 报告当前焦点是否来自键盘 Tab。
 // 组件绘制时据此决定是否绘制焦点框(文本输入类无需判断)。
 func FocusedByKeyboard() bool {

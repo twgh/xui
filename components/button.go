@@ -56,6 +56,7 @@ type Button struct {
 	*widget.Button
 	variant ButtonVariant
 	size    ButtonSize
+	icon    string // 非空时绘制图标替代文字
 }
 
 // ButtonOption 组件配置项, 构造时传入。
@@ -66,6 +67,10 @@ func WithVariant(v ButtonVariant) ButtonOption { return func(b *Button) { b.vari
 
 // WithSize 设置按钮尺寸预设。
 func WithSize(s ButtonSize) ButtonOption { return func(b *Button) { b.size = s } }
+
+// WithIcon 让按钮绘制图标(path 为 lucide 24x24 path 数据, 见 xui.IconX / IconCheck 等),
+// 替代文字。图标按 size-4(16px)居中绘制, 配合 ButtonSizeSm 即 shadcn 的 icon-sm 图标按钮。
+func WithIcon(path string) ButtonOption { return func(b *Button) { b.icon = path } }
 
 // pressShift 是按下位移量(逻辑像素), 对应 shadcn 的 active:translate-y-px。
 // 元素的创建高度比视觉高度多这么多, 多出的部分留作位移空间: 元素绘制被裁剪在
@@ -208,6 +213,21 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	} else {
 		p.FillRound(&shell, bg, t.RadiusLg())
 		p.StrokeRound(&shell, border, t.RadiusLg(), 1)
+	}
+
+	// 图标按钮: lucide 图标按 size-4(16px)居中绘制, 不画文字
+	if b.icon != "" {
+		const iconSize int32 = 16
+		midX := (textRc.Left + textRc.Right) / 2
+		midY := (textRc.Top + textRc.Bottom) / 2
+		iconRc := xc.RECT{
+			Left:   midX - iconSize/2,
+			Top:    midY - iconSize/2,
+			Right:  midX + iconSize/2,
+			Bottom: midY + iconSize/2,
+		}
+		p.Icon(b.icon, &iconRc, b.textColor(t, st), 2)
+		return 0
 	}
 
 	// 文字: 手动绘制(字体 = 主题字体 + 尺寸预设), 颜色随状态

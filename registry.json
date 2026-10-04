@@ -56,6 +56,10 @@
     "combobox": {
       "files": ["combobox.go"],
       "deps": []
+    },
+    "dialog": {
+      "files": ["dialog.go"],
+      "deps": ["button", "label"]
     }
   }
 }

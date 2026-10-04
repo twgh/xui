@@ -11,13 +11,15 @@
 - ✅ **P0 运行时**完成:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter 绘制助手、字体缓存、focus-visible 焦点来源跟踪
 - ✅ **P1 组件**完成并视觉验收:Button(5 变体×3 尺寸)、Checkbox、Radio、Input、Label、Separator+Badge、Card
 - ✅ **P2 组件**完成并视觉验收:Switch(2 尺寸)、Progress、Slider、Tabs(default/line 两变体)、Tooltip、ComboBox、图标系统(矢量复刻 lucide path,非 SVG 渲染——原因见 DESIGN.md 第八节 17)
+- ✅ **P3 首项 Dialog 完成**(详见下方 Dialog 条目)
 - ✅ **Slider 渲染缺陷彻底修复**(2026-10-04,computer-use 真实鼠标逐场景验证):①悬浮冒灰方块/②拖动后冒白方块(根因:原生 SliderBar 的滑块按钮 BkInfo 在 Stay/Down/Focus 态的残留绘制, 全套压制无效 → **弃用原生载体, 改纯自绘 Element + 自实现拖拽/点击跳转/键盘**,见 DESIGN.md 第八节 25);③两端 ring 被裁剪(几何重排,见第八节 26);④hover 离开/点击后灰环残留(根因:透明元素重绘不擦底, onPaint 开头先铺宿主底色, 见第八节 28)。期间误判过 `FillRoundRect` 半径语义(x2 导致全组件过圆, 已回退, 结论见第八节 27)
 - ✅ **CLI** 完成:`xui init / add / list`(registry.json 驱动,组件源码拷入用户项目)
 - ✅ **demo + 用户项目 E2E**:拷贝出的组件在独立用户模块编译/运行/渲染全部正常
 - ✅ **demo 布局化**(2026-10-04):卡片内容改用 `widget.NewLayoutEle` 流式布局(vStack 列布局 / hRow 行布局 / vCol Weight 等分列),不再手算 y。LayoutEle 的真实语义(默认横向流、Fill 独占整行、间距 API 分工等)全部探针实测,已记入 DESIGN.md 第八节 29
 - ✅ **参考实现补齐**(2026-10-04):switch/progress/slider/tabs/tooltip/**select** 的 radix-nova 源码已从 registry 拉取落盘到 `shadcn/src/components/ui/`(select 里的 `IconPlaceholder` 换成了直接导入 lucide-react 图标,本项目没有 icon-placeholder),App.tsx 加了 Controls 对照卡(与 demo 卡 3 同构:开关/滑动条/进度/标签页/下拉框,line 变体 + Tooltip 包住保存按钮)。`pnpm build` 通过 + 浏览器渲染验证。tsconfig.app.json 加了 `ignoreDeprecations: "6.0"`(新 TS 的 baseUrl 弃用报错)
 - ✅ **ComboBox 弹层对齐 shadcn**(2026-10-04,computer-use 截图 + PIL 像素实测):①弹层边框只剩左边一条(根因:BkM border 贴边画被 SetWindowRgn 裁掉三面 + ListBox 自身 paint 事件在该弹层窗口上不渲染输出,内缩 10px 的 6px 红环都画不出来)→ ring 改画在 `XE_PAINT_END` 并内缩 1px,四边完整;②弹层定位改为 **item-aligned**(盖住触发元素、选中项正对触发位置,对齐 radix SelectContent 默认),`wapi.SetWindowPos` 物理像素重定位 + 屏幕边界截断滚动。结论记入 DESIGN.md 第八节 30
-- ⬜ P3:Dialog、原生菜单皮肤、Table/List/Tree、hover 过渡动画、CLI 远程 registry
+- ✅ **Dialog 完成并视觉/交互验收**(2026-10-04,computer-use 真实鼠标键盘 + PIL 像素实测):路线选**窗口内覆盖元素**(不是 ModalWindow/DoModal):全窗自绘遮罩(bg-black/10, 实测 255→229 精确 0.9 合成)+ 居中面板(bg-popover/rounded-xl/ring-foreground/10),标题(text-base)/描述(text-sm muted)/任意内容容器/页脚(-mx-4 -mb-4 贴边、border-t、bg-muted/50、只有下两角圆角)+ 右上角幽灵图标关闭钮。交互:ESC / 点遮罩 / 关闭钮关闭,打开时焦点进第一个可聚焦控件,Tab 在对话框内循环(Shift+Tab 反向),点面板内不关闭;关闭后整窗重绘擦掉遮罩。Button 新增 `WithIcon`(lucide 图标替代文字, 16px 居中)供关闭钮复用;Label 现在 `EnableSwitchFocus(false)` + 灭原生边框。坑与探针结论见 DESIGN.md 第八节 33,对照卡已加到 shadcn App.tsx(dialog.tsx 落盘)
+- ⬜ P3 剩余:原生菜单皮肤、Table/List/Tree、hover 过渡动画、CLI 远程 registry
 - ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
 
 ## 仓库结构
@@ -27,7 +29,8 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── *.go                          运行时: color/theme/themes_builtin/manager/
 │                                 draw(Painter)/focus(焦点来源)/font/state
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
-│   ├── button.go  checkbox.go  radio.go  input.go
+│   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
+│   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go
 │   ├── label.go   separator.go(含 Badge)  card.go
 ├── cmd\xui\                      CLI(init/add/list)
 ├── demo\                         演示应用(也是全组件编译测试目标)
@@ -108,6 +111,10 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见 DESIGN 第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见 DESIGN 第八节 30) |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
+| dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10;标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
+| dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
+| dialog 遮罩 bg-black/10(固定黑色,不随主题;**不做 backdrop-blur-xs**——xcgui 无背景模糊,见 DESIGN 第八节 33) | dialog.tsx |
+| dialog 打开时焦点进第一个可聚焦控件,Tab/Shift+Tab 在对话框内循环(焦点陷阱),ESC / 点击遮罩 / 关闭钮关闭 | radix dialog 语义 |
 | 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |
 | **字体单位**: xcgui 字体 size 是 pt 不是 px, FontHandle 统一按 px×0.75 换算(14px→11pt); 之前全局文字放大 1.33× | font.go(见 DESIGN 第八节 31) |
 

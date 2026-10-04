@@ -204,7 +204,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Progress/Slider | embed 原生 | 官方配方移植成 token | BeautifyProgressBar/SliderBar 示例 |
 | ComboBox | embed ComboBox | 画输入框; 下拉 ListView 在 `AddEvent_Combobox_Popup_List` 里皮肤化 | 库文档 FAQ |
 | Tabs | embed TabBar | paint | — |
-| Dialog | ModalWindow | 半透明遮罩 + Card; **DoModal 返回后子元素已销毁, API 必须先取值再 EndModal** | 库文档 |
+| Dialog | 纯 Element 覆盖层 | 全窗遮罩元素(自绘黑 10% + 面板) + 面板子元素;ESC/点遮罩关闭, Tab 焦点循环(见第八节 33) | — |
 | Menu | 原生菜单 | `XMenu_EnableDrawBackground/EnableDrawItem` + `AddEvent_Menu_Draw_Background/DrawItem` | element.go 已确认事件存在 |
 | Card/Badge/Separator | 纯 Element | paint | — |
 | Tooltip | FloatWindow | paint | — |
@@ -269,8 +269,8 @@ myapp/
 |---|---|---|---|
 | **P0 运行时** | Color、Theme 令牌、主题管理器、内置主题、绘制助手、HoverTracker、DPI 助手 | 单测通过(变体纯函数不开窗可测) | ✅ |
 | **P1 MVP** | Button、Checkbox、Radio、Input、Label、Separator、Badge、Card + demo 页 | light/dark × hover/focus/disabled × DPI 截图 | ✅ |
-| **P2** | Switch、Slider、Progress、Tabs、ComboBox、Tooltip、图标系统 + 暗色切换演示 | 同上 | ⬜ |
-| **P3** | Dialog、Menu 皮肤、Table/List/Tree 皮肤、hover 过渡动画、CLI 完整化(update) | 同上 | ⬜ |
+| **P2** | Switch、Slider、Progress、Tabs、ComboBox、Tooltip、图标系统 + 暗色切换演示 | 同上 | ✅ |
+| **P3** | Dialog ✅、Menu 皮肤、Table/List/Tree 皮肤、hover 过渡动画、CLI 完整化(update) | 同上 | 🟡 |
 | **P4** | 文档站、主题画廊(批量转译 shadcn 社区主题为 Go) | — | ⬜ |
 
 ---
@@ -333,6 +333,17 @@ myapp/
     - **弹层默认定位与 item-aligned 重定位**(探针实测): 原生把弹层放在触发区**正下方**(顶=触发区底、左=触发区左、宽=触发区宽)。radix Select 的默认定位是 item-aligned(shadcn select.tsx 的 SelectContent), 即**弹层盖住触发元素、选中项正对触发位置**——用 `wapi.SetWindowPos`(物理像素, `SWP_NOSIZE|NOZORDER|NOACTIVATE`)在 Popup_List 事件里重定位: 弹层顶 = 触发区顶 − (p-1 边距 4 + 选中索引×条目高), 贴屏幕边时向下压并用 `ScrollView.ScrollPosYV` 滚动让选中项仍可见。坐标链路: `XEle_GetWndClientRect`(逻辑, **原点=所属窗口 rect 原点, 含阴影边距**——实测含阴影窗口也成立) + 所属窗口 `XWidget_GetHWINDOW` → `wapi.GetWindowRect`(物理) → 逻辑差 ×DPI/96;
 31. **xcgui 字体的 size 单位是 pt(磅), 不是像素**(重大全局坑, 实测确认): `font.NewEX(name, size, style)` 文档写明"size: 字体大小, 单位(pt, 磅)", 渲染尺寸 = size×DPI/72 物理像素。此前 FontHandle 把主题的 14(逻辑 px) 直接当 pt 传入, 144 DPI 下渲染出 28 物理像素 em = **18.7 逻辑像素**, 全组件文字放大了 1.33×(墨迹实测 26-27 物理像素, 与 14pt 完全吻合)。修法: **pt = px×72/96(= ×0.75, 与 DPI 无关)**, 在 FontHandle 里统一换算(14px→11pt=14.67px, pt 取整导致 14 这类 ×0.75=10.5 的值有 ±0.67px 误差; 12/13/16px 恰好或接近取整)。排查入口: 同一截图里对比组件文字与已知 14px 参考的墨迹高度。
 32. 用 pnpm 添加 shadcn 组件会报错, 应该用npx。
+33. **Dialog 用"窗口内覆盖元素"实现**(探针 .verify/probe_dialog + demo 实测, dialog.go 依赖):
+    - **窗口子元素坐标原点 = 窗口左上角(含标题栏), 不是客户区原点**:`XWnd_GetClientRect` 返回的 `{8,8,624,412}` 只是窗口边框内缩(与标题栏无关), 用它给元素定位会整体偏移;遮罩尺寸直接取 `XWnd_GetRect` 的宽高放 (0,0) 即可铺满整窗(实测遮罩把标题栏也压暗, 窗口自绘的标题文字仍在上层保持清晰);
+    - **自绘 Element 覆盖全窗天然是模态**:它挡住下层所有鼠标事件(实测覆盖后下层按钮既收不到点击也收不到 hover), 配合 `XEle_SetZOrderEx(h, 0, xcc.Zorder_Top)` 保证在最顶层(每次 Show 都抬一次, 因为 demo 里元素创建顺序可能比对话框晚);
+    - **半透明合成精确实测**:遮罩填 `RGBA(0,0,0,26)`(bg-black/10)后, 白底 255→229、深色钮 14→59(悬浮态), 与 0.9 系数完全吻合, 无累积变暗;
+    - **隐藏遮罩必须整窗重绘**:`XWnd_Redraw(hWnd, true)`;局部重绘会留下变暗残影(半透明像素已经"烙"进帧缓冲);
+    - **元素收不到键盘事件, 键盘统一走窗口 `AddEvent_KeyDown`**:探针里遮罩元素注册的 KeyDown 从不触发;窗口级回调在"编辑框聚焦"时也照常收到 ESC(27)/Tab(9) → 对话框的 ESC 关闭与 Tab 循环都在窗口回调里做, 用 `wapi.GetAsyncKeyState(VK_SHIFT)<0` 判 Shift+Tab;
+    - **打开时先 Show 再 layout**:内容高度量的是"可见子元素"的占位(`XWidget_IsShow` 过滤), 隐藏状态下量出来是 0(demo 第一次跑面板只有标题+页脚就是这个原因);控件自建后默认可见, 所以 NewDialog 末尾要用递归 `XWidget_Show(false)` 隐藏整棵子树(父元素隐藏不会连带隐藏子元素);
+    - **`XWnd_SetFocusEle` 搬焦点后不会重绘**:按钮上的焦点框不出现(输入框因为要重画光标/IME 才碰巧刷新), 必须手动 `XEle_Redraw(旧)` + `XEle_Redraw(新)`;且顺序要在搬焦点**之前**调 `xui.NoteKeyboard()`——AttachWindow 的 Tab 钩子注册得晚(回调后执行), 等它标记"键盘焦点"时元素早已重绘完;
+    - **焦点反查要沿父链**:`XWnd_GetFocusEle` 拿到的是复合控件(Edit)的内部元素, 与创建时的句柄不同 → 用 `XWidget_GetParentEle` 往上找焦点序列里的成员, 找不到再用自维护的下标兜底;
+    - **Tab 序列只收交互控件**:`XObj_GetType` 白名单(Button/Edit/ComboBox/SliderBar/Editor/RichEdit/ListBox/TabBar)+ `IsEnableFocus && IsSwitchFocus`;Label 载体是原生 Button, 必须显式 `EnableSwitchFocus(false)` 才不会挤进 Tab 序列(顺带 `EnableDrawBorder(false)`, 否则它能画出原生边框);
+    - **不做 backdrop-blur-xs**:xcgui 没有背景模糊, 元素自绘里也画不了窗口快照位图(第八节 17) → 遮罩只保留 10% 变暗, 与 shadcn 的差异记录在此。
 
 ---
 
@@ -352,6 +363,7 @@ myapp/
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽)
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55)
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)
+- Dialog:`XEle_SetZOrderEx(h, 0, xcc.Zorder_Top)`、`XEle_AdjustLayout`、`XEle_Redraw`、`XEle_GetChildCount/GetChildByIndex`、`XObj_GetType`(→ `xcc.XC_*`)、`XWidget_GetParentEle`、`XWnd_GetRect/Redraw`、`XWnd_SetFocusEle/GetFocusEle`、`xcc.AdjustLayout_No`、`wapi.GetAsyncKeyState`
 - ⚠️ `TabBar.SetPadding` 在 xcgui.dll 4.0.0.0 中不存在(调用 panic)
 - 官方自绘示例:BeautifyButton / CheckBox / RadioButton / Edit / ProgressBar / SliderBar
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`

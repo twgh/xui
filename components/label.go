@@ -10,8 +10,9 @@ import (
 // 原生 ShapeText 无事件且换肤不便, 用 Button 载体统一管理。
 type Label struct {
 	*widget.Button
-	muted bool // 弱化文字(说明性文本)
-	bold  bool // 粗体(标题)
+	muted bool  // 弱化文字(说明性文本)
+	bold  bool  // 粗体(标题)
+	size  int32 // 字号覆盖(逻辑像素; 0 = 主题默认)
 }
 
 // NewLabel 创建文本标签。h 为行高(逻辑像素), 可传 0 使用默认 24。
@@ -30,6 +31,10 @@ func NewLabel(x, y, cx, h int32, text string, hParent int) *Label {
 	btn.SetTextAlign(xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter |
 		xcc.TextFormatFlag_NoWrap | xcc.TextTrimming_EllipsisCharacter)
 	btn.EnableBkTransparent(true)
+	// 原生按钮的边框/焦点矩形也要灭掉(载体只借事件与文本绘制能力)
+	btn.EnableDrawBorder(false).EnableDrawFocus(false)
+	// Label 不是交互控件: 不参与 Tab 焦点遍历(同 shadcn 的 <label>)。
+	btn.EnableSwitchFocus(false)
 	xui.AttachWindow(btn.Handle)
 	l.applyTheme(xui.Current())
 	xui.OnThemeChange(func(t *xui.Theme) { l.applyTheme(t) })
@@ -51,8 +56,19 @@ func (l *Label) SetBold() *Label {
 	return l
 }
 
+// SetFontSize 覆盖字号(逻辑像素)。用于标题/说明这类与正文尺寸不同的文本
+// (shadcn 的 dialog 标题是 text-base = 16, 描述是 text-sm = 14)。
+func (l *Label) SetFontSize(px int32) *Label {
+	l.size = px
+	l.applyTheme(xui.Current())
+	return l
+}
+
 func (l *Label) applyTheme(t *xui.Theme) {
 	spec := t.FontDefault
+	if l.size > 0 {
+		spec.Size = l.size
+	}
 	if l.bold {
 		spec.Bold = true
 		spec.Size += 1

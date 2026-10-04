@@ -20,7 +20,7 @@ func main() {
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
 
-	w := window.New(0, 0, 800, 900, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
+	w := window.New(0, 0, 800, 990, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
 	w.SetShadowInfo(8, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
@@ -278,4 +278,46 @@ func buildPage(hParent int) {
 	tip := ui.NewTooltip()
 	tip.Bind(saveBtn.Handle, "保存当前修改(Ctrl+S)")
 	tip.Bind(combo.Handle, "切换运行时环境")
+
+	// ===== 下下卡: 对话框 =====
+	card4 := ui.NewCard(24, 846, 728, 108, hParent)
+	v4 := vStack(card4, 14)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "对话框", v4.Handle).SetMuted(), 24)
+
+	rowDlg := hRow(v4.Handle, 36, 8)
+	editBtn := ui.NewButton(0, 0, 0, 0, "编辑资料", rowDlg.Handle, ui.WithVariant(ui.ButtonOutline))
+	itemFixed(editBtn, 96, editBtn.GetHeight())
+	delBtn := ui.NewButton(0, 0, 0, 0, "删除项目", rowDlg.Handle, ui.WithVariant(ui.ButtonDestructive))
+	itemFixed(delBtn, 96, delBtn.GetHeight())
+	itemFixed(ui.NewLabel(0, 0, 0, 24, "ESC / 点击遮罩 / 右上角 X 关闭, Tab 在对话框内循环", rowDlg.Handle).SetMuted(), 360, 24)
+
+	buildDialogs(hParent, editBtn, delBtn)
+}
+
+// buildDialogs 两个对话框: 表单型(编辑资料) 与 确认型(删除项目)。
+func buildDialogs(hWnd int, editTrigger, delTrigger *ui.Button) {
+	// 表单对话框: 标题 + 描述 + 两个带标签的输入框 + 页脚
+	edit := ui.NewDialog(hWnd)
+	edit.SetTitle("编辑资料")
+	edit.SetDescription("修改你的公开资料, 完成后点击保存。")
+	edit.BindTrigger(editTrigger)
+
+	// 内容容器是普通元素, 子元素按显式坐标摆放(高度由对话框自动量出)
+	cw := edit.ContentWidth()
+	ui.NewLabel(0, 0, cw, 22, "显示名称", edit.Content())
+	name := ui.NewInput(0, 30, cw, 0, edit.Content(), ui.WithPlaceholder("显示名称"))
+	name.SetValue("twgh")
+	ui.NewLabel(0, 78, cw, 22, "个人主页", edit.Content())
+	ui.NewInput(0, 108, cw, 0, edit.Content(), ui.WithPlaceholder("https://"))
+
+	edit.AddFooter("取消", ui.ButtonOutline, func() { edit.Close() })
+	edit.AddFooter("保存", ui.ButtonPrimary, func() { edit.Close() })
+
+	// 确认对话框: 只有标题 + 描述 + 页脚
+	del := ui.NewDialog(hWnd)
+	del.SetTitle("确认删除?")
+	del.SetDescription("删除后无法恢复, 确定要删除该项目吗?")
+	del.BindTrigger(delTrigger)
+	del.AddFooter("取消", ui.ButtonOutline, func() { del.Close() })
+	del.AddFooter("删除", ui.ButtonDestructive, func() { del.Close() })
 }
