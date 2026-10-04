@@ -113,9 +113,9 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	radius := spec.h / 2
 
-	alpha := byte(255)
+	alpha := 1.0
 	if st.Disabled {
-		alpha = 128 // disabled:opacity-50
+		alpha = 0.5 // disabled:opacity-50
 	}
 	focusRing := st.Focused && !st.Disabled && xui.FocusedByKeyboard()
 
@@ -135,7 +135,9 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if checked {
 		trackColor = t.Primary
 	}
-	p.FillRound(&track, trackColor.WithAlpha(alpha), radius)
+	// 暗色 input 令牌自带 alpha(白 15%), 禁用是"再乘 50%"而不是覆盖(实测覆盖会变成
+	// 不透明白色, 未选开关看着像一块白饼)
+	p.FillRound(&track, trackColor.ScaleAlpha(alpha), radius)
 	if focusRing {
 		// focus-visible:border-ring
 		p.StrokeRound(&track, t.Ring, radius, 1)
