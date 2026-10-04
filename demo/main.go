@@ -305,10 +305,10 @@ func buildDialogs(hWnd int, editTrigger, delTrigger *ui.Button) {
 	// 内容容器是普通元素, 子元素按显式坐标摆放(高度由对话框自动量出)。
 	// 对齐 shadcn App.tsx: 两个 space-y-2 组(标签 14 + 8 + 输入框 32), 组间 gap-4
 	cw := edit.ContentWidth()
-	ui.NewLabel(0, 0, cw, 14, "显示名称", edit.Content())
+	ui.NewLabel(0, -2, cw, 20, "显示名称", edit.Content())
 	name := ui.NewInput(0, 22, cw, 0, edit.Content(), ui.WithPlaceholder("显示名称"))
 	name.SetValue("twgh")
-	ui.NewLabel(0, 70, cw, 14, "个人主页", edit.Content())
+	ui.NewLabel(0, 68, cw, 20, "个人主页", edit.Content())
 	ui.NewInput(0, 92, cw, 0, edit.Content(), ui.WithPlaceholder("https://"))
 
 	edit.AddFooter("取消", ui.ButtonOutline, func() { edit.Close() })

@@ -24,6 +24,9 @@ const (
 	dlgBtnH      int32 = 32  // 页脚按钮默认 h-8
 	dlgBtnPadX   int32 = 10  // 按钮 px-2.5
 	dlgFooterH   int32 = dlgPad*2 + dlgBtnH
+	// dlgTextOver: 文本元素的上下外扩量。行盒按 CSS 的 leading-none/默认行高算,
+	// 但元素内文字是垂直居中且被裁在元素内, 需要外扩几个像素才放得下字形
+	dlgTextOver int32 = 3
 )
 
 // 对话框用到的虚拟键码。
@@ -103,6 +106,7 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	// 原生焦点矩形必须灭掉: 点击遮罩/内容容器会聚焦到元素上, 原生会给它画一个
 	// 蓝色虚线框(实测: 点面板内空白处 → 内容容器上出现蓝框, 压住输入框左右描边)
 	d.overlay.EnableDrawFocus(false)
+	d.overlay.EnableDrawBorder(false)
 	d.overlay.AddEvent_Paint(d.onPaint)
 	d.overlay.AddEvent_LButtonDown(d.onOverlayDown)
 
@@ -113,7 +117,9 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	d.content = widget.NewElement(0, 0, 0, 0, d.overlay.Handle)
 	d.content.EnableBkTransparent(true)
 	d.content.EnableSwitchFocus(false) // 容器本身不进 Tab 序列
+	// 原生焦点框与边框都要灭: 点击容器会聚焦到它, 框架会给它画蓝框/深色边框
 	d.content.EnableDrawFocus(false)
+	d.content.EnableDrawBorder(false)
 
 	if d.showClose {
 		d.closeBtn = NewButton(0, 0, dlgCloseSize, 0, "", d.overlay.Handle,
@@ -383,7 +389,9 @@ func (d *Dialog) layout() {
 		setEleRect(d.closeBtn.Handle, px+pw-dlgCloseOff-dlgCloseSize, py+dlgCloseOff, dlgCloseSize, h)
 	}
 	if d.titleText != "" {
-		setEleRect(d.title.Handle, innerX, y, textW, dlgTitleH)
+		// 元素高度比行盒大 dlgTextOver: 文字在元素内垂直居中, 行盒按 leading-none 计,
+		// 元素在行盒上下各外扩一点才能既放得下字形又不占布局高度
+		setEleRect(d.title.Handle, innerX, y-dlgTextOver, textW, dlgTitleH+2*dlgTextOver)
 		d.title.SetText(d.titleText)
 		y += dlgTitleH
 	}
@@ -391,7 +399,7 @@ func (d *Dialog) layout() {
 		if d.titleText != "" {
 			y += dlgHeadGap
 		}
-		setEleRect(d.desc.Handle, innerX, y, textW, dlgDescH)
+		setEleRect(d.desc.Handle, innerX, y-dlgTextOver, textW, dlgDescH+2*dlgTextOver)
 		d.desc.SetText(d.descText)
 		y += dlgDescH
 	}
