@@ -109,9 +109,13 @@ func (t *Tooltip) show(hEle int) {
 	t.ensure()
 	t.text = text
 
-	// 量文字尺寸: 与绘制用同一个限宽, 断行位置才一致
+	// 量文字尺寸: 必须用"绘制时同一个字体与限宽", 否则气泡会比文字宽一圈
+	// (此前这里量的是 14px 主题字体, 而实际绘制用 12px)
 	var sz xc.SIZE
-	app.GetTextShowRect(text, -1, xui.FontHandle(xui.Current().FontDefault), 0, tipMaxW-tipPadX*2, &sz)
+	app.GetTextShowRect(text, -1, xui.FontHandle(xui.FontSpec{
+		Family: xui.Current().FontDefault.Family,
+		Size:   xui.Current().FontDefault.Size - 2, // text-xs
+	}), 0, tipMaxW-tipPadX*2, &sz)
 	bw := sz.CX + tipPadX*2
 	if bw > tipMaxW {
 		bw = tipMaxW
