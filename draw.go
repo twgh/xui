@@ -2,6 +2,7 @@ package xui
 
 import (
 	"math"
+	"sync"
 
 	"github.com/twgh/xcgui/drawx"
 	"github.com/twgh/xcgui/xc"
@@ -22,23 +23,41 @@ type Painter struct {
 	Scale float64 // 物理/逻辑像素比(高 DPI 下 >1)
 }
 
-// DpiScale 返回窗口的物理/逻辑像素比(96 DPI = 1)。
-func DpiScale(hEle int) float64 {
-	hWnd := int(xc.XWidget_GetHWND(hEle))
-	if hWnd == 0 {
-		hWnd = hEle
+// fontScale 记录元素的窗口 DPI 比例(元素句柄 → 比例)。
+// 只在组件构造(句柄一定有效)时写入, 绘制路径里只查表 —— 绘制回调里调
+// XWidget_GetHWND/XWnd_GetDPI 遇到非预期句柄会弹"输入句柄可能无效"错误框。
+var fontScale = struct {
+	mu sync.RWMutex
+	m  map[int]float64
+}{m: map[int]float64{}}
+
+// RegisterFontScale 在组件构造时登记所属窗口的物理/逻辑像素比(96 DPI = 1)。
+// 注意两级句柄转换: XWidget_GetHWND 给的是 Win32 HWND, 而 XWnd_* 要的是
+// xcgui 窗口句柄(hWindow), 必须再过一次 XC_hWindowFromHWnd —— 直接把 HWND
+// 传给 XWnd_GetDPI 会弹"输入句柄可能无效"错误框。
+func RegisterFontScale(hEle int) {
+	hwnd := xc.XWidget_GetHWND(hEle)
+	if hwnd == 0 {
+		return
 	}
-	if dpi := xc.XWnd_GetDPI(hWnd); dpi > 0 {
-		return float64(dpi) / 96.0
+	hWindow := xc.XC_hWindowFromHWnd(hwnd)
+	if hWindow == 0 {
+		return
 	}
-	return 1
+	if dpi := xc.XWnd_GetDPI(hWindow); dpi > 0 {
+		fontScale.mu.Lock()
+		fontScale.m[int(hEle)] = float64(dpi) / 96.0
+		fontScale.mu.Unlock()
+	}
 }
 
 // FontPx 把"想画的逻辑字号"换算成绘制路径需要的字号。
 // 绘制路径的文字会被框架再乘一次 DPI 缩放(自绘按钮实测 1.5x 偏大, 文字顶到按钮边),
-// 这里按窗口比例反除, 96 DPI 下是恒等变换。
+// 这里按登记的比例反除; 未登记(或 96 DPI)时原样返回。
 func FontPx(hEle int, logicalPX int32) int32 {
-	s := DpiScale(hEle)
+	fontScale.mu.RLock()
+	s := fontScale.m[hEle]
+	fontScale.mu.RUnlock()
 	if s <= 1 {
 		return logicalPX
 	}

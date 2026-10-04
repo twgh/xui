@@ -107,6 +107,7 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	// 蓝色虚线框(实测: 点面板内空白处 → 内容容器上出现蓝框, 压住输入框左右描边)
 	d.overlay.EnableDrawFocus(false)
 	d.overlay.EnableDrawBorder(false)
+	xui.RegisterFontScale(d.overlay.Handle) // 页脚按钮量宽要用(见 draw.go FontPx)
 	d.overlay.AddEvent_Paint(d.onPaint)
 	d.overlay.AddEvent_LButtonDown(d.onOverlayDown)
 
@@ -206,7 +207,7 @@ func (d *Dialog) AddFooter(text string, variant ButtonVariant, onClick func()) *
 	w := int32(0)
 	if f := xui.FontHandle(xui.FontSpec{
 		Family: xui.Current().FontDefault.Family,
-		Size:   xui.FontPx(d.hWnd, buttonSpecs[ButtonSizeDefault].font),
+		Size:   xui.FontPx(d.overlay.Handle, buttonSpecs[ButtonSizeDefault].font),
 	}); f != 0 {
 		var sz xc.SIZE
 		app.GetTextShowRect(text, -1, f, 0, 0, &sz)
