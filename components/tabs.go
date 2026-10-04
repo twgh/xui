@@ -172,7 +172,14 @@ func (t *Tabs) onPaintTab(hEle int, hDraw int, pbHandled *bool) int {
 	radius := th.RadiusMd() // rounded-md
 
 	if active && t.variant == TabsDefault {
-		p.FillRound(&p.Rc, th.Background, radius)
+		// data-active:bg-background; 暗色下是 data-active:bg-input/30 + border-input
+		// (tabs.tsx) —— 暗色用 bg-background 会变成一块比列表更黑的方块(实测纠正)
+		if th.IsDark() {
+			p.FillRound(&p.Rc, th.Input.WithAlpha(77), radius) // bg-input/30
+			p.StrokeRound(&p.Rc, th.Input, radius, 1)
+		} else {
+			p.FillRound(&p.Rc, th.Background, radius)
+		}
 	}
 	if st.Focused && xui.FocusedByKeyboard() {
 		// focus-visible:border-ring
