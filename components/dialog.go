@@ -19,8 +19,8 @@ const (
 	dlgDefaultW  int32 = 384 // sm:max-w-sm(24rem)
 	dlgCloseOff  int32 = 8   // 关闭按钮 top-2 right-2
 	dlgCloseSize int32 = 28  // size-7(按钮 icon-sm)
-	dlgTitleH    int32 = 24  // text-base(16) 行盒
-	dlgDescH     int32 = 22  // text-sm(14) 行盒
+	dlgTitleH    int32 = 16  // text-base(16) + leading-none
+	dlgDescH     int32 = 20  // text-sm(14) 默认行高 1.25rem
 	dlgBtnH      int32 = 32  // 页脚按钮默认 h-8
 	dlgBtnPadX   int32 = 10  // 按钮 px-2.5
 	dlgFooterH   int32 = dlgPad*2 + dlgBtnH
@@ -100,16 +100,20 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 		return nil
 	}
 	d.overlay.EnableBkTransparent(true)
+	// 原生焦点矩形必须灭掉: 点击遮罩/内容容器会聚焦到元素上, 原生会给它画一个
+	// 蓝色虚线框(实测: 点面板内空白处 → 内容容器上出现蓝框, 压住输入框左右描边)
+	d.overlay.EnableDrawFocus(false)
 	d.overlay.AddEvent_Paint(d.onPaint)
 	d.overlay.AddEvent_LButtonDown(d.onOverlayDown)
 
-	d.title = NewLabel(0, 0, 0, dlgTitleH, "", d.overlay.Handle)
+	d.title = NewLabel(0, 0, 0, dlgTitleH, "", d.overlay.Handle).SetBold()
 	d.title.SetFontSize(16)
 	d.desc = NewLabel(0, 0, 0, dlgDescH, "", d.overlay.Handle).SetMuted()
 
 	d.content = widget.NewElement(0, 0, 0, 0, d.overlay.Handle)
 	d.content.EnableBkTransparent(true)
 	d.content.EnableSwitchFocus(false) // 容器本身不进 Tab 序列
+	d.content.EnableDrawFocus(false)
 
 	if d.showClose {
 		d.closeBtn = NewButton(0, 0, dlgCloseSize, 0, "", d.overlay.Handle,
@@ -347,13 +351,12 @@ func (d *Dialog) layout() {
 		}
 		body += contentH
 	}
-	footerBleed := int32(0)
 	if len(d.footers) > 0 {
 		if body > 0 {
 			body += dlgGap
 		}
-		footerBleed = dlgFooterH - dlgPad
-		body += footerBleed
+		// 页脚 -mb-4 抵消面板的下 padding, 上下都归零后它的高度全量计入
+		body += dlgFooterH
 	}
 	ph := dlgPad + body
 

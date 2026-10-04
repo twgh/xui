@@ -302,13 +302,14 @@ func buildDialogs(hWnd int, editTrigger, delTrigger *ui.Button) {
 	edit.SetDescription("修改你的公开资料, 完成后点击保存。")
 	edit.BindTrigger(editTrigger)
 
-	// 内容容器是普通元素, 子元素按显式坐标摆放(高度由对话框自动量出)
+	// 内容容器是普通元素, 子元素按显式坐标摆放(高度由对话框自动量出)。
+	// 对齐 shadcn App.tsx: 两个 space-y-2 组(标签 14 + 8 + 输入框 32), 组间 gap-4
 	cw := edit.ContentWidth()
-	ui.NewLabel(0, 0, cw, 22, "显示名称", edit.Content())
-	name := ui.NewInput(0, 30, cw, 0, edit.Content(), ui.WithPlaceholder("显示名称"))
+	ui.NewLabel(0, 0, cw, 14, "显示名称", edit.Content())
+	name := ui.NewInput(0, 22, cw, 0, edit.Content(), ui.WithPlaceholder("显示名称"))
 	name.SetValue("twgh")
-	ui.NewLabel(0, 78, cw, 22, "个人主页", edit.Content())
-	ui.NewInput(0, 108, cw, 0, edit.Content(), ui.WithPlaceholder("https://"))
+	ui.NewLabel(0, 70, cw, 14, "个人主页", edit.Content())
+	ui.NewInput(0, 92, cw, 0, edit.Content(), ui.WithPlaceholder("https://"))
 
 	edit.AddFooter("取消", ui.ButtonOutline, func() { edit.Close() })
 	edit.AddFooter("保存", ui.ButtonPrimary, func() { edit.Close() })
