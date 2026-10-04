@@ -53,6 +53,7 @@ func (t *Tooltip) Bind(hEle int, text string) *Tooltip {
 	if t.bound[hEle] {
 		return t
 	}
+	tooltipReg[hEle] = t
 	w := widget.NewElementByHandle(hEle)
 	if w == nil {
 		return t
@@ -77,6 +78,20 @@ func (t *Tooltip) Bind(hEle int, text string) *Tooltip {
 func (t *Tooltip) Unbind(hEle int) {
 	delete(t.tips, hEle)
 	delete(t.bound, hEle)
+	delete(tooltipReg, hEle)
+}
+
+// HideTooltip 隐藏绑定在指定元素上的提示气泡(未绑定则无操作)。
+//
+// 为什么要主动隐藏: 元素自身弹层(如下拉列表)打开后是另一个窗口接管鼠标, 触发元素
+// 收不到 MouseLeave, 提示会一直挂着(实测 ComboBox 弹层)。这类组件应在弹层打开时
+// 调用 HideTooltip(hEle)。
+var tooltipReg = map[int]*Tooltip{}
+
+func HideTooltip(hEle int) {
+	if tt, ok := tooltipReg[hEle]; ok {
+		tt.Hide()
+	}
 }
 
 // Hide 隐藏提示。
