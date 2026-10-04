@@ -63,6 +63,10 @@ cd D:\GOProject\src\ui\shadcn && pnpm dev    # http://localhost:5173
 
 # CLI 本地测试(仓库未发布, 远程 go run 会失败)
 go run ./cmd/xui list / init <目录> / add <组件...>
+
+# 暗色对照验收: 不想每次点标题栏按钮, 直接把 demo/main.go 里
+#     dark := false  改成 true, 并在其后加 xui.SetTheme(xui.Dark())
+# 重建后即以暗色启动(参考页 shadcn 同样支持按 d 键切换)
 ```
 
 ## 关键设计决策(一句话版, 详见 DESIGN.md)
