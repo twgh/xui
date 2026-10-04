@@ -61,6 +61,14 @@ func (c Color) RGBA() (r, g, b, a byte) {
 }
 
 // WithAlpha 返回同色但指定透明度的副本。
+// ScaleAlpha 在现有透明度上再乘一个系数, 对应 CSS 的"半透明色再加 /30"这类写法:
+// 例如暗色令牌 input = 白 15%, `bg-input/30` 的最终 alpha = 15% × 30% = 4.5%。
+// (用 WithAlpha 会直接覆盖成 30%, 实测会明显偏亮)
+func (c Color) ScaleAlpha(frac float64) Color {
+	_, _, _, a := c.RGBA()
+	return c.WithAlpha(byte(float64(a) * frac))
+}
+
 func (c Color) WithAlpha(a byte) Color {
 	r, g, b, _ := c.RGBA()
 	return RGBA(r, g, b, a)

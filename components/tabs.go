@@ -175,8 +175,9 @@ func (t *Tabs) onPaintTab(hEle int, hDraw int, pbHandled *bool) int {
 		// data-active:bg-background; 暗色下是 data-active:bg-input/30 + border-input
 		// (tabs.tsx) —— 暗色用 bg-background 会变成一块比列表更黑的方块(实测纠正)
 		if th.IsDark() {
-			p.FillRound(&p.Rc, th.Input.WithAlpha(77), radius) // bg-input/30
-			p.StrokeRound(&p.Rc, th.Input, radius, 1)
+			// bg-input/30: 暗色 input 本身就是"白 15%", 再 /30 是乘不是覆盖
+			p.FillRound(&p.Rc, th.Input.ScaleAlpha(0.30), radius) // bg-input/30
+			p.StrokeRound(&p.Rc, th.Input, radius, 1)             // border-input(白 15%)
 		} else {
 			p.FillRound(&p.Rc, th.Background, radius)
 		}
