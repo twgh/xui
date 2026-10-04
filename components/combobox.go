@@ -57,6 +57,10 @@ func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboB
 	cb.EnableDrawButton(false) // 原生箭头不要, 自绘
 	cb.EnableBkTransparent(true)
 	cb.SetBorderSize(10, 6, 30, 6) // 右侧留出箭头的位置
+	// 触发区文字用主题字体(原生默认字体与 shadcn text-sm 差一个家族/字号)
+	if f := xui.FontHandle(xui.Current().FontDefault); f != 0 {
+		cb.SetFont(f)
+	}
 	cb.AddEvent_Paint(c.onPaint)
 	cb.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 		xui.NotePointerPress()
@@ -109,7 +113,9 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	t := xui.Current()
 	st := xui.StateOf(hEle)
 
-	bg, border := t.Background, t.Input
+	// 触发区: select.tsx 是 border-input bg-transparent —— 组件都放在卡片上,
+	// 透明底等价于 Card 色(用 Background 会在暗色下与卡片出现色差)。
+	bg, border := t.Card, t.Input
 	if st.Disabled {
 		bg = t.Input.WithAlpha(128) // disabled:bg-input/50
 		border = xui.None
@@ -124,30 +130,22 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 文字交给原生绘制(自己再画一遍会与原生文字重叠成重影), 这里只按状态同步颜色。
 	// 未选中时原生显示 defaultText(占位符), 用 MutedFore 色。
+	// 禁用是组级透明(disabled:opacity-50): 文字核心保持原色, 只有壳体变淡。
 	fore := t.Foreground
 	if c.GetSelItem() < 0 {
 		fore = t.MutedFore
 	}
-	placeholder := t.MutedFore
-	if st.Disabled {
-		fore = fore.WithAlpha(128) // disabled:opacity-50
-		placeholder = placeholder.WithAlpha(128)
-	}
 	c.SetTextColor(uint32(fore))
-	c.SetDefaultTextColor(uint32(placeholder))
+	c.SetDefaultTextColor(uint32(t.MutedFore))
 
-	// 右侧 chevron-down(size-4, 半透明)
-	iconColor := t.Foreground.WithAlpha(128)
-	if st.Disabled {
-		iconColor = iconColor.WithAlpha(128)
-	}
+	// 右侧 chevron-down: select.tsx 用 text-muted-foreground(全色, 不随状态加透明)
 	icon := xc.RECT{
 		Left:   p.Rc.Right - 26,
 		Top:    p.Rc.Top + (p.H()-16)/2,
 		Right:  p.Rc.Right - 10,
 		Bottom: p.Rc.Top + (p.H()-16)/2 + 16,
 	}
-	p.Icon(xui.IconChevronDown, &icon, iconColor, 2)
+	p.Icon(xui.IconChevronDown, &icon, t.MutedFore, 2)
 	return 0
 }
 

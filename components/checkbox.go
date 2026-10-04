@@ -91,10 +91,10 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	var fill, border, check xui.Color
 	switch {
-	case st.Disabled: // disabled:opacity-50
+	case st.Disabled: // disabled:opacity-50 —— 组级透明, 壳体变淡, 勾保持原色(与按钮文字同理)
 		a := byte(128)
 		if checked {
-			fill, border, check = t.Primary.WithAlpha(a), t.Primary.WithAlpha(a), t.PrimaryFore.WithAlpha(a)
+			fill, border, check = t.Primary.WithAlpha(a), t.Primary.WithAlpha(a), t.PrimaryFore
 		} else {
 			fill, border, check = t.Background.WithAlpha(a), t.Input.WithAlpha(a), xui.None
 		}

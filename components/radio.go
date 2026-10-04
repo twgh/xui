@@ -127,10 +127,8 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if f := xui.FontHandle(t.FontDefault); f != 0 {
 		p.Draw.SetFont(f)
 	}
-	fore := t.Foreground
-	if st.Disabled {
-		fore = t.MutedFore
-	}
-	p.Text(r.GetText(), &textRC, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+	// 文字保持原色: shadcn 里禁用只作用于圆点(RadioGroupItem 的 disabled:opacity-50),
+	// Label 不跟随禁用(实测参考页禁用项文字核心仍接近纯黑), 只有圆点变淡。
+	p.Text(r.GetText(), &textRC, t.Foreground, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	return 0
 }

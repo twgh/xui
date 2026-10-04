@@ -185,12 +185,15 @@ func (t *Tabs) onPaintTab(hEle int, hDraw int, pbHandled *bool) int {
 		color = th.Foreground
 	}
 	if st.Disabled {
-		color = th.Foreground.WithAlpha(128) // disabled:opacity-50
+		// disabled:opacity-50 组级透明 —— 文字核心保持原色, 只有底色变淡
+		// (实测浏览器禁用按钮的白字核心 = 255, 深字核心接近纯黑)
+		color = th.Foreground
 	}
 	if f := xui.FontHandle(xui.FontSpec{
 		Family: th.FontDefault.Family,
 		Size:   th.FontDefault.Size,
-		Bold:   true, // text-sm font-medium
+		// text-sm font-medium(500): 中文回退字体没有 Medium 字重, 浏览器按常规渲染,
+		// 这里若用 Bold(700) 会明显比 shadcn 粗(实测对比)。
 	}); f != 0 {
 		p.Draw.SetFont(f)
 	}

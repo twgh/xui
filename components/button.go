@@ -164,16 +164,9 @@ func (b *Button) resolve(t *xui.Theme, st xui.State) (bg, border xui.Color) {
 
 // textColor 按主题与状态解析文字颜色。
 func (b *Button) textColor(t *xui.Theme, st xui.State) xui.Color {
-	if st.Disabled {
-		switch b.variant {
-		case ButtonPrimary, ButtonSecondary:
-			return t.PrimaryFore.WithAlpha(128)
-		case ButtonDestructive:
-			return t.Destructive.WithAlpha(128)
-		default:
-			return t.Foreground.WithAlpha(128)
-		}
-	}
+	// disabled:opacity-50 是组级透明: 文字先以原色合成进组内, 组再整体压到 50%,
+	// 文字核心像素仍是原色(实测浏览器里禁用实心按钮的白字核心 = 255, 若给文字
+	// 本身加 50% alpha 则只有 194, 明显偏暗)。变淡的只是壳体, 文字保持原色。
 	switch b.variant {
 	case ButtonPrimary:
 		return t.PrimaryFore

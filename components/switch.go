@@ -150,7 +150,8 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	y := track.Top + (spec.h-thumb)/2
 	trc := xc.RECT{Left: x, Top: y, Right: x + thumb, Bottom: y + thumb}
-	p.Draw.SetBrushColor(uint32(s.thumbColor(t, checked).WithAlpha(alpha)))
+	// 滑块是"内容", 同禁用文字: 组级透明下核心保持原色, 只有轨道变淡
+	p.Draw.SetBrushColor(uint32(s.thumbColor(t, checked)))
 	p.Draw.FillEllipse(&trc)
 	return 0
 }

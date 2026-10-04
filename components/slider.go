@@ -242,9 +242,10 @@ func (s *Slider) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		Bottom: cy + sliderThumb/2,
 	}
 	p.Draw.SetLineWidth(1)
-	p.Draw.SetBrushColor(uint32(xui.RGBA(255, 255, 255, 255).WithAlpha(alpha)))
+	// 滑块是"内容", 禁用(组级透明)下核心保持原色, 只有轨道/完成区间变淡
+	p.Draw.SetBrushColor(uint32(xui.RGBA(255, 255, 255, 255)))
 	p.Draw.FillEllipse(&thumb)
-	p.Draw.SetBrushColor(uint32(t.Ring.WithAlpha(alpha)))
+	p.Draw.SetBrushColor(uint32(t.Ring))
 	p.Draw.DrawEllipse(&thumb)
 	return 0
 }
