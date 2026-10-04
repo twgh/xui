@@ -1,9 +1,10 @@
 package ui
 
 import (
+	"github.com/twgh/xcgui/wapi"
+	"github.com/twgh/xcgui/wapi/wnd"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
-	"github.com/twgh/xcgui/wapi/wnd"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
@@ -93,6 +94,7 @@ func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboB
 	cb.AddEvent_Combobox_Popup_List(func(hEle int, hWindow int, hListBox int, pbHandled *bool) int {
 		HideTooltip(hEle) // 弹层窗口接管鼠标后触发元素收不到 MouseLeave, 提示不会自己消失
 		styleComboPopup(hEle, hWindow, hListBox)
+		alignComboPopup(hEle, hWindow)
 		return 0
 	})
 	// 弹层退出后窗口句柄即失效(实测: 关闭后切主题, 用旧句柄调 XWnd_GetDPI 会弹
@@ -180,6 +182,64 @@ var comboPopup = struct {
 	once  bool
 }{}
 
+// alignComboPopup 把弹层挪到 item-aligned 位置(radix Select 的默认定位):
+// 弹层盖住触发元素, 当前选中项正对触发元素位置(select.tsx 的 SelectContent
+// position="item-aligned")。
+//
+// 坐标链路(探针实测): XEle_GetWndClientRect 是逻辑像素, 原点=所属窗口矩形原点
+// (含阴影边距); wapi.GetWindowRect 是物理屏幕像素 → 逻辑差值 × DPI/96 换算。
+// 原生默认把弹层放在触发区正下方, 这里用 SetWindowPos(物理像素)重新定位。
+func alignComboPopup(hCombo, hWindow int) {
+	if hCombo <= 0 || hWindow <= 0 {
+		return
+	}
+	var trig xc.RECT
+	xc.XEle_GetWndClientRect(hCombo, &trig)
+	hw := xc.XWidget_GetHWINDOW(hCombo)
+	if hw <= 0 {
+		return
+	}
+	var mrc xc.RECT
+	if !wapi.GetWindowRect(xc.XWnd_GetHWND(hw), &mrc) {
+		return
+	}
+	dpi := xc.XWnd_GetDPI(hWindow)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
+
+	// 选中项在弹层内容里的纵向偏移: p-1 顶边距 + 前面条目高; 未选中时弹层顶对齐触发区顶。
+	off := int32(4)
+	if sel := xc.XComboBox_GetSelItem(hCombo); sel > 0 {
+		off += sel * comboItemH
+	}
+	desired := mrc.Top + int32(float64(trig.Top-off)*sc)
+	left := mrc.Left + int32(float64(trig.Left)*sc)
+
+	// 屏幕边界截断(物理像素, 主屏): 顶边贴屏时向下压并滚动列表让选中项仍可见。
+	hwnd := xc.XWnd_GetHWND(hWindow)
+	var prc xc.RECT
+	wapi.GetWindowRect(hwnd, &prc)
+	ph := prc.Bottom - prc.Top
+	screenTop, screenBottom := int32(0), wapi.GetSystemMetrics(wapi.SM_CYSCREEN)
+	if desired < screenTop {
+		cut := int32(float64(screenTop-desired) / sc)
+		desired = screenTop
+		if lb := widget.NewListBoxByHandle(comboPopup.list); lb != nil && cut > 0 {
+			lb.ScrollPosYV(off - 4) // 保留 p-1 顶边距, 选中项作为首个可见项
+		}
+	}
+	if desired+ph > screenBottom {
+		desired = screenBottom - ph
+		if desired < screenTop {
+			desired = screenTop
+		}
+	}
+	wapi.SetWindowPos(hwnd, 0, left, desired, 0, 0,
+		wapi.SWP_NOSIZE|wapi.SWP_NOZORDER|wapi.SWP_NOACTIVATE)
+}
+
 // comboItemH 是弹层条目高度: shadcn SelectItem = text-sm(20) + py-1(4×2)。
 const comboItemH int32 = 28
 
@@ -203,16 +263,25 @@ func styleComboPopup(hCombo, hWindow, hListBox int) {
 	}
 	// 弹层窗口/ListBox 每次弹出都是新建的(退出即销毁), 事件在这里注册即可, 不会重复。
 	lb.AddEvent_ListBox_DrawItem(comboPopupDrawItem)
-	// ring-1 ring-foreground/10: 元素背景的 border 对象是方角, 圆角处会被窗口
-	// 区域裁掉(实测), 改在 paint 事件里自绘圆角描边(bk 之后、条目之前绘制,
-	// 条目内容距边缘 4px 不会盖住它)。
-	lb.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+	// ring-1 ring-foreground/10: 描边画在 PAINT_END(该元素及子元素绘制完成事件)。
+	// 实测两个坑: ①ListBox 自身的 paint 事件在这个弹层窗口上不渲染输出(内缩 10px
+	// 的 6px 红色粗环都画不出来, 探针实证), 只有 BkM 与条目 DrawItem 能画; ②BkM
+	// 的 border 对象贴边画, 被 SetWindowRgn 的窗口区域裁得只剩左边一条。PAINT_END
+	// 在条目之后绘制(边框盖住内容边缘, 同 shadcn), 描边整体内缩 1px 落在窗口区域
+	// 内, 四边完整; 圆角弹层上 1px 白边距不可感知。
+	lb.EnableEvent_XE_PAINT_END()
+	lb.AddEvent_Paint_End(func(hEle int, hDraw int, pbHandled *bool) int {
 		p := xui.BeginPaint(hEle, hDraw)
 		if p == nil {
 			return 0
 		}
 		t := xui.Current()
-		p.StrokeRound(&p.Rc, t.Foreground.WithAlpha(26), t.RadiusLg(), 1)
+		rc := p.Rc
+		rc.Left++
+		rc.Top++
+		rc.Right--
+		rc.Bottom--
+		p.StrokeRound(&rc, t.Foreground.WithAlpha(26), t.RadiusLg(), 1)
 		return 0
 	})
 	lb.AddEvent_ListBox_Temp_Create_End(func(hEle int, pItem *xc.ListBox_Item_, nFlag int32, pbHandled *bool) int {
@@ -265,18 +334,15 @@ func applyComboPopupStyle() {
 	// 永远不需要横向滚动。
 	lb.ShowSBarV(lb.GetCount_AD() > 10)
 	lb.ShowSBarH(false)
-	// 弹层底色 + ring-1 ring-foreground/10: 元素背景对象置圆角(select.tsx 的
-	// rounded-lg + ring), 窗口异型透明后圆角外真透明。
+	// 弹层底色(select.tsx 的 bg-popover + rounded-lg): 元素背景对象置圆角,
+	// 窗口区域裁剪后圆角外真透明。描边(ring)不在这里加——BkM 的 border 对象贴边
+	// 画会被窗口区域裁得只剩左边一条(见 PAINT_END 处的注释), ring 改在 PAINT_END 画。
 	if b := lb.GetBkManagerObj(); b != nil {
 		b.Clear()
 		st := xcc.Element_State_Flag_Leave
 		b.AddFill(st, uint32(t.Popover), 1)
-		b.AddBorder(st, uint32(t.Foreground.WithAlpha(26)), 1, 2)
 		r := t.RadiusLg()
 		if o := b.GetObjectObj(1); o != nil {
-			o.SetRectRoundAngle(r, r, r, r)
-		}
-		if o := b.GetObjectObj(2); o != nil {
 			o.SetRectRoundAngle(r, r, r, r)
 		}
 	}

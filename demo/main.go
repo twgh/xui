@@ -20,7 +20,7 @@ func main() {
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
 
-	w := window.New(0, 0, 800, 860, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
+	w := window.New(0, 0, 800, 900, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
 	w.SetShadowInfo(8, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)

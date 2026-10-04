@@ -16,6 +16,7 @@
 - ✅ **demo + 用户项目 E2E**:拷贝出的组件在独立用户模块编译/运行/渲染全部正常
 - ✅ **demo 布局化**(2026-10-04):卡片内容改用 `widget.NewLayoutEle` 流式布局(vStack 列布局 / hRow 行布局 / vCol Weight 等分列),不再手算 y。LayoutEle 的真实语义(默认横向流、Fill 独占整行、间距 API 分工等)全部探针实测,已记入 DESIGN.md 第八节 29
 - ✅ **参考实现补齐**(2026-10-04):switch/progress/slider/tabs/tooltip/**select** 的 radix-nova 源码已从 registry 拉取落盘到 `shadcn/src/components/ui/`(select 里的 `IconPlaceholder` 换成了直接导入 lucide-react 图标,本项目没有 icon-placeholder),App.tsx 加了 Controls 对照卡(与 demo 卡 3 同构:开关/滑动条/进度/标签页/下拉框,line 变体 + Tooltip 包住保存按钮)。`pnpm build` 通过 + 浏览器渲染验证。tsconfig.app.json 加了 `ignoreDeprecations: "6.0"`(新 TS 的 baseUrl 弃用报错)
+- ✅ **ComboBox 弹层对齐 shadcn**(2026-10-04,computer-use 截图 + PIL 像素实测):①弹层边框只剩左边一条(根因:BkM border 贴边画被 SetWindowRgn 裁掉三面 + ListBox 自身 paint 事件在该弹层窗口上不渲染输出,内缩 10px 的 6px 红环都画不出来)→ ring 改画在 `XE_PAINT_END` 并内缩 1px,四边完整;②弹层定位改为 **item-aligned**(盖住触发元素、选中项正对触发位置,对齐 radix SelectContent 默认),`wapi.SetWindowPos` 物理像素重定位 + 屏幕边界截断滚动。结论记入 DESIGN.md 第八节 30
 - ⬜ P3:Dialog、原生菜单皮肤、Table/List/Tree、hover 过渡动画、CLI 远程 registry
 - ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
 
@@ -104,7 +105,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 | slider 交互全自实现:点击跳转 + LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ KeyDown 左右 ±5%/Home/End | — |
 | tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
-| select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见 DESIGN 第八节 30) |
+| select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见 DESIGN 第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见 DESIGN 第八节 30) |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
 | 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |
