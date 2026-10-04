@@ -1,10 +1,13 @@
-// xui 组件演示: light/dark 一键换肤 + P1 全部组件。
+// xui 组件演示: light/dark 一键换肤 + P1/P2 全部组件。
+// 卡片内容用 LayoutEle 流式布局, 不再手算 y。
 package main
 
 import (
 	"strconv"
 
 	"github.com/twgh/xcgui/app"
+	"github.com/twgh/xcgui/objectbase"
+	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
@@ -49,119 +52,222 @@ func main() {
 	a.Exit()
 }
 
+// ===== 布局助手 =====
+// LayoutEle 实测语义(xcgui 1.4.2, 见 DESIGN.md 第八节 29):
+//   - EnableHorizon(false)=纵向列布局, 主轴间距用 SetSpace, 交叉轴对齐用 SetAlignH;
+//   - EnableHorizon(true)=横向行流+自动换行, 行内间距用 SetSpace, 换行行距用 SetSpaceRow,
+//     交叉轴(垂直)对齐用 SetAlignV;
+//   - Fill = 独占一整行/列(兄弟被挤到下一行), 等分剩余空间用 Weight;
+//   - 项级 XWidget_LayoutItem_SetAlign 无效, 用布局级 SetAlignV/H 代替。
+// 布局项默认尺寸类型不可靠, 所有项都显式声明:
+// 宽度要么 Fill 占满要么 Fixed, 高度一律 Fixed 锁定。
+
+// vStack 卡片内容区纵向流式布局。
+func vStack(card *ui.Card, space int32) *widget.LayoutEle {
+	l := widget.NewLayoutEle(card.ContentLeft(), card.ContentTop(),
+		card.ContentWidth(), card.GetHeight()-card.Padding*2, card.Handle)
+	l.EnableHorizon(false)
+	l.EnableLayout(true)
+	l.EnableBkTransparent(true)
+	l.SetSpace(space)
+	return l
+}
+
+// hRow 横向子布局: 宽度占满父布局, 高度 ht, 项间距 space, 子项垂直居中。
+func hRow(parent int, ht, space int32) *widget.LayoutEle {
+	l := widget.NewLayoutEle(0, 0, 0, ht, parent)
+	l.EnableHorizon(true)
+	l.EnableLayout(true)
+	l.EnableBkTransparent(true)
+	l.SetSpace(space)
+	l.SetAlignV(xcc.Layout_Align_Center)
+	l.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	l.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
+	return l
+}
+
+// vCol 纵向子布局: 等分横向父布局的剩余宽度(Weight=1), 高度占满。
+func vCol(parent int, space int32) *widget.LayoutEle {
+	l := widget.NewLayoutEle(0, 0, 0, 0, parent)
+	l.EnableHorizon(false)
+	l.EnableLayout(true)
+	l.EnableBkTransparent(true)
+	l.SetSpace(space)
+	l.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1)
+	l.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
+	return l
+}
+
+// layoutItem 所有 widget 都提升自 objectbase.Widget, 自带 LayoutItem_* 包装。
+type layoutItem interface {
+	LayoutItem_SetWidth(t xcc.Layout_Size_, w int32) *objectbase.Widget
+	LayoutItem_SetHeight(t xcc.Layout_Size_, h int32) *objectbase.Widget
+	LayoutItem_SetMargin(left, top, right, bottom int32) *objectbase.Widget
+}
+
+// itemFixed 锁定布局项为固定尺寸。
+func itemFixed(ele layoutItem, w, ht int32) {
+	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
+	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
+}
+
+// itemFill 布局项宽度占满剩余空间(列布局中独占一行), 高度锁定为 ht。
+func itemFill(ele layoutItem, ht int32) {
+	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
+}
+
+// itemMarginTop 顶部额外间距。
+func itemMarginTop(ele layoutItem, m int32) {
+	ele.LayoutItem_SetMargin(0, m, 0, 0)
+}
+
+// ===== 页面 =====
+
 // buildPage 布局演示页: 由于主题切换会整窗重绘, 页面内容静态创建一次即可。
 func buildPage(hParent int) {
 	// ===== 左卡: 表单类 =====
 	card1 := ui.NewCard(24, 48, 340, 470, hParent)
-	x, y := card1.ContentLeft(), card1.ContentTop()
-	cw := card1.ContentWidth()
+	v1 := vStack(card1, 14)
 
-	ui.NewCardTitle(x, y, cw, "Account", card1.Handle)
-	ui.NewLabel(x, y+34, cw, 0, "修改你的账户信息, 保存后立即生效。", card1.Handle).SetMuted()
-	y += 66
-
-	ui.NewLabel(x, y, cw, 0, "邮箱地址", card1.Handle)
-	y += 30
-	email := ui.NewInput(x, y, cw, 0, card1.Handle, ui.WithPlaceholder("m@example.com"))
-	y += 48
-
-	ui.NewLabel(x, y, cw, 0, "个人简介", card1.Handle)
-	y += 30
-	ui.NewInput(x, y, cw, 72, card1.Handle,
+	itemFill(ui.NewCardTitle(0, 0, 0, "Account", v1.Handle), 24)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "修改你的账户信息, 保存后立即生效。", v1.Handle).SetMuted(), 24)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "邮箱地址", v1.Handle), 24)
+	email := ui.NewInput(0, 0, 0, 0, v1.Handle, ui.WithPlaceholder("m@example.com"))
+	itemFill(email, email.GetHeight())
+	itemFill(ui.NewLabel(0, 0, 0, 0, "个人简介", v1.Handle), 24)
+	bio := ui.NewInput(0, 0, 0, 72, v1.Handle,
 		ui.WithPlaceholder("介绍一下自己..."), ui.WithMultiline())
-	y += 94
+	itemFill(bio, bio.GetHeight())
 
-	// 复选框两行
-	c1 := ui.NewCheckbox(x, y, cw, 0, "接收邮件通知", card1.Handle)
+	c1 := ui.NewCheckbox(0, 0, 0, 0, "接收邮件通知", v1.Handle)
 	c1.SetChecked(true)
-	y += 32
-	ui.NewCheckbox(x, y, cw, 0, "公开展示个人主页", card1.Handle)
-	y += 44
+	itemFill(c1, c1.GetHeight())
+	cb2 := ui.NewCheckbox(0, 0, 0, 0, "公开展示个人主页", v1.Handle)
+	itemFill(cb2, cb2.GetHeight())
 
-	saveBtn := ui.NewButton(x, y, 96, 0, "保存", card1.Handle)
-	ui.NewButton(x+104, y, 96, 0, "取消", card1.Handle, ui.WithVariant(ui.ButtonOutline))
-
-	_ = email
+	rowFormBtns := hRow(v1.Handle, 36, 8)
+	saveBtn := ui.NewButton(0, 0, 0, 0, "保存", rowFormBtns.Handle)
+	itemFixed(saveBtn, 96, saveBtn.GetHeight())
+	cancelBtn := ui.NewButton(0, 0, 0, 0, "取消", rowFormBtns.Handle, ui.WithVariant(ui.ButtonOutline))
+	itemFixed(cancelBtn, 96, cancelBtn.GetHeight())
 
 	// ===== 右卡: 展示类 =====
 	card2 := ui.NewCard(392, 48, 380, 470, hParent)
-	x, y = card2.ContentLeft(), card2.ContentTop()
-	cw = card2.ContentWidth()
+	v2 := vStack(card2, 14)
 
-	ui.NewCardTitle(x, y, cw, "Components", card2.Handle)
-	y += 36
+	itemFill(ui.NewCardTitle(0, 0, 0, "Components", v2.Handle), 24)
 
-	// 按钮全变体
-	ui.NewButton(x, y, 104, 0, "Primary", card2.Handle)
-	ui.NewButton(x+112, y, 112, 0, "Secondary", card2.Handle, ui.WithVariant(ui.ButtonSecondary))
-	ui.NewButton(x+232, y, 104, 0, "Outline", card2.Handle, ui.WithVariant(ui.ButtonOutline))
-	y += 48
-	ui.NewButton(x, y, 104, 0, "Ghost", card2.Handle, ui.WithVariant(ui.ButtonGhost))
-	ui.NewButton(x+112, y, 112, 0, "Destructive", card2.Handle, ui.WithVariant(ui.ButtonDestructive))
-	ui.NewButton(x+232, y, 104, 0, "Disabled", card2.Handle).Enable(false)
-	y += 60
+	rowBtns1 := hRow(v2.Handle, 36, 8)
+	b := ui.NewButton(0, 0, 0, 0, "Primary", rowBtns1.Handle)
+	itemFixed(b, 104, b.GetHeight())
+	b = ui.NewButton(0, 0, 0, 0, "Secondary", rowBtns1.Handle, ui.WithVariant(ui.ButtonSecondary))
+	itemFixed(b, 112, b.GetHeight())
+	b = ui.NewButton(0, 0, 0, 0, "Outline", rowBtns1.Handle, ui.WithVariant(ui.ButtonOutline))
+	itemFixed(b, 104, b.GetHeight())
 
-	ui.NewSeparator(x, y, cw, card2.Handle)
-	y += 28
+	rowBtns2 := hRow(v2.Handle, 36, 8)
+	b = ui.NewButton(0, 0, 0, 0, "Ghost", rowBtns2.Handle, ui.WithVariant(ui.ButtonGhost))
+	itemFixed(b, 104, b.GetHeight())
+	b = ui.NewButton(0, 0, 0, 0, "Destructive", rowBtns2.Handle, ui.WithVariant(ui.ButtonDestructive))
+	itemFixed(b, 112, b.GetHeight())
+	b = ui.NewButton(0, 0, 0, 0, "Disabled", rowBtns2.Handle)
+	itemFixed(b, 104, b.GetHeight())
+	b.Enable(false)
 
-	// 徽章
-	ui.NewBadge(x, y, 64, 0, "Default", card2.Handle)
-	ui.NewBadge(x+72, y, 78, 0, "Secondary", card2.Handle, ui.WithBadgeVariant(ui.BadgeSecondary))
-	ui.NewBadge(x+158, y, 72, 0, "Outline", card2.Handle, ui.WithBadgeVariant(ui.BadgeOutline))
-	ui.NewBadge(x+238, y, 88, 0, "Destructive", card2.Handle, ui.WithBadgeVariant(ui.BadgeDestructive))
-	y += 52
+	sep := ui.NewSeparator(0, 0, 0, v2.Handle)
+	itemFill(sep, sep.GetHeight())
+	itemMarginTop(sep, 12)
 
-	// 单选组
-	ui.NewLabel(x, y, cw, 0, "通知偏好", card2.Handle).SetMuted()
-	y += 26
-	r1 := ui.NewRadio(x, y, cw, 0, "仅错误消息", card2.Handle)
+	rowBadges := hRow(v2.Handle, 20, 8)
+	badge := ui.NewBadge(0, 0, 64, 0, "Default", rowBadges.Handle)
+	itemFixed(badge, 64, badge.GetHeight())
+	badge = ui.NewBadge(0, 0, 0, 0, "Secondary", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeSecondary))
+	itemFixed(badge, 78, badge.GetHeight())
+	badge = ui.NewBadge(0, 0, 0, 0, "Outline", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeOutline))
+	itemFixed(badge, 72, badge.GetHeight())
+	badge = ui.NewBadge(0, 0, 0, 0, "Destructive", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeDestructive))
+	itemFixed(badge, 88, badge.GetHeight())
+
+	lb := ui.NewLabel(0, 0, 0, 0, "通知偏好", v2.Handle).SetMuted()
+	itemFill(lb, lb.GetHeight())
+	itemMarginTop(lb, 12)
+
+	r1 := ui.NewRadio(0, 0, 0, 0, "仅错误消息", v2.Handle)
 	r1.SetCheck(true)
-	y += 30
-	ui.NewRadio(x, y, cw, 0, "所有消息", card2.Handle)
-	y += 30
-	ui.NewRadio(x, y, cw, 0, "不接收", card2.Handle).Enable(false)
+	itemFill(r1, r1.GetHeight())
+	r2 := ui.NewRadio(0, 0, 0, 0, "所有消息", v2.Handle)
+	itemFill(r2, r2.GetHeight())
+	r3 := ui.NewRadio(0, 0, 0, 0, "不接收", v2.Handle)
+	itemFill(r3, r3.GetHeight())
+	r3.Enable(false)
 
 	// ===== 下卡: P2 组件 =====
 	card3 := ui.NewCard(24, 536, 728, 290, hParent)
-	x, y = card3.ContentLeft(), card3.ContentTop()
-	cw = card3.ContentWidth()
+	v3 := vStack(card3, 14)
 
-	// 开关
-	ui.NewLabel(x, y, 120, 0, "开关", card3.Handle).SetMuted()
-	ui.NewSwitch(x, y+22, card3.Handle, ui.WithSwitchChecked(true))
-	ui.NewSwitch(x+56, y+22, card3.Handle)
-	ui.NewSwitch(x+112, y+24, card3.Handle, ui.WithSwitchSize(ui.SwitchSm))
-	ui.NewSwitch(x+168, y+24, card3.Handle, ui.WithSwitchSize(ui.SwitchSm)).Enable(false)
+	// 第一组: 开关 | 滑动条
+	g1 := hRow(v3.Handle, 56, 24)
 
-	// 滑动条
-	ui.NewLabel(x+260, y, 120, 0, "滑动条", card3.Handle).SetMuted()
-	sliderValue := ui.NewLabel(x+420, y, 60, 22, "40", card3.Handle).SetMuted()
-	sl := ui.NewSlider(x+260, y+25, 160, 0, card3.Handle)
+	colSw := vCol(g1.Handle, 8)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "开关", colSw.Handle).SetMuted(), 24)
+	rowSw := hRow(colSw.Handle, 24, 8)
+	sw := ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchChecked(true))
+	itemFixed(sw, sw.GetWidth(), sw.GetHeight())
+	sw = ui.NewSwitch(0, 0, rowSw.Handle)
+	itemFixed(sw, sw.GetWidth(), sw.GetHeight())
+	sw = ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchSize(ui.SwitchSm))
+	itemFixed(sw, sw.GetWidth(), sw.GetHeight())
+	sw = ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchSize(ui.SwitchSm))
+	itemFixed(sw, sw.GetWidth(), sw.GetHeight())
+	sw.Enable(false)
+
+	colSl := vCol(g1.Handle, 8)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "滑动条", colSl.Handle).SetMuted(), 24)
+	// Slider 元素比可见轨道左右各宽 9px(ring 绘制空间), cx=270 → 元素宽 288
+	rowSl := hRow(colSl.Handle, 24, 8)
+	sl := ui.NewSlider(0, 0, 270, 0, rowSl.Handle)
+	itemFixed(sl, 288, sl.GetHeight())
+	sliderValue := ui.NewLabel(0, 0, 40, 24, "40", rowSl.Handle).SetMuted()
+	itemFixed(sliderValue, 40, 24)
 	sl.SetValue(40)
 	sl.OnChange(func(v float64) { sliderValue.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
-	y += 68
 
-	// 进度条 / 标签页 / 下拉框
-	ui.NewLabel(x, y, 120, 0, "进度", card3.Handle).SetMuted()
-	ui.NewLabel(x+260, y, 120, 0, "标签页", card3.Handle).SetMuted()
-	ui.NewLabel(x+460, y, 120, 0, "下拉框", card3.Handle).SetMuted()
-	ui.NewProgress(x, y+22, 200, 0, card3.Handle).SetValue(64)
-	ui.NewProgress(x, y+40, 200, 0, card3.Handle).SetValue(100)
+	// 第二组: 进度 | 标签页 | 下拉框
+	g2 := hRow(v3.Handle, 136, 24)
 
-	tabs := ui.NewTabs(x+260, y+24, 180, card3.Handle, []string{"账户", "密码", "通知"})
-	panel := ui.NewLabel(x+260, y+72, cw-260, 22, "账户设置面板", card3.Handle).SetMuted()
+	colPg := vCol(g2.Handle, 8)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "进度", colPg.Handle).SetMuted(), 24)
+	pg := ui.NewProgress(0, 0, 0, 0, colPg.Handle)
+	itemFill(pg, pg.GetHeight())
+	itemMarginTop(pg, 6)
+	pg.SetValue(64)
+	pg2 := ui.NewProgress(0, 0, 0, 0, colPg.Handle)
+	itemFill(pg2, pg2.GetHeight())
+	itemMarginTop(pg2, 12)
+	pg2.SetValue(100)
+
+	colTabs := vCol(g2.Handle, 8)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "标签页", colTabs.Handle).SetMuted(), 24)
+	// Tabs 内部标签宽度按创建时的 cx 等分, 不能被布局拉伸, 用固定宽
+	tabs := ui.NewTabs(0, 0, 180, colTabs.Handle, []string{"账户", "密码", "通知"})
+	itemFixed(tabs, 180, tabs.GetHeight())
+	panel := ui.NewLabel(0, 0, 0, 22, "账户设置面板", colTabs.Handle).SetMuted()
+	itemFill(panel, panel.GetHeight())
 	tabs.OnChange(func(i int32) {
 		panel.SetText([]string{"账户设置面板", "密码设置面板", "通知设置面板"}[i]).Redraw()
 	})
+	lineTabs := ui.NewTabs(0, 0, 180, colTabs.Handle, []string{"概览", "详情"},
+		ui.WithTabsVariant(ui.TabsLine), ui.WithTabsActive(1))
+	itemFixed(lineTabs, 180, lineTabs.GetHeight())
 
-	combo := ui.NewComboBox(x+460, y+24, 180, 0, card3.Handle,
+	colCombo := vCol(g2.Handle, 8)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "下拉框", colCombo.Handle).SetMuted(), 24)
+	combo := ui.NewComboBox(0, 0, 180, 0, colCombo.Handle,
 		[]string{"开发环境", "测试环境", "预发环境", "灰度环境", "生产环境", "本地调试"},
 		ui.WithComboPlaceholder("选择环境"))
+	itemFixed(combo, 180, combo.GetHeight())
 	combo.SetSelected(1)
-
-	// line 变体标签页
-	ui.NewTabs(x+260, y+112, 180, card3.Handle, []string{"概览", "详情"},
-		ui.WithTabsVariant(ui.TabsLine), ui.WithTabsActive(1))
 
 	// 提示气泡: 绑到"保存"按钮与下拉框上
 	tip := ui.NewTooltip()
