@@ -123,13 +123,15 @@ func (t *Tooltip) show(hEle int) {
 	bh := sz.CY + tipPadY*2
 	ww, wh := bw, bh+tipArrow
 
-	// 元素在窗口客户区中的矩形 -> 屏幕逻辑坐标
-	var rc, wr, cr xc.RECT
+	// 元素在窗口客户区中的矩形 -> 屏幕逻辑坐标。
+	// 注意: XEle_GetWndClientRect 的原点就是"窗口 rect 原点"(含阴影边距), 不再叠加
+	// XWnd_GetClientRect 的客户区内缩 —— 叠加过一次, 气泡会整体下移阴影宽度(实测 8px,
+	// 箭头尖端扎进目标元素里)。
+	var rc, wr xc.RECT
 	xc.XEle_GetWndClientRect(hEle, &rc)
 	hWnd := windowOf(hEle)
 	xc.XWnd_GetRect(hWnd, &wr)
-	xc.XWnd_GetClientRect(hWnd, &cr)
-	sx, sy := wr.Left+cr.Left+rc.Left, wr.Top+cr.Top+rc.Top
+	sx, sy := wr.Left+rc.Left, wr.Top+rc.Top
 	ex, ey := rc.Right-rc.Left, rc.Bottom-rc.Top
 
 	// 窗口整高 = 气泡 + 箭头, 箭头恰好填满这段间距, 所以窗口边缘要贴住元素边缘
