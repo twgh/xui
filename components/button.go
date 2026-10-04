@@ -234,7 +234,7 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 字重用常规: shadcn 的 font-medium(500) 在中文下由系统回落成常规, 用粗体字形会过粗
 	if f := xui.FontHandle(xui.FontSpec{
 		Family: t.FontDefault.Family,
-		Size:   xui.FontPx(hEle, b.Spec().font), // 绘制路径字号要按 DPI 反除(见 draw.go FontPx)
+		Size:   b.Spec().font,
 	}); f != 0 {
 		p.Draw.SetFont(f)
 	}
