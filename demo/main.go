@@ -9,6 +9,7 @@ import (
 	"github.com/twgh/xcgui/objectbase"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
+	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 	ui "github.com/twgh/xui/components"
@@ -20,9 +21,13 @@ func main() {
 	a.EnableAutoDPI(true).EnableDPI(true)
 
 	w := window.New(0, 0, 800, 860, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
-	w.SetBorderSize(1, 32, 1, 1)
-	w.SetCaptionMargin(4, 2, 0, 0)
+	w.SetTransparentType(xcc.Window_Transparent_Shadow)
+	w.SetShadowInfo(8, 128, 8, false, xc.RGBA(0, 0, 0, 128))
+	w.SetTransparentAlpha(255)
+	w.SetBorderSize(0, 30, 0, 0)
+	w.SetCaptionMargin(4, 2, 4, 0)
 	w.SetFont(xui.FontHandle(xui.Current().FontDefault))
+
 	xui.RegisterWindow(w.Handle)
 	xui.BindWindowBackground(w.Handle) // 窗口底色随主题切换
 
@@ -32,7 +37,7 @@ func main() {
 	xui.OnThemeChange(applyTitle)
 
 	dark := false
-	toggle := ui.NewButton(340, 6, 100, 30, "Dark", w.Handle, ui.WithVariant(ui.ButtonOutline))
+	toggle := ui.NewButton(340, 9, 100, 28, "Dark", w.Handle, ui.WithVariant(ui.ButtonOutline))
 	toggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		dark = !dark
 		if dark {
