@@ -118,7 +118,10 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		Right:  p.Rc.Right,
 		Bottom: p.Rc.Bottom,
 	}
-	if f := xui.FontHandle(t.FontDefault); f != 0 {
+	if f := xui.FontHandle(xui.FontSpec{
+		Family: t.FontDefault.Family,
+		Size:   xui.FontPx(hEle, t.FontDefault.Size),
+	}); f != 0 {
 		p.Draw.SetFont(f)
 	}
 	fore := t.Foreground

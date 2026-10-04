@@ -124,7 +124,10 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		Right:  p.Rc.Right,
 		Bottom: p.Rc.Bottom,
 	}
-	if f := xui.FontHandle(t.FontDefault); f != 0 {
+	if f := xui.FontHandle(xui.FontSpec{
+		Family: t.FontDefault.Family,
+		Size:   xui.FontPx(hEle, t.FontDefault.Size),
+	}); f != 0 {
 		p.Draw.SetFont(f)
 	}
 	// 文字保持原色: shadcn 里禁用只作用于圆点(RadioGroupItem 的 disabled:opacity-50),

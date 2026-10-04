@@ -1,6 +1,8 @@
 package xui
 
 import (
+	"math"
+
 	"github.com/twgh/xcgui/drawx"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -14,9 +16,33 @@ import (
 // 不要对尺寸做任何 DPI 预缩放(实测 DPI=144 时缩放会导致双重放大,
 // 指示器撑满元素客户区而被上下裁剪)。
 type Painter struct {
-	Draw *drawx.Draw
-	hEle int
-	Rc   xc.RECT // 元素客户区(逻辑坐标)
+	Draw  *drawx.Draw
+	hEle  int
+	Rc    xc.RECT // 元素客户区(逻辑坐标)
+	Scale float64 // 物理/逻辑像素比(高 DPI 下 >1)
+}
+
+// DpiScale 返回窗口的物理/逻辑像素比(96 DPI = 1)。
+func DpiScale(hEle int) float64 {
+	hWnd := int(xc.XWidget_GetHWND(hEle))
+	if hWnd == 0 {
+		hWnd = hEle
+	}
+	if dpi := xc.XWnd_GetDPI(hWnd); dpi > 0 {
+		return float64(dpi) / 96.0
+	}
+	return 1
+}
+
+// FontPx 把"想画的逻辑字号"换算成绘制路径需要的字号。
+// 绘制路径的文字会被框架再乘一次 DPI 缩放(自绘按钮实测 1.5x 偏大, 文字顶到按钮边),
+// 这里按窗口比例反除, 96 DPI 下是恒等变换。
+func FontPx(hEle int, logicalPX int32) int32 {
+	s := DpiScale(hEle)
+	if s <= 1 {
+		return logicalPX
+	}
+	return int32(math.Round(float64(logicalPX) / s))
 }
 
 // BeginPaint 从元素绘制回调的 hDraw 构造 Painter, 并启用抗锯齿。

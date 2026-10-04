@@ -206,7 +206,7 @@ func (d *Dialog) AddFooter(text string, variant ButtonVariant, onClick func()) *
 	w := int32(0)
 	if f := xui.FontHandle(xui.FontSpec{
 		Family: xui.Current().FontDefault.Family,
-		Size:   buttonSpecs[ButtonSizeDefault].font,
+		Size:   xui.FontPx(d.hWnd, buttonSpecs[ButtonSizeDefault].font),
 	}); f != 0 {
 		var sz xc.SIZE
 		app.GetTextShowRect(text, -1, f, 0, 0, &sz)
