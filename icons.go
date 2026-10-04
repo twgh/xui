@@ -1,6 +1,7 @@
 package xui
 
 import (
+	"math"
 	"strconv"
 	"unicode"
 
@@ -38,7 +39,7 @@ func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float
 	oy := rc.Top + (h-size)/2
 	s := float32(size) / 24
 
-	lineW := int32(strokeWidth*s + 0.5)
+	lineW := int32(math.Ceil(float64(strokeWidth * s))) // 线宽是物理像素: 取整会让 16px 图标(2*16/24=1.33)退化成 1px 细线
 	if lineW < 1 {
 		lineW = 1
 	}
@@ -72,7 +73,7 @@ func (p *Painter) IconSearch(rc *xc.RECT, color Color, strokeWidth float32) {
 	oy := rc.Top + (h-size)/2
 	s := float32(size) / 24
 
-	lineW := int32(strokeWidth*s + 0.5)
+	lineW := int32(math.Ceil(float64(strokeWidth * s))) // 线宽是物理像素: 取整会让 16px 图标(2*16/24=1.33)退化成 1px 细线
 	if lineW < 1 {
 		lineW = 1
 	}
@@ -145,12 +146,12 @@ func (sc *iconScanner) num() (float32, bool) {
 func parseIconPath(d string) [][]iconPt {
 	sc := &iconScanner{s: d}
 	var (
-		subs                                   [][]iconPt
-		cur                                    []iconPt
-		x, y, sx, sy                           float32
-		cmd                                    byte
-		lastC, lastQ                           iconPt
-		hasC, hasQ                             bool
+		subs         [][]iconPt
+		cur          []iconPt
+		x, y, sx, sy float32
+		cmd          byte
+		lastC, lastQ iconPt
+		hasC, hasQ   bool
 	)
 	push := func(px, py float32) { cur = append(cur, iconPt{px, py}) }
 	flush := func() {
