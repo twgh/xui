@@ -107,7 +107,6 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	// 蓝色虚线框(实测: 点面板内空白处 → 内容容器上出现蓝框, 压住输入框左右描边)
 	d.overlay.EnableDrawFocus(false)
 	d.overlay.EnableDrawBorder(false)
-	xui.RegisterFontScale(d.overlay.Handle) // 页脚按钮量宽要用(见 draw.go FontPx)
 	d.overlay.AddEvent_Paint(d.onPaint)
 	d.overlay.AddEvent_LButtonDown(d.onOverlayDown)
 

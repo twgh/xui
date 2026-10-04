@@ -41,7 +41,6 @@ func AttachWindow(hEle int) {
 	if hWnd == 0 {
 		return
 	}
-	RegisterFontScale(hEle) // 顺带登记 DPI 比例(自绘文字的字号补偿要用, 见 draw.go FontPx)
 	hWindow := xc.XC_hWindowFromHWnd(hWnd)
 	if hWindow == 0 {
 		return
