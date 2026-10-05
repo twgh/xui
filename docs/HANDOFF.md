@@ -46,7 +46,8 @@ D:\GOProject\src\ui\shadcn\       ← 本地部署的 shadcn-ui 参考实现(语
 └── src\App.tsx                   与 demo 同构的对照页
 
 D:\GOProject\src\tools\llama-launcher\  ← 同技术栈的成品项目(可参考)
-└── internal\ui\builder.go        LayoutEle 布局盒子的成熟用法(lkSize 尺寸描述 /
+├── internal\ui\caption.go        菜单美化, 标题上自定义按钮
+└── internal\ui\builder.go        List美化,LayoutEle 布局盒子的成熟用法(lkSize 尺寸描述 /
                                   Box/Card 工厂 / widget 自带 LayoutItem_* 包装),
                                   其布局语义结论与本项目 DESIGN.md 第八节 29 一致
 ```
