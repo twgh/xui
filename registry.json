@@ -64,6 +64,10 @@
     "menu": {
       "files": ["menu.go"],
       "deps": []
+    },
+    "table": {
+      "files": ["table.go"],
+      "deps": []
     }
   }
 }

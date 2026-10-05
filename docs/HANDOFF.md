@@ -6,7 +6,7 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现的源码为唯一权威。
 
-## 当前状态(2026-10-04)
+## 当前状态(2026-10-05)
 
 - ✅ **P0 运行时**完成:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter 绘制助手、字体缓存、focus-visible 焦点来源跟踪
 - ✅ **P1 组件**完成并视觉验收:Button(5 变体×3 尺寸)、Checkbox、Radio、Input、Label、Separator+Badge、Card
@@ -17,11 +17,13 @@
 - ✅ **demo + 用户项目 E2E**:拷贝出的组件在独立用户模块编译/运行/渲染全部正常
 - ✅ **demo 布局化**(2026-10-04):卡片内容改用 `widget.NewLayoutEle` 流式布局(vStack 列布局 / hRow 行布局 / vCol Weight 等分列),不再手算 y。LayoutEle 的真实语义(默认横向流、Fill 独占整行、间距 API 分工等)全部探针实测,已记入 DESIGN.md 第八节 29
 - ✅ **参考实现补齐**(2026-10-04):switch/progress/slider/tabs/tooltip/**select** 的 radix-nova 源码已从 registry 拉取落盘到 `shadcn/src/components/ui/`(select 里的 `IconPlaceholder` 换成了直接导入 lucide-react 图标,本项目没有 icon-placeholder),App.tsx 加了 Controls 对照卡(与 demo 卡 3 同构:开关/滑动条/进度/标签页/下拉框,line 变体 + Tooltip 包住保存按钮)。`pnpm build` 通过 + 浏览器渲染验证。tsconfig.app.json 加了 `ignoreDeprecations: "6.0"`(新 TS 的 baseUrl 弃用报错)
+- ✅ **table 参考实现补齐**(2026-10-05):`npx shadcn@latest add table` 落盘 `shadcn/src/components/ui/table.tsx`, App.tsx 加了"数据表格"对照卡(与 demo 数据页同构:12 行、容器高 180 出现滚动条、第 2 行 `data-state="selected"`)。顺带修掉 `dropdown-menu.tsx` 里残留的 `IconPlaceholder` 导入(同样换成 lucide-react `Check`/`ChevronRight`),`pnpm build` 恢复通过
 - ✅ **ComboBox 弹层对齐 shadcn**(2026-10-04,computer-use 截图 + PIL 像素实测):①弹层边框只剩左边一条(根因:BkM border 贴边画被 SetWindowRgn 裁掉三面 + ListBox 自身 paint 事件在该弹层窗口上不渲染输出,内缩 10px 的 6px 红环都画不出来)→ ring 改画在 `XE_PAINT_END` 并内缩 1px,四边完整;②弹层定位改为 **item-aligned**(盖住触发元素、选中项正对触发位置,对齐 radix SelectContent 默认),`wapi.SetWindowPos` 物理像素重定位 + 屏幕边界截断滚动。结论记入 DESIGN.md 第八节 30
 - ✅ **Dialog 完成并视觉/交互验收**(2026-10-04,computer-use 真实鼠标键盘 + PIL 像素实测):路线选**窗口内覆盖元素**(不是 ModalWindow/DoModal):全窗自绘遮罩(bg-black/10, 实测 255→229 精确 0.9 合成)+ 居中面板(bg-popover/rounded-xl/ring-foreground/10),标题(text-base)/描述(text-sm muted)/任意内容容器/页脚(-mx-4 -mb-4 贴边、border-t、bg-muted/50、只有下两角圆角)+ 右上角幽灵图标关闭钮。交互:ESC / 点遮罩 / 关闭钮关闭,打开时焦点进第一个可聚焦控件,Tab 在对话框内循环(Shift+Tab 反向),点面板内不关闭;关闭后整窗重绘擦掉遮罩。Button 新增 `WithIcon`(lucide 图标替代文字, 16px 居中)供关闭钮复用;Label 现在 `EnableSwitchFocus(false)` + 灭原生边框。坑与探针结论见 DESIGN.md 第八节 33,对照卡已加到 shadcn App.tsx(dialog.tsx 落盘)
 - ✅ **Dialog/文字视觉对齐打磨**(2026-10-04,与用户逐轮截图对比):灭掉内容容器点击后出现的原生蓝焦点框/深色边框;行盒按 leading-none 收紧并给文本元素上下外扩(避免元素裁字);页脚高度全量计入(面板不再矮一截);页脚按钮量宽 ×2 校正(`GetTextShowRect` 在 144 DPI 下约为实绘宽度的一半),按钮宽度与 shadcn 的 48 逻辑像素完全一致;字重收敛到常规(中文 500≈常规);Tooltip 量宽字体与绘制对齐 + 定位去掉重复的客户区偏移(箭头贴住元素上边)。结论全部记入 DESIGN.md 第八节 34
 - ✅ **Menu(原生菜单皮肤)完成并视觉/交互验收**(2026-10-05, computer-use + zoom):路线 = 原生 Menu 承载行为 + 窗口级 XWM_MENU_DRAW_BACKGROUND/DRAWITEM 自绘皮肤(每窗口注册一次, 绘制实时取令牌)。条目/勾选/单选(组内互斥)/分组标签/分隔栏/快捷键("	" 借原生算宽)/子菜单/禁用/破坏性全对齐 dropdown-menu.tsx;弹窗圆角 SetWindowRound、元素锚点定位(sideOffset=4, 翻转+夹紧)。探针结论记 DESIGN.md 第八节 36;**注意全屏缩略截图里暗色弹层会假显亮底, 弹层验收必须 zoom**。demo 卡 5 新增
-- ⬜ P3 剩余:Table/List/Tree、hover 过渡动画、CLI 远程 registry
+- ✅ **Table(List)完成并视觉/交互验收**(2026-10-05, `components/table.go`):路线 = **原生 `List` 载体 + 外观全自绘**(原生 List 的灰表头/横竖网格线/系统滚动条/白底全部压掉)。为什么不是原生 `Table`:`widget.Table` 是 Shape 系的"单元格画布"(合并单元格、逐格画线、无滚动/无虚拟行), 与 shadcn 的可滚动行列表语义不符, 故 P3 里的 Table/List 两项合并为同一个组件(registry 名 `table`)。对齐 shadcn table.tsx:表头 h-10(40)/px-2 + 1px 底边, 数据行 36(p-2 + text-sm), 行 `border-b`(**最后一行不画** = `[&_tr:last-child]:border-0`), 行悬浮 `hover:bg-muted/50`、选中 `bg-muted`;容器底色取 Card(同 ComboBox 的"组件都放卡片上"约定, 可用 `WithTableOnBackground` 改为 Background)。API:`NewTable(x,y,cx,cy,parent,cols)` + `AddRow/SetCell/SetRow/CellText/Rows/Clear/Select/Selected/OnSelect/Refresh/FitColumns`,列宽 `Width<=0` 表示占满剩余宽度(滚动条显隐翻转时自动重算)。像素实测(亮/暗双主题):行底 `#f5f5f5`→暗 `#262626`, 悬浮 `#fafafa`→暗 `#1f1f1f`, 行边框 `#e5e5e5`→暗白 10% 合成, 行高 54 物理/36 逻辑、表头 60/40, 自适应列 = `cx − 4 − 12`(滚动条让步)。踩坑全部记入 DESIGN.md 第八节 40、41(demo 那个"表格整块消失"是 LayoutEle **纵向溢出换列**, 见 41)
+- ⬜ P3 剩余:Tree 皮肤、hover 过渡动画、CLI 远程 registry
 
 - ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
 
@@ -34,7 +36,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
 │   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go  menu.go
-│   ├── label.go   separator.go(含 Badge)  card.go
+│   ├── label.go   separator.go(含 Badge)  card.go  table.go
 ├── cmd\xui\                      CLI(init/add/list)
 ├── demo\                         演示应用(也是全组件编译测试目标)
 ├── registry.json                 组件清单(files + deps)
@@ -94,6 +96,8 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - **渲染固定 Direct2D**(`app.New(true)`)
 - **LayoutEle 默认是"横向流 + 自动换行", 不是竖排**:纵向堆叠必须 `EnableHorizon(false)`;列布局主轴间距用 `SetSpace`, 行布局换行行距用 `SetSpaceRow`(只设 SetSpace 纵向间隙恒 0);`Fill` 独占一整行, 等分用 `Weight`;项级 `LayoutItem_SetAlign` 无效, 用布局级 `SetAlignH/V`(详见 DESIGN.md 第八节 29)
 - 顶层 Tabs 分页: 页面容器 Show(false)→Show(true) 后其内部布局元素不会自动重排(空白壳), **对显示的页面调 `AdjustLayout()`** 再 Redraw(demo buildPage);ESC 关闭用 `XWnd_CloseWindow`
+- **LayoutEle 纵向(列)布局也会"溢出换列"**: 主轴上剩余高度放不下下一项时, 该项会被甩到下一列(`x += 容器宽度, y = 0`)→ 表现为控件整块消失。列布局一律 `EnableAutoWrap(false)`, 并保证容器高度足够(见 DESIGN 第八节 41)
+- 原生 List 作表格载体: 内容区**左上各内缩 2 逻辑像素**、**表头单元格比数据单元格靠左 2px**、行间距默认 1px(`SetRowSpace(0)` 去掉);`List_Item_.RcItem` 注释写"未使用"但**实际有效**, `XE_LIST_DRAWITEM` 按**单元格**触发、矩形首尾相接 → 逐格画行底与行边框;纵向滚动条会吃掉内容宽度(自适应列要让出 ~12px)(见 DESIGN 第八节 40)
 - 窗口布局(EnableLayout): 布局项必须 LayoutEle; 主轴剩余用 **Weight** 不是 Fill(Fill 独占整行/列与兄弟重叠); 客户区已避开阴影带; 详见 DESIGN 第八节 39
 
 ## 与 shadcn 对齐的语义(改交互前先对照源码)
@@ -120,6 +124,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见 DESIGN 第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见 DESIGN 第八节 30) |
 | menu 弹层 = bg-popover rounded-lg p-1 ring-1 ring-foreground/10(内缩 1px); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border(原生槽高仅 4px); 快捷键右对齐 text-xs muted | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见 DESIGN 第八节 36) |
+| table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm` | table.tsx(已落盘) + table.go(原生 List 接管路线见 DESIGN 第八节 40) |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10;标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
@@ -138,7 +143,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 
 1. 构建 + 运行 demo → computer-use 截图(返回图片直接看)
 2. `crop`(vision-skills 工具)或 computer-use zoom 放大细部目检
-3. 精确数值用 PIL 脚本 `scripts/dominant_colors.py` 测量(如圆盘/白点直径占比、hover 前后色值)
+3. 精确数值用像素扫描脚本 `python scripts/pixel_scan.py <png> v|h|box|mix ...` 测量(如圆盘/白点直径占比、hover 前后色值)
 
 **无视觉能力的模型**:
 
@@ -147,7 +152,8 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 
 **通用**:
 
-- 疑难渲染问题写探针程序(.verify/probeN)二分定位,完事删掉
+- 疑难渲染问题写探针程序(`.verify/probeN` 独立 main 包, `go build -o .verify/probeN/probeN.exe ./.verify/probeN` 后运行;`.verify/` 已被 go 工具链忽略),完事删掉
+- 需要"真实鼠标"验证 hover/点击时, 探针里用 `wapi.SetCursorPos` 比外部脚本可靠;从 PowerShell 移动鼠标要注意它是 DPI-unaware 进程, 坐标会被虚拟化/偏移, 别拿截图坐标直接当屏幕坐标用(踩过坑)
 - 浏览器对照:shadcn 参考页 + xui demo 同屏对比
 - 同一张截图里量两边(ours vs ref)是最可靠的对照法
 

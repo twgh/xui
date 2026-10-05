@@ -1,10 +1,11 @@
-// xui 组件演示: light/dark 一键换肤 + P1/P2 全部组件。
+// xui 组件演示: light/dark 一键换肤 + 全部组件(含表格)。
 // 卡片内容用 LayoutEle 流式布局, 不再手算 y。
-// 顶层用 Tabs 分页展示(表单/控件/反馈), 主题用环境变量 XUI_THEME=dark 切换。
-// 控制启动首页可用环境变量 XUI_HOME_PAGE = 0/1/2 分别对应 表单/控件/反馈。
+// 顶层用 Tabs 分页展示(表单/控件/反馈/数据), 主题用环境变量 XUI_THEME=dark 切换。
+// 控制启动首页可用环境变量 XUI_HOME_PAGE = 0/1/2/3 分别对应 表单/控件/反馈/数据。
 package main
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -21,7 +22,8 @@ import (
 )
 
 var (
-	tip *ui.Tooltip
+	tip       *ui.Tooltip
+	demoTable *ui.Table
 )
 
 func main() {
@@ -209,6 +211,9 @@ func vStack(card *ui.Card, space int32) *widget.LayoutEle {
 	l.EnableLayout(true)
 	l.EnableBkTransparent(true)
 	l.SetSpace(space)
+	// 关掉"纵向溢出换列": LayoutEle 在主轴放不下下一项时会把它甩到下一列
+	// (x += 容器宽度, y = 0), 表现为控件整块消失(实测, 见 DESIGN 第八节 41)
+	l.EnableAutoWrap(false)
 	return l
 }
 
@@ -263,12 +268,12 @@ func itemMarginTop(ele layoutItem, m int32) {
 
 // ===== 页面 =====
 
-// buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈), 每页是一个绝对定位的
+// buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈/数据), 每页是一个绝对定位的
 // 容器元素, 切换时 Show/Hide + 重绘。页面内容静态创建一次即可
 // (主题切换走整窗重绘, 不需要重建)。
 // 后续新增组件展示时: 开一个新页面容器 + 对应 Tab 即可, 页面之间互不挤压。
 func buildPage(hWindow, hParent int) {
-	pageCount := 3
+	pageCount := 4
 	homePage, _ := strconv.Atoi(os.Getenv("XUI_HOME_PAGE"))
 	if homePage < 0 || homePage > pageCount-1 {
 		homePage = 0
@@ -283,9 +288,9 @@ func buildPage(hWindow, hParent int) {
 		pages[i].EnableMouseThrough(true) // 纯容器, 空白处透给窗口拖动
 		pages[i].Show(i == homePage)
 	}
-	pForm, pCtrl, pFeed := pages[0], pages[1], pages[2]
+	pForm, pCtrl, pFeed, pData := pages[0], pages[1], pages[2], pages[3]
 
-	pageTabs := ui.NewTabs(16, 6, 300, hParent, []string{"表单", "控件", "反馈"})
+	pageTabs := ui.NewTabs(16, 6, 340, hParent, []string{"表单", "控件", "反馈", "数据"})
 	pageTabs.OnChange(func(i int32) {
 		for j, p := range pages {
 			vis := int(i) == j
@@ -298,6 +303,7 @@ func buildPage(hWindow, hParent int) {
 			}
 		}
 	})
+	pageTabs.SetActive(int32(homePage))
 
 	// ===== 页 1: 表单类 =====
 	// ===== 左卡: 表单类 =====
@@ -486,6 +492,44 @@ func buildPage(hWindow, hParent int) {
 	menuBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		showDemoMenu(hEle)
 		return 0
+	})
+
+	// ===== 页 4: 数据(表格) =====
+	card6 := ui.NewCard(24, 0, 728, 320, pData.Handle)
+	v6 := vStack(card6, 14)
+	itemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v6.Handle), 24)
+
+	desc := ui.NewLabel(0, 0, 0, 0,
+		"原生 List 载体 + 全自绘皮肤: 表头/行底/行边框/滚动条; 行悬浮 hover:bg-muted/50, 选中 bg-muted, 最后一行不画底边。", v6.Handle).SetMuted()
+	desc.SetTextAlign(xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter | xcc.TextTrimming_EllipsisCharacter)
+	itemFill(desc, 48)
+
+	demoTable = ui.NewTable(0, 0, card6.ContentWidth(), 180, v6.Handle, []ui.TableColumn{
+		{Title: "客户", Width: 200},
+		{Title: "状态", Width: 120},
+		{Title: "金额", Width: 120},
+		{Title: "日期"}, // Width<=0: 占满剩余宽度
+	})
+	itemFixed(demoTable, card6.ContentWidth(), 180)
+	for _, r := range [][4]string{
+		{"张三", "已支付", "¥1,250.00", "2026-10-01"},
+		{"李四", "待支付", "¥300.00", "2026-10-02"},
+		{"王五", "已退款", "¥99.00", "2026-10-03"},
+		{"赵六", "已支付", "¥2,400.00", "2026-10-04"},
+		{"钱七", "处理中", "¥780.00", "2026-10-05"},
+		{"孙八", "已支付", "¥1,120.00", "2026-10-06"},
+		{"周九", "待支付", "¥450.00", "2026-10-07"},
+		{"吴十", "已支付", "¥3,000.00", "2026-10-08"},
+		{"郑一", "已退款", "¥260.00", "2026-10-09"},
+		{"王二", "已支付", "¥880.00", "2026-10-10"},
+		{"冯三", "处理中", "¥640.00", "2026-10-11"},
+		{"陈四", "已支付", "¥1,990.00", "2026-10-12"},
+	} {
+		demoTable.AddRow(r[0], r[1], r[2], r[3])
+	}
+	demoTable.Select(1)
+	demoTable.OnSelect(func(row int32) {
+		fmt.Printf("选中行: %d\n", row)
 	})
 }
 
