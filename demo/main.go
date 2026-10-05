@@ -23,21 +23,74 @@ func main() {
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
 
-	w := window.New(0, 0, 800, 590, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
+	// 窗口样式: Caption|Border|Drag_Window —— 不用 Default, 图标/标题/控制按钮全部自绘,
+	// 自定义按钮才能贴着最小化排(也是无框自绘标题栏的标准样板)
+	w := window.New(0, 0, 800, 590, "xui · shadcn 风格自绘组件", 0,
+		xcc.Window_Style_Caption|xcc.Window_Style_Border|xcc.Window_Style_Drag_Window)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
 	w.SetShadowInfo(8, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
 	w.SetBorderSize(0, 30, 0, 0)
-	w.SetCaptionMargin(4, 2, 4, 0)
 	w.SetFont(xui.FontHandle(xui.Current().FontDefault))
 
 	xui.RegisterWindow(w.Handle)
 	xui.BindWindowBackground(w.Handle) // 窗口底色随主题切换
 
-	// 标题文字颜色随主题(默认白色是为蓝色标题栏设计的, 白底上不可见)
-	applyTitle := func(t *xui.Theme) { w.SetTitleColor(uint32(t.Foreground)) }
-	applyTitle(xui.Current())
-	xui.OnThemeChange(applyTitle)
+	// ===== 自绘标题栏(30px, 元素直接创建在窗口上, y 坐标落在标题栏区) =====
+	// logo: Primary 圆角块 + 白色 "x", 绘制时取令牌随主题换色
+	logo := widget.NewElement(12, 6, 18, 18, w.Handle)
+	logo.EnableBkTransparent(true)
+	logo.EnableMouseThrough(true) // 纯展示, 穿透后不挡标题栏拖动
+	logo.AddEvent_Paint(func(hEle, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		t := xui.Current()
+		p.FillRound(&p.Rc, t.Primary, 5)
+		if f := xui.FontHandle(xui.FontSpec{
+			Family: t.FontDefault.Family,
+			Size:   t.FontDefault.Size,
+			Bold:   true,
+		}); f != 0 {
+			p.Draw.SetFont(f)
+		}
+		p.TextCenter("x", t.PrimaryFore)
+		return 0
+	})
+	// 标题文字
+	title := widget.NewElement(38, 0, 420, 30, w.Handle)
+	title.EnableBkTransparent(true)
+	title.EnableMouseThrough(true)
+	title.AddEvent_Paint(func(hEle, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		p.Text("xui · shadcn 风格自绘组件", &p.Rc, xui.Current().Foreground,
+			xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
+		return 0
+	})
+
+	// 控制按钮(幽灵按钮, hover 才有底色): 关闭贴右缘, 最小化在其左, 主题按钮再往左
+	const (
+		capBtnW int32 = 36
+		capBtnH int32 = 28
+	)
+	btnClose := ui.NewButton(800-capBtnW-4, 1, capBtnW, capBtnH, "", w.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconX))
+	btnClose.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		w.CloseWindow()
+		return 0
+	})
+	btnMin := ui.NewButton(800-capBtnW*2-6, 1, capBtnW, capBtnH, "", w.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconMinus))
+	btnMin.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		w.ShowWindow(xcc.SW_MINIMIZE)
+		return 0
+	})
 
 	// 启动主题: 环境变量 XUI_THEME=dark 暗色, 其它/不设为亮色, 免去改代码重建。
 	// 运行中仍可用右上角按钮一键切换。
@@ -45,7 +98,9 @@ func main() {
 	if dark {
 		xui.SetTheme(xui.Dark())
 	}
-	toggle := ui.NewButton(340, 9, 100, 28, "Dark", w.Handle, ui.WithVariant(ui.ButtonOutline))
+	const toggleW int32 = 72
+	toggle := ui.NewButton(800-capBtnW*2-6-toggleW-6, 1, toggleW, capBtnH, "Dark", w.Handle,
+		ui.WithVariant(ui.ButtonOutline))
 	if dark {
 		toggle.SetText("Light")
 	}

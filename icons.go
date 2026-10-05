@@ -23,6 +23,7 @@ const (
 	IconChevronRight = "m9 18 6-6-6-6"        // lucide ChevronRight
 	IconCheck        = "M20 6 9 17l-5-5"      // lucide Check
 	IconX            = "M18 6 6 18M6 6l12 12" // lucide X
+	IconMinus        = "M5 12h14"             // lucide Minus
 )
 
 // Icon 在 rc 内按 lucide 几何绘制一枚描边图标(等比铺满)。

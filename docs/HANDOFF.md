@@ -90,6 +90,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - **事件一律 AddEvent\***(2000 回调上限)、**不碰背景管理器**(累积上限 20,窗口背景的 Clear+AddFill 除外)
 - **弹层真透明**:`SetTransparentType(Window_Transparent_Shaped)` + `SetTransparentAlpha(255)` 后,窗口形状 = 自身自绘内容中不透明像素的并集 → 圆角外/箭头两侧真透明。**此时不能再给窗口挂背景填充**(挂了整窗变不透明方块,旧 Tooltip 就是这么退化的)。详见 DESIGN.md 第八节 24;背景对象圆角用法也在那一条
 - **`Window_Style_Nothing`/`Center` 的窗口自身不绘制任何东西**(只画子元素),别拿它当普通宿主窗口
+- **自绘标题栏窗口样式**: `Caption|Border|Drag_Window`(无默认图标/标题/三键) + 30px BorderSize, 展示元素要 `EnableMouseThrough(true)` 才不挡拖动, 见 DESIGN 第八节 38; demo 是标准样板
 - **渲染固定 Direct2D**(`app.New(true)`)
 - **LayoutEle 默认是"横向流 + 自动换行", 不是竖排**:纵向堆叠必须 `EnableHorizon(false)`;列布局主轴间距用 `SetSpace`, 行布局换行行距用 `SetSpaceRow`(只设 SetSpace 纵向间隙恒 0);`Fill` 独占一整行, 等分用 `Weight`;项级 `LayoutItem_SetAlign` 无效, 用布局级 `SetAlignH/V`(详见 DESIGN.md 第八节 29)
 - 顶层 Tabs 分页: 页面容器 Show(false)→Show(true) 后其内部布局元素不会自动重排(空白壳), **对显示的页面调 `AdjustLayout()`** 再整窗 Redraw(demo buildPage);ESC 关闭用 `XWnd_CloseWindow`
