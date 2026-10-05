@@ -20,7 +20,7 @@ func main() {
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
 
-	w := window.New(0, 0, 800, 990, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
+	w := window.New(0, 0, 800, 1120, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
 	w.SetShadowInfo(8, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
@@ -39,6 +39,9 @@ func main() {
 	// 默认亮色。要对照暗色: 把 dark 改成 true 并调 xui.SetTheme(xui.Dark())(见下方注释),
 	// 重建即暗色启动, 免去每次点按钮
 	dark := false
+	if dark {
+		xui.SetTheme(xui.Dark())
+	}
 	toggle := ui.NewButton(340, 9, 100, 28, "Dark", w.Handle, ui.WithVariant(ui.ButtonOutline))
 	toggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		dark = !dark
@@ -307,6 +310,55 @@ func buildPage(hParent int) {
 	itemFixed(ui.NewLabel(0, 0, 0, 24, "ESC / 点击遮罩 / 右上角 X 关闭, Tab 在对话框内循环", rowDlg.Handle).SetMuted(), 360, 24)
 
 	buildDialogs(hParent, editBtn, delBtn)
+
+	// ===== 下下下卡: 下拉菜单 =====
+	card5 := ui.NewCard(24, 974, 728, 108, hParent)
+	v5 := vStack(card5, 14)
+	itemFill(ui.NewLabel(0, 0, 0, 0, "下拉菜单", v5.Handle).SetMuted(), 24)
+
+	rowMenu := hRow(v5.Handle, 36, 8)
+	menuBtn := ui.NewButton(0, 0, 0, 0, "打开菜单", rowMenu.Handle, ui.WithVariant(ui.ButtonOutline))
+	itemFixed(menuBtn, 96, menuBtn.GetHeight())
+	itemFixed(ui.NewLabel(0, 0, 0, 24, "对齐 shadcn DropdownMenu: 条目/勾选/单选/子菜单/快捷键/禁用/破坏性", rowMenu.Handle).SetMuted(), 480, 24)
+	menuBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		showDemoMenu(hEle)
+		return 0
+	})
+}
+
+// demo 菜单状态(菜单是一次性对象, 状态由调用方持有, 每次弹出重建)
+var (
+	demoLineNo  = true
+	demoThemeG1 = true  // 单选组: 浅色
+	demoThemeG2 = false // 单选组: 深色
+)
+
+// showDemoMenu 弹出演示菜单, 覆盖全部条目类型。
+func showDemoMenu(hEle int) {
+	m := ui.NewMenu()
+	m.Item("复制", ui.MenuShortcut("Ctrl+C"), ui.MenuOnSelect(func() {}))
+	m.Item("粘贴", ui.MenuShortcut("Ctrl+V"))
+	m.Separator()
+	m.Label("外观")
+	m.Check("显示行号", demoLineNo, ui.MenuOnCheck(func(on bool) { demoLineNo = on }))
+	m.Radio("浅色主题", demoThemeG1, ui.MenuGroup(1), ui.MenuOnCheck(func(on bool) {
+		if on {
+			demoThemeG1, demoThemeG2 = true, false
+		}
+	}))
+	m.Radio("深色主题", demoThemeG2, ui.MenuGroup(1), ui.MenuOnCheck(func(on bool) {
+		if on {
+			demoThemeG1, demoThemeG2 = false, true
+		}
+	}))
+	m.Sub("更多操作", func(s *ui.Menu) {
+		s.Item("刷新", ui.MenuShortcut("F5"))
+		s.Item("另存为", ui.MenuShortcut("Ctrl+Shift+S"))
+	})
+	m.Separator()
+	m.Item("删除项目", ui.MenuDestructive())
+	m.Item("灰掉的选项", ui.MenuDisabled())
+	m.PopupAtElement(hEle)
 }
 
 // buildDialogs 两个对话框: 表单型(编辑资料) 与 确认型(删除项目)。

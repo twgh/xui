@@ -17,11 +17,12 @@ import (
 // 支持 M/L/H/V/C/S/Q/T/Z 及相对指令(曲线按 8 段离散); 圆弧 A/a 不支持,
 // 需要圆弧的图标用专门实现(见 Painter.IconSearch)。
 const (
-	IconChevronDown = "m6 9 6 6 6-6"         // lucide ChevronDown
-	IconChevronUp   = "m18 15-6-6-6 6"       // lucide ChevronUp
-	IconChevronLeft = "m15 18-6-6 6-6"       // lucide ChevronLeft
-	IconCheck       = "M20 6 9 17l-5-5"      // lucide Check
-	IconX           = "M18 6 6 18M6 6l12 12" // lucide X
+	IconChevronDown  = "m6 9 6 6 6-6"         // lucide ChevronDown
+	IconChevronUp    = "m18 15-6-6-6 6"       // lucide ChevronUp
+	IconChevronLeft  = "m15 18-6-6 6-6"       // lucide ChevronLeft
+	IconChevronRight = "m9 18 6-6-6-6"        // lucide ChevronRight
+	IconCheck        = "M20 6 9 17l-5-5"      // lucide Check
+	IconX            = "M18 6 6 18M6 6l12 12" // lucide X
 )
 
 // Icon 在 rc 内按 lucide 几何绘制一枚描边图标(等比铺满)。

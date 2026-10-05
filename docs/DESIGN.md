@@ -362,6 +362,15 @@ myapp/
     - 修法: 新增 `Color.ScaleAlpha(frac)`(在现有 alpha 上乘), 全库凡是"半透明令牌再叠透明度"的地方都用它, 不要用 `WithAlpha`;
     - 相关规则(逐条对源码): tabs 暗色选中 = `bg-input/30` + `border-input`(**不是** `bg-background`, 否则暗色下比列表更黑); radio 未选 = `border-input` + 暗色额外 `bg-input/30` 淡填充, 禁用 = 指示器整体半透明(标签文字不跟随) —— 原先禁用画成 `Background@50%`, 暗色下就是一块黑盘; switch 未选轨道 `bg-input`/暗色 `bg-input/80`, 选中滑块 `primary-foreground`、未选 `foreground`。
 
+36. **原生菜单皮肤的一批实测结论**(2026-10-05, components/menu.go):
+    - 弹窗圆角: 与 ComboBox 弹层同路线 —— `Menu_PopupWnd` 事件里 `window.NewByHandle` + `wnd.SetWindowRound`(Win32 区域裁剪, 物理像素 = RadiusLg×DPI/96); shaped 透明对菜单弹窗同样无效;
+    - 项几何(探针实测): `Menu_DrawItem` 的 `RcItem` 左右原生各留 3px 边距(贴着画条目高亮即可, 与 shadcn 的 p-1 4px 差 1px 不可感知), 高度 = `SetItemHeight`(28); **分隔栏槽高固定 4px**, 1px 线画在 `Top+2`;
+    - `"	"` 快捷键: 原生把 `	` 后的文本算进自适应宽度并预留 `NShortcutKeyWidth`(实测 "Ctrl+C"=37) → 把 "名字	快捷键" 整串传给 AddItem, 自绘时拆开分别渲染就得到右对齐快捷键, 不用自己量宽;
+    - `SetLeftWidth(0)` 去掉左侧图标条; Label 项借 `Menu_Item_Flag_Disable` 实现"不可高亮不可点"(自绘时对 kind==label 单独配色);
+    - 事件拓扑: 窗口级 `XWM_MENU_DRAW_BACKGROUND/DRAWITEM` 对该窗口弹出的**所有**菜单生效(每次新建的菜单对象、各自的子菜单窗口都触发) → 皮肤每窗口只注册一次(map 守卫), 绘制实时取令牌, 换肤零成本; `Menu_PopupWnd` 对每个弹出窗口(含子菜单)各触发一次且顶级先于子菜单 → 圆角处理放这里全命中, 位置校正用 `HMenu == 自己的句柄` 只认顶级;
+    - 弹窗定位: `Popup` 收**物理像素**; 元素锚点 = `XEle_GetWndClientRect`(逻辑, 原点=窗口矩形含阴影边距) + `wapi.GetWindowRect`(物理) 换算; 弹窗出现后在 PopupWnd 里按真实尺寸翻转/夹紧(`wapi.SetWindowPos` + `SWP_NOACTIVATE`), 初始位置即锚点所以无翻转需求时零闪烁;
+    - ⚠️ **验收坑: 全屏缩略截图里暗色弹层窗口会显示成亮底**(截图管线对弹层窗口的合成/缩放问题), 区域放大看才是真实效果 —— 弹层类组件的暗色验收一律以 zoom/像素测量为准, 不要凭全屏缩略图下结论。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)

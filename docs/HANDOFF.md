@@ -20,7 +20,9 @@
 - ✅ **ComboBox 弹层对齐 shadcn**(2026-10-04,computer-use 截图 + PIL 像素实测):①弹层边框只剩左边一条(根因:BkM border 贴边画被 SetWindowRgn 裁掉三面 + ListBox 自身 paint 事件在该弹层窗口上不渲染输出,内缩 10px 的 6px 红环都画不出来)→ ring 改画在 `XE_PAINT_END` 并内缩 1px,四边完整;②弹层定位改为 **item-aligned**(盖住触发元素、选中项正对触发位置,对齐 radix SelectContent 默认),`wapi.SetWindowPos` 物理像素重定位 + 屏幕边界截断滚动。结论记入 DESIGN.md 第八节 30
 - ✅ **Dialog 完成并视觉/交互验收**(2026-10-04,computer-use 真实鼠标键盘 + PIL 像素实测):路线选**窗口内覆盖元素**(不是 ModalWindow/DoModal):全窗自绘遮罩(bg-black/10, 实测 255→229 精确 0.9 合成)+ 居中面板(bg-popover/rounded-xl/ring-foreground/10),标题(text-base)/描述(text-sm muted)/任意内容容器/页脚(-mx-4 -mb-4 贴边、border-t、bg-muted/50、只有下两角圆角)+ 右上角幽灵图标关闭钮。交互:ESC / 点遮罩 / 关闭钮关闭,打开时焦点进第一个可聚焦控件,Tab 在对话框内循环(Shift+Tab 反向),点面板内不关闭;关闭后整窗重绘擦掉遮罩。Button 新增 `WithIcon`(lucide 图标替代文字, 16px 居中)供关闭钮复用;Label 现在 `EnableSwitchFocus(false)` + 灭原生边框。坑与探针结论见 DESIGN.md 第八节 33,对照卡已加到 shadcn App.tsx(dialog.tsx 落盘)
 - ✅ **Dialog/文字视觉对齐打磨**(2026-10-04,与用户逐轮截图对比):灭掉内容容器点击后出现的原生蓝焦点框/深色边框;行盒按 leading-none 收紧并给文本元素上下外扩(避免元素裁字);页脚高度全量计入(面板不再矮一截);页脚按钮量宽 ×2 校正(`GetTextShowRect` 在 144 DPI 下约为实绘宽度的一半),按钮宽度与 shadcn 的 48 逻辑像素完全一致;字重收敛到常规(中文 500≈常规);Tooltip 量宽字体与绘制对齐 + 定位去掉重复的客户区偏移(箭头贴住元素上边)。结论全部记入 DESIGN.md 第八节 34
-- ⬜ P3 剩余:原生菜单皮肤、Table/List/Tree、hover 过渡动画、CLI 远程 registry
+- ✅ **Menu(原生菜单皮肤)完成并视觉/交互验收**(2026-10-05, computer-use + zoom):路线 = 原生 Menu 承载行为 + 窗口级 XWM_MENU_DRAW_BACKGROUND/DRAWITEM 自绘皮肤(每窗口注册一次, 绘制实时取令牌)。条目/勾选/单选(组内互斥)/分组标签/分隔栏/快捷键("	" 借原生算宽)/子菜单/禁用/破坏性全对齐 dropdown-menu.tsx;弹窗圆角 SetWindowRound、元素锚点定位(sideOffset=4, 翻转+夹紧)。探针结论记 DESIGN.md 第八节 36;**注意全屏缩略截图里暗色弹层会假显亮底, 弹层验收必须 zoom**。demo 卡 5 新增
+- ⬜ P3 剩余:Table/List/Tree、hover 过渡动画、CLI 远程 registry
+
 - ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
 
 ## 仓库结构
@@ -31,7 +33,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 draw(Painter)/focus(焦点来源)/font/state
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
-│   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go
+│   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go  menu.go
 │   ├── label.go   separator.go(含 Badge)  card.go
 ├── cmd\xui\                      CLI(init/add/list)
 ├── demo\                         演示应用(也是全组件编译测试目标)
@@ -115,6 +117,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 | tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见 DESIGN 第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见 DESIGN 第八节 30) |
+| menu 弹层 = bg-popover rounded-lg p-1 ring-1 ring-foreground/10(内缩 1px); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border(原生槽高仅 4px); 快捷键右对齐 text-xs muted | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见 DESIGN 第八节 36) |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10;标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |

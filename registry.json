@@ -60,6 +60,10 @@
     "dialog": {
       "files": ["dialog.go"],
       "deps": ["button", "label"]
+    },
+    "menu": {
+      "files": ["menu.go"],
+      "deps": []
     }
   }
 }
