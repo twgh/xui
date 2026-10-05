@@ -67,9 +67,9 @@ cd D:\GOProject\src\ui\shadcn && pnpm dev    # http://localhost:5173
 # CLI 本地测试(仓库未发布, 远程 go run 会失败)
 go run ./cmd/xui list / init <目录> / add <组件...>
 
-# 暗色对照验收: 不想每次点标题栏按钮, 直接把 demo/main.go 里
-#     dark := false  改成 true, 并在其后加 xui.SetTheme(xui.Dark())
-# 重建后即以暗色启动(参考页 shadcn 同样支持按 d 键切换)
+# 暗色对照验收: 环境变量决定启动主题, 不用改代码
+#     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
+#     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
 ```
 
 ## 关键设计决策(一句话版, 详见 DESIGN.md)
@@ -92,7 +92,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - **`Window_Style_Nothing`/`Center` 的窗口自身不绘制任何东西**(只画子元素),别拿它当普通宿主窗口
 - **渲染固定 Direct2D**(`app.New(true)`)
 - **LayoutEle 默认是"横向流 + 自动换行", 不是竖排**:纵向堆叠必须 `EnableHorizon(false)`;列布局主轴间距用 `SetSpace`, 行布局换行行距用 `SetSpaceRow`(只设 SetSpace 纵向间隙恒 0);`Fill` 独占一整行, 等分用 `Weight`;项级 `LayoutItem_SetAlign` 无效, 用布局级 `SetAlignH/V`(详见 DESIGN.md 第八节 29)
-- 标题栏无图标无三键的窗口样式组合见 demo/main.go;ESC 关闭用 `XWnd_CloseWindow`
+- 顶层 Tabs 分页: 页面容器 Show(false)→Show(true) 后其内部布局元素不会自动重排(空白壳), **对显示的页面调 `AdjustLayout()`** 再整窗 Redraw(demo buildPage);ESC 关闭用 `XWnd_CloseWindow`
 
 ## 与 shadcn 对齐的语义(改交互前先对照源码)
 

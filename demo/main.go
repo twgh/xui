@@ -1,9 +1,12 @@
 // xui 组件演示: light/dark 一键换肤 + P1/P2 全部组件。
 // 卡片内容用 LayoutEle 流式布局, 不再手算 y。
+// 顶层用 Tabs 分页展示(表单/控件/反馈), 主题用环境变量 XUI_THEME=dark 切换。
 package main
 
 import (
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/objectbase"
@@ -20,7 +23,7 @@ func main() {
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
 
-	w := window.New(0, 0, 800, 1120, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
+	w := window.New(0, 0, 800, 590, "xui · shadcn 风格自绘组件", 0, xcc.Window_Style_Default|xcc.Window_Style_Drag_Window)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
 	w.SetShadowInfo(8, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
@@ -36,13 +39,16 @@ func main() {
 	applyTitle(xui.Current())
 	xui.OnThemeChange(applyTitle)
 
-	// 默认亮色。要对照暗色: 把 dark 改成 true 并调 xui.SetTheme(xui.Dark())(见下方注释),
-	// 重建即暗色启动, 免去每次点按钮
-	dark := false
+	// 启动主题: 环境变量 XUI_THEME=dark 暗色, 其它/不设为亮色, 免去改代码重建。
+	// 运行中仍可用右上角按钮一键切换。
+	dark := strings.EqualFold(os.Getenv("XUI_THEME"), "dark")
 	if dark {
 		xui.SetTheme(xui.Dark())
 	}
 	toggle := ui.NewButton(340, 9, 100, 28, "Dark", w.Handle, ui.WithVariant(ui.ButtonOutline))
+	if dark {
+		toggle.SetText("Light")
+	}
 	toggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		dark = !dark
 		if dark {
@@ -134,10 +140,36 @@ func itemMarginTop(ele layoutItem, m int32) {
 
 // ===== 页面 =====
 
-// buildPage 布局演示页: 由于主题切换会整窗重绘, 页面内容静态创建一次即可。
+// buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈), 每页是一个绝对定位的
+// 容器元素, 切换时 Show/Hide + 整窗重绘。页面内容静态创建一次即可
+// (主题切换走整窗重绘, 不需要重建)。
+// 后续新增组件展示时: 开一个新页面容器 + 对应 Tab 即可, 页面之间互不挤压。
 func buildPage(hParent int) {
+	pages := make([]*widget.Element, 3)
+	for i := range pages {
+		pages[i] = widget.NewElement(0, 84, 800, 484, hParent)
+		pages[i].EnableBkTransparent(true)
+		pages[i].Show(i == 0)
+	}
+	pForm, pCtrl, pFeed := pages[0], pages[1], pages[2]
+
+	pageTabs := ui.NewTabs(24, 44, 300, hParent, []string{"表单", "控件", "反馈"})
+	pageTabs.OnChange(func(i int32) {
+		for j, p := range pages {
+			vis := int(i) == j
+			p.Show(vis)
+			// 布局元素在父容器隐藏期间不排版, 恢复可见后必须手动重排,
+			// 否则页面内容空白(实测只有卡片壳)
+			if vis {
+				p.AdjustLayout()
+			}
+		}
+		xc.XWnd_Redraw(hParent)
+	})
+
+	// ===== 页 1: 表单类 =====
 	// ===== 左卡: 表单类 =====
-	card1 := ui.NewCard(24, 48, 340, 470, hParent)
+	card1 := ui.NewCard(24, 0, 340, 470, pForm.Handle)
 	// 结构对齐 shadcn App.tsx 的 Account 卡: CardContent space-y-4(16) 分组,
 	// 组内 CardHeader/space-y-2 是 8 —— 用 SetSpace(8) 打底 + itemMarginTop 补到组间距
 	v1 := vStack(card1, 8)
@@ -174,7 +206,7 @@ func buildPage(hParent int) {
 	itemFixed(cancelBtn, 96, cancelBtn.GetHeight())
 
 	// ===== 右卡: 展示类 =====
-	card2 := ui.NewCard(392, 48, 380, 470, hParent)
+	card2 := ui.NewCard(392, 0, 380, 470, pForm.Handle)
 	// shadcn App.tsx 的 Components 卡: CardContent space-y-5(20) 分组,
 	// 组内的按钮行/徽章行各自有 hRow 间距
 	v2 := vStack(card2, 20)
@@ -225,8 +257,8 @@ func buildPage(hParent int) {
 	itemFill(r3, r3.GetHeight())
 	r3.Enable(false)
 
-	// ===== 下卡: P2 组件 =====
-	card3 := ui.NewCard(24, 536, 728, 290, hParent)
+	// ===== 页 2: 控件 =====
+	card3 := ui.NewCard(24, 0, 728, 290, pCtrl.Handle)
 	v3 := vStack(card3, 14)
 
 	// 第一组: 开关 | 滑动条
@@ -297,8 +329,8 @@ func buildPage(hParent int) {
 	tip.Bind(saveBtn.Handle, "保存当前修改(Ctrl+S)")
 	tip.Bind(combo.Handle, "切换运行时环境")
 
-	// ===== 下下卡: 对话框 =====
-	card4 := ui.NewCard(24, 846, 728, 108, hParent)
+	// ===== 页 3: 反馈(对话框 + 菜单) =====
+	card4 := ui.NewCard(24, 0, 728, 108, pFeed.Handle)
 	v4 := vStack(card4, 14)
 	itemFill(ui.NewLabel(0, 0, 0, 0, "对话框", v4.Handle).SetMuted(), 24)
 
@@ -311,8 +343,8 @@ func buildPage(hParent int) {
 
 	buildDialogs(hParent, editBtn, delBtn)
 
-	// ===== 下下下卡: 下拉菜单 =====
-	card5 := ui.NewCard(24, 974, 728, 108, hParent)
+	// 菜单卡
+	card5 := ui.NewCard(24, 124, 728, 108, pFeed.Handle)
 	v5 := vStack(card5, 14)
 	itemFill(ui.NewLabel(0, 0, 0, 0, "下拉菜单", v5.Handle).SetMuted(), 24)
 
