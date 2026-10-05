@@ -148,7 +148,7 @@ func buildPage(hParent int) {
 	pages := make([]*widget.Element, 3)
 	for i := range pages {
 		pages[i] = widget.NewElement(0, 84, 800, 484, hParent)
-		pages[i].EnableBkTransparent(true)
+		pages[i].EnableBkTransparent(true).EnableDrawBorder(false).EnableFocus(false)
 		pages[i].Show(i == 0)
 	}
 	pForm, pCtrl, pFeed := pages[0], pages[1], pages[2]
