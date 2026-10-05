@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/objectbase"
@@ -23,24 +24,46 @@ func main() {
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
 
-	// 窗口样式: Caption|Border|Drag_Window —— 不用 Default, 图标/标题/控制按钮全部自绘,
-	// 自定义按钮才能贴着最小化排(也是无框自绘标题栏的标准样板)
+	// 窗口样式: Caption|Border|Drag_Window —— 不用 Default, 图标/标题/控制按钮全部自绘。
+	// 阴影占窗口矩形四周各 8px(SetShadowInfo size=8): 客户区已避开阴影带(实测 784x574),
+	// 子元素坐标就是可见区坐标; border 归零让窗口布局区=整个客户区。
 	w := window.New(0, 0, 800, 590, "xui · shadcn 风格自绘组件", 0,
 		xcc.Window_Style_Caption|xcc.Window_Style_Border|xcc.Window_Style_Drag_Window)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
 	w.SetShadowInfo(8, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
-	w.SetBorderSize(0, 30, 0, 0)
+	w.SetBorderSize(0, 0, 0, 0)
 	w.SetFont(xui.FontHandle(xui.Current().FontDefault))
 
 	xui.RegisterWindow(w.Handle)
 	xui.BindWindowBackground(w.Handle) // 窗口底色随主题切换
 
-	// ===== 自绘标题栏(30px, 元素直接创建在窗口上, y 坐标落在标题栏区) =====
+	// ===== 布局骨架: 纵向 [标题栏行 30][内容区 Fill] =====
+	// 窗口布局创建后不会自动首排(探针实证), 所有内容建完后要手动 AdjustLayout。
+	// 窗口尺寸变化(最大化/还原)时布局自动跟随, 按钮组因此能始终贴住右缘。
+	w.EnableLayout(true)
+	root := widget.NewLayoutEle(0, 0, 0, 0, w.Handle)
+	root.EnableHorizon(false)
+	root.EnableLayout(true)
+	root.EnableBkTransparent(true)
+	root.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	root.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
+
+	// 标题栏行: logo/标题居左, 按钮组浮到最右(中间标题 Fill 撑开)。
+	// 行自身鼠标穿透 —— 不挡 Drag_Window 的拖动命中, 子元素(按钮)不受影响。
+	cap := widget.NewLayoutEle(0, 0, 0, 30, root.Handle)
+	cap.EnableHorizon(true)
+	cap.EnableLayout(true)
+	cap.EnableBkTransparent(true)
+	cap.SetSpace(6)
+	cap.SetAlignV(xcc.Layout_Align_Center)
+	cap.EnableMouseThrough(true)
+	cap.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	cap.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 30)
+
 	// logo: Primary 圆角块 + 白色 "x", 绘制时取令牌随主题换色
-	logo := widget.NewElement(12, 6, 18, 18, w.Handle)
+	logo := widget.NewLayoutEle(0, 0, 18, 18, cap.Handle)
 	logo.EnableBkTransparent(true)
-	logo.EnableMouseThrough(true) // 纯展示, 穿透后不挡标题栏拖动
 	logo.AddEvent_Paint(func(hEle, hDraw int, pbHandled *bool) int {
 		p := xui.BeginPaint(hEle, hDraw)
 		if p == nil {
@@ -59,8 +82,13 @@ func main() {
 		p.TextCenter("x", t.PrimaryFore)
 		return 0
 	})
-	// 标题文字
-	title := widget.NewElement(38, 0, 420, 30, w.Handle)
+	logo.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, 18)
+	logo.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 18)
+
+	// 标题文字: Weight 宽度占满剩余空间把按钮组顶到行尾
+	// (横向行里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight —— llama 同款)
+	title := widget.NewLayoutEle(0, 0, 0, 30, cap.Handle)
+	title.EnableHorizon(false)
 	title.EnableBkTransparent(true)
 	title.EnableMouseThrough(true)
 	title.AddEvent_Paint(func(hEle, hDraw int, pbHandled *bool) int {
@@ -73,25 +101,14 @@ func main() {
 			xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
 		return 0
 	})
+	title.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1)
+	title.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
 
 	// 控制按钮(幽灵按钮, hover 才有底色): 关闭贴右缘, 最小化在其左, 主题按钮再往左
 	const (
 		capBtnW int32 = 36
 		capBtnH int32 = 28
 	)
-	btnClose := ui.NewButton(800-capBtnW-4, 1, capBtnW, capBtnH, "", w.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconX))
-	btnClose.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-		w.CloseWindow()
-		return 0
-	})
-	btnMin := ui.NewButton(800-capBtnW*2-6, 1, capBtnW, capBtnH, "", w.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconMinus))
-	btnMin.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-		w.ShowWindow(xcc.SW_MINIMIZE)
-		return 0
-	})
-
 	// 启动主题: 环境变量 XUI_THEME=dark 暗色, 其它/不设为亮色, 免去改代码重建。
 	// 运行中仍可用右上角按钮一键切换。
 	dark := strings.EqualFold(os.Getenv("XUI_THEME"), "dark")
@@ -99,8 +116,9 @@ func main() {
 		xui.SetTheme(xui.Dark())
 	}
 	const toggleW int32 = 72
-	toggle := ui.NewButton(800-capBtnW*2-6-toggleW-6, 1, toggleW, capBtnH, "Dark", w.Handle,
+	toggle := ui.NewButton(0, 0, toggleW, capBtnH, "Dark", cap.Handle,
 		ui.WithVariant(ui.ButtonOutline))
+	itemFixed(toggle, toggleW, capBtnH)
 	if dark {
 		toggle.SetText("Light")
 	}
@@ -116,9 +134,59 @@ func main() {
 		return 0
 	})
 
-	buildPage(w.Handle)
+	btnMin := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconMinus))
+	itemFixed(btnMin, capBtnW, capBtnH)
+	btnMin.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		w.ShowWindow(xcc.SW_MINIMIZE)
+		return 0
+	})
+	btnClose := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconX))
+	itemFixed(btnClose, capBtnW, capBtnH)
+	btnClose.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		w.CloseWindow()
+		return 0
+	})
+
+	// 内容区: 页签 + 页面容器都绝对定位在里面(见 buildPage)。
+	// 必须用 LayoutEle 才能作为布局项被 Fill 排版(普通 Element 布局不排, 实测空白);
+	// 但不要 EnableLayout —— 关闭排版后它自己的子元素保持绝对定位。
+	content := widget.NewLayoutEle(0, 0, 0, 0, root.Handle)
+	content.EnableHorizon(false)
+	content.EnableLayout(false) // 子元素(tabs/pages)保持绝对定位
+	content.EnableBkTransparent(true)
+	content.EnableMouseThrough(true) // 纯容器, 空白处透给窗口拖动
+	content.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	content.LayoutItem_SetHeight(xcc.Layout_Size_Weight, 1)
+
+	buildPage(w.Handle, content.Handle)
+
+	// 双击标题栏行最大化/还原(border 归零后原生 caption 区域没了, 自己补;
+	// MaxWindow 只管最大化, 切换要自己判断状态)
+	w.AddEvent_LButtonDBClick(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
+		if w.IsMaxWindow() {
+			w.ShowWindow(xcc.SW_RESTORE)
+		} else {
+			w.MaxWindow()
+		}
+		return 0
+	})
+	// 尺寸变化兜底
+	w.AddEvent_Size(func(hWindow int, nFlags uint, pPt *xc.SIZE, pbHandled *bool) int {
+		w.AdjustLayout()
+		return 0
+	})
 
 	w.Show(true)
+	// 布局首排(探针实证: 窗口布局创建后不会自动排列, Show 前后立即调用都无效,
+	// 需等消息循环起来后再调 —— 延时 100ms 排 + 整窗重绘)
+	time.AfterFunc(300*time.Millisecond, func() {
+		app.CallUT(func() {
+			w.AdjustLayout()
+			w.Redraw(true)
+		})
+	})
 	a.Run()
 	a.Exit()
 }
@@ -199,16 +267,18 @@ func itemMarginTop(ele layoutItem, m int32) {
 // 容器元素, 切换时 Show/Hide + 整窗重绘。页面内容静态创建一次即可
 // (主题切换走整窗重绘, 不需要重建)。
 // 后续新增组件展示时: 开一个新页面容器 + 对应 Tab 即可, 页面之间互不挤压。
-func buildPage(hParent int) {
+func buildPage(hWnd, hParent int) {
 	pages := make([]*widget.Element, 3)
 	for i := range pages {
-		pages[i] = widget.NewElement(0, 84, 800, 484, hParent)
+		// hParent 是内容区元素(布局项, 客户区宽 784); 页面在其中绝对定位互叠
+		pages[i] = widget.NewElement(0, 44, 784, 500, hParent)
 		pages[i].EnableBkTransparent(true).EnableDrawBorder(false).EnableFocus(false)
+		pages[i].EnableMouseThrough(true) // 纯容器, 空白处透给窗口拖动
 		pages[i].Show(i == 0)
 	}
 	pForm, pCtrl, pFeed := pages[0], pages[1], pages[2]
 
-	pageTabs := ui.NewTabs(24, 44, 300, hParent, []string{"表单", "控件", "反馈"})
+	pageTabs := ui.NewTabs(16, 6, 300, hParent, []string{"表单", "控件", "反馈"})
 	pageTabs.OnChange(func(i int32) {
 		for j, p := range pages {
 			vis := int(i) == j
@@ -219,7 +289,7 @@ func buildPage(hParent int) {
 				p.AdjustLayout()
 			}
 		}
-		xc.XWnd_Redraw(hParent)
+		xc.XWnd_Redraw(hWnd)
 	})
 
 	// ===== 页 1: 表单类 =====
@@ -396,7 +466,7 @@ func buildPage(hParent int) {
 	itemFixed(delBtn, 96, delBtn.GetHeight())
 	itemFixed(ui.NewLabel(0, 0, 0, 24, "ESC / 点击遮罩 / 右上角 X 关闭, Tab 在对话框内循环", rowDlg.Handle).SetMuted(), 360, 24)
 
-	buildDialogs(hParent, editBtn, delBtn)
+	buildDialogs(hWnd, editBtn, delBtn)
 
 	// 菜单卡
 	card5 := ui.NewCard(24, 124, 728, 108, pFeed.Handle)
