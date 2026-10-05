@@ -148,20 +148,16 @@ func main() {
 		return 0
 	})
 
+	// 控制按钮
 	btnMin := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconMinus))
+	btnMin.SetTypeEx(xcc.Button_Type_Min)
 	itemFixed(btnMin, capBtnW, capBtnH)
-	btnMin.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-		w.ShowWindow(xcc.SW_MINIMIZE)
-		return 0
-	})
+
 	btnClose := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconX))
+	btnClose.SetTypeEx(xcc.Button_Type_Close)
 	itemFixed(btnClose, capBtnW, capBtnH)
-	btnClose.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-		w.CloseWindow()
-		return 0
-	})
 
 	// 内容区: 页签 + 页面容器都绝对定位在里面(见 buildPage)。
 	// 必须用 LayoutEle 才能作为布局项被 Fill 排版(普通 Element 布局不排, 实测空白);
@@ -181,7 +177,6 @@ func main() {
 		if pPt.Y > 30 {
 			return 0
 		}
-
 		if w.IsMaxWindow() {
 			w.ShowWindow(xcc.SW_RESTORE)
 		} else {
