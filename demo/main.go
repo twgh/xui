@@ -1,6 +1,7 @@
 // xui 组件演示: light/dark 一键换肤 + P1/P2 全部组件。
 // 卡片内容用 LayoutEle 流式布局, 不再手算 y。
 // 顶层用 Tabs 分页展示(表单/控件/反馈), 主题用环境变量 XUI_THEME=dark 切换。
+// 控制启动首页可用环境变量 XUI_HOME_PAGE = 0/1/2 分别对应 表单/控件/反馈。
 package main
 
 import (
@@ -272,13 +273,20 @@ func itemMarginTop(ele layoutItem, m int32) {
 // (主题切换走整窗重绘, 不需要重建)。
 // 后续新增组件展示时: 开一个新页面容器 + 对应 Tab 即可, 页面之间互不挤压。
 func buildPage(hWindow, hParent int) {
-	pages := make([]*widget.Element, 3)
+	pageCount := 3
+	homePage, _ := strconv.Atoi(os.Getenv("XUI_HOME_PAGE"))
+	if homePage < 0 || homePage > pageCount-1 {
+		homePage = 0
+	}
+
+	pages := make([]*widget.LayoutEle, pageCount)
 	for i := range pages {
 		// hParent 是内容区元素(布局项, 客户区宽 784); 页面在其中绝对定位互叠
-		pages[i] = widget.NewElement(0, 44, 784, 500, hParent)
+		pages[i] = widget.NewLayoutEle(0, 44, 784, 500, hParent)
 		pages[i].EnableBkTransparent(true).EnableDrawBorder(false).EnableFocus(false)
+		pages[i].EnableLayout(false)      // 禁用布局, 因为内部用的绝对坐标
 		pages[i].EnableMouseThrough(true) // 纯容器, 空白处透给窗口拖动
-		pages[i].Show(i == 0)
+		pages[i].Show(i == homePage)
 	}
 	pForm, pCtrl, pFeed := pages[0], pages[1], pages[2]
 

@@ -105,7 +105,7 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	d.overlay.EnableBkTransparent(true)
 	// 原生焦点矩形必须灭掉: 点击遮罩/内容容器会聚焦到元素上, 原生会给它画一个
 	// 蓝色虚线框(实测: 点面板内空白处 → 内容容器上出现蓝框, 压住输入框左右描边)
-	d.overlay.EnableDrawFocus(false)
+	d.overlay.EnableFocus(false)
 	d.overlay.EnableDrawBorder(false)
 	d.overlay.AddEvent_Paint(d.onPaint)
 	d.overlay.AddEvent_LButtonDown(d.onOverlayDown)
@@ -119,7 +119,7 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	d.content.EnableBkTransparent(true)
 	d.content.EnableSwitchFocus(false) // 容器本身不进 Tab 序列
 	// 原生焦点框与边框都要灭: 点击容器会聚焦到它, 框架会给它画蓝框/深色边框
-	d.content.EnableDrawFocus(false)
+	d.content.EnableFocus(false)
 	d.content.EnableDrawBorder(false)
 
 	if d.showClose {

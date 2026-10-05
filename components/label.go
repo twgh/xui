@@ -35,7 +35,7 @@ func NewLabel(x, y, cx, h int32, text string, hParent int) *Label {
 		xcc.TextFormatFlag_NoWrap | xcc.TextTrimming_EllipsisCharacter)
 	btn.EnableBkTransparent(true)
 	// 原生按钮的边框/焦点矩形也要灭掉(载体只借事件与文本绘制能力)
-	btn.EnableDrawBorder(false).EnableDrawFocus(false)
+	btn.EnableDrawBorder(false).EnableFocus(false)
 	// Label 不是交互控件: 不参与 Tab 焦点遍历(同 shadcn 的 <label>)。
 	btn.EnableSwitchFocus(false)
 	xui.AttachWindow(btn.Handle)
