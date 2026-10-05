@@ -7,9 +7,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/twgh/xcgui/app"
+	"github.com/twgh/xcgui/common"
 	"github.com/twgh/xcgui/objectbase"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
@@ -19,32 +19,32 @@ import (
 	ui "github.com/twgh/xui/components"
 )
 
+var (
+	tip *ui.Tooltip
+)
+
 func main() {
 	app.InitOrExit()
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
 
-	// 窗口样式: Caption|Border|Drag_Window —— 不用 Default, 图标/标题/控制按钮全部自绘。
-	// 阴影占窗口矩形四周各 8px(SetShadowInfo size=8): 客户区已避开阴影带(实测 784x574),
-	// 子元素坐标就是可见区坐标; border 归零让窗口布局区=整个客户区。
 	w := window.New(0, 0, 800, 590, "xui · shadcn 风格自绘组件", 0,
-		xcc.Window_Style_Caption|xcc.Window_Style_Border|xcc.Window_Style_Drag_Window)
+		xcc.Window_Style_Center|xcc.Window_Style_Border|xcc.Window_Style_Drag_Border|xcc.Window_Style_Drag_Window|xcc.Window_Style_Allow_MaxWindow)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
-	w.SetShadowInfo(8, 128, 8, false, xc.RGBA(0, 0, 0, 128))
+	w.SetShadowInfo(12, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
 	w.SetBorderSize(0, 0, 0, 0)
+	w.SetMinimumSize(800, 590)
 	w.SetFont(xui.FontHandle(xui.Current().FontDefault))
 
 	xui.RegisterWindow(w.Handle)
 	xui.BindWindowBackground(w.Handle) // 窗口底色随主题切换
+	tip = ui.NewTooltip()
 
 	// ===== 布局骨架: 纵向 [标题栏行 30][内容区 Fill] =====
-	// 窗口布局创建后不会自动首排(探针实证), 所有内容建完后要手动 AdjustLayout。
-	// 窗口尺寸变化(最大化/还原)时布局自动跟随, 按钮组因此能始终贴住右缘。
 	w.EnableLayout(true)
 	root := widget.NewLayoutEle(0, 0, 0, 0, w.Handle)
 	root.EnableHorizon(false)
-	root.EnableLayout(true)
 	root.EnableBkTransparent(true)
 	root.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	root.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
@@ -53,7 +53,6 @@ func main() {
 	// 行自身鼠标穿透 —— 不挡 Drag_Window 的拖动命中, 子元素(按钮)不受影响。
 	cap := widget.NewLayoutEle(0, 0, 0, 30, root.Handle)
 	cap.EnableHorizon(true)
-	cap.EnableLayout(true)
 	cap.EnableBkTransparent(true)
 	cap.SetSpace(6)
 	cap.SetAlignV(xcc.Layout_Align_Center)
@@ -86,7 +85,7 @@ func main() {
 	logo.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 18)
 
 	// 标题文字: Weight 宽度占满剩余空间把按钮组顶到行尾
-	// (横向行里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight —— llama 同款)
+	// (横向行里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight)
 	title := widget.NewLayoutEle(0, 0, 0, 30, cap.Handle)
 	title.EnableHorizon(false)
 	title.EnableBkTransparent(true)
@@ -109,28 +108,42 @@ func main() {
 		capBtnW int32 = 36
 		capBtnH int32 = 28
 	)
+
 	// 启动主题: 环境变量 XUI_THEME=dark 暗色, 其它/不设为亮色, 免去改代码重建。
 	// 运行中仍可用右上角按钮一键切换。
 	dark := strings.EqualFold(os.Getenv("XUI_THEME"), "dark")
 	if dark {
 		xui.SetTheme(xui.Dark())
 	}
-	const toggleW int32 = 72
+	const toggleW int32 = 60
+
+	showLayoutFrame := false
+	// 显示布局对象边界按钮
+	btnShowLayoutFrame := ui.NewButton(0, 0, toggleW, capBtnH, "显", cap.Handle,
+		ui.WithVariant(ui.ButtonOutline))
+	tip.Bind(btnShowLayoutFrame.Handle, "显示/隐藏布局对象边界")
+	itemFixed(btnShowLayoutFrame, toggleW, capBtnH)
+	btnShowLayoutFrame.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		showLayoutFrame = !showLayoutFrame
+		app.ShowLayoutFrame(showLayoutFrame) // 显示布局对象边界
+		btnShowLayoutFrame.SetText(common.Choose(showLayoutFrame, "隐", "显"))
+		w.Redraw(false)
+		return 0
+	})
+
+	// 主题切换按钮
 	toggle := ui.NewButton(0, 0, toggleW, capBtnH, "Dark", cap.Handle,
 		ui.WithVariant(ui.ButtonOutline))
+	tip.Bind(toggle.Handle, "切换主题")
 	itemFixed(toggle, toggleW, capBtnH)
 	if dark {
 		toggle.SetText("Light")
 	}
 	toggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		dark = !dark
-		if dark {
-			xui.SetTheme(xui.Dark())
-			toggle.SetText("Light")
-		} else {
-			xui.SetTheme(xui.Light())
-			toggle.SetText("Dark")
-		}
+		toggle.SetText(common.Choose(dark, "Light", "Dark"))
+		xui.SetTheme(common.Choose(dark, xui.Dark(), xui.Light()))
+		// 切换主题会重绘窗口, 所以 toggle 不用单独重绘
 		return 0
 	})
 
@@ -162,9 +175,12 @@ func main() {
 
 	buildPage(w.Handle, content.Handle)
 
-	// 双击标题栏行最大化/还原(border 归零后原生 caption 区域没了, 自己补;
-	// MaxWindow 只管最大化, 切换要自己判断状态)
+	// 双击标题栏行最大化/还原
 	w.AddEvent_LButtonDBClick(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
+		if pPt.Y > 30 {
+			return 0
+		}
+
 		if w.IsMaxWindow() {
 			w.ShowWindow(xcc.SW_RESTORE)
 		} else {
@@ -172,21 +188,9 @@ func main() {
 		}
 		return 0
 	})
-	// 尺寸变化兜底
-	w.AddEvent_Size(func(hWindow int, nFlags uint, pPt *xc.SIZE, pbHandled *bool) int {
-		w.AdjustLayout()
-		return 0
-	})
 
+	w.AdjustLayout()
 	w.Show(true)
-	// 布局首排(探针实证: 窗口布局创建后不会自动排列, Show 前后立即调用都无效,
-	// 需等消息循环起来后再调 —— 延时 100ms 排 + 整窗重绘)
-	time.AfterFunc(300*time.Millisecond, func() {
-		app.CallUT(func() {
-			w.AdjustLayout()
-			w.Redraw(true)
-		})
-	})
 	a.Run()
 	a.Exit()
 }
@@ -264,10 +268,10 @@ func itemMarginTop(ele layoutItem, m int32) {
 // ===== 页面 =====
 
 // buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈), 每页是一个绝对定位的
-// 容器元素, 切换时 Show/Hide + 整窗重绘。页面内容静态创建一次即可
+// 容器元素, 切换时 Show/Hide + 重绘。页面内容静态创建一次即可
 // (主题切换走整窗重绘, 不需要重建)。
 // 后续新增组件展示时: 开一个新页面容器 + 对应 Tab 即可, 页面之间互不挤压。
-func buildPage(hWnd, hParent int) {
+func buildPage(hWindow, hParent int) {
 	pages := make([]*widget.Element, 3)
 	for i := range pages {
 		// hParent 是内容区元素(布局项, 客户区宽 784); 页面在其中绝对定位互叠
@@ -287,9 +291,9 @@ func buildPage(hWnd, hParent int) {
 			// 否则页面内容空白(实测只有卡片壳)
 			if vis {
 				p.AdjustLayout()
+				p.Redraw(false)
 			}
 		}
-		xc.XWnd_Redraw(hWnd)
 	})
 
 	// ===== 页 1: 表单类 =====
@@ -450,7 +454,6 @@ func buildPage(hWnd, hParent int) {
 	combo.SetSelected(1)
 
 	// 提示气泡: 绑到"保存"按钮与下拉框上
-	tip := ui.NewTooltip()
 	tip.Bind(saveBtn.Handle, "保存当前修改(Ctrl+S)")
 	tip.Bind(combo.Handle, "切换运行时环境")
 
@@ -466,7 +469,7 @@ func buildPage(hWnd, hParent int) {
 	itemFixed(delBtn, 96, delBtn.GetHeight())
 	itemFixed(ui.NewLabel(0, 0, 0, 24, "ESC / 点击遮罩 / 右上角 X 关闭, Tab 在对话框内循环", rowDlg.Handle).SetMuted(), 360, 24)
 
-	buildDialogs(hWnd, editBtn, delBtn)
+	buildDialogs(hWindow, editBtn, delBtn)
 
 	// 菜单卡
 	card5 := ui.NewCard(24, 124, 728, 108, pFeed.Handle)
@@ -519,9 +522,9 @@ func showDemoMenu(hEle int) {
 }
 
 // buildDialogs 两个对话框: 表单型(编辑资料) 与 确认型(删除项目)。
-func buildDialogs(hWnd int, editTrigger, delTrigger *ui.Button) {
+func buildDialogs(hWindow int, editTrigger, delTrigger *ui.Button) {
 	// 表单对话框: 标题 + 描述 + 两个带标签的输入框 + 页脚
-	edit := ui.NewDialog(hWnd)
+	edit := ui.NewDialog(hWindow)
 	edit.SetTitle("编辑资料")
 	edit.SetDescription("修改你的公开资料, 完成后点击保存。")
 	edit.BindTrigger(editTrigger)
@@ -539,7 +542,7 @@ func buildDialogs(hWnd int, editTrigger, delTrigger *ui.Button) {
 	edit.AddFooter("保存", ui.ButtonPrimary, func() { edit.Close() })
 
 	// 确认对话框: 只有标题 + 描述 + 页脚
-	del := ui.NewDialog(hWnd)
+	del := ui.NewDialog(hWindow)
 	del.SetTitle("确认删除?")
 	del.SetDescription("删除后无法恢复, 确定要删除该项目吗?")
 	del.BindTrigger(delTrigger)

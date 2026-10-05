@@ -374,7 +374,7 @@ myapp/
 37. **页面容器 Show(false)→Show(true) 后内容空白**(2026-10-05, demo 顶层 Tabs 分页):
     - 现象: 隐藏期间创建好的布局子树(LayoutEle 流式布局)在页面恢复显示后只有壳在渲染, 内部控件全空白;
     - 根因: xcgui 布局元素在父容器不可见期间不排版(与第八节 29 "布局项变更需手动 AdjustLayout" 同源), Show(true) 只改显隐属性, 不会触发子树重排;
-    - 修法: 切页时对**新显示的页面容器**调 `AdjustLayout()`, 再整窗 `XWnd_Redraw`; 初始就可见的页面不需要。
+    - 修法: 切页时对**新显示的页面容器**调 `AdjustLayout()`, 再 `Redraw`; 初始就可见的页面不需要。
 
 38. **自绘标题栏的无框窗口组合与鼠标穿透**(2026-10-05, demo main):
     - 不要 Default(自带图标/标题/三键): 样式用 `Caption|Border|Drag_Window`(不含 Icon/Title/Btn_*/Allow_MaxWindow/Drag_Border), `SetBorderSize(0,30,0,0)` 保留 30px 标题栏高度, 阴影照旧 `Window_Transparent_Shadow + SetShadowInfo`; BkM 窗口背景绑定在此组合下正常工作(Window_Style_Nothing 才是"自身不绘制任何东西"的那个);
@@ -384,7 +384,6 @@ myapp/
 39. **窗口布局(EnableLayout) + 阴影窗口 + 自绘标题栏的一批实测结论**(2026-10-05, demo 布局化重构):
     - **客户区已避开阴影带**: rect 800x590、阴影 8px 时 `XWnd_GetClientRect` = {8,8,792,582}(784x574), 子元素坐标就是可见区坐标, **不需要再设 padding 避让**; 但窗口 rect 比可见区大一圈, 按 rect 宽算坐标会超出可见区(实测按钮右缘超 12px);
     - **布局区 = 客户区 − border size − padding**: border 归零后布局区=整个客户区;
-    - **窗口布局不会自动首排**: Show 前/后立即 `AdjustLayout()` 都无效(实测 root 仍为 0), 必须等消息循环就绪后调 —— `time.AfterFunc(100ms)` + `app.CallUT` 里 AdjustLayout + Redraw; 另在 Size 事件里兜底再调;
     - **布局项必须是 LayoutEle**: 普通 Element 设置 `LayoutItem_*` 也不被排版(探针实证 red 块不占位、尺寸保持 0 → 连带裁掉全部子元素, 表现为整块空白);
     - **主轴剩余空间用 Weight 不是 Fill**: 纵向布局里 Fill 高度 = 独占整列(与前面 Fixed 项重叠, 实测 content 574=全高盖住 cap 30); 横向行里 Fill 宽度会把后面的 Fixed 兄弟挤到下一行(按钮消失)。DESIGN 第八节 29 的"Fill 独占一行"就是指主轴; 交叉轴用 Fill 铺满没问题;
     - **绝对定位容器要 `EnableLayout(false)`**: LayoutEle 默认排版开着, 内容区里绝对定位的 tabs/pages 会被当布局项排走(实测 tabs 跑到窗口底部);
