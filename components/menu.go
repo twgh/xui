@@ -43,9 +43,8 @@ type Menu struct {
 	nextID int32
 	parent int32 // Sub() 构建期间的父项 ID
 
-	// 弹出锚点(物理屏幕像素), 弹窗出现后按真实尺寸校正位置
-	ax, yBelow, yAbove int32
-	anchored           bool
+	// 弹出锚点(物理屏幕像素); 翻转/夹紧由原生菜单自带, 不需也不应手动校正
+	ax, yBelow int32
 }
 
 type menuKind int8
@@ -171,8 +170,6 @@ func (m *Menu) PopupAtElement(hEle int) {
 	const sideOffset = 4
 	m.ax = mrc.Left + int32(float64(trig.Left)*sc)
 	m.yBelow = mrc.Top + int32(float64(trig.Bottom)*sc) + int32(sideOffset*sc)
-	m.yAbove = mrc.Top + int32(float64(trig.Top)*sc) - int32(sideOffset*sc)
-	m.anchored = true
 	m.popup(hw)
 }
 
@@ -184,13 +181,17 @@ func (m *Menu) PopupAtCursor(hWindow int) {
 	}
 	var pt wapi.POINT
 	wapi.GetCursorPos(&pt)
-	m.ax, m.yBelow, m.yAbove = pt.X, pt.Y, pt.Y
+	m.ax, m.yBelow = pt.X, pt.Y
 	m.popup(hWindow)
 }
 
 func (m *Menu) popup(hWindow int) {
 	m.m = m.build(hWindow)
-	// 初始位置即锚点(元素矩形是精确的); 翻转/夹紧在弹窗出现后按真实尺寸校正
+	// 初始位置即锚点(元素矩形是精确的)。
+	// ⚠️ 不要在这里或 Menu_PopupWnd 回调里做任何位置校正: XMenu_Popup 是阻塞的
+	// (菜单关闭后才返回), 校正要么拿到已销毁的弹窗句柄(报「输入句柄可能无效」),
+	// 要么在事件内 SetWindowPos 让子菜单锚点失效(二级菜单弹到父菜单原点盖住它,
+	// 探针实测)。翻转/夹紧/子菜单定位原生自带, 锚点给对即可。
 	m.m.Popup(xc.XWnd_GetHWND(hWindow), m.ax, m.yBelow, 0, xcc.Menu_Popup_Position_Left_Top)
 }
 
@@ -265,40 +266,6 @@ func (m *Menu) dispatch(nID int32) {
 	}
 }
 
-// correctPos 弹窗出现后按真实尺寸校正位置(翻转/夹紧)。
-// 坐标链路与 alignComboPopup 相同: Popup 收物理像素, 弹窗尺寸用
-// wapi.GetWindowRect 读物理值, 屏幕边界用系统度量(主屏物理像素)。
-func (m *Menu) correctPos(hPopup int) {
-	hwnd := xc.XWnd_GetHWND(hPopup)
-	var prc xc.RECT
-	if !wapi.GetWindowRect(hwnd, &prc) {
-		return
-	}
-	w, h := prc.Right-prc.Left, prc.Bottom-prc.Top
-	sw := wapi.GetSystemMetrics(wapi.SM_CXSCREEN)
-	sh := wapi.GetSystemMetrics(wapi.SM_CYSCREEN)
-	const margin = 8
-	left := m.ax
-	if left+w > sw-margin {
-		left = sw - margin - w
-	}
-	if left < margin {
-		left = margin
-	}
-	top := m.yBelow
-	if top+h > sh {
-		top = m.yAbove - h // 下方放不下 → 上方(sideOffset 同距)
-	}
-	if top < margin {
-		top = margin
-	}
-	if top+h > sh {
-		top = sh - margin - h
-	}
-	wapi.SetWindowPos(hwnd, 0, left, top, 0, 0,
-		wapi.SWP_NOSIZE|wapi.SWP_NOZORDER|wapi.SWP_NOACTIVATE)
-}
-
 // ===== 皮肤(窗口级, 同一窗口弹出的所有菜单共用) =====
 
 var menuSkin = struct {
@@ -327,8 +294,10 @@ func ensureMenuSkin(hWindow int) {
 }
 
 // menuOnPopupWnd 弹窗出现: 圆角裁剪(Win32 区域, 同 ComboBox 弹层 —— shaped
-// 透明对原生弹层无效)+ 锚点位置校正。
-func menuOnPopupWnd(_ int, hMenu int, pInfo *xc.Menu_PopupWnd_, _ *bool) int {
+// 透明对原生弹层无效)。只做圆角, 不动位置 —— 本回调里 SetWindowPos 会让子菜单
+// 锚点失效(二级菜单弹到父菜单原点盖住它, 探针实测); 位置翻转/夹紧由原生菜单
+// 自己处理。
+func menuOnPopupWnd(_ int, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *bool) int {
 	if pInfo == nil || pInfo.HWindow <= 0 {
 		return 0
 	}
@@ -342,11 +311,9 @@ func menuOnPopupWnd(_ int, hMenu int, pInfo *xc.Menu_PopupWnd_, _ *bool) int {
 		dpi = 96
 	}
 	wnd.SetWindowRound(mw.GetHWND(), int32(float64(t.RadiusLg())*float64(dpi)/96))
-	// 只有顶级弹窗需要校正(子菜单由原生定位); Menu_PopupWnd 对每个弹出窗口
-	// 触发一次, 顶级窗口先于子菜单出现。
-	if am := menuSkin.active; am != nil && am.anchored && am.m != nil && hMenu == am.m.Handle {
-		am.correctPos(pInfo.HWindow)
-	}
+	// 子菜单锚点由原生管理, 顶级弹窗的位置/翻转原生自己处理(屏幕边缘会自动
+	// 夹紧/翻转), 这里不需要也不应该动位置 —— 探针实测对顶级弹窗做任何
+	// SetWindowPos 都会让子菜单锚点失效(盖到父菜单上)。
 	return 0
 }
 
