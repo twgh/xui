@@ -33,6 +33,10 @@ func main() {
 	app.InitOrExit()
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
+	// 重绘节流默认 30ms(hover 过渡只有约 5 帧); 设 10ms 让过渡/动画跑到 ~60fps。
+	// 10 而不是 16: 节流按两次绘制的间隔算, 与运行时 16ms 的过渡定时器会周期性 beat 掉帧;
+	// 低于 16 也不再涨(实测 ~16.6ms 硬地板)。见 docs/DESIGN.md 第八节 46。
+	a.SetPaintFrequency(10)
 
 	w := window.New(0, 0, 800, 590, "xui · shadcn 风格自绘组件", 0,
 		xcc.Window_Style_Center|xcc.Window_Style_Border|xcc.Window_Style_Drag_Border|xcc.Window_Style_Drag_Window|xcc.Window_Style_Allow_MaxWindow)

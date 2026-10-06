@@ -97,6 +97,14 @@ xui.SetHoverDuration(200 * time.Millisecond) // 改时长
 xui.SetHoverDuration(0)                      // 关掉过渡(立即到位)
 ```
 
+想让过渡更顺(约 60fps)只需在 app 初始化里放开 xcgui 默认的 30ms 重绘节流:
+
+```go
+a := app.New(true)
+a.EnableAutoDPI(true).EnableDPI(true)
+a.SetPaintFrequency(10)   // 实测帧率 30.9 → 59.0 fps(见 docs/DESIGN.md 第八节 46)
+```
+
 ## 图标
 
 运行时自带一份预处理好的 lucide 图标资源(2130 个,当前版本见 `icons.Version`),

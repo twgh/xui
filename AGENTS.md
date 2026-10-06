@@ -16,6 +16,8 @@ hover 透明度(/80 等)、focus-visible 键盘才显示焦点框(ring-3 ring-ri
 
 hover 过渡(150ms cubic-bezier(0.4,0,0.2,1))一律用运行时的 `xui.Hover(hEle, 悬停中)` / `xui.HoverItem(hOwner, 索引, 悬停中)` 取值 + `xui.Fade(静止色, 悬停色, hv)` 取色(叠加层用 `ScaleAlpha(hv)`);**不要在组件里自己起定时器或缓存过渡值**(驱动/生命周期归运行时,见 DESIGN 第八节 45)。
 
+**应用初始化要 `a.SetPaintFrequency(10)`**:xcgui 默认有 **30ms 重绘节流**(`XC_SetPaintFrequency`, 这就是 hover 过渡只有约 5 帧的根因), 设 10 后实测 30.9 → 59.0 fps(见 DESIGN 第八节 46)。`XC_SetTextRenderingHint` 在 D2D 模式下是空操作, 不要用(同节)。
+
 ## 常用命令
 
 ```bash

@@ -522,6 +522,38 @@ myapp/
       菜单条目 255 → **245**(悬停态, 弹层窗口的定时器 + `XWnd_Redraw` 这条路也验过);
       淡出方向同样连续、无残留。缓动曲线由 `anim_test.go` 对照独立实现钉住。
 
+46. **重绘节流 `XC_SetPaintFrequency`(2026-10-06 实测; 顺带记一条空操作 API)**:
+
+    - **语义**:`source/xcgui/xc/globalapi.go:313` "设置 UI 的最小重绘频率, nMilliseconds = 重绘最小时间间隔(ms)"
+      —— 它是**节流窗口**(限制两次重绘之间至少隔多久), 不是"强制刷新"。xcgui 自带动画示例全都在动画场景里放开它:
+      `xcgui-example/Advanced/Animation/Animation.go:93`、`Ease_All.go:33`、`Ease_Easy.go:20` 都是 `SetPaintFrequency(10)`;
+      `HUMUI/HouTai017/HouTai017.go:108-109` 是 `SetPaintFrequency(10)` + `defer SetPaintFrequency(30)` → 反推**默认 30ms**。
+    - **实测**(探针: 元素挂 1ms 炫彩定时器 + `XEle_Redraw(hEle, true)`, 与运行时 hover 过渡同一条路; 负载 = 300x40 元素满速重绘):
+
+      | 设置 | 帧间隔均值 | 帧率 | UI 线程占用 |
+      |---|---|---|---|
+      | 默认(不调用) | 32.40ms | 30.9 fps | 5.5% |
+      | **10ms** | **16.96ms** | **59.0 fps** | 12.7% |
+      | 4ms | 16.57ms | 60.4 fps | 10.8% |
+      | 1ms | 16.95ms | 59.0 fps | 10.9% |
+      | 30ms | 32.54ms | 30.7 fps | 6.2% |
+
+      结论: **默认就是 30ms**(第八节 45 说的"定时器请求 1/4/16ms 都只有约 30ms/帧"就是它造成的, 不是炫彩定时器的锅);
+      设 10ms 帧率翻倍到 ~60fps; 再往下(4/1ms)毫无提升, 说明有 **~16.6ms 的硬地板**(60Hz/VSync)。
+    - **用法**:应用初始化 `a.SetPaintFrequency(10)`(demo 已加)。**为什么是 10 不是 16**: 节流按"两次绘制的间隔"算,
+      16 与运行时 16ms 的过渡定时器会周期性 beat(某次提前 0.1ms 就被推到下一帧 → 偶发 2 倍帧间隔), 10 留了裕量;
+      16 以下也不再涨, 所以 10 是"够用且稳"的最低值。
+    - **代价**:节流只"允许更早重绘", 不会凭空多画(静止时零影响); 单帧绘制成本不变(≈2ms), 所以帧率翻倍 ≈ 占用翻倍,
+      且只发生在动画/过渡那 150ms 内。唯一要留意的是**整窗重绘很重的页面**(图标页 45 图标 ≈4.1ms/帧, 见第八节 43)
+      在鼠标快速扫过时会多画几帧。
+    - **顺带一条空操作 API(别用)**:`XC_SetTextRenderingHint`(`globalapi.go:320`) 与逐 Painter 的
+      `XDraw_SetTextRenderingHint`(`xc/draw.go:1304`; 我们的 `Painter` 直接暴露 `Draw`, `draw.go:17`, 想逐帧调也行)
+      在 **Direct2D 模式(`app.New(true)`)下完全无效**:全局设 `TextRenderingHintAntiAliasGridFit`(=3, 唯一常量,
+      `xcc/xcconst.go:1078`)前后, 自绘文字块 / 真 Button 标签 / 原生 Edit 文字**逐像素完全相同**(`ImageChops` 差异包围盒 = None);
+      逐 Painter 设 3 与默认同帧也逐像素相同(彩色边缘像素 2265 = 2265)。原因: 它们是 GDI+ 的 TextRenderingHint,
+      D2D 的文字不走那条管线。**我们的文字本来就已经是 ClearType 级抗锯齿**(彩色边缘像素 2154/1474, 最大色偏 180/114),
+      不存在"没抗锯齿/要换灰度 AA"这个可调点 —— 想关彩色边缘得另找路径(1.4.2 未见暴露)。
+
 ---
 
 
