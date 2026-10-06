@@ -199,11 +199,13 @@ func (t *Tooltip) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	*pbHandled = true
 	th := xui.Current()
 
-	// 气泡矩形: 窗口 = 气泡 + 箭头, 箭头在贴元素的那一侧
+	// 气泡矩形: 窗口 = 气泡 + 箭头, 箭头在贴元素的那一侧, 只收缩贴箭头的那条边
+	// (此前 Bottom 无条件收缩, 翻到下方时气泡矮了 tipArrow, 文字被垂直裁掉)。
 	bubble := p.Rc
-	bubble.Bottom = p.Rc.Top + p.H() - tipArrow
 	if t.below {
 		bubble.Top = p.Rc.Top + tipArrow
+	} else {
+		bubble.Bottom = p.Rc.Top + p.H() - tipArrow
 	}
 
 	// 箭头: 45° 旋转的方块(菱形), 中心压在气泡边线上; 先画箭头再画气泡, 气泡盖住内侧一半,
