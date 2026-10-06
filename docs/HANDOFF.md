@@ -10,7 +10,7 @@
 
 - ✅ **P0 运行时**完成:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter 绘制助手、字体缓存、focus-visible 焦点来源跟踪
 - ✅ **P1 组件**完成并视觉验收:Button(5 变体×3 尺寸)、Checkbox、Radio、Input、Label、Separator+Badge、Card
-- ✅ **P2 组件**完成并视觉验收:Switch(2 尺寸)、Progress、Slider、Tabs(default/line 两变体)、Tooltip、ComboBox、图标系统(矢量复刻 lucide path,非 SVG 渲染——原因见 DESIGN.md 第八节 17)
+- ✅ **P2 组件**完成并视觉验收:Switch(2 尺寸)、Progress、Slider、Tabs(default/line 两变体)、Tooltip、ComboBox、图标系统(矢量复刻 lucide path,非 SVG 渲染——原因见 DESIGN.md 第八节 17;抗锯齿出图见第八节 43)
 - ✅ **P3 首项 Dialog 完成**(详见下方 Dialog 条目)
 - ✅ **Slider 渲染缺陷彻底修复**(2026-10-04,computer-use 真实鼠标逐场景验证):①悬浮冒灰方块/②拖动后冒白方块(根因:原生 SliderBar 的滑块按钮 BkInfo 在 Stay/Down/Focus 态的残留绘制, 全套压制无效 → **弃用原生载体, 改纯自绘 Element + 自实现拖拽/点击跳转/键盘**,见 DESIGN.md 第八节 25);③两端 ring 被裁剪(几何重排,见第八节 26);④hover 离开/点击后灰环残留(根因:透明元素重绘不擦底, onPaint 开头先铺宿主底色, 见第八节 28)。期间误判过 `FillRoundRect` 半径语义(x2 导致全组件过圆, 已回退, 结论见第八节 27)
 - ✅ **CLI** 完成:`xui init / add / list`(registry.json 驱动,组件源码拷入用户项目)
@@ -33,7 +33,7 @@
 ```
 D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── *.go                          运行时: color/theme/themes_builtin/manager/
-│                                 draw(Painter)/focus(焦点来源)/font/state
+│                                 draw(Painter)/icons(图标几何+直通D2D 出图)/focus/font/state
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
 │   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go  menu.go
@@ -95,6 +95,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - **`Window_Style_Nothing`/`Center` 的窗口自身不绘制任何东西**(只画子元素),别拿它当普通宿主窗口
 - **自绘标题栏窗口样式**: `Caption|Border|Drag_Window`(无默认图标/标题/三键) + 30px BorderSize, 展示元素要 `EnableMouseThrough(true)` 才不挡拖动, 见 DESIGN 第八节 38; demo 是标准样板
 - **渲染固定 Direct2D**(`app.New(true)`)
+- **直通 D2D 绘制(第三方 COM 接口)必须先 `XDraw_ConvRect` 把客户区坐标换算成画布对齐坐标**:炫彩只在刷新自己的 `XDraw_*` 命令时才施加元素变换/裁剪, 直通调用拿到的是**窗口坐标系**(不换算就会画到元素外面, 症状可能是"图标莫名消失");另外 `XDraw_GetD2dRenderTarget`/`XC_GetD2dFactory` 交出来的是**真 COM 指针**, 可纯 Go 直通调用(ABI: 禁 float 形参、8 字节结构体按值打包);注意 `ID2D1SimplifiedGeometrySink` 除 `Close` 外全是 void —— 返回值是寄存器垃圾, 当成 HRESULT 查会静默回落。详见 DESIGN.md 第八节 43
 - **LayoutEle 默认是"横向流 + 自动换行", 不是竖排**:纵向堆叠必须 `EnableHorizon(false)`;列布局主轴间距用 `SetSpace`, 行布局换行行距用 `SetSpaceRow`(只设 SetSpace 纵向间隙恒 0);`Fill` 独占一整行, 等分用 `Weight`;项级 `LayoutItem_SetAlign` 无效, 用布局级 `SetAlignH/V`(详见 DESIGN.md 第八节 29)
 - 顶层 Tabs 分页: 页面容器 Show(false)→Show(true) 后其内部布局元素不会自动重排(空白壳), **对显示的页面调 `AdjustLayout()`** 再 Redraw(demo buildPage);ESC 关闭用 `XWnd_CloseWindow`
 - **LayoutEle 纵向(列)布局也会"溢出换列"**: 主轴上剩余高度放不下下一项时, 该项会被甩到下一列(`x += 容器宽度, y = 0`)→ 表现为控件整块消失。列布局一律 `EnableAutoWrap(false)`, 并保证容器高度足够(见 DESIGN 第八节 41)
@@ -165,10 +166,13 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - Button Link 变体(下划线)未实现;text 手绘后 Input 仍是原生文字;hover 过渡动画未做(ani 包可用)
 - 用户项目须 `app.New(true)`(D2D)+ `EnableAutoDPI`,demo 是标准样板
 
-## 进行中: 图标抗锯齿(方案二 D2D) — 待接手
+## 已完成: 图标抗锯齿(方案二 D2D 直通填充)
 
-- 图标折线描边锯齿根因 = XDraw 线条图元无 AA(EnableSmoothingMode 无效), 已定方案:
-  **D2D FillGeometry + CPU 描边展开**(纯 Go vtable 调用, 无需 cgo/字体/SVG 库)。
-- 完整实施计划(含探针已验证的 vtable 索引表、ABI 三规则、隐形窗口等坑、验证清单):
-  **docs/PLAN_ICON_D2D.md**; 验证代码保留在 `probe/main.go`(实现完成并验证后删除)。
-- 状态: 探针已实证 FillGeometry 在 paint 回调内可渲染出抗锯齿图形; 尚未动 icons.go。
+- 图标出图改为**直通 D2D 几何填充**(`d2dicon.go` + `icons.go`): lucide path → CPU 描边展开(段四边形 + 圆帽)
+  → `ID2D1PathGeometry` → `RT::FillGeometry`; 无需 cgo/汇编/字体/SVG 库。GDI 渲染(`app.New(false)`)
+  或资源创建失败时自动回落到旧折线描边。
+- 关键坑与结论全部记入 **docs/DESIGN.md 第八节 43**(含 COM 指针/vtable 索引表/ABI 三规则/void 方法陷阱/
+  "直通调用必须自己 `XDraw_ConvRect` 换算坐标"/WINDING 同向/隐形窗口); 验证清单已逐项过:
+  四个标题栏图标 + 下拉框 chevron + 弹层勾选 + 菜单勾选/子菜单箭头 + 对话框关闭钮 + IconSearch 全家桶(150% DPI);
+  暗色主题 + hover + tooltip; GDI 回落不崩; 其余组件视觉无回归。
+- 探针程序与临时计划已完成使命并删除(`probe/`、`.verify/`)。像素测量用的是脚本 + PIL, 未靠目测。

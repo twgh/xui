@@ -33,26 +33,24 @@ const (
 
 // Icon 在 rc 内按 lucide 几何绘制一枚描边图标(等比铺满)。
 // strokeWidth 用 24 网格单位, lucide 默认为 2。
+//
+// 出图优先走 D2D 填充管线(CPU 描边展开 + FillGeometry, 有抗锯齿, 见 d2dicon.go);
+// 只有 GDI 渲染模式(app.New(false))或 D2D 资源建不出来时才回落到折线描边。
 func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float32) {
-	w, h := rc.Right-rc.Left, rc.Bottom-rc.Top
-	if paths == "" || w <= 0 || h <= 0 || color.IsNone() {
+	if p.d2dIcon(paths, rc, color, strokeWidth, func() [][]iconPt {
+		return parseIconPath(paths)
+	}) {
 		return
 	}
-	size := w
-	if h < size {
-		size = h
+	ox, oy, size, ok := iconBox(paths, rc, color)
+	if !ok {
+		return
 	}
-	ox := rc.Left + (w-size)/2 // 图标在 rc 内居中
-	oy := rc.Top + (h-size)/2
+
+	// 回落: 折线描边(线条图元无 AA, 会有锯齿, 但不是所有环境都有 D2D 目标)
 	s := float32(size) / 24
-
-	lineW := int32(math.Ceil(float64(strokeWidth * s))) // 线宽是物理像素: 取整会让 16px 图标(2*16/24=1.33)退化成 1px 细线
-	if lineW < 1 {
-		lineW = 1
-	}
-	p.Draw.SetLineWidth(lineW)
+	p.Draw.SetLineWidth(iconLineWidth(strokeWidth, s))
 	p.Draw.SetBrushColor(uint32(color))
-
 	for _, sub := range parseIconPath(paths) {
 		for i := 1; i < len(sub); i++ {
 			ax, ay := ox+round32(sub[i-1].x*s), oy+round32(sub[i-1].y*s)
@@ -65,33 +63,63 @@ func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float
 	}
 }
 
+// iconSearchKey 是 IconSearch 的几何缓存哨兵键(它不由 path 字符串描述)。
+const iconSearchKey = "\x00search"
+
 // IconSearch 绘制搜索图标(lucide Search: 半径 8 的圆 + 右下斜手柄)。
-// 它用圆弧指令描述, 因此不走 parseIconPath, 直接用椭圆图元实现。
+// 它用圆弧指令描述, 因此不走 parseIconPath, 直接把圆采样成折线点喂同一套描边展开。
 func (p *Painter) IconSearch(rc *xc.RECT, color Color, strokeWidth float32) {
-	w, h := rc.Right-rc.Left, rc.Bottom-rc.Top
-	if w <= 0 || h <= 0 || color.IsNone() {
+	if p.d2dIcon(iconSearchKey, rc, color, strokeWidth, searchIconSubs) {
 		return
 	}
-	size := w
-	if h < size {
-		size = h
+	ox, oy, size, ok := iconBox(iconSearchKey, rc, color)
+	if !ok {
+		return
 	}
-	ox := rc.Left + (w-size)/2
-	oy := rc.Top + (h-size)/2
+
+	// 回落: 椭圆图元 + 手柄线段(与旧实现一致)
 	s := float32(size) / 24
-
-	lineW := int32(math.Ceil(float64(strokeWidth * s))) // 线宽是物理像素: 取整会让 16px 图标(2*16/24=1.33)退化成 1px 细线
-	if lineW < 1 {
-		lineW = 1
-	}
-	p.Draw.SetLineWidth(lineW)
+	p.Draw.SetLineWidth(iconLineWidth(strokeWidth, s))
 	p.Draw.SetBrushColor(uint32(color))
-
 	r := round32(8 * s)
 	cx, cy := ox+round32(11*s), oy+round32(11*s)
 	circle := xc.RECT{Left: cx - r, Top: cy - r, Right: cx + r, Bottom: cy + r}
 	p.Draw.DrawEllipse(&circle)
 	p.Draw.DrawLine(ox+round32(21*s), oy+round32(21*s), ox+round32(16.7*s), oy+round32(16.7*s))
+}
+
+// searchIconSubs 把 lucide Search 表达成 24 网格折线: 圆心 (11,11) 半径 8 的整圆
+// (采样 48 段) + 手柄 (21,21)→(16.7,16.7)。两者共用同一套描边展开。
+func searchIconSubs() [][]iconPt {
+	const n = 48
+	circle := make([]iconPt, 0, n+1)
+	for i := 0; i <= n; i++ {
+		t := 2 * math.Pi * float64(i) / n
+		circle = append(circle, iconPt{11 + 8*float32(math.Cos(t)), 11 + 8*float32(math.Sin(t))})
+	}
+	return [][]iconPt{circle, {{x: 21, y: 21}, {x: 16.7, y: 16.7}}}
+}
+
+// iconBox 校验并算出图标在 rc 内的居中正方形(逻辑像素)。
+func iconBox(paths string, rc *xc.RECT, color Color) (ox, oy, size int32, ok bool) {
+	w, h := rc.Right-rc.Left, rc.Bottom-rc.Top
+	if paths == "" || w <= 0 || h <= 0 || color.IsNone() {
+		return 0, 0, 0, false
+	}
+	size = w
+	if h < size {
+		size = h
+	}
+	return rc.Left + (w-size)/2, rc.Top + (h-size)/2, size, true
+}
+
+// iconLineWidth 是折线回落路径的线宽(物理像素): 取整会让 16px 图标(2*16/24=1.33)退化成 1px 细线。
+func iconLineWidth(strokeWidth, s float32) int32 {
+	lw := int32(math.Ceil(float64(strokeWidth * s)))
+	if lw < 1 {
+		lw = 1
+	}
+	return lw
 }
 
 func round32(v float32) int32 { return int32(v + 0.5) }

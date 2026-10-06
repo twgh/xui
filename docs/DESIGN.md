@@ -294,7 +294,7 @@ myapp/
 14. **标题文字默认白色**:xcgui 标题栏文字颜色为白色(为默认蓝色标题栏设计),主题化窗口(白/黑底)需 `w.SetTitleColor(theme.Foreground)` 并挂 OnThemeChange。
 15. **窗口样式按标志位组合**:去掉系统图标和三键 = `Caption|Border|Center|Drag_Border|Allow_MaxWindow|Title`(不含 Icon/Btn_*);去掉关闭按钮后需自补 ESC 关闭(`XWnd_CloseWindow`)。
 16. **focus-visible 需自行跟踪焦点来源**:xcgui 只有单一 Focus 状态,不区分鼠标/键盘来源 → 全局跟踪鼠标按下/Tab 键(运行时 focus.go),文本输入类控件例外(始终显示,同浏览器语义)。
-17. **元素自绘里画不出某些 Lucide 图片/SVG, 因为不支持某些写法**:`XDraw_DrawSvgEx` / `XDraw_Image` / `XDraw_ImageEx` 在元素 paint 回调里**无输出**(探针实证:句柄有效、坐标与裁剪都正确,就是画不出来;图片用 `imagex.NewBySvgString` 加载同样无效)。需要图标时用线段图元复刻:`icons.go` 把 lucide 的 path 解析成折线再用 `DrawLine` 描边(支持 M/L/H/V/C/S/Q/T/Z,圆弧用专门实现);或把图片交给原生控件(`Button.SetIcon` 等)。
+17. **元素自绘里画不出某些 Lucide 图片/SVG, 因为不支持某些写法**:`XDraw_DrawSvgEx` / `XDraw_Image` / `XDraw_ImageEx` 在元素 paint 回调里**无输出**(探针实证:句柄有效、坐标与裁剪都正确,就是画不出来;图片用 `imagex.NewBySvgString` 加载同样无效)。需要图标时用线段图元复刻:`icons.go` 把 lucide 的 path 解析成折线再用 `DrawLine` 描边(支持 M/L/H/V/C/S/Q/T/Z,圆弧用专门实现);或把图片交给原生控件(`Button.SetIcon` 等)。**2026-10-06 起图标的出图改为直通 D2D 几何填充(解析出的折线仍作为回落路径保留), 抗锯齿与几何精度见第 43 条。**
 18. **`XWnd_SetWindowPos` 吃物理像素**:框架内部坐标是逻辑像素(窗口创建时自动按 DPI 缩放),但窗口定位/尺寸透传给 Win32 → 必须自己乘 `dpi/96`,否则窗口会跑到 1/scale 的位置(实测 144 DPI 下 449 变成 299)。自绘提示窗(Tooltip)踩过这个坑。
 19. **原生 ComboBox 必须先 `CreateAdapter`**:否则 `AddItemText` / `GetCount` 会让炫彩弹"XAdTable_GetCountRow 中,输入句柄可能无效[0x0]"的错误框,并阻塞后续调用。
 20. **SliderBar 的滑块几何**:pos→滑块按钮是 `[0, W - buttonW]` 线性映射(实测 pos=0/25/50/100 → 0/47/94/188, 宽 200 时)。自绘时直接读 `XEle_GetRect(thumb)` 拿滑块矩形,与拖动行为严格一致;滑块外扩 3px 的焦点环要画在**滑动条**的 paint 里(滑块自身客户区只有 12x12,画在自己回调里会被裁)。
@@ -418,6 +418,21 @@ myapp/
     - 叶节点同样保留展开按钮槽位(每项都有 itemID=0/1 的模板实例), 文字全树自然对齐——正好满足 shadcn 树"叶节点留空槽位"的语义, chevron 只需对"有子项"的项绘制;
     - **隐藏页上创建的树, 启动时的 `SetSelectItem` 选中态会丢**(展开态 `ExpandItem` 却保留); 页面真正显示后再补一次 Select 即可(demo 在页签 OnChange 里做)。
 
+43. **图标抗锯齿: 直通 D2D 几何填充(2026-10-06, `d2dicon.go` + `icons.go`, 探针 + 像素实测)**:
+
+    - **炫彩把真的 COM 接口指针交出来了**: `XDraw_GetD2dRenderTarget(hDraw) → *ID2D1RenderTarget`、`XC_GetD2dFactory() → *ID2D1Factory`(另有 WIC/DWrite 工厂与 `XDraw_GetD2dBitmap`)。paint 回调里可以纯 Go 直通调用, **不需要 cgo、不需要汇编**, D2D 的 AA 也对直通调用生效(实测 AA 模式 = PER_PRIMITIVE)。
+    - **ABI 三规则**(破任一条: 轻则整帧被毁、窗口隐形, 重则崩溃):① 形参里出现 `float32/float64` 的方法一律不能这样调 —— 浮点参数走 XMM 寄存器, `syscall.SyscallN` 传不进去; ② 按值传递的 8 字节结构体要打包成一个 64 位整数(`D2D1_POINT_2F` → `f32(x) | f32(y)<<32`); ③ 其余全用指针/整数传是安全的。
+    - **vtable 索引**(实测交叉验证过, 错一位就是调到邻居方法; 曾把 30 当 GetAntialiasMode 实为 SetTransform, 用垃圾指针设了变换 → 整窗不再呈现):`ID2D1RenderTarget` IUnknown 0-2 + `ID2D1Resource::GetFactory` 3, 方法从 4 起 —— `CreateSolidColorBrush=8`、`FillGeometry=23`(参数 (geometry, brush, layer=NULL), 是本方案的唯一出图口)、`SetTransform=30`、`GetAntialiasMode=33`; `ID2D1Factory` 直接继承 IUnknown —— `CreateEllipseGeometry=7`、`CreatePathGeometry=10`; `ID2D1PathGeometry` 继承 `ID2D1Geometry` 的 13 个方法 —— `GetBounds=4`、`Open=17`; `ID2D1GeometrySink` 的 `ID2D1SimplifiedGeometrySink` 部分自有方法只有 3~9 —— `SetFillMode=3`、`BeginFigure=5`、`AddLines=6`、`EndFigure=8`、`Close=9`。
+    - **`ID2D1SimplifiedGeometrySink` 里只有 `Close` 返回 HRESULT, `SetFillMode/BeginFigure/AddLines/EndFigure` 全是 `STDMETHOD_(void, ...)`**(同理 `ID2D1RenderTarget` 的 Draw/Fill 全家也是 void):它们的"返回值"是寄存器残留垃圾。曾照着"每个 hr 都校验"的直觉检查 `EndFigure`, 它返回 0x1f80(非 0)被当成失败 → **每次都静默回落折线渲染**:症状是"代码改了, 画面一模一样", 单看输出根本发现不了 —— 探针里必须把每一步的 hr 打出来看。
+    - **直通调用拿不到"当前元素"的变换与裁剪**(本项目最大的坑):炫彩是在**刷新它自己的绘制命令**(`XDraw_*`)时才施加元素偏移/裁剪的, 直通 D2D 调用发生在回调里、命令队列之前, 因此拿到的是**父级(窗口)坐标系**。实测:元素内 (50,50)-(150,150) 的图标被画到窗口左上角; 反过来"先 XDraw 填充、后画图标"的按钮**看起来正常**(先有填充说明队列已推进), 而幽灵态图标按钮(背景/边框都是 None, 前面没有任何 XDraw 指令)的图标全跑到窗口左上角、正好被自绘的窗口图标盖住 → 表现为"标题栏按钮的图标消失"。
+      **正解: 用官方提供的 `XDraw_ConvRect(hDraw, *RECT)` / `XDraw_ConvXY`** —— "从当前 UI 对象客户区坐标转换到画布对齐坐标, 自动适应 DPI", 本来就是给第三方绘图接口用的。换算结果就是**物理像素**(实测 150% DPI:元素在窗口 (60,60), 客户端 (50,50,150,150) → (165,165,315,315)), 直接喂给 D2D 即可, 尺寸与线宽随之自动变成物理像素, 不要再乘一次 DPI。
+    - **WINDING 填充模式下所有子路径必须同向**:描边展开是"每段一个四边形 + 每个顶点一个圆帽", 而段四边形与圆帽的天然绕向相反, 重叠处 winding 归零被挖空 → 描边变成一排"梳齿"。修法:鞋带公式定号, 负号就反转点序(`sameOrientation`)。
+    - **几何合法性自检**:索引错位/未 Close 的几何喂给 `FillGeometry` 会让 xcgui 整帧不呈现 —— **窗口彻底隐形(连边框都没有)、进程不崩、日志正常**, 只信截图;因此每次出图前用 `ID2D1Geometry::GetBounds`(idx 4;未 Close 的几何返回 `D2DERR_WRONG_STATE` 0x88990001)确认 hr=0 且 bounds 有限。
+    - **为什么不用 `RT::DrawGeometry` 真描边**:它的线宽是 float 形参, 撞 ABI 规则①; 于是改在 CPU 侧把描边展开成填充多边形(段四边形 + 圆帽正多边形, 圆帽 12 边在 r=2px 时与真圆偏差 < 0.07px), 一次 `FillGeometry` 出图。展开是"内接近似"(每个形状都落在真·圆角描边内部), 不会比真描边胖。
+    - **实测对比**(200px 图标同屏对照):新管线墨迹面积 10972 物理像素² vs 理论 10575(误差 4%), 旧折线 16064(胖 50%, 因为线宽被 `ceil` 取整、重叠段在 AA 下互相加深);X 图标边缘灰度层数 5 → 16。旧实现真正难看的原因是**折线点 `round32` 取整到逻辑像素**(18px 图标上 ±1.5 物理像素)+ 8 段离散的多边形棱角, 而不是"XDraw 没有 AA"——实测 XDraw 线条在 D2D 模式下也有 AA(两者像素统计几乎相同), 但几何是精确的。
+    - **缓存**:几何是**设备无关**资源(归属 D2D 工厂而非渲染目标), 因此缓存按**工厂指针**作废(工厂变了=设备重建, 整体 Release 重建), 多个窗口(主窗/菜单/弹层各有各的 RT)共用一份几何;画刷是**设备相关**资源(必须由该 RT 创建、只能给该 RT 用), 所以每帧建一个、画完立刻 Release。绘制回调每帧都会新建 Painter(帧内对象), 缓存必须放**包级**。缓存 key 必须含 (path 原文, ox, oy, size, strokeW) —— 换算后的坐标是物理像素且随元素位置变化, 漏掉位置就会把图标画到别处。
+    - **回落路径**:`app.New(false)`(GDI 渲染)时 `XDraw_GetD2dRenderTarget` 返回 0 → 自动回落到旧的折线描边(图标仍可见, 只是没有新管线干净);GDI 模式实测不崩、布局正常。
+
 ---
 
 
@@ -440,5 +455,6 @@ myapp/
 - Dialog:`XEle_SetZOrderEx(h, 0, xcc.Zorder_Top)`、`XEle_AdjustLayout`、`XEle_Redraw`、`XEle_GetChildCount/GetChildByIndex`、`XObj_GetType`(→ `xcc.XC_*`)、`XWidget_GetParentEle`、`XWnd_GetRect/Redraw`、`XWnd_SetFocusEle/GetFocusEle`、`xcc.AdjustLayout_No`、`wapi.GetAsyncKeyState`
 - Table(原生 List 载体):`CreateAdapterHeader/CreateAdapter/AddColumnText/SetHeaderHeight/SetRowHeightDefault/SetRowSpace/SetColumnWidth/SetSplitLineColor/SetDrawRowBkFlags/AddRowText/SetItemText/GetCount_AD/SetSelectRow/GetSelectRow/GetVisibleRowRange/RefreshRow/RefreshData/AddEvent_List_DrawItem/AddEvent_List_Header_DrawItem/AddEvent_List_Temp_Create_End/AddEvent_List_Header_Temp_Create_End/AddEvent_List_Select/GetTemplateObject/GetHeaderTemplateObject/GetHeaderHELE/GetScrollBarVObj`
 - ⚠️ `TabBar.SetPadding` 在 xcgui.dll 4.0.0.0 中不存在(调用 panic)
+- 直通 D2D(图标抗锯齿, 见第八节 43):`xc.XDraw_GetD2dRenderTarget(hDraw) → *ID2D1RenderTarget`、`xc.XC_GetD2dFactory() → *ID2D1Factory`、`xc.XDraw_ConvRect(hDraw, *RECT) / XDraw_ConvXY`(客户区坐标 → 画布对齐物理坐标, 第三方绘图必须先换算); 用到的 D2D 方法: `ID2D1Factory::CreatePathGeometry`、`ID2D1PathGeometry::Open / GetBounds`、`ID2D1GeometrySink::{SetFillMode, BeginFigure, AddLines, EndFigure, Close}`、`ID2D1RenderTarget::{CreateSolidColorBrush, FillGeometry}`
 - 官方自绘示例:BeautifyButton / CheckBox / RadioButton / Edit / ProgressBar / SliderBar
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`
