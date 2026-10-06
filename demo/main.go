@@ -181,6 +181,8 @@ func main() {
 	w.AddEvent_LButtonDBClick(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
 		if pPt.Y > 30 {
 			return 0
+		} else if w.GetStayEle() != 0 { // 防止点到标题栏上的按钮
+			return 0
 		}
 		if w.IsMaxWindow() {
 			w.ShowWindow(xcc.SW_RESTORE)
