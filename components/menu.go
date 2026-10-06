@@ -393,10 +393,13 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 		hot = false
 	}
 	isLabel := it != nil && it.kind == menuKindLabel
-	if hot && !isLabel {
-		p.FillRound(&rc, hotBg, t.RadiusSm())
+	// 悬停底与字色按过渡值淡入淡出。载体是原生菜单弹窗(pInfo.HWindow): 鼠标在条目
+	// 间移动时原生自己会重绘, 过渡值由 xui 按"窗口 + 条目 ID"保管并驱动补帧。
+	hv := xui.HoverItem(pInfo.HWindow, pInfo.NID, hot && !isLabel)
+	if hv > 0 {
+		p.FillRound(&rc, hotBg.ScaleAlpha(hv), t.RadiusSm())
 		if !isDestructive {
-			fore = t.AccentFore
+			fore = xui.Fade(fore, t.AccentFore, hv)
 		}
 	}
 
@@ -427,8 +430,8 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 	// 快捷键: 右对齐 text-xs muted(hot 时跟随 accent-foreground)
 	if shortcut != "" {
 		sc := t.MutedFore
-		if hot && !isLabel {
-			sc = t.AccentFore
+		if hv > 0 {
+			sc = xui.Fade(sc, t.AccentFore, hv)
 		}
 		if disabled {
 			sc = sc.WithAlpha(128)

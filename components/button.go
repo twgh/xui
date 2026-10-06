@@ -132,7 +132,9 @@ func (b *Button) SetIcon(path string) *Button {
 }
 
 // resolve 按主题与状态解析壳体颜色, 与 shadcn button.tsx 的类名逐条对应。
-func (b *Button) resolve(t *xui.Theme, st xui.State) (bg, border xui.Color) {
+// hv 是 hover 过渡值(0..1): 静止态与悬停态两套色按它插值(button.tsx 的
+// transition-all, 时长/缓动见 xui.Hover)。
+func (b *Button) resolve(t *xui.Theme, st xui.State, hv float64) (bg, border xui.Color) {
 	if st.Disabled {
 		// disabled:opacity-50 —— 原色整体半透明, 而不是换灰色
 		switch b.variant {
@@ -146,35 +148,22 @@ func (b *Button) resolve(t *xui.Theme, st xui.State) (bg, border xui.Color) {
 			return xui.None, t.Border.WithAlpha(128)
 		}
 	}
+	var bgHV, borderHV xui.Color
 	switch b.variant {
 	case ButtonPrimary: // bg-primary hover:bg-primary/80
-		bg = t.Primary
-		if st.Pressed || st.Hover {
-			bg = t.Primary.WithAlpha(204)
-		}
+		bg, bgHV = t.Primary, t.Primary.WithAlpha(204)
 	case ButtonSecondary: // bg-secondary hover:bg-mix(fg 5%)
-		bg = t.Secondary
-		if st.Pressed || st.Hover {
-			bg = t.Secondary.Mix(t.Foreground, 0.05)
-		}
+		bg, bgHV = t.Secondary, t.Secondary.Mix(t.Foreground, 0.05)
 	case ButtonOutline: // border-border bg-background hover:bg-muted
-		bg = t.Background
-		border = t.Border
-		if st.Hover || st.Pressed {
-			bg = t.Muted
-		}
+		bg, border = t.Background, t.Border
+		bgHV, borderHV = t.Muted, t.Border
 	case ButtonGhost: // hover:bg-muted
-		border = xui.None
-		if st.Hover || st.Pressed {
-			bg = t.Muted
-		}
+		bg, border = xui.None, xui.None
+		bgHV = t.Muted
 	case ButtonDestructive: // bg-destructive/10 text-destructive hover:bg-destructive/20
-		bg = t.Destructive.WithAlpha(26)
-		if st.Hover || st.Pressed {
-			bg = t.Destructive.WithAlpha(51)
-		}
+		bg, bgHV = t.Destructive.WithAlpha(26), t.Destructive.WithAlpha(51)
 	}
-	return bg, border
+	return xui.Fade(bg, bgHV, hv), xui.Fade(border, borderHV, hv)
 }
 
 // textColor 按主题与状态解析文字颜色。
@@ -215,7 +204,9 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	*pbHandled = true // 文字自己画, 才能与壳体一起下沉
 
-	bg, border := b.resolve(t, st)
+	// hover 过渡: 悬停/按下共用一个色(按下时鼠标必然在按钮上, 观感与 shadcn 一致)
+	hv := xui.Hover(hEle, (st.Hover || st.Pressed) && !st.Disabled)
+	bg, border := b.resolve(t, st, hv)
 	// focus-visible: 鼠标点击不显示焦点框, Tab 切换才显示
 	p.Rc = shell
 	if st.Focused && !st.Disabled && xui.FocusedByKeyboard() {

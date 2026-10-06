@@ -187,9 +187,11 @@ func (t *Tabs) onPaintTab(hEle int, hDraw int, pbHandled *bool) int {
 		p.StrokeRound(&p.Rc, th.Ring, radius, 1)
 	}
 
-	// 文本: 未选 text-foreground/60, 悬停或选中 text-foreground
-	color := th.Foreground.WithAlpha(153)
-	if active || st.Hover {
+	// 文本: 未选 text-foreground/60, 悬停或选中 text-foreground。
+	// 悬停带过渡(tabs.tsx 的 transition-all); 选中态立即到位 —— 切页时其它标签
+	// 未必重绘, 走过渡会留下颜色残影。
+	color := xui.Fade(th.Foreground.WithAlpha(153), th.Foreground, xui.Hover(hEle, st.Hover))
+	if active {
 		color = th.Foreground
 	}
 	if st.Disabled {

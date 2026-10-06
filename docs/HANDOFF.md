@@ -24,7 +24,8 @@
 - ✅ **Menu(原生菜单皮肤)完成并视觉/交互验收**(2026-10-05, computer-use + zoom):路线 = 原生 Menu 承载行为 + 窗口级 XWM_MENU_DRAW_BACKGROUND/DRAWITEM 自绘皮肤(每窗口注册一次, 绘制实时取令牌)。条目/勾选/单选(组内互斥)/分组标签/分隔栏/快捷键("	" 借原生算宽)/子菜单/禁用/破坏性全对齐 dropdown-menu.tsx;弹窗圆角 SetWindowRound、元素锚点定位(sideOffset=4, 翻转+夹紧)。探针结论记 DESIGN.md 第八节 36;**注意全屏缩略截图里暗色弹层会假显亮底, 弹层验收必须 zoom**。demo 卡 5 新增
 - ✅ **Table(List)完成并视觉/交互验收**(2026-10-05, `components/table.go`):路线 = **原生 `List` 载体 + 外观全自绘**(原生 List 的灰表头/横竖网格线/系统滚动条/白底全部压掉)。为什么不是原生 `Table`:`widget.Table` 是 Shape 系的"单元格画布"(合并单元格、逐格画线、无滚动/无虚拟行), 与 shadcn 的可滚动行列表语义不符, 故 P3 里的 Table/List 两项合并为同一个组件(registry 名 `table`)。对齐 shadcn table.tsx:表头 h-10(40)/px-2 + 1px 底边, 数据行 36(p-2 + text-sm), 行 `border-b`(**最后一行不画** = `[&_tr:last-child]:border-0`), 行悬浮 `hover:bg-muted/50`、选中 `bg-muted`;容器底色取 Card(同 ComboBox 的"组件都放卡片上"约定, 可用 `WithTableOnBackground` 改为 Background)。API:`NewTable(x,y,cx,cy,parent,cols)` + `AddRow/SetCell/SetRow/CellText/Rows/Clear/Select/Selected/OnSelect/Refresh/FitColumns`,列宽 `Width<=0` 表示占满剩余宽度(滚动条显隐翻转时自动重算)。像素实测(亮/暗双主题):行底 `#f5f5f5`→暗 `#262626`, 悬浮 `#fafafa`→暗 `#1f1f1f`, 行边框 `#e5e5e5`→暗白 10% 合成, 行高 54 物理/36 逻辑、表头 60/40, 自适应列 = `cx − 4 − 12`(滚动条让步)。踩坑全部记入 DESIGN.md 第八节 40、41(demo 那个"表格整块消失"是 LayoutEle **纵向溢出换列**, 见 41)
 - ✅ **Tree(树形视图)完成并视觉/交互验收**(2026-10-06, `components/tree.go`):路线 = **原生 `Tree` 载体 + 外观全自绘**(展开/收起、点击 chevron 展开、选中、滚动全原生;原生项背景/连接线/分割线/展开按钮 "+/-" 图形全部压掉)。shadcn 无官方 tree 组件,语义按社区通行实现并复用本项目已验收令牌:行高 32(h-8)、视觉矩形左右内缩 4、圆角 6、悬浮/选中 bg-accent(同 select/menu 条目)、每级缩进 16 + 祖先 1px 参考线、chevron 加大居中于点击热区(收起朝右/展开朝下)、叶节点留空槽位文字全树对齐、条目文字 text-sm。自定义项模板(行高 32 + 16px 按钮槽)+ `XE_TREE_DRAWITEM` 自绘;换肤走 `RefreshData()`。像素实测(亮/暗):行高 48 物理/32 逻辑、每级缩进 24/16、选中/hover `#f5f5f5`→暗 `#262626`、普通行透出 Card `#171717`(暗)、文字 `#fafafa`(暗)。交互 computer-use 真实点击验证:chevron 展开/收起、行选中、hover、运行时 Dark/Light 切换整树换肤。踩坑记 DESIGN.md 第八节 42;demo 新增"结构"页(隐藏页创建时选中态丢失已在 demo 规避);shadcn App.tsx 加了同构"树形视图"对照卡(手写 TreeRow,非官方组件)
-- ⬜ P3 剩余:hover 过渡动画、CLI 远程 registry
+- ✅ **hover 过渡动画完成并像素验收**(2026-10-06, 运行时 `anim.go`):对齐 tailwind/shadcn 的 `transition-*` 默认值(**150ms + cubic-bezier(0.4,0,0.2,1)**), 驱动是挂在**重绘目标**上的炫彩定时器(元素/窗口都验过, 实测约 30ms/帧 → 150ms 约 5 帧, 必须 `Redraw(true)` 立即重绘, 否则掉到 65ms/帧), 只在该目标还有过渡没跑完时才开、到位即关(静止零开销)。组件侧只有一行: `hv := xui.Hover(hEle, st.Hover)` / `xui.HoverItem(hOwner, i, stay)` + `xui.Fade(静止色, 悬停色, hv)`(叠加层用 `ScaleAlpha(hv)`), **不新增字段/事件**;逐项键=索引+1。中断从中断点续跑(同 CSS)。已接入 Button(5 变体)/Tabs 文字/Slider 光环/demo 图标格/Table 行/Tree 行/ComboBox 弹层条目/Menu 条目。像素实测:primary `#171717`→28→49→62→68→**69**(=`primary/80` 叠白, 与改动前一致)、表格行 255→**250**、树行 255→**245**、菜单条目 255→**245**;`anim_test.go` 钉住缓动曲线与预乘取色。踩坑记 DESIGN.md 第八节 45
+- ⬜ P3 剩余:CLI 远程 registry
 
 - ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
 
@@ -34,6 +35,7 @@
 D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── *.go                          运行时: color/theme/themes_builtin/manager/
 │                                 draw(Painter)/icons(图标几何+直通D2D 出图)/focus/font/state
+│                                 anim(hover 过渡: 炫彩定时器驱动 + cubic-bezier 缓动 + Fade)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
 │   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go  menu.go
@@ -114,6 +116,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 
 | 语义 | shadcn 源码依据 |
 |---|---|
+| **hover 过渡 = 150ms cubic-bezier(0.4,0,0.2,1)**(tailwind `transition-*` 默认值); 组件侧 `xui.Hover(ele, 悬停中)` / `xui.HoverItem(hOwner, idx, 悬停中)` + `xui.Fade(静止色, 悬停色, hv)`, 叠加层用 `ScaleAlpha(hv)` | button/tabs/switch/badge 的 `transition-all`; table/select/checkbox 的 `transition-colors`; 见 DESIGN.md 第八节 45 |
 | hover:bg-primary/80(实心)/80 透明度 | button.tsx variant.default |
 | focus-visible 键盘才显示焦点框,ring-3 ring-ring/50,边框变 Ring 色 | button/input/checkbox 的 focus-visible:* |
 | 文本输入框点击聚焦也显示环(浏览器对文本控件恒匹配 focus-visible) | input.tsx |
@@ -171,7 +174,8 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 ## 已知待办 / 注意事项
 
 - shadcn dev server 由会话后台启动,机器重启后需按上文命令重启
-- Button Link 变体(下划线)未实现;text 手绘后 Input 仍是原生文字;hover 过渡动画未做(ani 包可用)
+- Button Link 变体(下划线)未实现;text 手绘后 Input 仍是原生文字
+- hover 过渡用运行时 `anim.go` 的炫彩定时器(不是 ani 包), 时长可用 `xui.SetHoverDuration` 覆盖(传 0 = 关掉过渡);新增 hover 反馈时**只用 `xui.Hover`/`HoverItem` + `Fade`**, 别自己起定时器
 - 用户项目须 `app.New(true)`(D2D)+ `EnableAutoDPI`,demo 是标准样板
 
 ## 已完成: 图标抗锯齿(方案二 D2D 直通填充)

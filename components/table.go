@@ -393,13 +393,14 @@ func (t *Table) onDrawItem(hEle, hDraw int, pItem *xc.List_Item_, pbHandled *boo
 	th := xui.Current()
 	rc := pItem.RcItem
 
-	switch pItem.NState {
-	case xcc.List_Item_State_Stay:
-		p.FillRound(&rc, th.Muted.ScaleAlpha(0.5), 0) // hover:bg-muted/50
-	case xcc.List_Item_State_Select:
+	// 行底: 先铺一层不透明的宿主底色(透明元素重绘不擦底, 见 DESIGN 第八节 28),
+	// 悬停色叠在它上面并按过渡值淡入淡出(行上的 transition-colors, 见 table.tsx);
+	// 选中态立即到位(点击结果不该有延迟)。
+	p.FillRound(&rc, t.surface(th), 0)
+	if pItem.NState == xcc.List_Item_State_Select {
 		p.FillRound(&rc, th.Muted, 0) // data-[state=selected]:bg-muted
-	default:
-		p.FillRound(&rc, t.surface(th), 0)
+	} else if hv := xui.HoverItem(hEle, pItem.Index, pItem.NState == xcc.List_Item_State_Stay); hv > 0 {
+		p.FillRound(&rc, th.Muted.ScaleAlpha(0.5*hv), 0) // hover:bg-muted/50
 	}
 	// 行底边: 最后一行不画(tbody 的 [&_tr:last-child]:border-0)
 	if pItem.Index < t.Rows()-1 {

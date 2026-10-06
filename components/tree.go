@@ -257,11 +257,11 @@ func (t *Tree) onDrawItem(hEle, hDraw int, pItem *xc.Tree_Item_, pbHandled *bool
 		Right:  rc.Right - treeRowInset,
 		Bottom: rc.Bottom,
 	}
-	switch pItem.NState {
-	case xcc.Tree_Item_State_Stay:
-		p.FillRound(&vis, th.Accent, 6) // hover:bg-accent
-	case xcc.Tree_Item_State_Select:
+	// 行底: 选中立即到位, 悬停从宿主底色淡入 bg-accent(行本身透出 Card, 见 surface)
+	if pItem.NState == xcc.Tree_Item_State_Select {
 		p.FillRound(&vis, th.Accent, 6) // data-selected:bg-accent
+	} else if hv := xui.HoverItem(hEle, pItem.NID, pItem.NState == xcc.Tree_Item_State_Stay); hv > 0 {
+		p.FillRound(&vis, xui.Fade(t.surface(th), th.Accent, hv), 6) // hover:bg-accent
 	}
 
 	// 祖先层级缩进参考线: 穿过各级展开按钮的中心(1px, border 色)

@@ -14,6 +14,8 @@ shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。当前 P0 运�
 
 hover 透明度(/80 等)、focus-visible 键盘才显示焦点框(ring-3 ring-ring/50 + 边框变 Ring 色;文本输入框点击也显示)、disabled 原色 opacity-50、active:translate-y-px 按压下沉 1px(文字需手动绘制)、destructive 软色调。焦点来源跟踪在 `focus.go`。
 
+hover 过渡(150ms cubic-bezier(0.4,0,0.2,1))一律用运行时的 `xui.Hover(hEle, 悬停中)` / `xui.HoverItem(hOwner, 索引, 悬停中)` 取值 + `xui.Fade(静止色, 悬停色, hv)` 取色(叠加层用 `ScaleAlpha(hv)`);**不要在组件里自己起定时器或缓存过渡值**(驱动/生命周期归运行时,见 DESIGN 第八节 45)。
+
 ## 常用命令
 
 ```bash

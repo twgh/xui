@@ -684,8 +684,8 @@ func (t *iconTile) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	th := xui.Current()
 	// 透明子元素重绘不会擦底: 先铺宿主底色(卡片), 否则 hover 离开后残留高亮块(见 DESIGN 第八节 28)
 	p.FillRound(&p.Rc, th.Card, 0)
-	if t.hover {
-		p.FillRound(&p.Rc, th.Accent, th.RadiusSm())
+	if hv := xui.Hover(hEle, t.hover); hv > 0 {
+		p.FillRound(&p.Rc, th.Accent.ScaleAlpha(hv), th.RadiusSm())
 	}
 	if t.name == "" {
 		return 0

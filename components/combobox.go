@@ -370,9 +370,10 @@ func comboPopupDrawItem(hEle int, hDraw int, pItem *xc.ListBox_Item_, pbHandled 
 	}
 	hot := pItem.NState == xcc.List_Item_State_Stay || pItem.NState == xcc.List_Item_State_Select ||
 		(pItem.NState == xcc.List_Item_State_Leave && pItem.Index == sel)
-	if hot {
+	// 高亮叠在弹层底色(popover)之上, 按过渡值淡入淡出
+	if hv := xui.HoverItem(hEle, pItem.Index, hot); hv > 0 {
 		// rounded-md 在 shadcn 里 = var(--radius)-4 = 6, 对应本主题的 RadiusSm
-		p.FillRound(&pItem.RcItem, t.Accent, t.RadiusSm())
+		p.FillRound(&pItem.RcItem, t.Accent.ScaleAlpha(hv), t.RadiusSm())
 	}
 	if pItem.Index == sel {
 		rc := pItem.RcItem

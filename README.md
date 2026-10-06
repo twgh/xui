@@ -87,6 +87,16 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 
 每个组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环。
 
+hover 带过渡动画(默认 **150ms + cubic-bezier(0.4,0,0.2,1)**,与 tailwind / shadcn 的 `transition-*`
+默认值一致;表格行/树行/菜单条目这类逐项高亮同样有过渡)。过渡由运行时管理(临时开一个约 30ms/帧的
+定时器,跑完自动关,静止时零开销),组件侧只写一行:`hv := xui.Hover(hEle, st.Hover)` +
+`xui.Fade(静止色, 悬停色, hv)`。整体时长/开关可调:
+
+```go
+xui.SetHoverDuration(200 * time.Millisecond) // 改时长
+xui.SetHoverDuration(0)                      // 关掉过渡(立即到位)
+```
+
 ## 图标
 
 运行时自带一份预处理好的 lucide 图标资源(2130 个,当前版本见 `icons.Version`),
@@ -127,7 +137,7 @@ xui list              # 列出可用组件
 - **copy-not-install**:组件源码进你的仓库,可改可删,不受上游版本绑架——组件是起点,不是黑盒。
 - **行为/视觉分层**:xcgui 原生控件当作"无头"层(事件/状态/焦点/输入法),`AddEvent_Paint` + `drawx` 只负责外观。
 - **绘制时取令牌**:组件永不缓存颜色,这是零成本换肤的前提;需要同步给原生 API 的颜色(Edit 文字色、窗口底色)通过 `xui.OnThemeChange` 订阅。
-- **组件文件薄**:绘制细节下沉到运行时助手(`xui.Painter`),拷贝文件主要是"变体→令牌映射 + 几笔绘制",降低升级冲突面。
+- **组件文件薄**:绘制细节下沉到运行时助手(`xui.Painter`);连 hover 过渡这种"要定时器/要生命周期"的脏活也归运行时(`xui.Hover`/`HoverItem`/`Fade`),拷贝文件主要是"变体→令牌映射 + 几笔绘制",降低升级冲突面。
 - **交互语义对齐 shadcn 源码**:hover 透明度、focus-visible(键盘才显示焦点框)、disabled opacity-50、按压下沉等均逐条对照本地参考实现的组件源码实现。
 
 ## 已知约束

@@ -225,13 +225,15 @@ func (s *Slider) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 滑块 hover / 拖动中 / focus-visible → ring-3 ring-ring/50
 	// (ring 半径 = sliderHalo, 两端刚好落在元素客户区边缘, 不再被裁剪)
-	if !st.Disabled && (s.hover || s.drag || (st.Focused && xui.FocusedByKeyboard())) {
+	// 三种触发都带过渡: slider.tsx 滑块上的 transition-[color,box-shadow]
+	haloOn := !st.Disabled && (s.hover || s.drag || (st.Focused && xui.FocusedByKeyboard()))
+	if hv := xui.Hover(hEle, haloOn); hv > 0 {
 		p.FillRound(&xc.RECT{
 			Left:   center - sliderHalo,
 			Top:    cy - sliderHalo,
 			Right:  center + sliderHalo,
 			Bottom: cy + sliderHalo,
-		}, t.Ring.WithAlpha(128), sliderHalo)
+		}, t.Ring.WithAlpha(128).ScaleAlpha(hv), sliderHalo)
 	}
 
 	// 滑块本体: border-ring bg-white(shadcn 里滑块底色是字面量 white, 两个主题都一样)
