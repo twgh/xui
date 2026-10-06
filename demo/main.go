@@ -126,28 +126,28 @@ func main() {
 	// 显示布局对象边界按钮(ghost 图标按钮, 与最小化/关闭同排同款):
 	// 图标显示点击后的动作 —— 隐藏时 eye(去看), 显示时 eye-off(去关)
 	btnShowLayoutFrame := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconEye))
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconEye))
 	tip.Bind(btnShowLayoutFrame.Handle, "显示/隐藏布局对象边界")
 	itemFixed(btnShowLayoutFrame, capBtnW, capBtnH)
 	btnShowLayoutFrame.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		showLayoutFrame = !showLayoutFrame
 		app.ShowLayoutFrame(showLayoutFrame) // 显示布局对象边界
-		btnShowLayoutFrame.SetIcon(common.Choose(showLayoutFrame, xui.IconEyeOff, xui.IconEye))
+		btnShowLayoutFrame.SetIcon(common.Choose(showLayoutFrame, icons.IconEyeOff, icons.IconEye))
 		w.Redraw(false)
 		return 0
 	})
 
 	// 主题切换按钮: 图标显示切换目标 —— 亮色时 moon(去暗色), 暗色时 sun(去亮色)
 	toggle := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconMoon))
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMoon))
 	tip.Bind(toggle.Handle, "切换主题")
 	itemFixed(toggle, capBtnW, capBtnH)
 	if dark {
-		toggle.SetIcon(xui.IconSun)
+		toggle.SetIcon(icons.IconSun)
 	}
 	toggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		dark = !dark
-		toggle.SetIcon(common.Choose(dark, xui.IconSun, xui.IconMoon))
+		toggle.SetIcon(common.Choose(dark, icons.IconSun, icons.IconMoon))
 		xui.SetTheme(common.Choose(dark, xui.Dark(), xui.Light()))
 		// 切换主题会重绘窗口, 所以 toggle 不用单独重绘
 		return 0
@@ -155,12 +155,12 @@ func main() {
 
 	// 控制按钮
 	btnMin := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconMinus))
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMinus))
 	btnMin.SetTypeEx(xcc.Button_Type_Min)
 	itemFixed(btnMin, capBtnW, capBtnH)
 
 	btnClose := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconX))
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconX))
 	btnClose.SetTypeEx(xcc.Button_Type_Close)
 	itemFixed(btnClose, capBtnW, capBtnH)
 

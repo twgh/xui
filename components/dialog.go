@@ -8,6 +8,7 @@ import (
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
+	"github.com/twgh/xui/icons"
 )
 
 // 对话框几何常量(与 shadcn dialog.tsx 的类名逐条对应, 单位逻辑像素):
@@ -124,7 +125,7 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 
 	if d.showClose {
 		d.closeBtn = NewButton(0, 0, dlgCloseSize, 0, "", d.overlay.Handle,
-			WithVariant(ButtonGhost), WithSize(ButtonSizeSm), WithIcon(xui.IconX))
+			WithVariant(ButtonGhost), WithSize(ButtonSizeSm), WithIcon(icons.IconX))
 		if d.closeBtn != nil {
 			d.closeBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 				d.Close()

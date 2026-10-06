@@ -22,32 +22,15 @@ import (
 //     几何精确, 是当前的主路径;
 //  2. 折线描边(DrawLine)回落: 只在 GDI 渲染(app.New(false))或 D2D 资源创建失败时使用。
 //
-// 图标从哪来: 内建常量(本文件下方, 组件自用) / 全量资源子包 icons.Path("star")
-// / 直接贴 lucide 的 path 数据(见 https://lucide.dev)。
-
-// 内建图标(24x24 viewBox, lucide 原样数据)。
+// 图标从哪来 —— 全在子包 github.com/twgh/xui/icons(数据由 scripts/gen_icons.py 生成):
 //
-// 这几个是**组件自己要用**的图标: 下拉箭头(ComboBox/菜单)、勾选(ComboBox/菜单)、
-// 关闭/最小化(Dialog/标题栏)、明暗切换(Sun/Moon)、眼睛(Eye/EyeOff)等。
-// 它们以常量内联在运行时包里 —— 编译期内联进调用点, **零体积成本**。
+//	p.Icon(icons.IconChevronDown, &rc, color, 2) // 常量: 编译期内联, 零体积成本(推荐)
+//	p.Icon(icons.Path("star"), &rc, color, 2)    // 按名字取: 会把整张资源表链进二进制
 //
-// 全量 2100+ 个图标在子包 github.com/twgh/xui/icons(按 lucide 名字取: icons.Path("star")),
-// 但那份数据表约 350KB(实测链进二进制 +425KB), 组件只为 4 个图标不值得让每个用户程序都背它,
-// 所以这里保留常量。手抄漂移由 icons_test.go 断言(与资源里的同名图标逐字节一致)。
-const (
-	IconChevronDown  = "M6 9L12 15L18 9"       // lucide ChevronDown
-	IconChevronUp    = "M18 15L12 9L6 15"      // lucide ChevronUp
-	IconChevronLeft  = "M15 18L9 12L15 6"      // lucide ChevronLeft
-	IconChevronRight = "M9 18L15 12L9 6"       // lucide ChevronRight
-	IconCheck        = "M20 6L9 17L4 12"       // lucide Check
-	IconX            = "M18 6L6 18 M6 6L18 18" // lucide X
-	IconMinus        = "M5 12L19 12"           // lucide Minus
-
-	IconEye    = "M2.062 12.348A1 1 0 0 1 2.062 11.652A10.75 10.75 0 0 1 21.938 11.652A1 1 0 0 1 21.938 12.348A10.75 10.75 0 0 1 2.062 12.348 M12 9A3 3 0 1 1 12 15A3 3 0 1 1 12 9Z"                                                                                            // lucide Eye
-	IconEyeOff = "M10.733 5.076A10.744 10.744 0 0 1 21.938 11.651A1 1 0 0 1 21.938 12.347A10.747 10.747 0 0 1 20.494 14.837 M14.084 14.158A3 3 0 0 1 9.842 9.916 M17.479 17.499A10.75 10.75 0 0 1 2.062 12.348A1 1 0 0 1 2.062 11.652A10.75 10.75 0 0 1 6.508 6.509 M2 2L22 22" // lucide EyeOff
-	IconSun    = "M12 8A4 4 0 1 1 12 16A4 4 0 1 1 12 8Z M12 2L12 4 M12 20L12 22 M4.93 4.93L6.34 6.34 M17.66 17.66L19.07 19.07 M2 12L4 12 M20 12L22 12 M6.34 17.66L4.93 19.07 M19.07 4.93L17.66 6.34"                                                                            // lucide Sun
-	IconMoon   = "M20.985 12.486A9 9 0 1 1 11.512 3.014C11.917 2.992 12.129 3.474 11.914 3.817A6 6 0 0 0 20.182 12.085C20.526 11.87 21.007 12.081 20.985 12.486"                                                                                                                // lucide Moon
-)
+// 每个图标都有一个 `icons.IconXxx` 常量(名字是 lucide 名的驼峰形式, 见子包文档),
+// 只用常量的程序**一个字节都不多花**; `icons.Path` 是给"名字来自用户输入/配置"的场合
+// 准备的, 代价是整张表(2130 个图标约 350KB)跟着进二进制。也可以直接贴 lucide 的
+// path 数据(见 https://lucide.dev)。
 
 // Icon 在 rc 内按 lucide 几何绘制一枚描边图标(等比铺满)。
 // strokeWidth 用 24 网格单位, lucide 默认为 2。

@@ -119,93 +119,6 @@ func TestGeneratedIcons(t *testing.T) {
 	}
 }
 
-// builtinIcons 是运行时内联的图标常量(组件自用, 见 icons.go 顶部注释)。
-var builtinIcons = map[string]string{
-	"chevron-down":  IconChevronDown,
-	"chevron-up":    IconChevronUp,
-	"chevron-left":  IconChevronLeft,
-	"chevron-right": IconChevronRight,
-	"check":         IconCheck,
-	"x":             IconX,
-	"minus":         IconMinus,
-	"eye":           IconEye,
-	"eye-off":       IconEyeOff,
-	"sun":           IconSun,
-	"moon":          IconMoon,
-}
-
-// TestBuiltinIconsMatchResource 断言内联常量与资源子包里的同名图标画的是同一个图形。
-//
-// 为什么需要: 常量是手抄的 lucide 数据(为了不把 350KB 资源表链进每个用户程序), 手抄就会漂移 ——
-// 资源重新生成(或 lucide 改图形)后这里立刻报出来。两边文本不同(资源是绝对化 + 两位小数),
-// 所以比的是**解析后的几何**: 子路径数、填充标记、逐点距离。
-func TestBuiltinIconsMatchResource(t *testing.T) {
-	for name, d := range builtinIcons {
-		if !icons.Has(name) {
-			t.Errorf("资源里没有 %q", name)
-			continue
-		}
-		want, okW := parseIconPathEx(icons.Path(name))
-		got, okG := parseIconPathEx(d)
-		if !okW || !okG {
-			t.Errorf("%s: 未被完整解析(资源 %v / 常量 %v)", name, okW, okG)
-			continue
-		}
-		if len(want) != len(got) {
-			t.Errorf("%s: 子路径数 资源 %d / 常量 %d", name, len(want), len(got))
-			continue
-		}
-		for i := range want {
-			a, b := want[i], got[i]
-			if a.filled != b.filled {
-				t.Errorf("%s 子路径 %d: 填充标记 资源 %v / 常量 %v", name, i, a.filled, b.filled)
-			}
-			// 两端写法可能不同(圆弧的分段数与起点不同), 所以不能逐点比 —— 比的是"两条折线贴不贴"。
-			// 常量就是从资源抄来的, 阈值只留浮点取整的余量。
-			if d := plDist(a.pts, b.pts); d > 0.02 {
-				t.Errorf("%s 子路径 %d: 与资源的形状距离 %.3f 网格单位(>0.02) —— 常量与资源不一致(手抄漂移或 lucide 改了图形)",
-					name, i, d)
-			}
-		}
-	}
-}
-
-// plDist 量两条折线的最大偏差(单向 Hausdorff 的对称化)。
-// 弧线离散方式不同会导致采样点错位, 但同一图形的偏差只有离散步长的量级(<< 0.1 网格单位)。
-func plDist(a, b []iconPt) float64 {
-	return math.Max(directedDist(a, b), directedDist(b, a))
-}
-
-func directedDist(from, to []iconPt) float64 {
-	worst := 0.0
-	for _, p := range from {
-		best := math.MaxFloat64
-		for i := 0; i+1 < len(to); i++ {
-			if d := ptSegDist(p, to[i], to[i+1]); d < best {
-				best = d
-			}
-		}
-		if best > worst {
-			worst = best
-		}
-	}
-	return worst
-}
-
-func ptSegDist(p, a, b iconPt) float64 {
-	px, py := float64(p.x), float64(p.y)
-	ax, ay := float64(a.x), float64(a.y)
-	bx, by := float64(b.x), float64(b.y)
-	dx, dy := bx-ax, by-ay
-	l2 := dx*dx + dy*dy
-	t := 0.0
-	if l2 > 0 {
-		t = ((px-ax)*dx + (py-ay)*dy) / l2
-		t = math.Max(0, math.Min(1, t))
-	}
-	return math.Hypot(px-(ax+t*dx), py-(ay+t*dy))
-}
-
 // TestIconGeometryFigureCount 守住"每條子路径一条轮廓"这条性能红线:
 // D2D 填充自重叠路径是 stencil-and-cover, 代价随 figure 数近似平方增长 ——
 // 一旦退回"每段一个四边形 + 每个顶点一个圆帽"的图元汤写法, 45 个图标同框的
@@ -270,7 +183,7 @@ func TestStrokeOutline(t *testing.T) {
 
 	// X 图标: 两笔(两条折线)的轮廓绕向必须一致
 	var signs []int
-	for _, fig := range iconStrokeFigures(parseIconPath(IconX), 0, 0, 10.0/24, 2*10.0/24) {
+	for _, fig := range iconStrokeFigures(parseIconPath(icons.IconX), 0, 0, 10.0/24, 2*10.0/24) {
 		area := signedArea(fig)
 		if area > 0 {
 			signs = append(signs, 1)

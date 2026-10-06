@@ -8,6 +8,7 @@ import (
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
+	"github.com/twgh/xui/icons"
 )
 
 // ComboBox 自绘下拉选择框: 载体为原生 ComboBox(弹出、选择、键盘/滚动行为全部原生),
@@ -170,7 +171,7 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		Right:  p.Rc.Right - 10,
 		Bottom: p.Rc.Top + (p.H()-16)/2 + 16,
 	}
-	p.Icon(xui.IconChevronDown, &icon, t.MutedFore, 2)
+	p.Icon(icons.IconChevronDown, &icon, t.MutedFore, 2)
 	return 0
 }
 
@@ -381,7 +382,7 @@ func comboPopupDrawItem(hEle int, hDraw int, pItem *xc.ListBox_Item_, pbHandled 
 			Right:  rc.Right - 8,
 			Bottom: rc.Top + (rc.Bottom-rc.Top+16)/2,
 		}
-		p.Icon(xui.IconCheck, &icon, t.PopoverFore, 2)
+		p.Icon(icons.IconCheck, &icon, t.PopoverFore, 2)
 	}
 	return 0
 }

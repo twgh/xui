@@ -12,6 +12,7 @@ import (
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
+	"github.com/twgh/xui/icons"
 )
 
 // Menu 下拉菜单: 载体为原生 Menu(弹出/键盘导航/子菜单/边缘翻转全部原生),
@@ -455,9 +456,9 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 			Bottom: rc.Top + (rc.Bottom-rc.Top+16)/2,
 		}
 		if it.kind == menuKindSub {
-			p.Icon(xui.IconChevronRight, &iconRc, fore, 2)
+			p.Icon(icons.IconChevronRight, &iconRc, fore, 2)
 		} else {
-			p.Icon(xui.IconCheck, &iconRc, fore, 2)
+			p.Icon(icons.IconCheck, &iconRc, fore, 2)
 		}
 	}
 	return 0

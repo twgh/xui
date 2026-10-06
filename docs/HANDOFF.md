@@ -38,13 +38,15 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
 │   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go  menu.go
 │   ├── label.go   separator.go(含 Badge)  card.go  table.go  tree.go
-├── icons\                        图标资源子包: lucide 预处理数据(2121 个) + Path/Has/Names
-├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(重新生成时才需要跑)
+├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
+│                                 IconXxx 常量 + Path/Has/Names/Count/Version
+├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
+│                                 + icons\lucide_icons_*.go(图标常量, 每 400 个一个文件)
 ├── cmd\xui\                      CLI(init/add/list)
 ├── icons_test.go                 解析器语法 + 资源完整性测试(go test ./...)
 ├── demo\                         演示应用(也是全组件编译测试目标)
 ├── registry.json                 组件清单(files + deps)
-├── DESIGN.md                     架构设计 + xcgui 踩坑清单(第八节必读)
+├── docs\DESIGN.md                架构设计 + xcgui 踩坑清单(第八节必读)
 ├── README.md                     用法
 └── AGENTS.md                     agent 会话自动加载的入口规则
 
@@ -185,13 +187,17 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 
 ## 已完成: lucide 图标资源(预处理)
 
-- `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), 用法
-  `p.Icon(icons.Path("eye"), &rc, color, 2)`;数据由 `scripts/gen_icons.py` 从 `lucide-static` 的 SVG 生成
-  (图元转换 / 相对指令绝对化 / 数字归一 / `!` 填充标记)。**生成器默认取最新版**, `--version` 可钉版
+- `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), **每图标一个 `IconXxx` 常量**
+  (推荐: `p.Icon(icons.IconEye, &rc, color, 2)`) + 按名字取(`icons.Path("eye")`, 给"名字来自用户
+  输入/配置"的场合)。数据由 `scripts/gen_icons.py` 从 `lucide-static` 的 SVG 生成(图元转换 /
+  相对指令绝对化 / 数字归一 / `!` 填充标记), 一次产出名字表 `lucide_gen.go` 与常量
+  `lucide_icons_*.go`(表里存的就是常量本身)。**生成器默认取最新版**, `--version` 可钉版
   (要跟参考实现严格对齐时钉 lucide-react 的同版本)。
-- 组件内部用的 11 个图标保留成 `xui.IconXxx` 常量: 实测 import 资源表 +425KB 二进制, 而组件只用 4 个;
-  常量零成本, 漂移由 `TestBuiltinIconsMatchResource`(几何一致性)守着 —— **这条测试上线当天就抓到
-  `eye`/`moon` 常量是旧版 lucide 的图形**, 已更正。
+- 体积(实测 2026-10-06, 同基准 `-s -w`): 只用常量 **+0 字节**(2130 条数据只进 1 条),
+  调 `Path`/`Names` 等引用整张表 **+426KB**。组件也改用它了 —— 上一版手抄的 11 个 `xui.IconXxx`
+  常量已删(手抄漂移当天就被测试抓到过 `eye`/`moon` 是旧版图形), 现在漂移在结构上不可能。
+- 名字映射是**单射**的硬要求: lucide 有成对的"只差一个连字符"的名字(`arrow-down-0-1` /
+  `arrow-down-01` 是别名, 数据相同), 生成器在"数字段紧跟数字段"处补下划线(见 DESIGN.md 第八节 44)。
 - 转换规则与三个隐蔽坑(SVG 每个图元独立坐标系必须绝对化;arc 标志位是单字符, `a.25.25 0 00.407.195`
   按数字切会静默丢半张图;`fill=currentColor` 图元同时继承描边, 要输出"填充+描边"两条)记在
   **DESIGN.md 第八节 44**;运行时解析器同步修好, 现在贴 lucide 原始 path 也不会断。

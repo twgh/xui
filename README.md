@@ -89,21 +89,25 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 
 ## 图标
 
-运行时自带一份预处理好的 lucide 图标资源(2100+ 个,当前版本见 `icons.Version`),
-描边用直通 D2D 几何填充出图(自带抗锯齿),名字就是 lucide 的 kebab-case 名:
+运行时自带一份预处理好的 lucide 图标资源(2130 个,当前版本见 `icons.Version`),
+描边用直通 D2D 几何填充出图(自带抗锯齿)。**每个图标一个常量**,名字是 lucide 名的驼峰形式:
 
 ```go
 import "github.com/twgh/xui/icons"
 
-p.Icon(icons.Path("eye"), &rc, xui.Current().Foreground, 2)
-p.Icon(icons.Path("chart-scatter"), &rc, color, 2)   // 含"填充点"的图标也照渲染
-icons.Has("star"); icons.Names(); icons.Count()      // 查询
+p.Icon(icons.IconEye, &rc, xui.Current().Foreground, 2)   // 常量: 编译期内联, 零体积成本
+p.Icon(icons.IconChartScatter, &rc, color, 2)             // 含"填充点"的图标也照渲染
+
+// 名字来自用户输入/配置时按名字取 —— 会把整张资源表链进二进制(实测 +426KB):
+p.Icon(icons.Path("eye"), &rc, color, 2)
+icons.Has("star"); icons.Names(); icons.Count()           // 查询
 ```
 
 也可以直接把任意 lucide path 数据贴进 `Painter.Icon`(24 网格,`strokeWidth` 用 24 网格单位,
-lucide 默认 2)。组件内部默认用到的几个图标是 `xui.IconXxx` 常量(编译期内联, 不引入整张
-资源表; 实测资源表链进二进制 +425KB)。资源由 `scripts/gen_icons.py` 从 `lucide-static`
-生成(默认取最新版, `--version` 可钉版),转换规则与踩坑见 docs/DESIGN.md 第八节 44。
+lucide 默认 2)。组件内部用到的图标同样取 `icons.IconXxx`:实测"只用常量"的程序体积增量
+**0 字节**(2130 条数据里只进用到的那条),所以组件、业务代码都推荐用常量。资源与常量由
+`scripts/gen_icons.py` 一起生成(默认取最新版, `--version` 可钉版),转换规则与踩坑见
+docs/DESIGN.md 第八节 44。
 
 demo 的第 6 个页签「图标」可以翻页浏览整份资源。
 

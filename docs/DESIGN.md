@@ -463,14 +463,20 @@ myapp/
       **同时继承根节点的描边**, 浏览器里是两者的并集 —— `circle r=.5` 实际画成半径 1.5 的实心点。
       像素实测(64px 图标):只填充 = 4x4 物理像素/16 像素墨量, 参考 = 12x12/120 像素。生成器用 `!` 前缀标填充,
       并对这类图元额外输出一条普通描边子路径, 与 lucide-react 渲染一致。
-    - **放独立子包**(`github.com/twgh/xui/icons`):数据 400KB, 只有 import 它的程序才链进二进制。
-      API: `Path/Has/Names/Count/Version`。
-    - **组件内部用的几个图标保留成 `xui.IconXxx` 常量**(chevron/check/x/minus/eye/eye-off/sun/moon 等 11 个):
-      实测 import 资源表会让二进制 **+425KB**(1998848 → 2424320, `-s -w`), 而组件只需要 4 个图标 ——
-      常量在编译期内联, 零体积成本。代价是"手抄会漂移", 由 `icons_test.go` 的
-      `TestBuiltinIconsMatchResource` 兜住: 断言常量与资源里的同名图标**几何一致**(折线 Hausdorff 距离 ≤ 0.02 网格单位)。
-      **这条测试上线当天就抓到 `eye`/`moon` 两个常量是旧版 lucide 的图形**(lucide 改过这两个图标),
-      已按 1.52.0 的数据更正 —— 手抄常量必须留这种守卫。
+    - **放独立子包**(`github.com/twgh/xui/icons`):数据 ~360KB, 且**每图标一个 `IconXxx` 常量**。
+      实测(2026-10-06, 同一基准比 `go build -ldflags="-s -w"` 的产物):只用常量 `icons.IconEye`
+      是 **+0 字节**(二进制里 2130 条数据只进了 1 条), 调用 `icons.Path(name)`/`Has`/`Names` 会引用
+      整张表 **+426KB**(1999360 → 2425856)。所以组件与业务代码都直接用常量, `Path` 留给
+      "名字来自用户输入/配置"的场合。API: `Path/Has/Names/Count/Version` + 2130 个常量。
+    - **常量必须由生成器产出, 不能手抄**:上一版把手写的 11 个图标常量放进运行时包(编译期内联,
+      零成本), 代价是"手抄会漂移" —— 上线当天那条几何一致性测试就抓到 `eye`/`moon` 是旧版图形。
+      现在常量与名字表由 `gen_icons.py` 一次产出(表里存的就是常量本身, `{"chevron-down", IconChevronDown}`),
+      漂移在结构上不可能发生, 那条守卫测试与 11 个手抄常量一起删掉了。
+    - **名字映射必须单射**:lucide 里存在成对的"只差一个连字符"的名字 —— `arrow-down-0-1` 与
+      `arrow-down-01`、`axis-3-d` 与 `axis-3d`、`grid-2-x-2` 与 `grid-2x2`(前者是后者的废弃别名,
+      数据完全相同), 直接驼峰化会撞成同一个常量名。规则:逐段首字母大写, **"数字段紧跟数字段"
+      处补下划线**(`IconArrowDown0_1` / `IconArrowDown01`), 其余边界靠大小写区分(`IconAxis3D` /
+      `IconAxis3d`);生成器另有冲突检查(撞了就报错退出, 不静默覆盖), 抽查用例钉在 `SPOT` 里。
     - **资源完整性用测试守**:`icons_test.go` 遍历全部 2130 个图标, 断言解析器能**完整**吃下每条数据
       (`parseIconPathEx` 的 complete 标志, 正是上面那类静默截断的探针)、点落在 24 网格内、填充标记存在。
       预处理回归时立刻炸, 不用靠肉眼比对整本图标。

@@ -68,8 +68,9 @@ func WithVariant(v ButtonVariant) ButtonOption { return func(b *Button) { b.vari
 // WithSize 设置按钮尺寸预设。
 func WithSize(s ButtonSize) ButtonOption { return func(b *Button) { b.size = s } }
 
-// WithIcon 让按钮绘制图标(path 为 lucide 24x24 path 数据, 见 xui.IconX / IconCheck 等),
-// 替代文字。图标按 size-4(16px)居中绘制, 配合 ButtonSizeSm 即 shadcn 的 icon-sm 图标按钮。
+// WithIcon 让按钮绘制图标, 替代文字(要通常直接用 github.com/twgh/xui/icons 子包里
+// 的常量, 如 icons.IconX / icons.IconCheck —— 常量按需链接, 不会把整张图标表带进二进制)。
+// 图标按 size-4(16px)居中绘制, 配合 ButtonSizeSm 即 shadcn 的 icon-sm 图标按钮。
 func WithIcon(path string) ButtonOption { return func(b *Button) { b.icon = path } }
 
 // pressShift 是按下位移量(逻辑像素), 对应 shadcn 的 active:translate-y-px。
@@ -121,8 +122,9 @@ func (b *Button) SetVariant(v ButtonVariant) *Button {
 // Spec 返回当前尺寸规格。
 func (b *Button) Spec() buttonSpec { return buttonSpecs[b.size] }
 
-// SetIcon 设置/替换按钮图标(path 为 lucide 24x24 path 数据, 见 xui.IconEye / xui.IconSun 等)。
-// 传空串恢复文字绘制。用于图标按钮的状态切换(如 eye/eye-off、sun/moon)。
+// SetIcon 设置/替换按钮图标(path 同 WithIcon)。
+// 传空串恢复文字绘制。用于图标按钮的状态切换(如 icons.IconEye / icons.IconEyeOff、
+// icons.IconSun / icons.IconMoon)。
 func (b *Button) SetIcon(path string) *Button {
 	b.icon = path
 	b.Redraw(false)
