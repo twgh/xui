@@ -509,7 +509,7 @@ func buildPage(hWindow, hParent int) {
 
 	desc := ui.NewLabel(0, 0, 0, 0,
 		"原生 List 载体 + 全自绘皮肤: 表头/行底/行边框/滚动条; 行悬浮 hover:bg-muted/50, 选中 bg-muted, 最后一行不画底边。", v6.Handle).SetMuted()
-	desc.SetTextAlign(xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter | xcc.TextTrimming_EllipsisCharacter)
+	desc.SetTextAlign(desc.GetTextAlign() ^ xcc.TextFormatFlag_NoWrap)
 	itemFill(desc, 48)
 
 	demoTable = ui.NewTable(0, 0, card6.ContentWidth(), 180, v6.Handle, []ui.TableColumn{
@@ -544,8 +544,10 @@ func buildPage(hWindow, hParent int) {
 	card7 := ui.NewCard(24, 0, 360, 470, pTree.Handle)
 	v7 := vStack(card7, 14)
 	itemFill(ui.NewCardTitle(0, 0, 0, "树形视图", v7.Handle), 24)
-	itemFill(ui.NewLabel(0, 0, 0, 0,
-		"原生 Tree 载体 + 全自绘皮肤: 缩进参考线/旋转 chevron/行悬浮选中。点击 chevron 或文字选中。", v7.Handle).SetMuted(), 48)
+	desc = ui.NewLabel(0, 0, 0, 0,
+		"原生 Tree 载体 + 全自绘皮肤: 缩进参考线/旋转 chevron/行悬浮选中。点击 chevron 或文字选中。", v7.Handle).SetMuted()
+	desc.SetTextAlign(desc.GetTextAlign() ^ xcc.TextFormatFlag_NoWrap)
+	itemFill(desc, 48)
 
 	demoTree = ui.NewTree(0, 0, card7.ContentWidth(), 0, v7.Handle)
 	itemFixed(demoTree, card7.ContentWidth(), 322)
@@ -562,7 +564,7 @@ func buildPage(hWindow, hParent int) {
 		"行高 32(h-8), 视觉矩形左右内缩 4, 圆角 6",
 		"行悬浮 bg-accent, 选中 bg-accent",
 		"每级缩进 16, 祖先层级画 1px 参考线",
-		"chevron size-4 muted: 收起朝右/展开朝下",
+		"chevron 加大居中于点击热区: 收起朝右/展开朝下",
 		"叶节点留空槽位, 文字全树对齐",
 		"条目文字 text-sm foreground",
 	} {

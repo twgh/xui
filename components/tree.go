@@ -11,17 +11,17 @@ import (
 // 对齐本项目已验收组件: 行高 h-8(32) 同侧栏菜单项, 圆角 rounded-md(6) 同菜单条目,
 // 悬浮/选中 bg-accent 同 select/menu 条目, 每级缩进 16(size-4), chevron size-4。
 const (
-	treeRowH     int32 = 32 // h-8
-	treeIndent   int32 = 16 // 每级缩进 size-4
-	treeChevron  int32 = 16 // chevron 图标 size-4
-	treeRowInset int32 = 4  // 行视觉矩形左右内缩(mx-1), 命中区域仍是整行
-	treeRowPad   int32 = 4  // 行视觉矩形到缩进槽的起点(原生内容区 padding, 探针实测 ≈4)
-	treeGap      int32 = 4  // chevron 与文字的间距(gap-1)
+	treeRowH       int32 = 32 // h-8
+	treeIndent     int32 = 16 // 每级缩进 size-4
+	treeRowInset   int32 = 4  // 行视觉矩形左右内缩(mx-1), 命中区域仍是整行
+	treeChevronW   int32 = 6  // chevron 字形横向跨度(收起朝右为 W×H; lucide 比例的 1.25 倍)
+	treeChevronH   int32 = 10 // chevron 字形纵向跨度(展开朝下旋转 90°, 宽高互换为 H×W)
+	treeBtnInset   int32 = 1  // 原生展开按钮左缘相对 RcItem.Left 的偏移(布局边框实测 ≈1.3)
 
-	// 自定义项模板: 行高 32(与 SetItemHeightDefault 一致), chevron 槽 16×16,
-	// 文字间距 4。展开按钮只是行为载体 —— 其原生 "+/-" 图形在模板创建后用透明
-	// 填充压掉(ClearBkInfo 会回落到系统默认内容, 必须再 AddBkFill 透明色盖住),
-	// 视觉由 DrawItem 回调里的 chevron 接管。
+	// 自定义项模板: 行高 32(与 SetItemHeightDefault 一致), chevron 槽 16×16, 文字间距 4。
+	// 展开按钮只是行为载体(点击热区)——其原生 "+/-" 图形在模板创建后用透明填充压掉
+	// (ClearBkInfo 会回落到系统默认内容, 必须再 AddBkFill 透明色盖住), 视觉由
+	// DrawItem 回调里居中于按钮矩形的折线 chevron 接管。
 	treeTemplateXML = `<?xml version="1.0" encoding="UTF-8"?>
 <head />
 <xc_template_tree>
@@ -264,25 +264,27 @@ func (t *Tree) onDrawItem(hEle, hDraw int, pItem *xc.Tree_Item_, pbHandled *bool
 		p.FillRound(&vis, th.Accent, 6) // data-selected:bg-accent
 	}
 
-	// 祖先层级缩进参考线: 每级槽位居中 1px(border 色)
+	// 祖先层级缩进参考线: 穿过各级展开按钮的中心(1px, border 色)
 	for i := int32(0); i < pItem.NDepth; i++ {
-		gx := rc.Left + treeRowInset + treeRowPad + i*treeIndent + treeIndent/2
+		gx := rc.Left + treeBtnInset + i*treeIndent + treeIndent/2
 		p.Line(gx, vis.Top, gx, vis.Bottom, th.Border, 1)
 	}
 
-	// chevron: 有子项才画, 收起朝右/展开朝下; 叶节点留空槽位(文字全树对齐)
+	// chevron: 有子项才画, 收起朝右/展开朝下(lucide 6:12 比例的两段折线);
+	// 中心对准原生展开按钮矩形 —— 按钮是点击热区, 图标偏出热区会点不到(实测踩坑);
+	// 叶节点不画但保留槽位(文字全树对齐)
 	if t.HasChildren(pItem.NID) {
-		box := xc.RECT{
-			Left:   rc.Left + treeRowInset + treeRowPad + pItem.NDepth*treeIndent,
-			Top:    rc.Top + (pItem.NHeight-treeChevron)/2,
-			Right:  rc.Left + treeRowInset + treeRowPad + pItem.NDepth*treeIndent + treeChevron,
-			Bottom: rc.Top + (pItem.NHeight-treeChevron)/2 + treeChevron,
-		}
-		path := xui.IconChevronRight
+		cx := rc.Left + treeBtnInset + pItem.NDepth*treeIndent + treeIndent/2
+		cy := rc.Top + pItem.NHeight/2
+		w2, h2 := treeChevronW/2, treeChevronH/2
 		if pItem.BExpand {
-			path = xui.IconChevronDown
+			// ˅ = 收起字形顺时针转 90°, 宽高互换(宽 H、高 W), 否则会画成细长的竖箭头
+			p.Line(cx-h2, cy-w2, cx, cy+w2, th.MutedFore, 2) // ˅ 左斜边
+			p.Line(cx, cy+w2, cx+h2, cy-w2, th.MutedFore, 2) // ˅ 右斜边
+		} else {
+			p.Line(cx-w2, cy-h2, cx+w2, cy, th.MutedFore, 2) // > 上斜边
+			p.Line(cx+w2, cy, cx-w2, cy+h2, th.MutedFore, 2) // > 下斜边
 		}
-		p.Icon(path, &box, th.MutedFore, 2)
 	}
 	return 0
 }
