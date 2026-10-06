@@ -142,7 +142,7 @@ func createSolidColorBrush(rt comPtr, c d2dColorF) comPtr {
 // d2dGeomKey 标识一条图标几何。坐标已"一次成型"烘焙成最终绘制坐标,
 // 所以原点(ox/oy)必须进 key, 否则同一图标换个位置会画错地方。
 type d2dGeomKey struct {
-	paths string // 图标 path 原文; IconSearch 用 iconSearchKey 哨兵值
+	paths string // 图标 path 原文(资源里的一条数据, 或调用方自备的 lucide path)
 	ox    int32
 	oy    int32
 	size  int32
