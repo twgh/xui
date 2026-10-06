@@ -121,6 +121,14 @@ func (b *Button) SetVariant(v ButtonVariant) *Button {
 // Spec 返回当前尺寸规格。
 func (b *Button) Spec() buttonSpec { return buttonSpecs[b.size] }
 
+// SetIcon 设置/替换按钮图标(path 为 lucide 24x24 path 数据, 见 xui.IconEye / xui.IconSun 等)。
+// 传空串恢复文字绘制。用于图标按钮的状态切换(如 eye/eye-off、sun/moon)。
+func (b *Button) SetIcon(path string) *Button {
+	b.icon = path
+	b.Redraw(false)
+	return b
+}
+
 // resolve 按主题与状态解析壳体颜色, 与 shadcn button.tsx 的类名逐条对应。
 func (b *Button) resolve(t *xui.Theme, st xui.State) (bg, border xui.Color) {
 	if st.Disabled {
