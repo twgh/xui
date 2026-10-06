@@ -12,10 +12,15 @@ import (
 // 其它图标可从 https://lucide.dev 复制 path 数据交给 Painter.Icon。
 //
 // 为什么不用 SVG 渲染: 炫彩在元素自绘回调里画图片/SVG 不生效(实测 XDraw_DrawSvgEx /
-// XDraw_Image / XDraw_ImageEx 都画不出东西, 见 DESIGN.md 第八节), 所以这里用 drawx 的
-// 线段图元把 path 复刻成折线。
+// XDraw_Image / XDraw_ImageEx 都画不出东西, 见 DESIGN.md 第八节 17), 所以这里自己解析
+// path 几何。
 // 支持 M/L/H/V/C/S/Q/T/Z 及相对指令(曲线按 8 段离散); 圆弧 A/a 转为
 // 多段三次贝塞尔(每段圆心角 <= 90°, 见 arcToBeziers)。
+//
+// 出图有两条路(见 Painter.Icon / Painter.IconSearch):
+//  1. D2D 直通填充(d2dicon.go): 解析出的折线 → CPU 描边展开 → FillGeometry, 抗锯齿、
+//     几何精确, 是当前的主路径;
+//  2. 折线描边(DrawLine)回落: 只在 GDI 渲染(app.New(false))或 D2D 资源创建失败时使用。
 const (
 	IconChevronDown  = "m6 9 6 6 6-6"         // lucide ChevronDown
 	IconChevronUp    = "m18 15-6-6-6 6"       // lucide ChevronUp
@@ -47,7 +52,8 @@ func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float
 		return
 	}
 
-	// 回落: 折线描边(线条图元无 AA, 会有锯齿, 但不是所有环境都有 D2D 目标)
+	// 回落: 折线描边(旧实现。点坐标取整到逻辑像素 + 整数线宽, 小尺寸下不如几何精确,
+	// 但 GDI 渲染模式(app.New(false))没有 D2D 目标, 得有这条兜底)
 	s := float32(size) / 24
 	p.Draw.SetLineWidth(iconLineWidth(strokeWidth, s))
 	p.Draw.SetBrushColor(uint32(color))
