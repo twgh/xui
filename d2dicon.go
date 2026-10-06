@@ -235,6 +235,10 @@ func geomUsable(geom comPtr) bool {
 
 // iconStrokeFigures 把 24 网格的折线子路径"展开"成填充多边形集合。
 //
+// 子路径分两种: 默认是**描边**(展开规则见下); 带 filled 标记的(lucide 的
+// fill="currentColor" 色点, 由解析器的 `!` 前缀标出)整条作为填充多边形入几何 ——
+// 它本来就是实心形状, 按描边处理会变成"胖一圈的空心环"。
+//
 // 规则(lucide 的 stroke-linecap / stroke-linejoin 都是 round):
 //   - 每段向两侧各偏移 w/2 → 一个四边形(闭合 figure);
 //   - 每个顶点补一个半径 w/2 的正多边形圆帽 —— 折线内部是圆角连接, 两个端点是圆头线帽,
@@ -249,7 +253,7 @@ func geomUsable(geom comPtr) bool {
 //
 // 坐标一次性成型: 先按 s=size/24 缩放到逻辑像素, 再按 w(=strokeWidth*s)展开,
 // 最后加 (ox,oy) 偏移 —— 几何里存的就是最终绘制坐标。
-func iconStrokeFigures(subs [][]iconPt, ox, oy int32, s, w float32) [][]float32 {
+func iconStrokeFigures(subs []iconSub, ox, oy int32, s, w float32) [][]float32 {
 	r := w / 2
 	if r <= 0 {
 		return nil
@@ -257,6 +261,15 @@ func iconStrokeFigures(subs [][]iconPt, ox, oy int32, s, w float32) [][]float32 
 	// 圆帽边数: 48px 图标(r=2px)下内接正多边形与真圆的偏差也只有 0.07px, 肉眼不可辨。
 	const capSides = 12
 	figs := make([][]float32, 0, 16)
+	// 24 网格 → 最终绘制坐标
+	scale := func(pts []iconPt) []float32 {
+		out := make([]float32, len(pts)*2)
+		for i, p := range pts {
+			out[i*2] = float32(ox) + p.x*s
+			out[i*2+1] = float32(oy) + p.y*s
+		}
+		return out
+	}
 	addCap := func(cx, cy float32) {
 		pts := make([]float32, 0, (capSides+1)*2)
 		for i := 0; i <= capSides; i++ {
@@ -266,15 +279,15 @@ func iconStrokeFigures(subs [][]iconPt, ox, oy int32, s, w float32) [][]float32 
 		figs = append(figs, sameOrientation(pts))
 	}
 	for _, sub := range subs {
-		if len(sub) < 2 {
+		if len(sub.pts) < 2 {
 			continue
 		}
-		pts := make([]float32, len(sub)*2)
-		for i, p := range sub {
-			pts[i*2] = float32(ox) + p.x*s
-			pts[i*2+1] = float32(oy) + p.y*s
+		pts := scale(sub.pts)
+		if sub.filled { // 填充形状: 原样入几何(closed figure 由 EndFigure 闭合)
+			figs = append(figs, pts)
+			continue
 		}
-		for i := 0; i+1 < len(sub); i++ {
+		for i := 0; i+1 < len(sub.pts); i++ {
 			ax, ay := pts[i*2], pts[i*2+1]
 			bx, by := pts[i*2+2], pts[i*2+3]
 			dx, dy := bx-ax, by-ay
@@ -290,7 +303,7 @@ func iconStrokeFigures(subs [][]iconPt, ox, oy int32, s, w float32) [][]float32 
 				ax - nx, ay - ny,
 			}))
 		}
-		for i := 0; i < len(sub); i++ {
+		for i := 0; i < len(sub.pts); i++ {
 			addCap(pts[i*2], pts[i*2+1])
 		}
 	}
@@ -328,7 +341,7 @@ func sameOrientation(pts []float32) []float32 {
 // d2dIcon 尝试用 D2D 填充管线把图标画在 rc(元素客户区坐标)内,
 // 返回 false 表示不可用(GDI 渲染 / 资源创建失败 / 参数无效), 调用方回落折线。
 func (p *Painter) d2dIcon(paths string, rc *xc.RECT, color Color, strokeWidth float32,
-	build func() [][]iconPt) bool {
+	build func() []iconSub) bool {
 
 	if p == nil || p.Draw == nil || p.Draw.Handle <= 0 || rc == nil || color.IsNone() ||
 		rc.Right <= rc.Left || rc.Bottom <= rc.Top {
@@ -352,7 +365,7 @@ func (p *Painter) d2dIcon(paths string, rc *xc.RECT, color Color, strokeWidth fl
 // 返回 false 表示当前环境不可用(GDI 渲染 / 资源创建失败), 调用方回落折线渲染。
 // build 只在几何缓存未命中时调用, 避免每帧重复解析 path。
 func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, strokeWidth float32,
-	build func() [][]iconPt) bool {
+	build func() []iconSub) bool {
 
 	if p == nil || p.Draw == nil || p.Draw.Handle <= 0 {
 		return false

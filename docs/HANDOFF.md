@@ -38,7 +38,10 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
 │   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go  menu.go
 │   ├── label.go   separator.go(含 Badge)  card.go  table.go  tree.go
+├── icons\                        图标资源子包: lucide 预处理数据(2121 个) + Path/Has/Names
+├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(重新生成时才需要跑)
 ├── cmd\xui\                      CLI(init/add/list)
+├── icons_test.go                 解析器语法 + 资源完整性测试(go test ./...)
 ├── demo\                         演示应用(也是全组件编译测试目标)
 ├── registry.json                 组件清单(files + deps)
 ├── DESIGN.md                     架构设计 + xcgui 踩坑清单(第八节必读)
@@ -95,6 +98,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - **`Window_Style_Nothing`/`Center` 的窗口自身不绘制任何东西**(只画子元素),别拿它当普通宿主窗口
 - **自绘标题栏窗口样式**: `Caption|Border|Drag_Window`(无默认图标/标题/三键) + 30px BorderSize, 展示元素要 `EnableMouseThrough(true)` 才不挡拖动, 见 DESIGN 第八节 38; demo 是标准样板
 - **渲染固定 Direct2D**(`app.New(true)`)
+- **解析 lucide path 时 arc 的标志位是单字符**:`a.25.25 0 00.407.195` 是 flag=0 / flag=0 / x=.407 / y=.195, 按"数字"贪婪切会读成 `00.407` → 参数不足 → **后面整段图形被静默丢掉**(图标只画一半)。解析器已按 SVG 语法逐字符读标志(见 DESIGN.md 第八节 44);自定义图标走 `icons.Path(...)` 或直接贴 path 都行
 - **直通 D2D 绘制(第三方 COM 接口)必须先 `XDraw_ConvRect` 把客户区坐标换算成画布对齐坐标**:炫彩只在刷新自己的 `XDraw_*` 命令时才施加元素变换/裁剪, 直通调用拿到的是**窗口坐标系**(不换算就会画到元素外面, 症状可能是"图标莫名消失");另外 `XDraw_GetD2dRenderTarget`/`XC_GetD2dFactory` 交出来的是**真 COM 指针**, 可纯 Go 直通调用(ABI: 禁 float 形参、8 字节结构体按值打包);注意 `ID2D1SimplifiedGeometrySink` 除 `Close` 外全是 void —— 返回值是寄存器垃圾, 当成 HRESULT 查会静默回落。详见 DESIGN.md 第八节 43
 - **LayoutEle 默认是"横向流 + 自动换行", 不是竖排**:纵向堆叠必须 `EnableHorizon(false)`;列布局主轴间距用 `SetSpace`, 行布局换行行距用 `SetSpaceRow`(只设 SetSpace 纵向间隙恒 0);`Fill` 独占一整行, 等分用 `Weight`;项级 `LayoutItem_SetAlign` 无效, 用布局级 `SetAlignH/V`(详见 DESIGN.md 第八节 29)
 - 顶层 Tabs 分页: 页面容器 Show(false)→Show(true) 后其内部布局元素不会自动重排(空白壳), **对显示的页面调 `AdjustLayout()`** 再 Redraw(demo buildPage);ESC 关闭用 `XWnd_CloseWindow`
@@ -176,3 +180,13 @@ go run ./cmd/xui list / init <目录> / add <组件...>
   四个标题栏图标 + 下拉框 chevron + 弹层勾选 + 菜单勾选/子菜单箭头 + 对话框关闭钮 + IconSearch 全家桶(150% DPI);
   暗色主题 + hover + tooltip; GDI 回落不崩; 其余组件视觉无回归。
 - 探针程序与临时计划已完成使命并删除(`probe/`、`.verify/`)。像素测量用的是脚本 + PIL, 未靠目测。
+
+## 已完成: lucide 图标资源(预处理)
+
+- `icons/` 子包内置 **2121 个** lucide 图标(版本与参考实现的 lucide-react 对齐), 用法
+  `p.Icon(icons.Path("eye"), &rc, color, 2)`;数据由 `scripts/gen_icons.py` 从 `lucide-static` 的 SVG 生成
+  (图元转换 / 相对指令绝对化 / 数字归一 / `!` 填充标记)。
+- 转换规则与两个隐蔽坑(SVG 每个图元独立坐标系必须绝对化;arc 标志位是单字符, `a.25.25 0 00.407.195`
+  按数字切会静默丢半张图)记在 **DESIGN.md 第八节 44**;运行时解析器同步修好, 现在贴 lucide 原始 path 也不会断。
+- 验收: 32 个图标逐格对照浏览器渲染的原始 SVG, 像素差 ≤4.2/255;`go test ./...` 会把全部 2121 个图标
+  过一遍解析器(完整性回归)。

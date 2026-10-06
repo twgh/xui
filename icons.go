@@ -42,7 +42,7 @@ const (
 // 出图优先走 D2D 填充管线(CPU 描边展开 + FillGeometry, 有抗锯齿, 见 d2dicon.go);
 // 只有 GDI 渲染模式(app.New(false))或 D2D 资源建不出来时才回落到折线描边。
 func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float32) {
-	if p.d2dIcon(paths, rc, color, strokeWidth, func() [][]iconPt {
+	if p.d2dIcon(paths, rc, color, strokeWidth, func() []iconSub {
 		return parseIconPath(paths)
 	}) {
 		return
@@ -53,14 +53,15 @@ func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float
 	}
 
 	// 回落: 折线描边(旧实现。点坐标取整到逻辑像素 + 整数线宽, 小尺寸下不如几何精确,
-	// 但 GDI 渲染模式(app.New(false))没有 D2D 目标, 得有这条兜底)
+	// 但 GDI 渲染模式(app.New(false))没有 D2D 目标, 得有这条兜底。
+	// 填充子路径在这里只能画轮廓 —— GDI 侧没有多边形填充, 只能近似)
 	s := float32(size) / 24
 	p.Draw.SetLineWidth(iconLineWidth(strokeWidth, s))
 	p.Draw.SetBrushColor(uint32(color))
 	for _, sub := range parseIconPath(paths) {
-		for i := 1; i < len(sub); i++ {
-			ax, ay := ox+round32(sub[i-1].x*s), oy+round32(sub[i-1].y*s)
-			bx, by := ox+round32(sub[i].x*s), oy+round32(sub[i].y*s)
+		for i := 1; i < len(sub.pts); i++ {
+			ax, ay := ox+round32(sub.pts[i-1].x*s), oy+round32(sub.pts[i-1].y*s)
+			bx, by := ox+round32(sub.pts[i].x*s), oy+round32(sub.pts[i].y*s)
 			if ax == bx && ay == by {
 				continue
 			}
@@ -96,14 +97,14 @@ func (p *Painter) IconSearch(rc *xc.RECT, color Color, strokeWidth float32) {
 
 // searchIconSubs 把 lucide Search 表达成 24 网格折线: 圆心 (11,11) 半径 8 的整圆
 // (采样 48 段) + 手柄 (21,21)→(16.7,16.7)。两者共用同一套描边展开。
-func searchIconSubs() [][]iconPt {
+func searchIconSubs() []iconSub {
 	const n = 48
 	circle := make([]iconPt, 0, n+1)
 	for i := 0; i <= n; i++ {
 		t := 2 * math.Pi * float64(i) / n
 		circle = append(circle, iconPt{11 + 8*float32(math.Cos(t)), 11 + 8*float32(math.Sin(t))})
 	}
-	return [][]iconPt{circle, {{x: 21, y: 21}, {x: 16.7, y: 16.7}}}
+	return []iconSub{{pts: circle}, {pts: []iconPt{{x: 21, y: 21}, {x: 16.7, y: 16.7}}}}
 }
 
 // iconBox 校验并算出图标在 rc 内的居中正方形(逻辑像素)。
@@ -164,14 +165,29 @@ func (sc *iconScanner) cmd() (byte, bool) {
 }
 
 // num 取下一个数字(支持 "-4.3-4.3" 这类连写)。
+//
+// 一个小数点就停: SVG 允许 ".25.25" 表示两个数(.25 与 .25), 贪婪吃到第二个 '.'
+// 会让 ParseFloat 失败并把后面整段图形静默丢掉(lucide 的 album/settings 等都是这个写法,
+// 当时表现为"复制来的图标只画出一半")。
 func (sc *iconScanner) num() (float32, bool) {
 	sc.skipSep()
 	st := sc.pos
 	if sc.pos < len(sc.s) && (sc.s[sc.pos] == '-' || sc.s[sc.pos] == '+') {
 		sc.pos++
 	}
-	for sc.pos < len(sc.s) && (sc.s[sc.pos] >= '0' && sc.s[sc.pos] <= '9' || sc.s[sc.pos] == '.') {
-		sc.pos++
+	dot := false
+	for sc.pos < len(sc.s) {
+		c := sc.s[sc.pos]
+		if c >= '0' && c <= '9' {
+			sc.pos++
+			continue
+		}
+		if c == '.' && !dot {
+			dot = true
+			sc.pos++
+			continue
+		}
+		break
 	}
 	if sc.pos == st {
 		return 0, false
@@ -183,12 +199,46 @@ func (sc *iconScanner) num() (float32, bool) {
 	return float32(v), true
 }
 
+// flag 取一个 arc 标志位: SVG 规定 large-arc/sweep 是**单字符** 0/1,
+// 所以 "00.407" 必须按 0 / 0 / .407 读, 不能按数字切(见 num 的注释)。
+func (sc *iconScanner) flag() (float32, bool) {
+	sc.skipSep()
+	if sc.pos >= len(sc.s) || (sc.s[sc.pos] != '0' && sc.s[sc.pos] != '1') {
+		return 0, false
+	}
+	c := sc.s[sc.pos]
+	sc.pos++
+	return float32(c - '0'), true
+}
+
+// iconSub 是一条子路径: 折线点(24 网格) + 是否"填充"。
+//
+// 描边是常态(round cap/join 的展开见 iconStrokeFigures); 少数 lucide 图标里有
+// fill="currentColor" 的小图形(色点), 那些子路径要整体填实而不是描边, 由 `!` 前缀标记
+// (生成资源用, 见 icons/lucide_gen.go; 手写 path 用不到)。
+type iconSub struct {
+	pts    []iconPt
+	filled bool
+}
+
 // parseIconPath 把 SVG path 解析为若干条折线(24x24 网格坐标)。
-func parseIconPath(d string) [][]iconPt {
+//
+// `!` 前缀表示"接下来的这条子路径是填充"(非 SVG 语法, 本项目生成资源内部约定):
+// 手写/复制的 lucide path 不含它, 走纯描边。
+func parseIconPath(d string) []iconSub {
+	subs, _ := parseIconPathEx(d)
+	return subs
+}
+
+// parseIconPathEx 是可诊断版本: complete 表示整条数据被解析到底。
+// 遇到不认识的指令或不满足的参数会提前停下并返回 false(此前是静默截断, 表现成
+// "图标只画出一半") —— 生成资源用测试断言它必须为 true。
+func parseIconPathEx(d string) ([]iconSub, bool) {
 	sc := &iconScanner{s: d}
 	var (
-		subs         [][]iconPt
+		subs         []iconSub
 		cur          []iconPt
+		curFilled    bool
 		x, y, sx, sy float32
 		cmd          byte
 		lastC, lastQ iconPt
@@ -196,10 +246,14 @@ func parseIconPath(d string) [][]iconPt {
 	)
 	push := func(px, py float32) { cur = append(cur, iconPt{px, py}) }
 	flush := func() {
+		if cur == nil { // 没有正在写的子路径: 不要动填充标记(它属于接下来的那条)
+			return
+		}
 		if len(cur) > 1 {
-			subs = append(subs, cur)
+			subs = append(subs, iconSub{pts: cur, filled: curFilled})
 		}
 		cur = nil
+		curFilled = false
 	}
 	// 三次贝塞尔离散为折线
 	bezier := func(x1, y1, x2, y2, x3, y3, x4, y4 float32) {
@@ -215,6 +269,14 @@ func parseIconPath(d string) [][]iconPt {
 	}
 
 	for sc.pos < len(sc.s) {
+		// `!` = 接下来的子路径是填充(生成资源内部约定, 不是 SVG 语法)
+		sc.skipSep()
+		if sc.pos < len(sc.s) && sc.s[sc.pos] == '!' {
+			flush()
+			curFilled = true
+			sc.pos++
+			continue
+		}
 		if c, ok := sc.cmd(); ok {
 			cmd = c
 		} else if cmd == 0 {
@@ -291,10 +353,20 @@ func parseIconPath(d string) [][]iconPt {
 		case 'C', 'S', 'Q', 'T':
 			ok = iconCurve(cmd, rel, sc, &x, &y, &lastC, &lastQ, &hasC, &hasQ, push, bezier)
 		case 'A':
-			// 圆弧: 端点参数化转多段三次贝塞尔(每段圆心角 <= 90°)
+			// 圆弧: 端点参数化转多段三次贝塞尔(每段圆心角 <= 90°)。
+			// 参数依次是 rx ry rot largeArc sweep x y —— 中间两个标志位是单字符,
+			// 必须用 flag 逐字符取("a.25.25 0 00.407.195" 这样的连写只能这么读)。
 			var v [7]float32
 			for k := 0; k < 7; k++ {
-				f, o := sc.num()
+				var (
+					f float32
+					o bool
+				)
+				if k == 3 || k == 4 {
+					f, o = sc.flag()
+				} else {
+					f, o = sc.num()
+				}
 				if !o {
 					ok = false
 					break
@@ -310,15 +382,17 @@ func parseIconPath(d string) [][]iconPt {
 				x, y = ex, ey
 			}
 			hasC, hasQ = false, false
-		default:
-			return subs
+		default: // 不认识的指令: 数据有问题, 如实报告(不要静默截断)
+			flush()
+			return subs, false
 		}
-		if !ok {
-			break
+		if !ok { // 参数不足/数字畸形
+			flush()
+			return subs, false
 		}
 	}
 	flush()
-	return subs
+	return subs, true
 }
 
 // arcToBeziers 把 SVG 圆弧指令(A, 端点参数化)转换为若干段三次贝塞尔折线点,

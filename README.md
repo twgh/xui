@@ -87,6 +87,23 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 
 每个组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环。
 
+## 图标
+
+运行时自带一份预处理好的 lucide 图标资源(2121 个,与参考实现的 lucide-react 同版本),
+描边用直通 D2D 几何填充出图(自带抗锯齿),名字就是 lucide 的 kebab-case 名:
+
+```go
+import "github.com/twgh/xui/icons"
+
+p.Icon(icons.Path("eye"), &rc, xui.Current().Foreground, 2)
+p.Icon(icons.Path("chart-scatter"), &rc, color, 2)   // 含"填充点"的图标也照渲染
+icons.Has("star"); icons.Names(); icons.Count()      // 查询
+```
+
+也可以直接把任意 lucide path 数据贴进 `Painter.Icon`(24 网格,`strokeWidth` 用 24 网格单位,
+lucide 默认 2)。资源由 `scripts/gen_icons.py` 从 `lucide-static` 生成,
+转换规则与踩坑见 docs/DESIGN.md 第八节 44。
+
 ## CLI
 
 ```bash
