@@ -164,3 +164,11 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - shadcn dev server 由会话后台启动,机器重启后需按上文命令重启
 - Button Link 变体(下划线)未实现;text 手绘后 Input 仍是原生文字;hover 过渡动画未做(ani 包可用)
 - 用户项目须 `app.New(true)`(D2D)+ `EnableAutoDPI`,demo 是标准样板
+
+## 进行中: 图标抗锯齿(方案二 D2D) — 待接手
+
+- 图标折线描边锯齿根因 = XDraw 线条图元无 AA(EnableSmoothingMode 无效), 已定方案:
+  **D2D FillGeometry + CPU 描边展开**(纯 Go vtable 调用, 无需 cgo/字体/SVG 库)。
+- 完整实施计划(含探针已验证的 vtable 索引表、ABI 三规则、隐形窗口等坑、验证清单):
+  **docs/PLAN_ICON_D2D.md**; 验证代码保留在 `probe/main.go`(实现完成并验证后删除)。
+- 状态: 探针已实证 FillGeometry 在 paint 回调内可渲染出抗锯齿图形; 尚未动 icons.go。
