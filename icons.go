@@ -14,8 +14,8 @@ import (
 // 为什么不用 SVG 渲染: 炫彩在元素自绘回调里画图片/SVG 不生效(实测 XDraw_DrawSvgEx /
 // XDraw_Image / XDraw_ImageEx 都画不出东西, 见 DESIGN.md 第八节), 所以这里用 drawx 的
 // 线段图元把 path 复刻成折线。
-// 支持 M/L/H/V/C/S/Q/T/Z 及相对指令(曲线按 8 段离散); 圆弧 A/a 不支持,
-// 需要圆弧的图标用专门实现(见 Painter.IconSearch)。
+// 支持 M/L/H/V/C/S/Q/T/Z 及相对指令(曲线按 8 段离散); 圆弧 A/a 转为
+// 多段三次贝塞尔(每段圆心角 <= 90°, 见 arcToBeziers)。
 const (
 	IconChevronDown  = "m6 9 6 6 6-6"         // lucide ChevronDown
 	IconChevronUp    = "m18 15-6-6-6 6"       // lucide ChevronUp
@@ -24,6 +24,11 @@ const (
 	IconCheck        = "M20 6 9 17l-5-5"      // lucide Check
 	IconX            = "M18 6 6 18M6 6l12 12" // lucide X
 	IconMinus        = "M5 12h14"             // lucide Minus
+
+	IconEye    = "M2.062 12.348a1 1 0 0 1 0-.639 10.365 10.365 0 0 1 19.876 0 1 1 0 0 1 0 .639 10.365 10.365 0 0 1-19.876 0M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6"                                                                                               // lucide Eye
+	IconEyeOff = "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49M14.084 14.158a3 3 0 0 1-4.242-4.242M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143M2 2l20 20" // lucide EyeOff
+	IconSun    = "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"                                                                                    // lucide Sun
+	IconMoon   = "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"                                                                                                                                                                                                       // lucide Moon
 )
 
 // Icon 在 rc 内按 lucide 几何绘制一枚描边图标(等比铺满)。
@@ -252,7 +257,7 @@ func parseIconPath(d string) [][]iconPt {
 		case 'C', 'S', 'Q', 'T':
 			ok = iconCurve(cmd, rel, sc, &x, &y, &lastC, &lastQ, &hasC, &hasQ, push, bezier)
 		case 'A':
-			// 圆弧不支持: 读出 7 个参数后直接跳到终点
+			// 圆弧: 端点参数化转多段三次贝塞尔(每段圆心角 <= 90°)
 			var v [7]float32
 			for k := 0; k < 7; k++ {
 				f, o := sc.num()
@@ -263,12 +268,12 @@ func parseIconPath(d string) [][]iconPt {
 				v[k] = f
 			}
 			if ok {
+				ex, ey := v[5], v[6]
 				if rel {
-					x, y = x+v[5], y+v[6]
-				} else {
-					x, y = v[5], v[6]
+					ex, ey = x+ex, y+ey
 				}
-				push(x, y)
+				arcToBeziers(x, y, v[0], v[1], v[2], v[3] != 0, v[4] != 0, ex, ey, push, bezier)
+				x, y = ex, ey
 			}
 			hasC, hasQ = false, false
 		default:
@@ -280,6 +285,105 @@ func parseIconPath(d string) [][]iconPt {
 	}
 	flush()
 	return subs
+}
+
+// arcToBeziers 把 SVG 圆弧指令(A, 端点参数化)转换为若干段三次贝塞尔折线点,
+// 端点/圆心换算与角度拆分见 W3C SVG 1.1 附录 F.6.5/F.6.6; 每段圆心角不超过 90°,
+// 用 4/3·tan(θ/4) 的切向量长度做三次近似, 离散精度与整圆椭圆图元肉眼无差。
+func arcToBeziers(x1, y1, rx, ry, phiDeg float32, largeArc, sweep bool, x2, y2 float32,
+	push func(float32, float32),
+	bezier func(x1, y1, x2, y2, x3, y3, x4, y4 float32)) {
+
+	if x1 == x2 && y1 == y2 {
+		return
+	}
+	rx, ry = abs32(rx), abs32(ry)
+	if rx == 0 || ry == 0 { // 半径为 0 退化为直线
+		push(x2, y2)
+		return
+	}
+	phi := float64(phiDeg) * math.Pi / 180
+	cosP, sinP := float32(math.Cos(phi)), float32(math.Sin(phi))
+
+	// 端点换到以椭圆中点为原点、沿椭圆主轴的坐标系
+	dx, dy := (x1-x2)/2, (y1-y2)/2
+	x1p := cosP*dx + sinP*dy
+	y1p := -sinP*dx + cosP*dy
+
+	// 半径过小则按端点距离等比放大
+	if lam := x1p*x1p/(rx*rx) + y1p*y1p/(ry*ry); lam > 1 {
+		s := float32(math.Sqrt(float64(lam)))
+		rx, ry = rx*s, ry*s
+	}
+
+	// 圆心(换算回屏幕坐标系)。两个候选圆心对称于弦, 符号按 SVG 规范 F.6.5:
+	// large-arc 与 sweep 不相同时取 +√q, 相同时取 -√q(取错会绕远弧, 图标乱成一团)。
+	sign := float32(-1)
+	if largeArc != sweep {
+		sign = 1
+	}
+	num := rx*rx*ry*ry - rx*rx*y1p*y1p - ry*ry*x1p*x1p
+	den := rx*rx*y1p*y1p + ry*ry*x1p*x1p
+	// 半径按端点距离放大后 num 理论上为 0, 浮点误差下可能是极小负数, 必须钳到 0
+	var co float32
+	if q := num / den; q > 0 {
+		co = sign * float32(math.Sqrt(float64(q)))
+	}
+	cxp := co * rx * y1p / ry
+	cyp := -co * ry * x1p / rx
+	cx := cosP*cxp - sinP*cyp + (x1+x2)/2
+	cy := sinP*cxp + cosP*cyp + (y1+y2)/2
+
+	ang := func(ux, uy, vx, vy float32) float32 {
+		c := (ux*vx + uy*vy) / float32(math.Sqrt(float64((ux*ux+uy*uy)*(vx*vx+vy*vy))))
+		if c > 1 {
+			c = 1
+		} else if c < -1 {
+			c = -1
+		}
+		a := float32(math.Acos(float64(c)))
+		if ux*vy-uy*vx < 0 {
+			a = -a
+		}
+		return a
+	}
+	ux, uy := (x1p-cxp)/rx, (y1p-cyp)/ry
+	vx, vy := (-x1p-cxp)/rx, (-y1p-cyp)/ry
+	th1 := ang(1, 0, ux, uy)
+	dth := ang(ux, uy, vx, vy)
+	if !sweep && dth > 0 {
+		dth -= 2 * math.Pi
+	} else if sweep && dth < 0 {
+		dth += 2 * math.Pi
+	}
+
+	// 拆成不超过 90° 的段逐段转贝塞尔; 点函数 E(a) 是椭圆上的点, D(a) 是切向导数
+	n := int(math.Ceil(math.Abs(float64(dth))/(math.Pi/2))) + 1
+	seg := dth / float32(n)
+	k := float32(4.0 / 3.0 * math.Tan(float64(seg)/4))
+	e := func(a float32) (float32, float32) {
+		ca, sa := float32(math.Cos(float64(a))), float32(math.Sin(float64(a)))
+		return cx + rx*cosP*ca - ry*sinP*sa, cy + rx*sinP*ca + ry*cosP*sa
+	}
+	d := func(a float32) (float32, float32) {
+		sa, ca := float32(math.Sin(float64(a))), float32(math.Cos(float64(a)))
+		return -rx*cosP*sa - ry*sinP*ca, -rx*sinP*sa + ry*cosP*ca
+	}
+	for i := 0; i < n; i++ {
+		a1, a2 := th1+seg*float32(i), th1+seg*float32(i+1)
+		p1x, p1y := e(a1)
+		p2x, p2y := e(a2)
+		d1x, d1y := d(a1)
+		d2x, d2y := d(a2)
+		bezier(p1x, p1y, p1x+k*d1x, p1y+k*d1y, p2x-k*d2x, p2y-k*d2y, p2x, p2y)
+	}
+}
+
+func abs32(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // iconCurve 处理三次/二次贝塞尔相关命令(C/S/Q/T), 返回是否解析成功。

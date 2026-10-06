@@ -120,33 +120,33 @@ func main() {
 	if dark {
 		xui.SetTheme(xui.Dark())
 	}
-	const toggleW int32 = 60
 
 	showLayoutFrame := false
-	// 显示布局对象边界按钮
-	btnShowLayoutFrame := ui.NewButton(0, 0, toggleW, capBtnH, "显", cap.Handle,
-		ui.WithVariant(ui.ButtonOutline))
+	// 显示布局对象边界按钮(ghost 图标按钮, 与最小化/关闭同排同款):
+	// 图标显示点击后的动作 —— 隐藏时 eye(去看), 显示时 eye-off(去关)
+	btnShowLayoutFrame := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconEye))
 	tip.Bind(btnShowLayoutFrame.Handle, "显示/隐藏布局对象边界")
-	itemFixed(btnShowLayoutFrame, toggleW, capBtnH)
+	itemFixed(btnShowLayoutFrame, capBtnW, capBtnH)
 	btnShowLayoutFrame.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		showLayoutFrame = !showLayoutFrame
 		app.ShowLayoutFrame(showLayoutFrame) // 显示布局对象边界
-		btnShowLayoutFrame.SetText(common.Choose(showLayoutFrame, "隐", "显"))
+		btnShowLayoutFrame.SetIcon(common.Choose(showLayoutFrame, xui.IconEyeOff, xui.IconEye))
 		w.Redraw(false)
 		return 0
 	})
 
-	// 主题切换按钮
-	toggle := ui.NewButton(0, 0, toggleW, capBtnH, "Dark", cap.Handle,
-		ui.WithVariant(ui.ButtonOutline))
+	// 主题切换按钮: 图标显示切换目标 —— 亮色时 moon(去暗色), 暗色时 sun(去亮色)
+	toggle := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(xui.IconMoon))
 	tip.Bind(toggle.Handle, "切换主题")
-	itemFixed(toggle, toggleW, capBtnH)
+	itemFixed(toggle, capBtnW, capBtnH)
 	if dark {
-		toggle.SetText("Light")
+		toggle.SetIcon(xui.IconSun)
 	}
 	toggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		dark = !dark
-		toggle.SetText(common.Choose(dark, "Light", "Dark"))
+		toggle.SetIcon(common.Choose(dark, xui.IconSun, xui.IconMoon))
 		xui.SetTheme(common.Choose(dark, xui.Dark(), xui.Light()))
 		// 切换主题会重绘窗口, 所以 toggle 不用单独重绘
 		return 0
@@ -508,8 +508,7 @@ func buildPage(hWindow, hParent int) {
 	itemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v6.Handle), 24)
 
 	desc := ui.NewLabel(0, 0, 0, 0,
-		"原生 List 载体 + 全自绘皮肤: 表头/行底/行边框/滚动条; 行悬浮 hover:bg-muted/50, 选中 bg-muted, 最后一行不画底边。", v6.Handle).SetMuted()
-	desc.SetTextAlign(desc.GetTextAlign() ^ xcc.TextFormatFlag_NoWrap)
+		"原生 List 载体 + 全自绘皮肤: 表头/行底/行边框/滚动条; 行悬浮 hover:bg-muted/50, 选中 bg-muted, 最后一行不画底边。", v6.Handle).SetMuted().SetWrap()
 	itemFill(desc, 48)
 
 	demoTable = ui.NewTable(0, 0, card6.ContentWidth(), 180, v6.Handle, []ui.TableColumn{
@@ -545,8 +544,7 @@ func buildPage(hWindow, hParent int) {
 	v7 := vStack(card7, 14)
 	itemFill(ui.NewCardTitle(0, 0, 0, "树形视图", v7.Handle), 24)
 	desc = ui.NewLabel(0, 0, 0, 0,
-		"原生 Tree 载体 + 全自绘皮肤: 缩进参考线/旋转 chevron/行悬浮选中。点击 chevron 或文字选中。", v7.Handle).SetMuted()
-	desc.SetTextAlign(desc.GetTextAlign() ^ xcc.TextFormatFlag_NoWrap)
+		"原生 Tree 载体 + 全自绘皮肤: 缩进参考线/旋转 chevron/行悬浮选中。点击 chevron 或文字选中。", v7.Handle).SetMuted().SetWrap()
 	itemFill(desc, 48)
 
 	demoTree = ui.NewTree(0, 0, card7.ContentWidth(), 0, v7.Handle)
