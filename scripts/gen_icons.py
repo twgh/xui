@@ -14,15 +14,18 @@ lucide 的 SVG 里除 <path> 还有 circle/ellipse/rect/line/polyline/polygon, �
    `!` 前缀(xui 解析器据此走填充分支)。
 
 用法:
-    python scripts/gen_icons.py                       # 自动 npm pack lucide-static 后生成
-    python scripts/gen_icons.py --src <解包目录>       # 用已解包的 lucide-static
+    python scripts/gen_icons.py                       # 默认取 lucide-static **最新版**并生成
+    python scripts/gen_icons.py --version 1.49.0      # 钉住某个版本(与参考实现对齐时用)
+    python scripts/gen_icons.py --src <解包目录>       # 用已解包的 lucide-static(离线)
     python scripts/gen_icons.py --only eye,search,x   # 只生成这几个(调试用)
 
 生成物提交进仓库: 用户 go get 拿到的是它, 不再需要联网/Node。
+**重新生成后请跑 `go test ./...`**: 内建图标常量(icons.go)会与资源比对, lucide 改了图形就会报出来。
 """
 
 import argparse
 import io
+import json
 import os
 import re
 import shutil
@@ -30,8 +33,6 @@ import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 
-# 与本地 shadcn 参考实现(shadcn/node_modules/lucide-react@1.49.0)同一个版本, 见 DESIGN.md 第八节 44
-LUCIDE_VERSION = "1.49.0"
 NS = "{http://www.w3.org/2000/svg}"
 
 NUM_RE = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
@@ -288,6 +289,25 @@ def icon_path(svg_file):
 
 # ---------------------------------------------------------------- 取包
 
+def latest_version():
+    """问 npm 要 lucide-static 的最新版本号(缺省行为: 生成最新版)。"""
+    npm = shutil.which("npm")
+    if not npm:
+        raise SystemExit("找不到 npm; 请手动 `npm pack lucide-static@<版本>` 解包后用 --src 指定")
+    out = subprocess.run([npm, "view", "lucide-static", "version"], check=True,
+                         capture_output=True, text=True)
+    return out.stdout.strip()
+
+
+def read_version(pkg_dir):
+    """离线(--src)模式: 从解包目录的 package.json 里读版本号(读不到就写 unknown)。"""
+    try:
+        with io.open(os.path.join(pkg_dir, "package.json"), encoding="utf-8") as f:
+            return json.load(f).get("version", "unknown")
+    except (OSError, ValueError):
+        return "unknown"
+
+
 def fetch_lucide(version, workdir):
     npm = shutil.which("npm")
     if not npm:
@@ -344,18 +364,23 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", help="lucide-static 解包目录(含 icons/*.svg); 缺省自动 npm pack")
     ap.add_argument("--out", default=os.path.join("icons", "lucide_gen.go"))
-    ap.add_argument("--version", default=LUCIDE_VERSION)
+    ap.add_argument("--version", default="", help="lucide-static 版本, 缺省用最新版")
     ap.add_argument("--only", help="只生成这些图标(逗号分隔, 调试用)")
     args = ap.parse_args()
 
     tmp = None
     pkg = args.src
     if not pkg:
+        if not args.version:
+            args.version = latest_version()
+            print(f"→ lucide-static 最新版 {args.version}(需要钉版用 --version)")
         tmp = tempfile.mkdtemp(prefix="lucide-static-")
         pkg = fetch_lucide(args.version, tmp)
     icons_dir = os.path.join(pkg, "icons")
     if not os.path.isdir(icons_dir):
         raise SystemExit(f"{icons_dir} 不存在")
+    if not args.version:  # --src 离线模式: 从包信息里读版本号
+        args.version = read_version(pkg)
 
     only = set(args.only.split(",")) if args.only else None
     data, skipped = {}, []

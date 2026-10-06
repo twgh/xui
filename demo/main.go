@@ -1,7 +1,7 @@
 // xui 组件演示: light/dark 一键换肤 + 全部组件(含表格)。
 // 卡片内容用 LayoutEle 流式布局, 不再手算 y。
-// 顶层用 Tabs 分页展示(表单/控件/反馈/数据/结构), 主题用环境变量 XUI_THEME=dark 切换。
-// 控制启动首页可用环境变量 XUI_HOME_PAGE = 0/1/2/3/4 分别对应 表单/控件/反馈/数据/结构。
+// 顶层用 Tabs 分页展示(表单/控件/反馈/数据/结构/图标), 主题用环境变量 XUI_THEME=dark 切换。
+// 控制启动首页可用环境变量 XUI_HOME_PAGE = 0..5 分别对应 表单/控件/反馈/数据/结构/图标。
 package main
 
 import (
@@ -19,6 +19,7 @@ import (
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 	ui "github.com/twgh/xui/components"
+	"github.com/twgh/xui/icons"
 )
 
 var (
@@ -270,12 +271,12 @@ func itemMarginTop(ele layoutItem, m int32) {
 
 // ===== 页面 =====
 
-// buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈/数据/结构), 每页是一个绝对定位的
+// buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈/数据/结构/图标), 每页是一个绝对定位的
 // 容器元素, 切换时 Show/Hide + 重绘。页面内容静态创建一次即可
 // (主题切换走整窗重绘, 不需要重建)。
 // 后续新增组件展示时: 开一个新页面容器 + 对应 Tab 即可, 页面之间互不挤压。
 func buildPage(hWindow, hParent int) {
-	pageCount := 5
+	pageCount := 6
 	homePage, _ := strconv.Atoi(os.Getenv("XUI_HOME_PAGE"))
 	if homePage < 0 || homePage > pageCount-1 {
 		homePage = 0
@@ -290,9 +291,9 @@ func buildPage(hWindow, hParent int) {
 		pages[i].EnableMouseThrough(true) // 纯容器, 空白处透给窗口拖动
 		pages[i].Show(i == homePage)
 	}
-	pForm, pCtrl, pFeed, pData, pTree := pages[0], pages[1], pages[2], pages[3], pages[4]
+	pForm, pCtrl, pFeed, pData, pTree, pIcon := pages[0], pages[1], pages[2], pages[3], pages[4], pages[5]
 
-	pageTabs := ui.NewTabs(16, 6, 420, hParent, []string{"表单", "控件", "反馈", "数据", "结构"})
+	pageTabs := ui.NewTabs(16, 6, 500, hParent, []string{"表单", "控件", "反馈", "数据", "结构", "图标"})
 	pageTabs.OnChange(func(i int32) {
 		for j, p := range pages {
 			vis := int(i) == j
@@ -568,6 +569,170 @@ func buildPage(hWindow, hParent int) {
 	} {
 		lb := ui.NewLabel(0, 0, 0, 0, "· "+line, v8.Handle).SetMuted()
 		itemFill(lb, 24)
+	}
+
+	// ===== 页 6: 图标(icons 资源子包) =====
+	// 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
+	// 不销毁元素(见 DESIGN 第八节 44)。
+	card9 := ui.NewCard(24, 0, 728, 490, pIcon.Handle)
+	v9 := vStack(card9, 14)
+	itemFill(ui.NewCardTitle(0, 0, 0, "图标", v9.Handle), 24)
+	itemFill(ui.NewLabel(0, 0, 0, 0,
+		"运行时自带 lucide 图标资源(lucide-static "+icons.Version+", 共 "+
+			strconv.Itoa(icons.Count())+" 个)。", v9.Handle).SetMuted(), 20)
+	itemFill(ui.NewLabel(0, 0, 0, 0,
+		"用法: p.Icon(icons.Path(\"star\"), &rc, color, 2); 图标名就是 lucide 的名字。",
+		v9.Handle).SetMuted(), 20)
+
+	navRow := hRow(v9.Handle, 32, 8)
+	prevBtn := ui.NewButton(0, 0, 0, 0, "上一页", navRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	itemFixed(prevBtn, 80, 32)
+	nextBtn := ui.NewButton(0, 0, 0, 0, "下一页", navRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	itemFixed(nextBtn, 80, 32)
+	iconInfo = ui.NewLabel(0, 0, 0, 0, "", navRow.Handle).SetMuted()
+	itemFill(iconInfo, 24)
+
+	grid := widget.NewElement(0, 0, int32(iconCols*iconTileW), int32(iconRows*iconTileH), v9.Handle)
+	grid.EnableBkTransparent(true).EnableDrawBorder(false).EnableFocus(false) // 纯容器: 不画底(暗色下会是一块白)
+	itemFixed(grid, int32(iconCols*iconTileW), int32(iconRows*iconTileH))
+	iconTiles = iconTiles[:0]
+	for r := 0; r < iconRows; r++ {
+		for c := 0; c < iconCols; c++ {
+			iconTiles = append(iconTiles,
+				newIconTile(int32(c)*iconTileW, int32(r)*iconTileH, grid.Handle))
+		}
+	}
+	prevBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		showIconPage(iconPageIdx - 1)
+		return 0
+	})
+	nextBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		showIconPage(iconPageIdx + 1)
+		return 0
+	})
+	showIconPage(0)
+}
+
+// ===== 图标总览页的状态与绘制 =====
+
+const (
+	iconCols  = 9
+	iconRows  = 5
+	iconTileW = 77 // 696 / 9: 名字能显示到 13 个字符
+	iconTileH = 60
+)
+
+var (
+	iconTiles   []*iconTile // 网格里复用的格子(翻页只换名字)
+	iconPageIdx int
+	iconInfo    *ui.Label
+)
+
+// iconTile 是网格里的一格: 图标 + 名字, 悬浮 bg-accent。
+type iconTile struct {
+	ele   *widget.Element
+	name  string
+	hover bool
+}
+
+func newIconTile(x, y int32, parent int) *iconTile {
+	ele := widget.NewElement(x, y, iconTileW, iconTileH, parent)
+	if ele == nil {
+		return nil
+	}
+	t := &iconTile{ele: ele}
+	ele.EnableBkTransparent(true)
+	ele.AddEvent_Paint(t.onPaint)
+	ele.AddEvent_MouseStay(func(hEle int, pbHandled *bool) int {
+		t.hover = true
+		ele.Redraw(false)
+		return 0
+	})
+	ele.AddEvent_MouseLeave(func(hEle, hEleStay int, pbHandled *bool) int {
+		t.hover = false
+		ele.Redraw(false)
+		return 0
+	})
+	return t
+}
+
+// setName 换格子显示的图标(空串 = 本页没有这么多图标)。
+func (t *iconTile) setName(name string) {
+	if t.name == name {
+		return
+	}
+	t.name = name
+	t.ele.Redraw(false)
+}
+
+func (t *iconTile) onPaint(hEle int, hDraw int, pbHandled *bool) int {
+	*pbHandled = true
+	p := xui.BeginPaint(hEle, hDraw)
+	if p == nil {
+		return 0
+	}
+	th := xui.Current()
+	// 透明子元素重绘不会擦底: 先铺宿主底色(卡片), 否则 hover 离开后残留高亮块(见 DESIGN 第八节 28)
+	p.FillRound(&p.Rc, th.Card, 0)
+	if t.hover {
+		p.FillRound(&p.Rc, th.Accent, th.RadiusSm())
+	}
+	if t.name == "" {
+		return 0
+	}
+	const iconSize = 26
+	iconRc := xc.RECT{
+		Left:   p.Rc.Left + (p.W()-iconSize)/2,
+		Top:    p.Rc.Top + 4,
+		Right:  p.Rc.Left + (p.W()-iconSize)/2 + iconSize,
+		Bottom: p.Rc.Top + 4 + iconSize,
+	}
+	p.Icon(icons.Path(t.name), &iconRc, th.Foreground, 2)
+
+	spec := th.FontDefault // 名字用 text-xs 一档
+	spec.Size -= 2
+	p.Draw.SetFont(xui.FontHandle(spec))
+	nameRc := xc.RECT{Left: p.Rc.Left - 2, Top: iconRc.Bottom + 2, Right: p.Rc.Right + 2, Bottom: p.Rc.Bottom}
+	p.Text(shortName(t.name), &nameRc, th.MutedFore,
+		xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter|
+			xcc.TextFormatFlag_NoWrap|xcc.TextTrimming_EllipsisCharacter)
+	return 0
+}
+
+// shortName 把过长的图标名截短(GDI/D2D 两侧都没有可靠的量宽接口, 直接按字符数截,
+// 再交给 NoWrap + 省略号兜底)。
+func shortName(s string) string {
+	const max = 13
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
+}
+
+// showIconPage 翻到第 idx 页(越界夹紧), 名字取自 icons 资源(按名字升序)。
+func showIconPage(idx int) {
+	names := icons.Names()
+	pages := (len(names) + len(iconTiles) - 1) / len(iconTiles)
+	if pages < 1 {
+		pages = 1
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	if idx > pages-1 {
+		idx = pages - 1
+	}
+	iconPageIdx = idx
+	base := idx * len(iconTiles)
+	for i, t := range iconTiles {
+		if base+i < len(names) {
+			t.setName(names[base+i])
+		} else {
+			t.setName("")
+		}
+	}
+	if iconInfo != nil {
+		iconInfo.SetText(fmt.Sprintf("共 %d 个图标 · 第 %d/%d 页", len(names), idx+1, pages))
 	}
 }
 

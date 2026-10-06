@@ -435,9 +435,11 @@ myapp/
 
 44. **lucide 图标资源预处理(2026-10-06, `scripts/gen_icons.py` → `icons/` 子包)**:
 
-    - **数据源**:`npm pack lucide-static@<ver>`, 版本与参考实现的 lucide-react 对齐(当前 1.49.0)。
-      `package/icons/*.svg` 共 **2121** 个(1857 个正式图标 + 264 个 lucide 保留的废弃别名),
+    - **数据源**:`npm pack lucide-static@<ver>`, 版本与参考实现的 lucide-react 对齐(当前资源是 **1.52.0**)。
+      `package/icons/*.svg` 共 **2130** 个(正式图标 + lucide 保留的废弃别名),
       全部统一 `viewBox="0 0 24 24"`、`stroke-width=2`、round cap/join ✓ —— 这是本渲染管线的前提。
+      生成器**默认取最新版**(`npm view lucide-static version`), 要跟参考实现严格对齐时用
+      `--version 1.49.0` 钉版; 版本号写进生成物(`icons.Version`)与文件头。
     - **为什么要预处理**:运行时只吃一条 path 数据, 而 SVG 里还有 `circle/ellipse/rect/line/polyline/polygon`
       六种图元(合计约 1100 个元素), 必须先把它们转成等价 path 指令;数字也要归一, 免得运行时反复解析长文本。
     - **相对指令必须整条绝对化**:同一个 SVG 里**每个图元都是独立路径**(各自从 (0,0) 起), 直接拼成一条数据后,
@@ -452,14 +454,24 @@ myapp/
       **同时继承根节点的描边**, 浏览器里是两者的并集 —— `circle r=.5` 实际画成半径 1.5 的实心点。
       像素实测(64px 图标):只填充 = 4x4 物理像素/16 像素墨量, 参考 = 12x12/120 像素。生成器用 `!` 前缀标填充,
       并对这类图元额外输出一条普通描边子路径, 与 lucide-react 渲染一致。
-    - **放独立子包**(`github.com/twgh/xui/icons`):数据 400KB, 只有 import 它的程序才链进二进制;
-      xui 运行时零依赖它(资源与绘制解耦), 组件里那 11 个 `xui.IconXxx` 常量照旧。API: `Path/Has/Names/Count/Version`。
-    - **资源完整性用测试守**:`icons_test.go` 遍历全部 2121 个图标, 断言解析器能**完整**吃下每条数据
+    - **放独立子包**(`github.com/twgh/xui/icons`):数据 400KB, 只有 import 它的程序才链进二进制。
+      API: `Path/Has/Names/Count/Version`。
+    - **组件内部用的几个图标保留成 `xui.IconXxx` 常量**(chevron/check/x/minus/eye/eye-off/sun/moon 等 11 个):
+      实测 import 资源表会让二进制 **+425KB**(1998848 → 2424320, `-s -w`), 而组件只需要 4 个图标 ——
+      常量在编译期内联, 零体积成本。代价是"手抄会漂移", 由 `icons_test.go` 的
+      `TestBuiltinIconsMatchResource` 兜住: 断言常量与资源里的同名图标**几何一致**(折线 Hausdorff 距离 ≤ 0.02 网格单位)。
+      **这条测试上线当天就抓到 `eye`/`moon` 两个常量是旧版 lucide 的图形**(lucide 改过这两个图标),
+      已按 1.52.0 的数据更正 —— 手抄常量必须留这种守卫。
+    - **资源完整性用测试守**:`icons_test.go` 遍历全部 2130 个图标, 断言解析器能**完整**吃下每条数据
       (`parseIconPathEx` 的 complete 标志, 正是上面那类静默截断的探针)、点落在 24 网格内、填充标记存在。
       预处理回归时立刻炸, 不用靠肉眼比对整本图标。
-    - **对照验收**:32 个图标(覆盖全部图元类型)同屏对照浏览器渲染的原始 SVG(headless Chrome +
-      `--force-device-scale-factor=1.5` 对齐 150% DPI), 逐格像素差 ≤ 4.2/255, 墨量比 0.95~0.97
-      (残差来自我们 `#0a0a0a` 与参考纯黑的色差)。
+    - **对照验收**:同屏对照浏览器渲染的原始 SVG(headless Chrome + `--force-device-scale-factor=1.5`
+      对齐 150% DPI), 32 个覆盖全部图元类型的图标逐格像素差 ≤ 4.2/255, 墨量比 0.95~0.97
+      (残差来自我们 `#0a0a0a` 与参考纯黑的色差);1.52.0 新增的 9 个图标单独复验 ≤ 4.7/255。
+    - **demo 的「图标」页签**是这份资源的浏览入口(9x5 格 + 翻页), 也是"图标怎么用"的活文档:
+      格子是普通自绘元素(各自 hover bg-accent), 翻页只换格子里的名字 + 重绘, 不销毁元素;
+      **格子必须自己铺宿主底色**(透明子元素重绘不擦底, 见第八节 28), 容器元素要
+      `EnableBkTransparent(true)` —— 否则暗色主题下容器是一整块白底、图标(浅色)直接看不见。
 
 ---
 

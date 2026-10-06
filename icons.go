@@ -8,32 +8,45 @@ import (
 	"github.com/twgh/xcgui/xc"
 )
 
-// 图标 path 数据(24x24 viewBox, lucide 原始数据, 与 shadcn 的默认图标库同源)。
-// 其它图标可从 https://lucide.dev 复制 path 数据交给 Painter.Icon。
+// 图标: 解析 lucide 的 path 数据并用 Painter 画出来。
+//
+// 数据格式是 24x24 viewBox 的 SVG path 指令(与 shadcn 的默认图标库 lucide 同源):
+// 支持 M/L/H/V/C/S/Q/T/Z 及相对指令(曲线按 8 段离散); 圆弧 A/a 转为多段三次贝塞尔
+// (每段圆心角 <= 90°, 见 arcToBeziers); `!` 前缀表示下一条子路径是填充(生成资源内部约定)。
 //
 // 为什么不用 SVG 渲染: 炫彩在元素自绘回调里画图片/SVG 不生效(实测 XDraw_DrawSvgEx /
-// XDraw_Image / XDraw_ImageEx 都画不出东西, 见 DESIGN.md 第八节 17), 所以这里自己解析
-// path 几何。
-// 支持 M/L/H/V/C/S/Q/T/Z 及相对指令(曲线按 8 段离散); 圆弧 A/a 转为
-// 多段三次贝塞尔(每段圆心角 <= 90°, 见 arcToBeziers)。
+// XDraw_Image / XDraw_ImageEx 都画不出东西, 见 DESIGN.md 第八节 17), 所以自己解析 path 几何。
 //
-// 出图有两条路(见 Painter.Icon / Painter.IconSearch):
+// 出图有两条路(见 Painter.Icon):
 //  1. D2D 直通填充(d2dicon.go): 解析出的折线 → CPU 描边展开 → FillGeometry, 抗锯齿、
 //     几何精确, 是当前的主路径;
 //  2. 折线描边(DrawLine)回落: 只在 GDI 渲染(app.New(false))或 D2D 资源创建失败时使用。
-const (
-	IconChevronDown  = "m6 9 6 6 6-6"         // lucide ChevronDown
-	IconChevronUp    = "m18 15-6-6-6 6"       // lucide ChevronUp
-	IconChevronLeft  = "m15 18-6-6 6-6"       // lucide ChevronLeft
-	IconChevronRight = "m9 18 6-6-6-6"        // lucide ChevronRight
-	IconCheck        = "M20 6 9 17l-5-5"      // lucide Check
-	IconX            = "M18 6 6 18M6 6l12 12" // lucide X
-	IconMinus        = "M5 12h14"             // lucide Minus
+//
+// 图标从哪来: 内建常量(本文件下方, 组件自用) / 全量资源子包 icons.Path("star")
+// / 直接贴 lucide 的 path 数据(见 https://lucide.dev)。
 
-	IconEye    = "M2.062 12.348a1 1 0 0 1 0-.639 10.365 10.365 0 0 1 19.876 0 1 1 0 0 1 0 .639 10.365 10.365 0 0 1-19.876 0M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6"                                                                                               // lucide Eye
-	IconEyeOff = "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49M14.084 14.158a3 3 0 0 1-4.242-4.242M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143M2 2l20 20" // lucide EyeOff
-	IconSun    = "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"                                                                                    // lucide Sun
-	IconMoon   = "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"                                                                                                                                                                                                       // lucide Moon
+// 内建图标(24x24 viewBox, lucide 原样数据)。
+//
+// 这几个是**组件自己要用**的图标: 下拉箭头(ComboBox/菜单)、勾选(ComboBox/菜单)、
+// 关闭/最小化(Dialog/标题栏)、明暗切换(Sun/Moon)、眼睛(Eye/EyeOff)等。
+// 它们以常量内联在运行时包里 —— 编译期内联进调用点, **零体积成本**。
+//
+// 全量 2100+ 个图标在子包 github.com/twgh/xui/icons(按 lucide 名字取: icons.Path("star")),
+// 但那份数据表约 350KB(实测链进二进制 +425KB), 组件只为 4 个图标不值得让每个用户程序都背它,
+// 所以这里保留常量。手抄漂移由 icons_test.go 断言(与资源里的同名图标逐字节一致)。
+const (
+	IconChevronDown  = "M6 9L12 15L18 9"       // lucide ChevronDown
+	IconChevronUp    = "M18 15L12 9L6 15"      // lucide ChevronUp
+	IconChevronLeft  = "M15 18L9 12L15 6"      // lucide ChevronLeft
+	IconChevronRight = "M9 18L15 12L9 6"       // lucide ChevronRight
+	IconCheck        = "M20 6L9 17L4 12"       // lucide Check
+	IconX            = "M18 6L6 18 M6 6L18 18" // lucide X
+	IconMinus        = "M5 12L19 12"           // lucide Minus
+
+	IconEye    = "M2.062 12.348A1 1 0 0 1 2.062 11.652A10.75 10.75 0 0 1 21.938 11.652A1 1 0 0 1 21.938 12.348A10.75 10.75 0 0 1 2.062 12.348 M12 9A3 3 0 1 1 12 15A3 3 0 1 1 12 9Z"                                                                                            // lucide Eye
+	IconEyeOff = "M10.733 5.076A10.744 10.744 0 0 1 21.938 11.651A1 1 0 0 1 21.938 12.347A10.747 10.747 0 0 1 20.494 14.837 M14.084 14.158A3 3 0 0 1 9.842 9.916 M17.479 17.499A10.75 10.75 0 0 1 2.062 12.348A1 1 0 0 1 2.062 11.652A10.75 10.75 0 0 1 6.508 6.509 M2 2L22 22" // lucide EyeOff
+	IconSun    = "M12 8A4 4 0 1 1 12 16A4 4 0 1 1 12 8Z M12 2L12 4 M12 20L12 22 M4.93 4.93L6.34 6.34 M17.66 17.66L19.07 19.07 M2 12L4 12 M20 12L22 12 M6.34 17.66L4.93 19.07 M19.07 4.93L17.66 6.34"                                                                            // lucide Sun
+	IconMoon   = "M20.985 12.486A9 9 0 1 1 11.512 3.014C11.917 2.992 12.129 3.474 11.914 3.817A6 6 0 0 0 20.182 12.085C20.526 11.87 21.007 12.081 20.985 12.486"                                                                                                                // lucide Moon
 )
 
 // Icon 在 rc 内按 lucide 几何绘制一枚描边图标(等比铺满)。
@@ -68,43 +81,6 @@ func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float
 			p.Draw.DrawLine(ax, ay, bx, by)
 		}
 	}
-}
-
-// iconSearchKey 是 IconSearch 的几何缓存哨兵键(它不由 path 字符串描述)。
-const iconSearchKey = "\x00search"
-
-// IconSearch 绘制搜索图标(lucide Search: 半径 8 的圆 + 右下斜手柄)。
-// 它用圆弧指令描述, 因此不走 parseIconPath, 直接把圆采样成折线点喂同一套描边展开。
-func (p *Painter) IconSearch(rc *xc.RECT, color Color, strokeWidth float32) {
-	if p.d2dIcon(iconSearchKey, rc, color, strokeWidth, searchIconSubs) {
-		return
-	}
-	ox, oy, size, ok := iconBox(iconSearchKey, rc, color)
-	if !ok {
-		return
-	}
-
-	// 回落: 椭圆图元 + 手柄线段(与旧实现一致)
-	s := float32(size) / 24
-	p.Draw.SetLineWidth(iconLineWidth(strokeWidth, s))
-	p.Draw.SetBrushColor(uint32(color))
-	r := round32(8 * s)
-	cx, cy := ox+round32(11*s), oy+round32(11*s)
-	circle := xc.RECT{Left: cx - r, Top: cy - r, Right: cx + r, Bottom: cy + r}
-	p.Draw.DrawEllipse(&circle)
-	p.Draw.DrawLine(ox+round32(21*s), oy+round32(21*s), ox+round32(16.7*s), oy+round32(16.7*s))
-}
-
-// searchIconSubs 把 lucide Search 表达成 24 网格折线: 圆心 (11,11) 半径 8 的整圆
-// (采样 48 段) + 手柄 (21,21)→(16.7,16.7)。两者共用同一套描边展开。
-func searchIconSubs() []iconSub {
-	const n = 48
-	circle := make([]iconPt, 0, n+1)
-	for i := 0; i <= n; i++ {
-		t := 2 * math.Pi * float64(i) / n
-		circle = append(circle, iconPt{11 + 8*float32(math.Cos(t)), 11 + 8*float32(math.Sin(t))})
-	}
-	return []iconSub{{pts: circle}, {pts: []iconPt{{x: 21, y: 21}, {x: 16.7, y: 16.7}}}}
 }
 
 // iconBox 校验并算出图标在 rc 内的居中正方形(逻辑像素)。
