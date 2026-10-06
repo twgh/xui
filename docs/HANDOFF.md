@@ -100,6 +100,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - **自绘标题栏窗口样式**: `Caption|Border|Drag_Window`(无默认图标/标题/三键) + 30px BorderSize, 展示元素要 `EnableMouseThrough(true)` 才不挡拖动, 见 DESIGN 第八节 38; demo 是标准样板
 - **渲染固定 Direct2D**(`app.New(true)`)
 - **解析 lucide path 时 arc 的标志位是单字符**:`a.25.25 0 00.407.195` 是 flag=0 / flag=0 / x=.407 / y=.195, 按"数字"贪婪切会读成 `00.407` → 参数不足 → **后面整段图形被静默丢掉**(图标只画一半)。解析器已按 SVG 语法逐字符读标志(见 DESIGN.md 第八节 44);自定义图标走 `icons.Path(...)` 或直接贴 path 都行
+- **直通 D2D 填充几何: figure 数必须少**(D2D 填充自重叠路径是 stencil-and-cover, 代价随 figure 数**近似平方增长**: 45 个图标一帧 9 figure → 4ms, 199 figure → 1.6 秒)。描边要展开成"每条子路径一条闭合轮廓", 别写成"每段一个四边形 + 每顶点一个圆帽"。详见 DESIGN 第八节 43
 - **直通 D2D 绘制(第三方 COM 接口)必须先 `XDraw_ConvRect` 把客户区坐标换算成画布对齐坐标**:炫彩只在刷新自己的 `XDraw_*` 命令时才施加元素变换/裁剪, 直通调用拿到的是**窗口坐标系**(不换算就会画到元素外面, 症状可能是"图标莫名消失");另外 `XDraw_GetD2dRenderTarget`/`XC_GetD2dFactory` 交出来的是**真 COM 指针**, 可纯 Go 直通调用(ABI: 禁 float 形参、8 字节结构体按值打包);注意 `ID2D1SimplifiedGeometrySink` 除 `Close` 外全是 void —— 返回值是寄存器垃圾, 当成 HRESULT 查会静默回落。详见 DESIGN.md 第八节 43
 - **LayoutEle 默认是"横向流 + 自动换行", 不是竖排**:纵向堆叠必须 `EnableHorizon(false)`;列布局主轴间距用 `SetSpace`, 行布局换行行距用 `SetSpaceRow`(只设 SetSpace 纵向间隙恒 0);`Fill` 独占一整行, 等分用 `Weight`;项级 `LayoutItem_SetAlign` 无效, 用布局级 `SetAlignH/V`(详见 DESIGN.md 第八节 29)
 - 顶层 Tabs 分页: 页面容器 Show(false)→Show(true) 后其内部布局元素不会自动重排(空白壳), **对显示的页面调 `AdjustLayout()`** 再 Redraw(demo buildPage);ESC 关闭用 `XWnd_CloseWindow`
@@ -198,3 +199,8 @@ go run ./cmd/xui list / init <目录> / add <组件...>
   `go test ./...` 会把全部 2130 个图标过一遍解析器(完整性回归)。
 - **demo 第 6 个页签「图标」**是这份资源的浏览入口: 9x5 格自绘格子 + 上下翻页 + 悬浮 bg-accent,
   亮/暗两套主题都验过(`XUI_HOME_PAGE=5` 直接启动到该页)。
+- **图标页卡顿已修**(2026-10-06, 45 个图标同框 = 天然的压力测试): 根因是 D2D 填充自重叠路径
+  走 stencil-and-cover, 代价随**填充几何的 figure 数**近似平方增长, 而最初的描边展开是"每段一个
+  四边形 + 每个顶点一个圆帽"(上百 figure/图标) → 719ms/帧。改成"每条子路径一条闭合轮廓"
+  (外侧圆弧 + 内侧偏移线交点 + 两端半圆帽)后平均 4.11 条轮廓/图标 → **4.14ms/帧**;
+  结论见 DESIGN 第八节 43, 回归由 `TestIconGeometryFigureCount` / `TestStrokeOutline` 守住。

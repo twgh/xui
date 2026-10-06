@@ -96,6 +96,15 @@ const (
 	pgOpen      = 17 // (out **sink) → HRESULT
 )
 
+// ID2D1Geometry 的方法从 4 起(与 Windows SDK d2d1.h 的声明顺序一致, 已用
+// GetBounds=4 / CompareWithGeometry=8 逐个验证):
+//   4 GetBounds / 5 GetWidenedBounds / 6 StrokeContainsPoint / 7 FillContainsPoint /
+//   8 CompareWithGeometry / 9 Simplify / 10 Tessellate / 11 CombineWithGeometry /
+//   12 Outline / 13 ComputeArea / 14 ComputeLength / 15 ComputePointAtLength / 16 Widen。
+// 注意: 想用 CombineWithGeometry 把"图元汤"合并成一条轮廓的路走不通(索引正确、
+// 参数齐全但调用直接崩, 见 DESIGN 第八节 43); 而且 ComputeArea/ComputeLength 的首参
+// worldTransform 是 _In_(不能传 NULL)—— 本文件只用 GetBounds 一个(它允许 NULL)。
+
 // ID2D1GeometrySink: ID2D1SimplifiedGeometrySink 部分只有 7 个自有方法, 即 3~9
 // (GeometrySink 追加的 AddBezier/AddArc 等都带浮点参数, 本项目不碰)。
 //
@@ -174,6 +183,10 @@ func d2dGeomCache(factory comPtr) map[d2dGeomKey]comPtr {
 
 // newGeometry 用若干闭合折线(扁平 x,y 点对, 最终绘制坐标)造一条路径几何。
 // 任一环节失败返回 nil, 调用方回落到折线渲染。
+//
+// 注意: 这里的 figure 数必须少 —— D2D 填充自重叠路径是 stencil-and-cover, 代价随
+// figure 数近似平方增长(实测 45 个图标一帧: 9 个 figure 4.1ms, 199 个 1590ms)。
+// 所以 strokeOutline 保证"每条子路径一条轮廓", 而不是每段/每顶点各来一个 figure。
 func newGeometry(factory comPtr, figures [][]float32) comPtr {
 	if factory == nil {
 		return nil
@@ -233,81 +246,156 @@ func geomUsable(geom comPtr) bool {
 
 // ---------------- 描边展开(CPU) ----------------
 
-// iconStrokeFigures 把 24 网格的折线子路径"展开"成填充多边形集合。
+// iconStrokeFigures 把子路径展开成填充多边形: **每条描边子路径 → 一条闭合轮廓**
+// (round cap/join), 填充子路径(filled, 即 lucide 的 fill="currentColor" 色点)原样入几何。
 //
-// 子路径分两种: 默认是**描边**(展开规则见下); 带 filled 标记的(lucide 的
-// fill="currentColor" 色点, 由解析器的 `!` 前缀标出)整条作为填充多边形入几何 ——
-// 它本来就是实心形状, 按描边处理会变成"胖一圈的空心环"。
+// 为什么必须是"一条轮廓"而不是"每段一个四边形 + 每个顶点一个圆帽":
+// D2D 填充自重叠路径走 stencil-and-cover, 代价随**子路径数**近似平方增长 ——
+// 实测 45 个图标一帧: 9 个子路径 4.1ms, 39 个 39ms, 199 个 1590ms。图元汤写法一个
+// 图标就上百个子路径, 图标总览页(45 个图标同框)直接卡死。合并成一条轮廓后每图标
+// 只剩几条子路径, 填充代价回到常数级。
 //
-// 规则(lucide 的 stroke-linecap / stroke-linejoin 都是 round):
-//   - 每段向两侧各偏移 w/2 → 一个四边形(闭合 figure);
-//   - 每个顶点补一个半径 w/2 的正多边形圆帽 —— 折线内部是圆角连接, 两个端点是圆头线帽,
-//     同一套圆帽即可覆盖;
+// 轮廓构造(与 SVG 的 round linejoin/linecap 语义一致):
+//   - 两侧各按 w/2 偏移; 顶点处**外侧**补圆弧(圆角连接), **内侧**取两条偏移线的交点(精确);
+//   - 两端各补一个半圆帽。
 //
-// 所有形状都是凸的, 在 WINDING 填充模式下并集即笔画形状; 且每个形状都落在
-// "真·圆角描边"内部(内接近似), 不会比真描边胖。
+// 所有轮廓的绕向天然一致(与折线自身绕向无关), 因此在 WINDING 模式下并集即笔画形状;
+// 跨子路径的重叠(比如 X 的两笔)也会正确并起来。
 //
-// 关键: **所有 figure 必须同向**(见 sameOrientation)。段四边形与圆帽的天然绕向
-// 是相反的, 直接混在一起 WINDING 会让重叠处的 winding 归零被挖空, 描边会变成
-// 一排梳齿。
-//
-// 坐标一次性成型: 先按 s=size/24 缩放到逻辑像素, 再按 w(=strokeWidth*s)展开,
-// 最后加 (ox,oy) 偏移 —— 几何里存的就是最终绘制坐标。
+// 坐标一次性成型: 先按 s=size/24 缩放到最终绘制坐标(含 ox/oy 偏移), 再按 w(=strokeWidth*s)展开。
 func iconStrokeFigures(subs []iconSub, ox, oy int32, s, w float32) [][]float32 {
 	r := w / 2
 	if r <= 0 {
 		return nil
 	}
-	// 圆帽边数: 48px 图标(r=2px)下内接正多边形与真圆的偏差也只有 0.07px, 肉眼不可辨。
-	const capSides = 12
-	figs := make([][]float32, 0, 16)
-	// 24 网格 → 最终绘制坐标
-	scale := func(pts []iconPt) []float32 {
-		out := make([]float32, len(pts)*2)
-		for i, p := range pts {
-			out[i*2] = float32(ox) + p.x*s
-			out[i*2+1] = float32(oy) + p.y*s
-		}
-		return out
-	}
-	addCap := func(cx, cy float32) {
-		pts := make([]float32, 0, (capSides+1)*2)
-		for i := 0; i <= capSides; i++ {
-			t := 2 * math.Pi * float64(i) / float64(capSides)
-			pts = append(pts, cx+r*float32(math.Cos(t)), cy+r*float32(math.Sin(t)))
-		}
-		figs = append(figs, sameOrientation(pts))
-	}
+	figs := make([][]float32, 0, 8)
 	for _, sub := range subs {
 		if len(sub.pts) < 2 {
 			continue
 		}
-		pts := scale(sub.pts)
-		if sub.filled { // 填充形状: 原样入几何(closed figure 由 EndFigure 闭合)
-			figs = append(figs, pts)
+		pts := make([]float32, len(sub.pts)*2)
+		for i, p := range sub.pts {
+			pts[i*2] = float32(ox) + p.x*s
+			pts[i*2+1] = float32(oy) + p.y*s
+		}
+		if sub.filled { // 填充形状: 原样入几何(闭合由 EndFigure 负责)
+			figs = append(figs, sameOrientation(pts))
 			continue
 		}
-		for i := 0; i+1 < len(sub.pts); i++ {
-			ax, ay := pts[i*2], pts[i*2+1]
-			bx, by := pts[i*2+2], pts[i*2+3]
-			dx, dy := bx-ax, by-ay
-			l := float32(math.Hypot(float64(dx), float64(dy)))
-			if l < 1e-4 { // 重合点(路径里的重复端点), 没有方向可言
-				continue
-			}
-			nx, ny := -dy/l*r, dx/l*r
-			figs = append(figs, sameOrientation([]float32{
-				ax + nx, ay + ny,
-				bx + nx, by + ny,
-				bx - nx, by - ny,
-				ax - nx, ay - ny,
-			}))
+		pts = dedupePts(pts)
+		if len(pts) < 4 {
+			continue
 		}
-		for i := 0; i < len(sub.pts); i++ {
-			addCap(pts[i*2], pts[i*2+1])
+		if outline := strokeOutline(pts, r); len(outline) >= 6 {
+			figs = append(figs, outline)
 		}
 	}
 	return figs
+}
+
+// strokeOutline 把一条折线(最终坐标, 扁平 x,y)展开成一条闭合轮廓(round cap/join)。
+func strokeOutline(pts []float32, r float32) []float32 {
+	segs := len(pts)/2 - 1
+	if segs < 1 {
+		return nil
+	}
+	// 每段的单位方向与单位左法线(x,y)
+	ux := make([]float32, segs)
+	uy := make([]float32, segs)
+	nx := make([]float32, segs)
+	ny := make([]float32, segs)
+	for i := 0; i < segs; i++ {
+		vx := pts[i*2+2] - pts[i*2]
+		vy := pts[i*2+3] - pts[i*2+1]
+		l := float32(math.Hypot(float64(vx), float64(vy)))
+		ux[i], uy[i] = vx/l, vy/l
+		nx[i], ny[i] = -uy[i], ux[i] // 左法线
+	}
+	out := make([]float32, 0, segs*4+48)
+	add := func(x, y float32) { out = append(out, x, y) }
+
+	// ---- A 侧(左法线侧)正向 ----
+	add(pts[0]+nx[0]*r, pts[1]+ny[0]*r)
+	for i := 1; i < segs; i++ { // 顶点 i(连接段 i-1 与段 i)
+		cx, cy := pts[i*2], pts[i*2+1]
+		cross := ux[i-1]*uy[i] - uy[i-1]*ux[i]
+		if cross < 0 { // A 侧在外: 补圆角弧(起点已在上一步给出)
+			a0 := float32(math.Atan2(float64(ny[i-1]), float64(nx[i-1])))
+			sweep := float32(math.Atan2(float64(nx[i-1]*ny[i]-ny[i-1]*nx[i]), float64(nx[i-1]*nx[i]+ny[i-1]*ny[i])))
+			out = addArc(out, cx, cy, r, a0, sweep, true)
+		} else if mx, my, ok := miterPoint(cx, cy, nx[i-1], ny[i-1], nx[i], ny[i], r); ok {
+			add(mx, my) // A 侧在内: 取两条偏移线的交点(精确的内角)
+		} else {
+			add(cx+nx[i]*r, cy+ny[i]*r)
+		}
+	}
+	add(pts[segs*2]+nx[segs-1]*r, pts[segs*2+1]+ny[segs-1]*r)
+
+	// ---- 末端半圆帽: A 侧 → B 侧, 扫过 -π(经过前进方向的端点) ----
+	a0 := float32(math.Atan2(float64(ny[segs-1]), float64(nx[segs-1])))
+	out = addArc(out, pts[segs*2], pts[segs*2+1], r, a0, -math.Pi, true)
+
+	// ---- B 侧反向 ----
+	for i := segs - 1; i >= 1; i-- {
+		cx, cy := pts[i*2], pts[i*2+1]
+		cross := ux[i-1]*uy[i] - uy[i-1]*ux[i]
+		if cross > 0 { // B 侧在外: 从 -N_i 绕到 -N_{i-1}
+			a0 := float32(math.Atan2(float64(-ny[i]), float64(-nx[i])))
+			sweep := float32(math.Atan2(float64(nx[i]*ny[i-1]-ny[i]*nx[i-1]), float64(nx[i]*nx[i-1]+ny[i]*ny[i-1])))
+			out = addArc(out, cx, cy, r, a0, sweep, true)
+		} else if mx, my, ok := miterPoint(cx, cy, -nx[i], -ny[i], -nx[i-1], -ny[i-1], r); ok {
+			add(mx, my)
+		} else {
+			add(cx-nx[i-1]*r, cy-ny[i-1]*r)
+		}
+	}
+	add(pts[0]-nx[0]*r, pts[1]-ny[0]*r)
+
+	// ---- 起始半圆帽: B 侧 → A 侧, 同样扫过 -π(经过后退方向的端点) ----
+	a0 = float32(math.Atan2(float64(-ny[0]), float64(-nx[0])))
+	out = addArc(out, pts[0], pts[1], r, a0, -math.Pi, true)
+	return out
+}
+
+// addArc 从角度 a0 起按 sweep 扫过(弧度), 每段不超过 30°; skipFirst 用于起点已给的情形。
+func addArc(out []float32, cx, cy, r, a0, sweep float32, skipFirst bool) []float32 {
+	k := int(math.Ceil(math.Abs(float64(sweep)) / (math.Pi / 6)))
+	if k < 1 {
+		k = 1
+	}
+	for i := 0; i <= k; i++ {
+		if i == 0 && skipFirst {
+			continue
+		}
+		a := float64(a0 + sweep*float32(i)/float32(k))
+		out = append(out, cx+r*float32(math.Cos(a)), cy+r*float32(math.Sin(a)))
+	}
+	return out
+}
+
+// miterPoint 求两侧偏移线在角点的交点(单位法线 n1/n2, 长度 r)。
+// 分母 1+n1·n2 在 180° 急折时趋 0, 此时返回 ok=false(调用方退化成直连)。
+func miterPoint(cx, cy, n1x, n1y, n2x, n2y, r float32) (float32, float32, bool) {
+	d := 1 + n1x*n2x + n1y*n2y
+	if d < 0.05 {
+		return 0, 0, false
+	}
+	return cx + r*(n1x+n2x)/d, cy + r*(n1y+n2y)/d, true
+}
+
+// dedupePts 去掉重合的相邻点(路径数据里常见重复端点), 否则方向向量无从定义。
+func dedupePts(pts []float32) []float32 {
+	out := make([]float32, 0, len(pts))
+	for i := 0; i+1 < len(pts); i += 2 {
+		if n := len(out); n >= 2 {
+			dx, dy := pts[i]-out[n-2], pts[i+1]-out[n-1]
+			if math.Hypot(float64(dx), float64(dy)) < 1e-4 {
+				continue
+			}
+		}
+		out = append(out, pts[i], pts[i+1])
+	}
+	return out
 }
 
 // sameOrientation 把多边形统一成"正向"(鞋带公式面积为正), 需要时反转点序。

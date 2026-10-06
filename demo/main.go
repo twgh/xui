@@ -643,12 +643,20 @@ func newIconTile(x, y int32, parent int) *iconTile {
 	t := &iconTile{ele: ele}
 	ele.EnableBkTransparent(true)
 	ele.AddEvent_Paint(t.onPaint)
+	// 只在 hover 状态**变化**时重绘: MouseStay 是"鼠标在元素内移动"就会来一发的
+	// (按下不判状态就会变成每个鼠标移动事件都触发一次重绘, 45 个格子扫一遍很难看)
 	ele.AddEvent_MouseStay(func(hEle int, pbHandled *bool) int {
+		if t.hover {
+			return 0
+		}
 		t.hover = true
 		ele.Redraw(false)
 		return 0
 	})
 	ele.AddEvent_MouseLeave(func(hEle, hEleStay int, pbHandled *bool) int {
+		if !t.hover {
+			return 0
+		}
 		t.hover = false
 		ele.Redraw(false)
 		return 0
