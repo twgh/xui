@@ -6,7 +6,7 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现的源码为唯一权威。
 
-## 当前状态(2026-10-05)
+## 当前状态(2026-10-06)
 
 - ✅ **P0 运行时**完成:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter 绘制助手、字体缓存、focus-visible 焦点来源跟踪
 - ✅ **P1 组件**完成并视觉验收:Button(5 变体×3 尺寸)、Checkbox、Radio、Input、Label、Separator+Badge、Card
@@ -23,7 +23,8 @@
 - ✅ **Dialog/文字视觉对齐打磨**(2026-10-04,与用户逐轮截图对比):灭掉内容容器点击后出现的原生蓝焦点框/深色边框;行盒按 leading-none 收紧并给文本元素上下外扩(避免元素裁字);页脚高度全量计入(面板不再矮一截);页脚按钮量宽 ×2 校正(`GetTextShowRect` 在 144 DPI 下约为实绘宽度的一半),按钮宽度与 shadcn 的 48 逻辑像素完全一致;字重收敛到常规(中文 500≈常规);Tooltip 量宽字体与绘制对齐 + 定位去掉重复的客户区偏移(箭头贴住元素上边)。结论全部记入 DESIGN.md 第八节 34
 - ✅ **Menu(原生菜单皮肤)完成并视觉/交互验收**(2026-10-05, computer-use + zoom):路线 = 原生 Menu 承载行为 + 窗口级 XWM_MENU_DRAW_BACKGROUND/DRAWITEM 自绘皮肤(每窗口注册一次, 绘制实时取令牌)。条目/勾选/单选(组内互斥)/分组标签/分隔栏/快捷键("	" 借原生算宽)/子菜单/禁用/破坏性全对齐 dropdown-menu.tsx;弹窗圆角 SetWindowRound、元素锚点定位(sideOffset=4, 翻转+夹紧)。探针结论记 DESIGN.md 第八节 36;**注意全屏缩略截图里暗色弹层会假显亮底, 弹层验收必须 zoom**。demo 卡 5 新增
 - ✅ **Table(List)完成并视觉/交互验收**(2026-10-05, `components/table.go`):路线 = **原生 `List` 载体 + 外观全自绘**(原生 List 的灰表头/横竖网格线/系统滚动条/白底全部压掉)。为什么不是原生 `Table`:`widget.Table` 是 Shape 系的"单元格画布"(合并单元格、逐格画线、无滚动/无虚拟行), 与 shadcn 的可滚动行列表语义不符, 故 P3 里的 Table/List 两项合并为同一个组件(registry 名 `table`)。对齐 shadcn table.tsx:表头 h-10(40)/px-2 + 1px 底边, 数据行 36(p-2 + text-sm), 行 `border-b`(**最后一行不画** = `[&_tr:last-child]:border-0`), 行悬浮 `hover:bg-muted/50`、选中 `bg-muted`;容器底色取 Card(同 ComboBox 的"组件都放卡片上"约定, 可用 `WithTableOnBackground` 改为 Background)。API:`NewTable(x,y,cx,cy,parent,cols)` + `AddRow/SetCell/SetRow/CellText/Rows/Clear/Select/Selected/OnSelect/Refresh/FitColumns`,列宽 `Width<=0` 表示占满剩余宽度(滚动条显隐翻转时自动重算)。像素实测(亮/暗双主题):行底 `#f5f5f5`→暗 `#262626`, 悬浮 `#fafafa`→暗 `#1f1f1f`, 行边框 `#e5e5e5`→暗白 10% 合成, 行高 54 物理/36 逻辑、表头 60/40, 自适应列 = `cx − 4 − 12`(滚动条让步)。踩坑全部记入 DESIGN.md 第八节 40、41(demo 那个"表格整块消失"是 LayoutEle **纵向溢出换列**, 见 41)
-- ⬜ P3 剩余:Tree 皮肤、hover 过渡动画、CLI 远程 registry
+- ✅ **Tree(树形视图)完成并视觉/交互验收**(2026-10-06, `components/tree.go`):路线 = **原生 `Tree` 载体 + 外观全自绘**(展开/收起、点击 chevron 展开、选中、滚动全原生;原生项背景/连接线/分割线/展开按钮 "+/-" 图形全部压掉)。shadcn 无官方 tree 组件,语义按社区通行实现并复用本项目已验收令牌:行高 32(h-8)、视觉矩形左右内缩 4、圆角 6、悬浮/选中 bg-accent(同 select/menu 条目)、每级缩进 16 + 祖先 1px 参考线、chevron size-4 muted-foreground(收起朝右/展开朝下)、叶节点留空槽位文字全树对齐、条目文字 text-sm。自定义项模板(行高 32 + 16px 按钮槽)+ `XE_TREE_DRAWITEM` 自绘;换肤走 `RefreshData()`。像素实测(亮/暗):行高 48 物理/32 逻辑、每级缩进 24/16、选中/hover `#f5f5f5`→暗 `#262626`、普通行透出 Card `#171717`(暗)、文字 `#fafafa`(暗)。交互 computer-use 真实点击验证:chevron 展开/收起、行选中、hover、运行时 Dark/Light 切换整树换肤。踩坑记 DESIGN.md 第八节 42;demo 新增"结构"页(隐藏页创建时选中态丢失已在 demo 规避);shadcn App.tsx 加了同构"树形视图"对照卡(手写 TreeRow,非官方组件)
+- ⬜ P3 剩余:hover 过渡动画、CLI 远程 registry
 
 - ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
 
@@ -36,7 +37,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
 │   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go  menu.go
-│   ├── label.go   separator.go(含 Badge)  card.go  table.go
+│   ├── label.go   separator.go(含 Badge)  card.go  table.go  tree.go
 ├── cmd\xui\                      CLI(init/add/list)
 ├── demo\                         演示应用(也是全组件编译测试目标)
 ├── registry.json                 组件清单(files + deps)
@@ -125,6 +126,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见 DESIGN 第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见 DESIGN 第八节 30) |
 | menu 弹层 = bg-popover rounded-lg p-1 ring-1 ring-foreground/10(内缩 1px); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border(原生槽高仅 4px); 快捷键右对齐 text-xs muted | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见 DESIGN 第八节 36) |
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm` | table.tsx(已落盘) + table.go(原生 List 接管路线见 DESIGN 第八节 40) |
+| tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本项目令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见 DESIGN 第八节 42) |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10;标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |

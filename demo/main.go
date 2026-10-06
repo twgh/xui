@@ -1,7 +1,7 @@
 // xui 组件演示: light/dark 一键换肤 + 全部组件(含表格)。
 // 卡片内容用 LayoutEle 流式布局, 不再手算 y。
-// 顶层用 Tabs 分页展示(表单/控件/反馈/数据), 主题用环境变量 XUI_THEME=dark 切换。
-// 控制启动首页可用环境变量 XUI_HOME_PAGE = 0/1/2/3 分别对应 表单/控件/反馈/数据。
+// 顶层用 Tabs 分页展示(表单/控件/反馈/数据/结构), 主题用环境变量 XUI_THEME=dark 切换。
+// 控制启动首页可用环境变量 XUI_HOME_PAGE = 0/1/2/3/4 分别对应 表单/控件/反馈/数据/结构。
 package main
 
 import (
@@ -22,8 +22,10 @@ import (
 )
 
 var (
-	tip       *ui.Tooltip
-	demoTable *ui.Table
+	tip         *ui.Tooltip
+	demoTable   *ui.Table
+	demoTree    *ui.Tree
+	demoTreeSel int32
 )
 
 func main() {
@@ -268,12 +270,12 @@ func itemMarginTop(ele layoutItem, m int32) {
 
 // ===== 页面 =====
 
-// buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈/数据), 每页是一个绝对定位的
+// buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈/数据/结构), 每页是一个绝对定位的
 // 容器元素, 切换时 Show/Hide + 重绘。页面内容静态创建一次即可
 // (主题切换走整窗重绘, 不需要重建)。
 // 后续新增组件展示时: 开一个新页面容器 + 对应 Tab 即可, 页面之间互不挤压。
 func buildPage(hWindow, hParent int) {
-	pageCount := 4
+	pageCount := 5
 	homePage, _ := strconv.Atoi(os.Getenv("XUI_HOME_PAGE"))
 	if homePage < 0 || homePage > pageCount-1 {
 		homePage = 0
@@ -288,9 +290,9 @@ func buildPage(hWindow, hParent int) {
 		pages[i].EnableMouseThrough(true) // 纯容器, 空白处透给窗口拖动
 		pages[i].Show(i == homePage)
 	}
-	pForm, pCtrl, pFeed, pData := pages[0], pages[1], pages[2], pages[3]
+	pForm, pCtrl, pFeed, pData, pTree := pages[0], pages[1], pages[2], pages[3], pages[4]
 
-	pageTabs := ui.NewTabs(16, 6, 340, hParent, []string{"表单", "控件", "反馈", "数据"})
+	pageTabs := ui.NewTabs(16, 6, 420, hParent, []string{"表单", "控件", "反馈", "数据", "结构"})
 	pageTabs.OnChange(func(i int32) {
 		for j, p := range pages {
 			vis := int(i) == j
@@ -301,6 +303,12 @@ func buildPage(hWindow, hParent int) {
 				p.AdjustLayout()
 				p.Redraw(false)
 			}
+		}
+		// 隐藏页上创建的树, 启动时的 SetSelectItem 选中态会丢(实测, 见 DESIGN 第八节 42),
+		// 首次显示结构页时补一次选中
+		if int(i) == 4 && demoTreeSel != xcc.XC_ID_ERROR {
+			demoTree.Select(demoTreeSel)
+			demoTreeSel = xcc.XC_ID_ERROR
 		}
 	})
 	pageTabs.SetActive(int32(homePage))
@@ -531,6 +539,56 @@ func buildPage(hWindow, hParent int) {
 	demoTable.OnSelect(func(row int32) {
 		fmt.Printf("选中行: %d\n", row)
 	})
+
+	// ===== 页 5: 结构(树形视图) =====
+	card7 := ui.NewCard(24, 0, 360, 470, pTree.Handle)
+	v7 := vStack(card7, 14)
+	itemFill(ui.NewCardTitle(0, 0, 0, "树形视图", v7.Handle), 24)
+	itemFill(ui.NewLabel(0, 0, 0, 0,
+		"原生 Tree 载体 + 全自绘皮肤: 缩进参考线/旋转 chevron/行悬浮选中。点击 chevron 或文字选中。", v7.Handle).SetMuted(), 48)
+
+	demoTree = ui.NewTree(0, 0, card7.ContentWidth(), 0, v7.Handle)
+	itemFixed(demoTree, card7.ContentWidth(), 322)
+	demoTreeSel = buildDemoTree(demoTree)
+	demoTree.OnSelect(func(id int32) {
+		fmt.Printf("选中项: %s\n", demoTree.ItemText(id))
+	})
+
+	// 右侧说明卡: 树的语义对照
+	card8 := ui.NewCard(400, 0, 352, 470, pTree.Handle)
+	v8 := vStack(card8, 14)
+	itemFill(ui.NewCardTitle(0, 0, 0, "语义对照", v8.Handle), 24)
+	for _, line := range []string{
+		"行高 32(h-8), 视觉矩形左右内缩 4, 圆角 6",
+		"行悬浮 bg-accent, 选中 bg-accent",
+		"每级缩进 16, 祖先层级画 1px 参考线",
+		"chevron size-4 muted: 收起朝右/展开朝下",
+		"叶节点留空槽位, 文字全树对齐",
+		"条目文字 text-sm foreground",
+	} {
+		lb := ui.NewLabel(0, 0, 0, 0, "· "+line, v8.Handle).SetMuted()
+		itemFill(lb, 24)
+	}
+}
+
+// buildDemoTree 填充演示树(文件树形态, 与 shadcn App.tsx 对照卡同构), 返回默认选中项。
+func buildDemoTree(t *ui.Tree) int32 {
+	src := t.AddRoot("src")
+	comp := t.AddChild(src, "components")
+	t.AddChild(comp, "button.go")
+	t.AddChild(comp, "table.go")
+	treeItem := t.AddChild(comp, "tree.go")
+	demo := t.AddChild(src, "demo")
+	t.AddChild(demo, "main.go")
+	t.AddChild(src, "go.mod")
+	docs := t.AddRoot("docs")
+	t.AddChild(docs, "DESIGN.md")
+	t.AddChild(docs, "HANDOFF.md")
+	t.AddRoot("README.md")
+	t.Expand(comp, true)
+	t.Expand(src, true)
+	t.Select(treeItem)
+	return treeItem
 }
 
 // demo 菜单状态(菜单是一次性对象, 状态由调用方持有, 每次弹出重建)

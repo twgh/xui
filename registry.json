@@ -68,6 +68,10 @@
     "table": {
       "files": ["table.go"],
       "deps": []
+    },
+    "tree": {
+      "files": ["tree.go"],
+      "deps": []
     }
   }
 }
