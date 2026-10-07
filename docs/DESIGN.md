@@ -573,12 +573,13 @@ myapp/
       元素 alpha 只作用于走 XDraw_* 命令队列的输出)→ 对话框淡入时关闭图标全黑不淡。
       修法 = d2dicon.go 出图前把元素当前 alpha(`XEle_GetAlpha`)乘进画刷颜色
       (窗口级 Painter 跳过);
-      ② **输入框插入符是原生 caret**, 同样不随元素 alpha 淡。最终方案 = **焦点晚给**:
-      淡入到位(Presence done)后才让第一个可聚焦控件拿焦点, 淡出开始先
-      `XWnd_SetFocusEle(hWnd, 0)` 清焦点 —— 焦点没了插入符自然消失。曾试过进出场期间
-      `XWnd_ShowCaret(false)` 藏、done 里恢复, 实测与编辑框自身的 blink 定时器打架
-      (连续闪烁), 弃用; 晚 100ms 聚焦对"打开时焦点进第一个控件"的 radix 语义无感知
-      影响, 还顺带避免了淡出 100ms 里键盘输入打进正在消失的输入框。
+      ② **输入框插入符**:插入符竖条尊重持有它的编辑框元素 alpha(实测: 淡入中段
+      114 灰 vs 稳态 10 黑), 所以整组淡(见 SetSubtreeAlpha)天然覆盖它, 打开即聚焦
+      没有问题; `GetCaretHELE` 返回的就是持焦编辑框, applyFade 里对它再设一次 alpha
+      是双保险。两个弃用方案, 都是实测: 进出场期间 `XWnd_ShowCaret(false)` 藏/done
+      恢复 —— 与编辑框自身 blink 定时器打架, 插入符连续闪烁; 焦点推迟到淡入完成后
+      再给 —— 输入框的焦点环在最后一帧突然出现, 看着闪一下(shadcn 的焦点环从第一帧
+      就随整组淡入)。结论: 焦点打开即给, 插入符靠元素 alpha 自然淡。
     - **运行时 API**(`presence.go`, 与 hover 共用 anim.go 的驱动器, 该处扩展了条目级
       时长/缓动/apply/done):`Presence(hOwner, key, visible, dur, apply, done)` 返回 0..1 进度,
       `apply` 每帧把进度落到元素透明度 / 窗口位置上, `done` 到位回调一次; 助手

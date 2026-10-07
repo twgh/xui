@@ -305,14 +305,10 @@ func (d *Dialog) Show() *Dialog {
 	d.overlay.Redraw(false)
 	xc.XWnd_Redraw(d.hWnd, true)
 	d.focusIdx = 0
-	// 焦点在淡入**到位后**才交给第一个可聚焦控件: 输入框插入符是原生 caret, 不吃元素
-	// alpha, 聚焦早了它会以全亮度闪现在还没淡完的面板上; 而用 ShowCaret 藏/显又会和
-	// 编辑框自身的 blink 定时器打架(实测连续闪烁) —— 晚 100ms 聚焦两个问题都没有
-	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, func(float64) {
-		if fs := d.focusables(); len(fs) > 0 {
-			xc.XWnd_SetFocusEle(d.hWnd, fs[0])
-		}
-	})
+	if fs := d.focusables(); len(fs) > 0 {
+		xc.XWnd_SetFocusEle(d.hWnd, fs[0])
+	}
+	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, nil)
 	return d
 }
 
@@ -323,9 +319,6 @@ func (d *Dialog) Hide() *Dialog {
 		return d
 	}
 	d.open = false
-	// 先清焦点: 插入符不随元素 alpha 淡出(原生 caret), 焦点没了它自然消失;
-	// 也避免淡出的 100ms 里键盘输入继续打进正在消失的输入框
-	xc.XWnd_SetFocusEle(d.hWnd, 0)
 	xui.Presence(d.hWnd, dlgFadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
 		showEleTree(d.overlay.Handle, false)
 		if d.backdrop != nil {
@@ -347,9 +340,19 @@ func (d *Dialog) backdropHandle() int {
 
 // applyFade 把进出场进度落到对话框整组元素的透明度上(元素透明度会向下作用于自绘内容,
 // 实测有效; 但**不级联到子元素**, 所以用 SetSubtreeAlpha 对整棵子树逐个设置 ——
-// 遮罩、面板、模糊层与标题/输入框等内容一起淡, 对齐 shadcn 的整组 fade-in/out)。
+// 遮罩、面板、模糊层与标题/输入框等内容一起淡; 焦点环也因此从第一帧就随整组淡入,
+// 不会在最后闪一下, 对齐 shadcn)。
+// 输入框插入符竖条尊重持有它的编辑框元素 alpha(实测: 淡入中段 114 灰 vs 稳态 10 黑),
+// 编辑框在 overlay 子树里本就会淡; GetCaretHELE 那行是双保险 —— 万一 caret 元素
+// 不在子树里(句柄 != 编辑框)也能同步淡。
+// 注意: 别用 XWnd_ShowCaret 在进出场期间藏/显 —— 会和编辑框自身的 blink 定时器
+// 打架(实测连续闪烁); 也别把焦点推迟到淡入完成后 —— 输入框的焦点环会在最后一帧
+// 突然出现, 看着像闪一下(shadcn 的焦点环从第一帧就随整组淡入)。
 func (d *Dialog) applyFade(v float64) {
 	xui.SetSubtreeAlpha(v, d.overlay.Handle, d.backdropHandle())
+	if h := d.win.GetCaretHELE(); h != 0 {
+		xc.XEle_SetAlpha(h, byte(v*255+0.5))
+	}
 }
 
 // Close 关闭对话框并触发关闭回调。
