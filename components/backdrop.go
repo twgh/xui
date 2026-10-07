@@ -91,7 +91,9 @@ func (d *Dialog) refreshBackdrop() {
 	}
 	// 阴影窗口(Window_Transparent_Shadow)的 Win32 矩形含四周阴影边带 —— PrintWindow
 	// 把它抓成纯黑(alpha 丢失), 模糊后会往画面里晕出一圈黑边(实测)。裁掉只留 Body 区;
-	// 非阴影窗口 Body = 整窗, 仅当 Body 严格小于窗口(存在阴影带)时才裁
+	// 非阴影窗口 Body = 整窗, 仅当 Body 严格小于窗口(存在阴影带)时才裁。
+	// 注意必须**拷贝**成独立紧凑图, 不能用 SubImage —— 它与原图共享像素数组, 行距仍是
+	// 整窗宽度, 而模糊/缩放按"行距 = 宽×4"索引, 会把整幅图斜切错位成斜粗条纹(实测踩坑)
 	var body xc.RECT
 	xc.XWnd_GetBodyRect(d.hWnd, &body)
 	if body.Right > body.Left && body.Bottom > body.Top {
@@ -100,7 +102,12 @@ func (d *Dialog) refreshBackdrop() {
 		x1, y1 := int(float64(body.Right)*s), int(float64(body.Bottom)*s)
 		if x0 >= 0 && y0 >= 0 && x1 <= w && y1 <= h && x1 > x0 && y1 > y0 &&
 			(x0 > 0 || y0 > 0 || x1 < w || y1 < h) {
-			img = img.SubImage(image.Rect(x0, y0, x1, y1)).(*image.RGBA)
+			crop := image.NewRGBA(image.Rect(0, 0, x1-x0, y1-y0))
+			for y := 0; y < y1-y0; y++ {
+				copy(crop.Pix[y*(x1-x0)*4:(y+1)*(x1-x0)*4],
+					img.Pix[((y0+y)*w+x0)*4:((y0+y)*w+x1)*4])
+			}
+			img = crop
 		}
 	}
 	// 物理像素上做模糊(半径 = 逻辑 4px × DPI), 再缩到逻辑尺寸:
