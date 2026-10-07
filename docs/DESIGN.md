@@ -296,7 +296,7 @@ myapp/
 16. **focus-visible 需自行跟踪焦点来源**:xcgui 只有单一 Focus 状态,不区分鼠标/键盘来源 → 全局跟踪鼠标按下/Tab 键(运行时 focus.go),文本输入类控件例外(始终显示,同浏览器语义)。
 17. **元素 paint 回调里能画位图, 也能画 SVG;当年"画不出"的根因是 Lucide 的 path 写法 xcgui 的 SVG 解析器不支持**(2026-10-07 复核修正, 此前本条结论有误导):
     - **位图完全能画**:`XDraw_Image`(1:1)/ `XDraw_ImageEx`(拉伸)在元素 paint 回调里输出正常(复核探针实证;当年"句柄有效、坐标与裁剪都正确,就是画不出来"的说法不成立);
-    - **SVG 也能画**:`svg.NewByString` 加载合法 SVG 后,`DrawSvgEx / DrawSvg / DrawSvgSize` 三条 API 在元素 paint 里都正常出图(建议先 `SetSize/SetPosition` 再画);
+    - **SVG 也能画, 但渲染结果不一定对**:`svg.NewByString` 加载合法 SVG 后,`DrawSvgEx / DrawSvg / DrawSvgSize` 三条 API 在元素 paint 里都正常出图(建议先 `SetSize/SetPosition` 再画);但**能画 ≠ 画得对** —— lucide 的归一化 path(绝对坐标、空格分隔)虽能解析成功, 渲染却走样: 圆弧变形、`fill="none"` 的子路径被糊成填充块(svgprobe 截图实证, 2026-10-07);
     - **Lucide 原始 path 是唯一画不出的**:`svg.NewByString(lucide path)` 直接返回 **nil**(解析失败, 句柄都拿不到), 喂给绘制 API 自然无输出;`imagex.NewBySvgString` 同理。当年把"SVG 解析失败"误记成了"paint 通道画不出图片"。
     - 因此需要图标时,用线段图元复刻:`icons.go` 把 lucide 的 path 解析成折线再用 `DrawLine` 描边(支持 M/L/H/V/C/S/Q/T/Z,圆弧用专门实现);或把图片交给原生控件(`Button.SetIcon` 等)。**2026-10-06 起图标的出图改为直通 D2D 几何填充(解析出的折线仍作为回落路径保留), 抗锯齿与几何精度见第 43 条。**
 18. **`XWnd_SetWindowPos` 吃物理像素**:框架内部坐标是逻辑像素(窗口创建时自动按 DPI 缩放),但窗口定位/尺寸透传给 Win32 → 必须自己乘 `dpi/96`,否则窗口会跑到 1/scale 的位置(实测 144 DPI 下 449 变成 299)。自绘提示窗(Tooltip)踩过这个坑。

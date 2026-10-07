@@ -14,8 +14,12 @@ import (
 // 支持 M/L/H/V/C/S/Q/T/Z 及相对指令(曲线按 8 段离散); 圆弧 A/a 转为多段三次贝塞尔
 // (每段圆心角 <= 90°, 见 arcToBeziers); `!` 前缀表示下一条子路径是填充(生成资源内部约定)。
 //
-// 为什么不用 SVG 渲染: 炫彩在元素自绘回调里画图片/SVG 不生效(实测 XDraw_DrawSvgEx /
-// XDraw_Image / XDraw_ImageEx 都画不出东西, 见 DESIGN.md 第八节 17), 所以自己解析 path 几何。
+// 为什么不用 xcgui 的 SVG 渲染(2026-10-07 复核实证, 见 DESIGN.md 第八节 17):
+//  1. lucide 官方的紧凑 path 写法(如 `a.25.25 0 00.407.195`)xcgui 解析失败,
+//     svg.NewByString 直接返回 nil, 句柄都拿不到;
+//  2. 即便喂归一化后的 path(icons 包存的绝对坐标形式), 虽能解析, 渲染结果也是错的
+//     (圆弧走样、fill="none" 的子路径被糊成填充块);
+//  3. 图标需要逐绘制换色(SetUserStrokeColor 的活)与精确几何, 所以自己解析 path 几何。
 //
 // 出图有两条路(见 Painter.Icon):
 //  1. D2D 直通填充(d2dicon.go): 解析出的折线 → CPU 描边展开 → FillGeometry, 抗锯齿、
