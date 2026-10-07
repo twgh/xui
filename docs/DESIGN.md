@@ -652,6 +652,15 @@ myapp/
          状态转储三件套。
       6. 模糊在物理像素上做(半径 = 逻辑 4px × DPI/96), 之后缩到逻辑尺寸再喂;
          `PrintWindow` 抓的是 BGRA, 且强制 A=255(GDI+ 认 alpha, 0 会整块透明)。
+      7. **阴影窗口(Window_Transparent_Shadow)抓屏有黑边**: Win32 矩形含四周阴影边带
+         (demo 是 12 逻辑像素), `PrintWindow` 把半透明阴影抓成**纯黑**(alpha 丢失),
+         模糊后又往画面里晕一圈 —— 表现为遮罩四边黑边。修法 = 抓屏后按
+         `XWnd_GetBodyRect`(Body 矩形, 窗口相对**逻辑**坐标)裁掉边带再模糊;
+         非阴影窗口 Body=整窗, 仅在 Body 严格小于窗口时裁。
+      8. **对开着 backdrop 的阴影窗口调 PrintWindow 会死锁**: refreshBackdrop 在 Show 里
+         抓屏没事(此时 backdrop 图片还没装上), 但对话框开着时再对它 PrintWindow
+         (BkM 图片 + PW_RENDERFULLCONTENT 重入 D2D 渲染)会挂死消息循环 —— 探针
+         验证这类窗口要用屏幕截图(DXGI), 别用 PrintWindow。
 
 ---
 

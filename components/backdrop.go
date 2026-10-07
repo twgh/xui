@@ -89,6 +89,20 @@ func (d *Dialog) refreshBackdrop() {
 	if dpi <= 0 {
 		dpi = 96
 	}
+	// 阴影窗口(Window_Transparent_Shadow)的 Win32 矩形含四周阴影边带 —— PrintWindow
+	// 把它抓成纯黑(alpha 丢失), 模糊后会往画面里晕出一圈黑边(实测)。裁掉只留 Body 区;
+	// 非阴影窗口 Body = 整窗, 仅当 Body 严格小于窗口(存在阴影带)时才裁
+	var body xc.RECT
+	xc.XWnd_GetBodyRect(d.hWnd, &body)
+	if body.Right > body.Left && body.Bottom > body.Top {
+		s := float64(dpi) / 96
+		x0, y0 := int(float64(body.Left)*s), int(float64(body.Top)*s)
+		x1, y1 := int(float64(body.Right)*s), int(float64(body.Bottom)*s)
+		if x0 >= 0 && y0 >= 0 && x1 <= w && y1 <= h && x1 > x0 && y1 > y0 &&
+			(x0 > 0 || y0 > 0 || x1 < w || y1 < h) {
+			img = img.SubImage(image.Rect(x0, y0, x1, y1)).(*image.RGBA)
+		}
+	}
 	// 物理像素上做模糊(半径 = 逻辑 4px × DPI), 再缩到逻辑尺寸:
 	// BkM 图片是按 1:1 逻辑像素居中绘制的(实测), 物理尺寸的图直接喂会错位且被裁
 	boxBlurRGBA(img, int(float64(backdropBlurPx)*float64(dpi)/96))
