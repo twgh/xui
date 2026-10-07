@@ -48,12 +48,21 @@ const (
 	itemKeyBase int32 = 1
 )
 
-// hoverItem 是一个过渡值: 在 from → target(0/1) 之间按缓动插值。
+// hoverItem 是一个过渡值: 在 from → target 之间按缓动插值。
+// hover 用它的 0↔1; 弹层/对话框进出场(presence)也复用它, 只是多挂 apply/done 回调。
 type hoverItem struct {
 	cur    float64
 	from   float64
 	target float64
 	start  time.Time
+	// settled 记录"已到位回调已发过", 避免被同 owner 上其它过渡拖着的定时器重复触发。
+	settled bool
+	// 可选覆盖: 条目自己的时长与缓动(0/nil 用全局 hover 时长与默认缓动)
+	dur  time.Duration
+	ease func(float64) float64
+	// 可选回调(都在定时器回调里、解锁之后执行)
+	apply func(v float64) // 每帧
+	done  func(v float64) // 到位一次
 }
 
 // hoverOwner 是一个重绘目标(元素或窗口)上的全部过渡值。
@@ -66,8 +75,32 @@ type hoverOwner struct {
 var hovers = struct {
 	mu       sync.Mutex
 	duration time.Duration
-	owners   map[int]*hoverOwner
-}{duration: defaultHoverDuration, owners: map[int]*hoverOwner{}}
+	// scale 是过渡时长的倍率(1 = 原速): 供调试 / 截图抓中间帧放大用, 0 = 立即到位。
+	scale  float64
+	owners map[int]*hoverOwner
+}{duration: defaultHoverDuration, scale: 1, owners: map[int]*hoverOwner{}}
+
+// SetAnimationScale 按倍率缩放**全部**过渡时长(hover 与弹层进出场都受影响):
+// 1 = 原速, 0 = 立即到位(等于关掉全部过渡), 10 = 慢十倍。
+//
+// 除了"低配机器 / 无障碍关动画", 它主要用于调试: 把 100~150ms 的动画放慢后,
+// 外部截图脚本才能稳定抓到中间帧做像素验收(见 DESIGN 第八节 47)。
+// 必须在 UI 线程调用(与其它 UI 操作同一约束)。
+func SetAnimationScale(f float64) {
+	if f < 0 {
+		f = 0
+	}
+	hovers.mu.Lock()
+	hovers.scale = f
+	hovers.mu.Unlock()
+}
+
+// AnimationScale 返回当前过渡时长倍率。
+func AnimationScale() float64 {
+	hovers.mu.Lock()
+	defer hovers.mu.Unlock()
+	return hovers.scale
+}
 
 // SetHoverDuration 覆盖 hover 过渡时长(默认 150ms)。
 // 传 0 表示关闭过渡: 状态变化立即到位, 不启动定时器(低配机器 / 自动化对比可用)。
@@ -99,14 +132,25 @@ func HoverItem(hOwner int, index int32, active bool) float64 {
 }
 
 func hoverValue(hOwner int, key int32, active bool) float64 {
+	target := 0.0
+	if active {
+		target = 1.0
+	}
+	return transValue(hOwner, key, target, 0, nil, nil, nil)
+}
+
+// transValue 是过渡内核: 把 (hOwner,key) 上的目标设为 target(0..1) 并返回当前值。
+// dur>0 / ease!=nil 覆盖该条目的时长与缓动; apply/done 是可选回调(语义见 hoverTick)。
+func transValue(hOwner int, key int32, target float64, dur time.Duration,
+	ease func(float64) float64, apply, done func(float64)) float64 {
 	now := time.Now()
 	hovers.mu.Lock()
 	defer hovers.mu.Unlock()
 
 	o := hovers.owners[hOwner]
 	if o == nil {
-		if !active {
-			// 没悬停过又不活跃: 不登记任何状态(大表格里只 hover 过的行才有条目)
+		if target == 0 {
+			// 没活跃过又不活跃: 不登记任何状态(大表格里只 hover 过的行才有条目)
 			return 0
 		}
 		o = newHoverOwner(hOwner)
@@ -114,22 +158,19 @@ func hoverValue(hOwner int, key int32, active bool) float64 {
 	}
 	it := o.items[key]
 	if it == nil {
-		if !active {
+		if target == 0 {
 			return 0
 		}
 		it = &hoverItem{}
 		o.items[key] = it
 	}
-
-	target := 0.0
-	if active {
-		target = 1.0
-	}
+	it.dur, it.ease, it.apply, it.done = dur, ease, apply, done
 	if it.target != target {
 		// 从当前位置续跑(不是从 0/1 重来), 与 CSS 中断过渡的语义一致
 		it.from = it.value(now, hovers.duration)
 		it.target = target
 		it.start = now
+		it.settled = false
 		o.ensureRunning()
 	}
 	return it.value(now, hovers.duration)
@@ -140,6 +181,10 @@ func (it *hoverItem) value(now time.Time, dur time.Duration) float64 {
 	if it.cur == it.target {
 		return it.cur
 	}
+	if it.dur > 0 {
+		dur = it.dur
+	}
+	dur = time.Duration(float64(dur) * hovers.scale)
 	if dur <= 0 || it.start.IsZero() {
 		return it.target // 关闭过渡 / 尚未启动
 	}
@@ -148,7 +193,12 @@ func (it *hoverItem) value(now time.Time, dur time.Duration) float64 {
 		it.cur = it.target
 		return it.cur
 	}
-	it.cur = it.from + (it.target-it.from)*easeTransition(float64(el)/float64(dur))
+	x := float64(el) / float64(dur)
+	if it.ease != nil {
+		it.cur = it.from + (it.target-it.from)*it.ease(x)
+		return it.cur
+	}
+	it.cur = it.from + (it.target-it.from)*easeTransition(x)
 	return it.cur
 }
 
@@ -208,10 +258,27 @@ func hoverTick(hOwner int) {
 	}
 	dur := hovers.duration
 	active := false
+	type callback struct {
+		fn func(float64)
+		v  float64
+	}
+	var applies, dones []callback
 	for k, it := range o.items {
-		if it.value(now, dur) != it.target {
+		v := it.value(now, dur)
+		if it.apply != nil {
+			applies = append(applies, callback{it.apply, v})
+		}
+		if v != it.target {
 			active = true
-		} else if it.target == 0 {
+			continue
+		}
+		if !it.settled {
+			it.settled = true
+			if it.done != nil {
+				dones = append(dones, callback{it.done, v})
+			}
+		}
+		if it.target == 0 {
 			// 淡出到位: 回收条目(大列表不会随滚动累积索引)
 			delete(o.items, k)
 		}
@@ -222,12 +289,20 @@ func hoverTick(hOwner int) {
 	}
 	hovers.mu.Unlock()
 
+	// 回调与重绘一律在解锁之后执行(apply 里要碰 UI, 不能持锁)
+	for _, c := range applies {
+		c.fn(c.v)
+	}
 	if active {
 		if xc.XC_IsHELE(hOwner) {
 			xc.XEle_Redraw(hOwner, true)
 		} else {
-			xc.XWnd_Redraw(hOwner)
+			// 立即重绘: 走延迟重绘会被合并掉(实测 30ms/帧 → 65ms/帧, 见 DESIGN 第八节 45)
+			xc.XWnd_Redraw(hOwner, true)
 		}
+	}
+	for _, c := range dones {
+		c.fn(c.v)
 	}
 }
 

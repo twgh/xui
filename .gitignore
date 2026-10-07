@@ -19,6 +19,7 @@
 .codebuddy/
 .workbuddy/
 .qoder/
+.verify/
 
 # File
 .zcodeignore

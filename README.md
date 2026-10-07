@@ -105,6 +105,20 @@ a.EnableAutoDPI(true).EnableDPI(true)
 a.SetPaintFrequency(10)   // 实测帧率 30.9 → 59.0 fps(见 docs/DESIGN.md 第八节 46)
 ```
 
+对话框与提示气泡自带进出场动画(dialog 淡入淡出 100ms、tooltip 淡入+8px 滑入 150ms, 对齐
+shadcn/tw-animate-css 的默认值)。自己的弹层要用同款动画时:
+
+```go
+// 整组元素淡入/淡出(进度 0→1 进场, 1→0 退场; apply 每帧收到当前进度)
+xui.Presence(hWnd, 0, visible, xui.PopupDuration,
+    func(v float64) { xui.SetElementsAlpha(v, panel, btn1, btn2) },
+    func(v float64) { /* 退场到位后在这里隐藏 */ })
+
+// 异型/阴影弹层小窗: 淡入 + 从 (x, y+dy) 滑到 (x, y)
+xui.Presence(hWnd, 0, true, xui.PopupDuration,
+    xui.SlideWindowAlpha(hPopup, x, y, 0, dy, 255), nil)
+```
+
 ## 图标
 
 运行时自带一份预处理好的 lucide 图标资源(2130 个,当前版本见 `icons.Version`),

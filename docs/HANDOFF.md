@@ -6,7 +6,7 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现的源码为唯一权威。
 
-## 当前状态(2026-10-06)
+## 当前状态(2026-10-07)
 
 - ✅ **P0 运行时**完成:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter 绘制助手、字体缓存、focus-visible 焦点来源跟踪
 - ✅ **P1 组件**完成并视觉验收:Button(5 变体×3 尺寸)、Checkbox、Radio、Input、Label、Separator+Badge、Card
@@ -26,7 +26,9 @@
 - ✅ **Tree(树形视图)完成并视觉/交互验收**(2026-10-06, `components/tree.go`):路线 = **原生 `Tree` 载体 + 外观全自绘**(展开/收起、点击 chevron 展开、选中、滚动全原生;原生项背景/连接线/分割线/展开按钮 "+/-" 图形全部压掉)。shadcn 无官方 tree 组件,语义按社区通行实现并复用本项目已验收令牌:行高 32(h-8)、视觉矩形左右内缩 4、圆角 6、悬浮/选中 bg-accent(同 select/menu 条目)、每级缩进 16 + 祖先 1px 参考线、chevron 加大居中于点击热区(收起朝右/展开朝下)、叶节点留空槽位文字全树对齐、条目文字 text-sm。自定义项模板(行高 32 + 16px 按钮槽)+ `XE_TREE_DRAWITEM` 自绘;换肤走 `RefreshData()`。像素实测(亮/暗):行高 48 物理/32 逻辑、每级缩进 24/16、选中/hover `#f5f5f5`→暗 `#262626`、普通行透出 Card `#171717`(暗)、文字 `#fafafa`(暗)。交互 computer-use 真实点击验证:chevron 展开/收起、行选中、hover、运行时 Dark/Light 切换整树换肤。踩坑记 DESIGN.md 第八节 42;demo 新增"结构"页(隐藏页创建时选中态丢失已在 demo 规避);shadcn App.tsx 加了同构"树形视图"对照卡(手写 TreeRow,非官方组件)
 - ✅ **hover 过渡动画完成并像素验收**(2026-10-06, 运行时 `anim.go`):对齐 tailwind/shadcn 的 `transition-*` 默认值(**150ms + cubic-bezier(0.4,0,0.2,1)**), 驱动是挂在**重绘目标**上的炫彩定时器(元素/窗口都验过, 实测约 30ms/帧 → 150ms 约 5 帧, 必须 `Redraw(true)` 立即重绘, 否则掉到 65ms/帧), 只在该目标还有过渡没跑完时才开、到位即关(静止零开销)。组件侧只有一行: `hv := xui.Hover(hEle, st.Hover)` / `xui.HoverItem(hOwner, i, stay)` + `xui.Fade(静止色, 悬停色, hv)`(叠加层用 `ScaleAlpha(hv)`), **不新增字段/事件**;逐项键=索引+1。中断从中断点续跑(同 CSS)。已接入 Button(5 变体)/Tabs 文字/Slider 光环/demo 图标格/Table 行/Tree 行/ComboBox 弹层条目/Menu 条目。像素实测:primary `#171717`→28→49→62→68→**69**(=`primary/80` 叠白, 与改动前一致)、表格行 255→**250**、树行 255→**245**、菜单条目 255→**245**;`anim_test.go` 钉住缓动曲线与预乘取色。踩坑记 DESIGN.md 第八节 45
 - ✅ **重绘节流调优**:xcgui 默认有 30ms 重绘节流(`XC_SetPaintFrequency`), 这是过渡只有约 5 帧的根因; demo/app 初始化已设 `a.SetPaintFrequency(10)`, 实测帧率 **30.9 → 59.0 fps**(再低无效, ~16.6ms 是硬地板; 代价 = 过渡期间每帧绘制成本不变、帧数翻倍)。另实测 `XC_SetTextRenderingHint` / `XDraw_SetTextRenderingHint` 在 D2D 模式下**是空操作**(文字区域逐像素相同), 不要用。详见 DESIGN.md 第八节 46
-- ⬜ P3 剩余:CLI 远程 registry
+- ✅ **弹层/对话框进出场动画**(2026-10-06, 运行时 `presence.go`):语义对齐 shadcn(dialog/dropdown `duration-100` fade(+zoom+slide-8px), tooltip 150ms, 缓动 CSS `ease`); `xui.Presence(...)` 与 hover 共用驱动器, 助手 `SetElementsAlpha/FadeWindowAlpha/SlideWindowAlpha`。已接入 **Dialog**(整组淡入淡出, 淡出期间键盘/点击已失效, 到位才隐藏)与 **Tooltip**(fade + 8px 滑入, 退场到位再隐藏)。**修过的 bug**: 窗口 alpha 精确=0 会让 xcgui 停止合成(退场淡出到 0 后再进场永远 ~10% 透明度), `SetWindowAlpha` 统一抬底 `AlphaFloor()`=1/255 + done 里 SW_HIDE。其余坑(透明度要绘制才落地且必须靠宿主窗口重绘带动、异型小窗定时器不可靠、普通窗口 SetTransparentAlpha 完全无效)全在 DESIGN 第八节 47
+- ✅ **backdrop-blur-xs 完成并像素验收**(2026-10-07, `components/backdrop.go`): 抓窗快照(PrintWindow) + Go 盒式模糊 + 缩放到逻辑尺寸 + 元素 BkM 图片填充, 显示在遮罩之下、随遮罩一起淡入淡出。**昨夜的"v1.4.2 缺 XImage_LoadFromData 导出"是误判**(探测证实导出存在且可用), 真正的坑是三个:BkM 图片注册在元素的 `Element_State_Flag_Leave`(0x0010) 而非窗口的 `Window_State_Flag_Leave`(0x0001), 用错永不渲染; BkM 图片按 1:1 逻辑像素居中绘制, 物理尺寸快照必须先缩到逻辑尺寸; 注册统一走 `XBkM_AddImage`(带 id)。验收: blurprobe 程序化 Show/Close + 像素逐点比对(模糊期望 mean=0.23, 不模糊假设 mean=4.64 被排除; 关闭还原 max=0)+ demo computer-use 真实鼠标亮/暗双主题复核(模糊内容精确对齐原位)。踩坑全记 DESIGN 第八节 47; **验收探针必须跑 `a.Run()` 消息循环**(无泵时 Presence/定时器全不工作, 结论作废)
+- ⬜ P3 剩余:CLI 远程 registry; menu/combobox 弹层的进场动画(native 弹窗淡入不可行, 只能做位置滑动, 待定)
 
 - ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
 
@@ -112,6 +114,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 - **LayoutEle 纵向(列)布局也会"溢出换列"**: 主轴上剩余高度放不下下一项时, 该项会被甩到下一列(`x += 容器宽度, y = 0`)→ 表现为控件整块消失。列布局一律 `EnableAutoWrap(false)`, 并保证容器高度足够(见 DESIGN 第八节 41)
 - 原生 List 作表格载体: 内容区**左上各内缩 2 逻辑像素**、**表头单元格比数据单元格靠左 2px**、行间距默认 1px(`SetRowSpace(0)` 去掉);`List_Item_.RcItem` 注释写"未使用"但**实际有效**, `XE_LIST_DRAWITEM` 按**单元格**触发、矩形首尾相接 → 逐格画行底与行边框;纵向滚动条会吃掉内容宽度(自适应列要让出 ~12px)(见 DESIGN 第八节 40)
 - 窗口布局(EnableLayout): 布局项必须 LayoutEle; 主轴剩余用 **Weight** 不是 Fill(Fill 独占整行/列与兄弟重叠); 客户区已避开阴影带; 详见 DESIGN 第八节 39
+- 元素 BkM 图片填充: 状态用 `Element_State_Flag_Leave`(0x0010) 不是窗口的 0x0001; 图片按 **1:1 逻辑像素居中**绘制(先缩放到元素逻辑尺寸再喂); 注册走 `XBkM_AddImage`(带 id); 用错状态/尺寸 = 永不渲染或错位(见 DESIGN 第八节 47)
 
 ## 与 shadcn 对齐的语义(改交互前先对照源码)
 
@@ -144,7 +147,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 | **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10;标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
 | dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
-| dialog 遮罩 bg-black/10(固定黑色,不随主题;**不做 backdrop-blur-xs**——xcgui 无背景模糊,见 DESIGN 第八节 33) | dialog.tsx |
+| dialog 遮罩 bg-black/10(固定黑色,不随主题;**backdrop-blur-xs 已实现**——抓窗快照+盒式模糊+BkM 图片填充,见 DESIGN 第八节 47) | dialog.tsx |
 | dialog 打开时焦点进第一个可聚焦控件,Tab/Shift+Tab 在对话框内循环(焦点陷阱),ESC / 点击遮罩 / 关闭钮关闭 | radix dialog 语义 |
 | **中文 500 字重 ≈ 常规**: Label 默认常规、按钮文字常规(用粗体字形实现 500 会明显偏粗); 标签比描述"看着粗"是**颜色**差(foreground 近黑 vs muted 灰), 实测笔画同宽 | label.tsx 500 + 实测像素 |
 | 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |

@@ -344,7 +344,7 @@ myapp/
     - **`XWnd_SetFocusEle` 搬焦点后不会重绘**:按钮上的焦点框不出现(输入框因为要重画光标/IME 才碰巧刷新), 必须手动 `XEle_Redraw(旧)` + `XEle_Redraw(新)`;且顺序要在搬焦点**之前**调 `xui.NoteKeyboard()`——AttachWindow 的 Tab 钩子注册得晚(回调后执行), 等它标记"键盘焦点"时元素早已重绘完;
     - **焦点反查要沿父链**:`XWnd_GetFocusEle` 拿到的是复合控件(Edit)的内部元素, 与创建时的句柄不同 → 用 `XWidget_GetParentEle` 往上找焦点序列里的成员, 找不到再用自维护的下标兜底;
     - **Tab 序列只收交互控件**:`XObj_GetType` 白名单(Button/Edit/ComboBox/SliderBar/Editor/RichEdit/ListBox/TabBar)+ `IsEnableFocus && IsSwitchFocus`;Label 载体是原生 Button, 必须显式 `EnableSwitchFocus(false)` 才不会挤进 Tab 序列(顺带 `EnableDrawBorder(false)`, 否则它能画出原生边框);
-    - **不做 backdrop-blur-xs**:xcgui 没有背景模糊, 元素自绘里也画不了窗口快照位图(第八节 17) → 遮罩只保留 10% 变暗, 与 shadcn 的差异记录在此。
+    - **backdrop-blur-xs 后来补上了**(2026-10-07, 见第八节 47 的 backdrop-blur 小节): 当时尚以为画不出, 实际走"抓窗快照 + BkM 图片填充"能精确实现。
 
 34. **Dialog/文字/量测的一批实测结论**(2026-10-04 视觉对齐期间, 探针+像素测量):
     - **自绘文字的字号就是逻辑像素, 不要按 DPI 反除**: 曾据"按钮文字顶到边缘"推断绘制路径二次乘 DPI 并做了字号反除, 实测反证(反除后全局文字明显偏小), 已回退并记录于此。真正的原因是量测口径;
@@ -554,6 +554,85 @@ myapp/
       D2D 的文字不走那条管线。**我们的文字本来就已经是 ClearType 级抗锯齿**(彩色边缘像素 2154/1474, 最大色偏 180/114),
       不存在"没抗锯齿/要换灰度 AA"这个可调点 —— 想关彩色边缘得另找路径(1.4.2 未见暴露)。
 
+47. **弹层 / 对话框进出场动画(2026-10-06, 运行时 `presence.go`)**:
+
+    语义逐条对齐本地 shadcn 参考实现(`shadcn/src/components/ui/*.tsx`):
+    **dialog** = 遮罩 fade + 内容 fade+zoom-in-95(`dialog.tsx:42,64`, `duration-100`);
+    **dropdown-menu / select** = fade+zoom+从锚点侧滑入 8px(`dropdown-menu.tsx:48`, `duration-100`);
+    **tooltip** = 同上但没写时长 → tw-animate-css 的 `animate-in` 默认 **150ms**(`tooltip.tsx:44`)。
+    缓动取 CSS 默认的 `ease` = cubic-bezier(0.25,0.1,0.25,1) —— `animate-in/out` 是 keyframes,
+    用的是 animation 的默认缓动, **与 transition-\* 的 tailwind 默认 cubic-bezier(0.4,0,0.2,1) 不是同一条**。
+
+    - **运行时 API**(`presence.go`, 与 hover 共用 anim.go 的驱动器, 该处扩展了条目级
+      时长/缓动/apply/done):`Presence(hOwner, key, visible, dur, apply, done)` 返回 0..1 进度,
+      `apply` 每帧把进度落到元素透明度 / 窗口位置上, `done` 到位回调一次; 助手
+      `SetElementsAlpha`(一组元素一起淡)、`SetWindowAlpha` / `FadeWindowAlpha` / `SlideWindowAlpha`
+      (窗口透明度 + 位移 + 自重绘)。调试用 `SetAnimationScale(f)` 把**全部**过渡放慢
+      (12 倍时外部截图脚本才能抓到中间帧做像素验收)。
+    - **已接入**:Dialog(遮罩+面板+全部子元素整组淡入淡出, `d.open` 立刻置 false 所以淡出期间
+      键盘/点击已失效, 退场到位才 `showEleTree(false)`);Tooltip(气泡小窗 fade + 8px 滑入,
+      退场 fade 完再 `SW_HIDE`; 已在显示中时只挪位置不重播动画)。
+    - **shadcn 的 zoom-in-95 做不到**(留白):xcgui 的元素级 `ani` 动画(Alpha/MoveEx/Scale)对
+      **自绘元素完全无效**(实测 `SetAlpha(0)`+动画后画面纹丝不动 —— ani 打在原生属性上,
+      被 `AddEvent_Paint` 的自绘绕过), 而 Draw 只有 `SetOffset`(整数偏移)没有变换/缩放 API;
+      所以 zoom 只能靠"改面板矩形+字号"模拟, 视觉会错位, 不做。Dialog 只做整组淡入,
+      Tooltip/弹层做 fade+slide(slide 是 dropddown/tooltip 里最显眼的位移项)。
+    - **踩坑(本次全踩过, 务必记住)**:
+      1. **窗口透明度在绘制时才落地**:`XWnd_SetTransparentAlpha` 改完不重绘**该窗口**,
+         画面会一直停在上一次绘制时的透明度上(实测: 过渡值从 0.009 一路推进到 0.25,
+         像素纹丝不动)。apply 里必须 `XWnd_Redraw(该窗口, true)`。
+      2. 更邪门的是: 过渡挂宿主窗口、每帧重绘**宿主**窗口时, 气泡小窗的透明度跟着动了;
+         只重绘气泡小窗自己反而不动 —— 机理未知, 但结论明确: **把进出场过渡挂在宿主窗口上**
+         (tooltip 就挂触发元素所在的宿主窗口), 让 tick 的整窗重绘带动一切。
+      3. **alpha 精确 = 0 会让 xcgui 停止合成该窗口**(后续怎么调都不显示, 画面冻结在
+         停止前那一帧; 调试日志显示 apply 已跑到 v=1.0 而像素不动)。两条触发路径:
+         显示前预设 0, 以及**退场淡出结束在 0**(表现: 气泡第二次显示永远停在约 10%
+         透明度)。修法 = `SetWindowAlpha` 统一抬底 `xui.AlphaFloor()`(1/255), "消失"
+         一律由退场 done 里 SW_HIDE 完成; 进场首帧闪现也用预置 1/255 压掉。
+      4. 异型置顶小窗(`Window_Style_Nothing` + `Shaped` + NOACTIVATE)自己的窗口定时器
+         不可靠(约 100ms/帧), 别把过渡挂它身上(同 2, 挂宿主窗口)。
+      5. **普通窗口(非透明类型)的 `XWnd_SetTransparentAlpha` 完全无效**(exstyle 里没有
+         WS_EX_LAYERED, xcgui 也不会自动加) → native 弹层(menu / combobox 的下拉窗)做不了
+         淡入; 要淡入只能自己给 HWND 加 WS_EX_LAYERED + SetLayeredWindowAttributes
+         (代价: ClearType 变灰度 AA + 合成开销), 未做。这类弹层目前只能拿**位置**做动画。
+      6. 首帧闪现: `SWP_SHOWWINDOW` 后的首次绘制带着上一次的 alpha(255) → 进场前先
+         `SetWindowAlpha(1/255)`(见 3, 不能是 0)。
+    - **验证**(探针 + `SetAnimationScale(12)` 放慢 + 外部逐帧像素实测):气泡淡入
+      255→254→245→232→201→175→141→117→91→74→60→45→37→27→22→18→14→12→**10**
+      (17 帧, 150ms×12)且顶部 y 36→**33**(8px 逻辑滑入); 1× 常速 77→24→**10** 正常完成;
+      对话框遮罩点 255→251→247→241→237→235→232→231→**229**(淡入)与反向(淡出)平滑往返,
+      淡出到位后内容树隐藏(`窗口最暗` 回到 255)。
+
+    - **backdrop-blur-xs 完成**(2026-10-07, `components/backdrop.go`, 前一晚被误判卡死):
+      思路 = 打开时 GDI `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗 → Go 盒式模糊 ×4 趟
+      (backdrop-blur-xs=4px 逻辑)→ **元素 BkM 图片填充**显示在遮罩之下(元素透明度能跟着
+      遮罩一起淡入; 元素 paint 画不出位图是第八节 17 的绕行方案)。验收 = blurprobe 程序化
+      Show/Close + 像素逐点比对(模糊+10%变暗复算期望 mean=0.23/255, 不模糊假设 mean=4.64
+      被显著排除; 关闭还原全图 max=0)+ demo computer-use 真实鼠标双主题复核。
+      **昨夜"XImage_LoadFromData 无导出"是误判**: 探测证实实际加载的 dll
+      (`%TEMP%\xcgui4.0.0.0_amd64_<CRC>\xcgui.dll`)有该导出, `XImage_LoadFromGoImage`
+      功能实测成功 —— 当时是 recover 兜底把真正的失败(下两条坑)静默成了"只有变暗"。
+      踩坑(全是实测):
+      1. **BkM 图片的状态用错就永不渲染**: 元素的"离开"态是 `Element_State_Flag_Leave`
+         (0x0010), 不是窗口的 `Window_State_Flag_Leave`(0x0001)。用窗口常量注册到元素
+         BkM 上, 元素 show/alpha/矩形全对也不出图(症状极具迷惑性, 状态转储看不出错)。
+      2. **BkM 图片按 1:1 逻辑像素、居中、不缩放绘制**: 物理尺寸(1200x780)的快照喂给
+         800x520 逻辑的元素会错位+被裁(网格采样定位到"图片落在元素中央")。修法 = 加载前
+         先把模糊图面积平均缩放到窗口逻辑尺寸(`scaleRGBA`), 居中 1:1 即正好铺满。
+         `BkObj.SetAlign(Left|Top|Right|Bottom)` 实测**对图片对象无拉伸效果**(别试了)。
+      3. **注册走 `XBkM_AddImage(XEle_GetBkManager(ele), state, hImg, id)`**: 带 id 的
+         管理器级注册在"窗口子元素直接挂"的环境里实测可靠; `Element.AddBkImage`(无 id)
+         在 demo(布局盒子嵌套)能渲染、在平铺窗口的探针里不渲染, 原因未查明 —— 统一用
+         带 id 的路线绕开。注意重复注册前先 `XEle_ClearBkInfo`(累积 >20 个炫彩报错)。
+      4. **没有消息循环就没有一切**: 探针若只 Sleep 不跑 `a.Run()`, Presence 淡入淡出
+         (窗口定时器)全不工作, 关闭也不会真的隐藏 —— 无泵跑出来的"验证结论"全部作废。
+         程序化验收要用 `w.SetTimer + AddEvent_Timer` 驱动阶段, 再 `a.Run()`。
+      5. 枚举窗口子元素要用 `XWnd_GetChildCount/GetChildByIndex`(喂 `XEle_GetChildCount`
+         恒为 0); `XEle_GetAlpha/GetBkInfoCount/XObj_GetType` 是排查这类渲染问题的
+         状态转储三件套。
+      6. 模糊在物理像素上做(半径 = 逻辑 4px × DPI/96), 之后缩到逻辑尺寸再喂;
+         `PrintWindow` 抓的是 BGRA, 且强制 A=255(GDI+ 认 alpha, 0 会整块透明)。
+
 ---
 
 
@@ -570,6 +649,7 @@ myapp/
 - LayoutEle:`EnableLayout / EnableHorizon / SetAlignH(V) / SetSpace / SetSpaceRow / EnableAutoWrap / SetPadding`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin`(语义见第八节 29;Go 包装无 AdjustLayout)
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
 - `XWnd_SetWindowPos(物理像素)`、`XC_hWindowFromHWnd`、`XEle_GetWndClientRect`、`XWnd_GetClientRect`、`wapi.ShowWindow/SetForegroundWindow/GetSystemMetrics/GetWindowLongPtrW`
+- backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验收)
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽)
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55)
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)

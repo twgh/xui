@@ -18,6 +18,8 @@ hover 过渡(150ms cubic-bezier(0.4,0,0.2,1))一律用运行时的 `xui.Hover(hE
 
 **应用初始化要 `a.SetPaintFrequency(10)`**:xcgui 默认有 **30ms 重绘节流**(`XC_SetPaintFrequency`, 这就是 hover 过渡只有约 5 帧的根因), 设 10 后实测 30.9 → 59.0 fps(见 DESIGN 第八节 46)。`XC_SetTextRenderingHint` 在 D2D 模式下是空操作, 不要用(同节)。
 
+弹层/对话框进出场用 `xui.Presence(...)` + `SetElementsAlpha/FadeWindowAlpha/SlideWindowAlpha`, **不要自己起定时器**;过渡挂宿主窗口、别挂弹层小窗;窗口 alpha 永远不精确 = 0(用 `SetWindowAlpha`/`AlphaFloor`, 0 会让 xcgui 停止合成);要 Win32 HWND 用窗口 wrapper 的 `GetHWND()`, 别拿 xcgui 窗口句柄喂 `XWidget_GetHWND`(弹模态错误框, 表现为"点了没反应")。坑见 DESIGN 第八节 47。
+
 ## 常用命令
 
 ```bash

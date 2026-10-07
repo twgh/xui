@@ -37,6 +37,9 @@ const (
 	vkDlgShift  int32   = 0x10
 )
 
+// dlgFadeKey 是对话框淡入淡出用的 presence 键(见 presence.go, 与 hover 键空间隔离)。
+const dlgFadeKey int32 = 0
+
 // Dialog 模态对话框: 一个铺满整窗的遮罩元素 + 居中面板, 面板内容全部自绘。
 //
 // 与 shadcn dialog.tsx(radix-nova) 对齐:
@@ -50,18 +53,20 @@ const (
 //   - 交互: ESC / 点击遮罩 / 关闭按钮关闭; 打开时焦点进入第一个可聚焦控件,
 //     Tab 在对话框内部循环(不会逃逸到窗口其它元素)。
 //
-// 与 shadcn 的差异: 没有 backdrop-blur-xs —— xcgui 没有背景模糊, 元素自绘里也画不了
-// 窗口快照位图(见 DESIGN.md 第八节 17), 遮罩只做 10% 变暗。
+// 与 shadcn 的差异: backdrop-blur-xs 用"抓窗快照 + Go 盒式模糊 + 元素 BkM 图片填充"实现
+// (xcgui 没有背景模糊, 见 backdrop.go 与 DESIGN.md 第八节 47), 遮罩本身仍是固定黑色 10%。
 type Dialog struct {
 	hWnd int
 	win  *window.Window
 
-	overlay  *widget.Element // 遮罩(窗口子元素, 顶层 z 序)
-	content  *widget.Element // 内容容器(用户往这里放输入框等)
-	title    *Label
-	desc     *Label
-	closeBtn *Button
-	footers  []*Button
+	overlay     *widget.Element // 遮罩(窗口子元素, 顶层 z 序)
+	backdrop    *widget.Element // 背景模糊层(shadcn 的 backdrop-blur-xs, 见 backdrop.go)
+	backdropImg int             // 模糊快照的图片句柄(每次 Show 刷新, 旧的释放)
+	content     *widget.Element // 内容容器(用户往这里放输入框等)
+	title       *Label
+	desc        *Label
+	closeBtn    *Button
+	footers     []*Button
 
 	titleText string
 	descText  string
@@ -110,6 +115,9 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	d.overlay.EnableDrawBorder(false)
 	d.overlay.AddEvent_Paint(d.onPaint)
 	d.overlay.AddEvent_LButtonDown(d.onOverlayDown)
+
+	// 背景模糊层: 抓窗快照 + 盒式模糊, 在遮罩之下、其余内容之上(见 backdrop.go)
+	d.backdrop = newBackdrop(hWnd)
 
 	// shadcn: text-base font-medium(500) —— 16px + 中等字重(不是 Bold 的 17px)
 	d.title = NewLabel(0, 0, 0, dlgTitleH, "", d.overlay.Handle).SetMedium()
@@ -278,29 +286,60 @@ func (d *Dialog) Show() *Dialog {
 		return d
 	}
 	d.open = true
-	// 先显示再布局: 内容高度量的是"可见子元素"的占位, 隐藏状态下量出来是 0
+	// 先抓背景快照(此刻遮罩/模糊层都还藏着, 抓到的是无对话框的画面), 再显示再布局:
+	// 内容高度量的是"可见子元素"的占位, 隐藏状态下量出来是 0
+	d.refreshBackdrop()
 	showEleTree(d.overlay.Handle, true)
 	d.layout()
+	// z 序: 模糊层先抬顶, 遮罩再抬顶压住它(两者都在其余内容之上)
+	if d.backdrop != nil {
+		d.backdrop.SetZOrderEx(0, xcc.Zorder_Top)
+	}
 	d.overlay.SetZOrderEx(0, xcc.Zorder_Top)
+	// 进场: 整组(模糊层 + 遮罩 + 面板 + 全部子元素)从全透明淡入 —— 对齐 shadcn dialog 的
+	// data-open:animate-in fade-in-0 zoom-in-95(时长 100ms); 缩放在 xcgui 里做不到
+	// (元素级 ani 对自绘元素无效, 见 DESIGN 第八节 47), 这里只做淡入。
+	xui.SetElementsAlpha(0, d.overlay.Handle, d.backdropHandle())
 	d.overlay.Redraw(false)
 	xc.XWnd_Redraw(d.hWnd, true)
 	d.focusIdx = 0
 	if fs := d.focusables(); len(fs) > 0 {
 		xc.XWnd_SetFocusEle(d.hWnd, fs[0])
 	}
+	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, nil)
 	return d
 }
 
-// Hide 关闭对话框(不触发 OnClose 回调), 并整窗重绘以擦掉遮罩。
+// Hide 关闭对话框(不触发 OnClose 回调): 先淡出(100ms), 到位后再隐藏并整窗重绘。
+// d.open 立刻置 false, 淡出期间键盘/遮罩点击都已不再生效。
 func (d *Dialog) Hide() *Dialog {
 	if d == nil || d.overlay == nil || !d.open {
 		return d
 	}
 	d.open = false
-	showEleTree(d.overlay.Handle, false)
-	// 遮罩是半透明合成, 必须以整窗重绘还原下方内容(局部重绘会留下变暗残影)
-	xc.XWnd_Redraw(d.hWnd, true)
+	xui.Presence(d.hWnd, dlgFadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
+		showEleTree(d.overlay.Handle, false)
+		if d.backdrop != nil {
+			d.backdrop.Show(false)
+		}
+		// 遮罩是半透明合成, 必须以整窗重绘还原下方内容(局部重绘会留下变暗残影)
+		xc.XWnd_Redraw(d.hWnd, true)
+	})
 	return d
+}
+
+// backdropHandle 返回模糊层句柄(未创建时为 0, SetElementsAlpha 对 0 忽略)。
+func (d *Dialog) backdropHandle() int {
+	if d == nil || d.backdrop == nil {
+		return 0
+	}
+	return d.backdrop.Handle
+}
+
+// applyFade 把进出场进度落到对话框整组元素的透明度上(元素透明度会向下作用于自绘内容,
+// 实测有效; 遮罩与面板是 overlay 自绘的, 模糊层是 BkM 图片, 因此都跟着一起淡)。
+func (d *Dialog) applyFade(v float64) {
+	xui.SetElementsAlpha(v, d.overlay.Handle, d.backdropHandle())
 }
 
 // Close 关闭对话框并触发关闭回调。
@@ -330,6 +369,9 @@ func (d *Dialog) layout() {
 		return
 	}
 	xc.XEle_SetRect(d.overlay.Handle, &xc.RECT{Right: ow, Bottom: oh}, false, xcc.AdjustLayout_No)
+	if d.backdrop != nil && d.backdropImg != 0 {
+		setEleRect(d.backdrop.Handle, 0, 0, ow, oh)
+	}
 
 	// 面板宽度: w-full max-w-sm, 同时不超过 窗口宽 - 2rem
 	pw := d.width
