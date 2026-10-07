@@ -308,7 +308,11 @@ func (d *Dialog) Show() *Dialog {
 	if fs := d.focusables(); len(fs) > 0 {
 		xc.XWnd_SetFocusEle(d.hWnd, fs[0])
 	}
-	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, nil)
+	// 输入框插入符是原生 caret, 不吃元素 alpha —— 淡入期间先藏着, 到位再恢复
+	d.win.ShowCaret(false)
+	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, func(float64) {
+		d.win.ShowCaret(true)
+	})
 	return d
 }
 
@@ -319,11 +323,14 @@ func (d *Dialog) Hide() *Dialog {
 		return d
 	}
 	d.open = false
+	// 插入符不随元素 alpha 淡出(原生 caret), 先藏, 淡出到位再恢复
+	d.win.ShowCaret(false)
 	xui.Presence(d.hWnd, dlgFadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
 		showEleTree(d.overlay.Handle, false)
 		if d.backdrop != nil {
 			d.backdrop.Show(false)
 		}
+		d.win.ShowCaret(true)
 		// 遮罩是半透明合成, 必须以整窗重绘还原下方内容(局部重绘会留下变暗残影)
 		xc.XWnd_Redraw(d.hWnd, true)
 	})

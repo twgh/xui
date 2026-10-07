@@ -568,6 +568,13 @@ myapp/
     缓动取 CSS 默认的 `ease` = cubic-bezier(0.25,0.1,0.25,1) —— `animate-in/out` 是 keyframes,
     用的是 animation 的默认缓动, **与 transition-\* 的 tailwind 默认 cubic-bezier(0.4,0,0.2,1) 不是同一条**。
 
+    - **两个"不吃元素 alpha"的漏网之鱼**(2026-10-07, 都是淡入淡出时发现的):
+      ① **D2D 直通绘制的图标**绕过炫彩的 alpha 合成(直通调用直接落在最终渲染目标上,
+      元素 alpha 只作用于走 XDraw_* 命令队列的输出)→ 对话框淡入时关闭图标全黑不淡。
+      修法 = d2dicon.go 出图前把元素当前 alpha(`XEle_GetAlpha`)乘进画刷颜色
+      (窗口级 Painter 跳过);
+      ② **输入框插入符是原生 caret**, 同样不随元素 alpha 淡 → Dialog 淡入/淡出期间
+      `d.win.ShowCaret(false)`, Presence 到位的 done 里恢复(用户提示的 API)。
     - **运行时 API**(`presence.go`, 与 hover 共用 anim.go 的驱动器, 该处扩展了条目级
       时长/缓动/apply/done):`Presence(hOwner, key, visible, dur, apply, done)` 返回 0..1 进度,
       `apply` 每帧把进度落到元素透明度 / 窗口位置上, `done` 到位回调一次; 助手

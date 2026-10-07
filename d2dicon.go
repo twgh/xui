@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/twgh/xcgui/xc"
+	"github.com/twgh/xcgui/xcc"
 )
 
 // ==================== 图标抗锯齿: D2D 几何填充 ====================
@@ -481,6 +482,14 @@ func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, str
 
 	// 画刷是设备相关资源, 必须由 RT 创建、且只能给该 RT 用, 所以不缓存:
 	// 每帧建一个、画完立刻 Release(探针实测建刷代价可忽略, 图标几何才是大头)。
+	// 直通绘制绕过了炫彩的元素 alpha 合成(实测: Dialog 淡入时关闭图标不跟着淡),
+	// 这里把元素当前 alpha 乘进画刷颜色; 窗口级 Painter 没有元素 alpha 概念, 跳过。
+	if p.hEle != 0 && xc.XObj_GetType(p.hEle) != xcc.XC_WINDOW {
+		if a := xc.XEle_GetAlpha(p.hEle); a != 255 {
+			_, _, _, ca := color.RGBA()
+			color = color.WithAlpha(byte(uint32(ca) * uint32(a) / 255))
+		}
+	}
 	brush := createSolidColorBrush(rt, colorToD2D(color))
 	if brush == nil {
 		return false
