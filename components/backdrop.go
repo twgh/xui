@@ -21,8 +21,15 @@ import (
 // paint 里 XDraw_Image/ImageEx 能画位图 —— 见 DESIGN 第八节 17 修正; BkM 路线
 // 已验证且淡入一致, 保留。)
 
-// backdropBlurPx 模糊半径(逻辑像素) = backdrop-blur-xs。
-const backdropBlurPx = 4
+// backdropBlurPx 盒式模糊半径(单位 = 半分辨率像素, 见 backdropBlurDown) = backdrop-blur-xs。
+// 双趟盒式(r=2)在半分辨率上的等效 σ≈2.0, 放大回逻辑尺寸后 ≈4.0 —— 与原先"整分辨率双趟
+// r=4"(σ≈3.65)基本一致, 两者都是 CSS blur(4px) 的近似。
+const backdropBlurPx = 2
+
+// backdropBlurDown 模糊前的降采样倍数(边长)。模糊是全屏弹窗里最贵的一环: 1707×1019 整
+// 分辨率双趟实测 65ms, 降到 1/2 边长(面积 1/4)只要 16ms; 而降采样 + 放大对"再模糊 4px"
+// 的观感几乎没影响(总 σ 与原来同为 ~4 逻辑像素)。见 DESIGN 第八节 47。
+const backdropBlurDown = 2
 
 var (
 	modUser32              = syscall.NewLazyDLL("user32.dll")
@@ -35,7 +42,6 @@ var (
 	procCreateDIBSection   = modGdi32.NewProc("CreateDIBSection")
 	procDeleteObject       = modGdi32.NewProc("DeleteObject")
 	procSelectObject       = modGdi32.NewProc("SelectObject")
-	procBitBlt             = modGdi32.NewProc("BitBlt")
 )
 
 // bitmapinfoheader 与 Win32 的 BITMAPINFOHEADER 对齐(只用到自上而下 32bit BI_RGB)。
@@ -65,7 +71,7 @@ func newBackdrop(hWnd int) *widget.Element {
 	return e
 }
 
-// refreshBackdrop 抓取宿主窗口当前画面 → 模糊 → 缩放到逻辑尺寸 → 装进背景元素并显示。
+// refreshBackdrop 抓取宿主窗口当前画面 → 裁阴影带 → 半分辨率模糊 → 放大回逻辑尺寸 → 装进背景元素。
 // 任一步失败都保持隐藏(只损失模糊, 不影响对话框功能), recover 兜底同理。
 func (d *Dialog) refreshBackdrop() {
 	defer func() { _ = recover() }()
@@ -80,45 +86,45 @@ func (d *Dialog) refreshBackdrop() {
 	if !wapi.GetWindowRect(hwnd, &pr) {
 		return
 	}
-	w, h := int(pr.Right-pr.Left), int(pr.Bottom-pr.Top)
-	img := captureWindowRGBA(hwnd, w, h)
-	if img == nil {
-		return
-	}
 	dpi := xc.XWnd_GetDPI(d.hWnd)
 	if dpi <= 0 {
 		dpi = 96
 	}
+	// 抓屏要 DIB 的**物理像素**尺寸(PrintWindow 按 1:1 物理像素画整窗并裁剪, 不会缩放 ——
+	// 见 captureWindowScaled), 并在同一次遍历里直接降采样到 1/backdropBlurDown 逻辑尺寸:
+	// 模糊与放大都在这个低分辨率上做, 物理尺寸的整图中间结果一次都不产生。
+	physW, physH := int(pr.Right-pr.Left), int(pr.Bottom-pr.Top)
+	lwFull := physW * 96 / int(dpi) // 窗口逻辑尺寸(与 Body 矩形比较用)
+	lhFull := physH * 96 / int(dpi)
+	cw := (lwFull + backdropBlurDown - 1) / backdropBlurDown
+	ch := (lhFull + backdropBlurDown - 1) / backdropBlurDown
+	if cw <= 0 || ch <= 0 {
+		return
+	}
+	img := captureWindowScaled(hwnd, physW, physH, cw, ch)
+	if img == nil {
+		return
+	}
 	// 阴影窗口(Window_Transparent_Shadow)的 Win32 矩形含四周阴影边带 —— PrintWindow
 	// 把它抓成纯黑(alpha 丢失), 模糊后会往画面里晕出一圈黑边(实测)。裁掉只留 Body 区;
 	// 非阴影窗口 Body = 整窗, 仅当 Body 严格小于窗口(存在阴影带)时才裁。
-	// 注意必须**拷贝**成独立紧凑图, 不能用 SubImage —— 它与原图共享像素数组, 行距仍是
-	// 整窗宽度, 而模糊/缩放按"行距 = 宽×4"索引, 会把整幅图斜切错位成斜粗条纹(实测踩坑)
+	// Body 是逻辑坐标、快照是 1/backdropBlurDown 逻辑分辨率, 所以两个矩形都要除以倍数。
 	var body xc.RECT
 	xc.XWnd_GetBodyRect(d.hWnd, &body)
-	if body.Right > body.Left && body.Bottom > body.Top {
-		s := float64(dpi) / 96
-		x0, y0 := int(float64(body.Left)*s), int(float64(body.Top)*s)
-		x1, y1 := int(float64(body.Right)*s), int(float64(body.Bottom)*s)
-		if x0 >= 0 && y0 >= 0 && x1 <= w && y1 <= h && x1 > x0 && y1 > y0 &&
-			(x0 > 0 || y0 > 0 || x1 < w || y1 < h) {
-			crop := image.NewRGBA(image.Rect(0, 0, x1-x0, y1-y0))
-			for y := 0; y < y1-y0; y++ {
-				copy(crop.Pix[y*(x1-x0)*4:(y+1)*(x1-x0)*4],
-					img.Pix[((y0+y)*w+x0)*4:((y0+y)*w+x1)*4])
-			}
-			img = crop
-		}
+	x0, y0 := int(body.Left)/backdropBlurDown, int(body.Top)/backdropBlurDown
+	x1, y1 := int(body.Right)/backdropBlurDown, int(body.Bottom)/backdropBlurDown
+	if body.Right > body.Left && body.Bottom > body.Top &&
+		x1 <= cw && y1 <= ch && (x0 > 0 || y0 > 0 || x1 < cw || y1 < ch) {
+		img = cropRGBA(img, x0, y0, x1, y1)
 	}
-	// 物理像素上做模糊(半径 = 逻辑 4px × DPI), 再缩到逻辑尺寸:
-	// BkM 图片是按 1:1 逻辑像素居中绘制的(实测), 物理尺寸的图直接喂会错位且被裁
-	boxBlurRGBA(img, int(float64(backdropBlurPx)*float64(dpi)/96))
-
 	bx, by, lw, lh := d.backdropPlacement()
 	if lw <= 0 || lh <= 0 {
 		return
 	}
-	img = scaleRGBA(img, int(lw), int(lh))
+	// 快照已经是 1/backdropBlurDown 逻辑分辨率, 直接在上面模糊(半径也用 backdropBlurPx);
+	// 最后放大回**精确**逻辑尺寸 —— BkM 图片按 1:1 逻辑像素居中绘制(实测), 尺寸必须严丝合缝。
+	boxBlurRGBA(img, backdropBlurPx)
+	img = upscaleRGBA(img, int(lw), int(lh))
 
 	if d.backdropImg != 0 {
 		xc.XImage_Release(d.backdropImg)
@@ -164,54 +170,86 @@ func (d *Dialog) backdropPlacement() (x, y, w, h int32) {
 // backdropBkImgID 模糊快照在元素 BkM 管理器里的固定对象 id。
 const backdropBkImgID int32 = 1
 
-// scaleRGBA 把 RGBA 图面积平均缩放到 dstW×dstH(缩小用盒滤波足够, 快照场景质量没问题)。
-func scaleRGBA(img *image.RGBA, dstW, dstH int) *image.RGBA {
-	sw, sh := img.Rect.Dx(), img.Rect.Dy()
-	if sw == dstW && sh == dstH {
-		return img
+// cropRGBA 裁出 [x0,y0)-(x1,y1) 的**独立紧凑副本**(越界或空区域返回原图)。
+//
+// 必须拷贝成独立图, 不能用 SubImage: 子图与原图共享像素数组、行距仍是原图宽度, 而模糊/
+// 放大都按"行距 = 宽×4"索引, 拿子图去模糊会把整幅图斜切错位成斜粗条纹(实测踩坑)。
+func cropRGBA(src *image.RGBA, x0, y0, x1, y1 int) *image.RGBA {
+	if src == nil {
+		return nil
 	}
-	if sw <= 0 || sh <= 0 || dstW <= 0 || dstH <= 0 {
-		return img
+	w, h := src.Rect.Dx(), src.Rect.Dy()
+	if x0 < 0 || y0 < 0 || x1 > w || y1 > h || x1 <= x0 || y1 <= y0 {
+		return src
+	}
+	out := image.NewRGBA(image.Rect(0, 0, x1-x0, y1-y0))
+	for y := y0; y < y1; y++ {
+		copy(out.Pix[(y-y0)*(x1-x0)*4:(y-y0+1)*(x1-x0)*4], src.Pix[(y*w+x0)*4:(y*w+x1)*4])
+	}
+	return out
+}
+
+// upscaleRGBA 把 RGBA 图放大到 dstW×dstH: 每个目标像素取源图上对应邻域(放大倍率 ≈2 时
+// 正好是 2×2)的平均值 —— 只用加法与移位, 不引入浮点, 也不会像最近邻那样留方块。
+// 用途: 把"在 1/backdropBlurDown 分辨率上做的模糊"还原成元素的**精确**逻辑尺寸。
+func upscaleRGBA(src *image.RGBA, dstW, dstH int) *image.RGBA {
+	if src == nil {
+		return nil
+	}
+	sw, sh := src.Rect.Dx(), src.Rect.Dy()
+	if sw <= 0 || sh <= 0 || dstW <= 0 || dstH <= 0 || (sw == dstW && sh == dstH) {
+		return src
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
-	for dy := 0; dy < dstH; dy++ {
-		sy0 := dy * sh / dstH
-		sy1 := (dy + 1) * sh / dstH
-		if sy1 <= sy0 {
-			sy1 = sy0 + 1
+	// 列映射预计算一次(源邻域的左右两条列), 内层循环只剩加法
+	xs0 := make([]int32, dstW)
+	xs1 := make([]int32, dstW)
+	for dx := 0; dx < dstW; dx++ {
+		x0 := dx * sw / dstW
+		x1 := x0 + 1
+		if x1 > sw-1 {
+			x1 = sw - 1
 		}
+		xs0[dx], xs1[dx] = int32(x0)*4, int32(x1)*4
+	}
+	for dy := 0; dy < dstH; dy++ {
+		y0 := dy * sh / dstH
+		y1 := y0 + 1
+		if y1 > sh-1 {
+			y1 = sh - 1
+		}
+		r0 := y0 * sw * 4
+		r1 := y1 * sw * 4
+		drow := dy * dstW * 4
 		for dx := 0; dx < dstW; dx++ {
-			sx0 := dx * sw / dstW
-			sx1 := (dx + 1) * sw / dstW
-			if sx1 <= sx0 {
-				sx1 = sx0 + 1
-			}
-			var sum [4]int32
-			for sy := sy0; sy < sy1; sy++ {
-				row := sy * sw * 4
-				for sx := sx0; sx < sx1; sx++ {
-					i := row + sx*4
-					sum[0] += int32(img.Pix[i])
-					sum[1] += int32(img.Pix[i+1])
-					sum[2] += int32(img.Pix[i+2])
-					sum[3] += int32(img.Pix[i+3])
-				}
-			}
-			n := int32((sx1 - sx0) * (sy1 - sy0))
-			j := (dy*dstW + dx) * 4
-			dst.Pix[j] = byte(sum[0] / n)
-			dst.Pix[j+1] = byte(sum[1] / n)
-			dst.Pix[j+2] = byte(sum[2] / n)
-			dst.Pix[j+3] = byte(sum[3] / n)
+			a := r0 + int(xs0[dx])
+			b := r0 + int(xs1[dx])
+			c := r1 + int(xs0[dx])
+			d := r1 + int(xs1[dx])
+			j := drow + dx*4
+			dst.Pix[j+0] = byte((int(src.Pix[a]) + int(src.Pix[b]) + int(src.Pix[c]) + int(src.Pix[d])) >> 2)
+			dst.Pix[j+1] = byte((int(src.Pix[a+1]) + int(src.Pix[b+1]) + int(src.Pix[c+1]) + int(src.Pix[d+1])) >> 2)
+			dst.Pix[j+2] = byte((int(src.Pix[a+2]) + int(src.Pix[b+2]) + int(src.Pix[c+2]) + int(src.Pix[d+2])) >> 2)
+			dst.Pix[j+3] = byte((int(src.Pix[a+3]) + int(src.Pix[b+3]) + int(src.Pix[c+3]) + int(src.Pix[d+3])) >> 2)
 		}
 	}
 	return dst
 }
 
-// captureWindowRGBA 用 PrintWindow(PW_RENDERFULLCONTENT) 把窗口整幅抓成 RGBA。
-// 对 D2D 自绘窗口这是最稳的一条路; PrintWindow 失败时退回 BitBlt。
-func captureWindowRGBA(hwnd uintptr, w, h int) *image.RGBA {
-	if hwnd == 0 || w <= 0 || h <= 0 {
+// captureWindowScaled 用 PrintWindow(PW_RENDERFULLCONTENT) 按**物理像素**抓整窗, 并在
+// 同一次遍历里把 BGRA 转成 RGBA、盒式降采样到 dstW×dstH。
+//
+// 两个硬事实(均实测, 见 DESIGN 第八节 47 条 6):
+//   - DIB **必须给足窗口的物理像素尺寸**: PrintWindow 是按 1:1 物理像素把整窗画进目标 DC
+//     并**裁剪**到 DIB 尺寸, **不会缩放填满**(1200×885 的窗口抓进 800×590 的 DIB, 逐点等于
+//     基准图左上 800×590 的物理像素, 均值差 0.0)。按逻辑尺寸要图 = 只剩左上角一块。
+//   - 想要小图只能自己降采样, 但这一趟本来就要读遍全部源像素(全屏物理 2560×1528 = 3.9M),
+//     顺手把通道交换与盒式平均做掉, 省一整遍全尺寸遍历(实测只多花 ~2ms)。
+//
+// 失败(含 PrintWindow 返回 0)时返回 nil 让调用方放弃模糊 —— 不要退 BitBlt: 对 D2D 自绘
+// 窗口, 从窗口 DC BitBlt 拿到的是**纯黑**(实测整幅 mean=0.0/255), 糊上去就是一块黑板。
+func captureWindowScaled(hwnd uintptr, physW, physH, dstW, dstH int) *image.RGBA {
+	if hwnd == 0 || physW <= 0 || physH <= 0 || dstW <= 0 || dstH <= 0 {
 		return nil
 	}
 	hdcWnd, _, _ := procGetWindowDC.Call(hwnd)
@@ -226,7 +264,7 @@ func captureWindowRGBA(hwnd uintptr, w, h int) *image.RGBA {
 	}
 	defer procDeleteDC.Call(hdcMem)
 
-	bi := bitmapinfoheader{Size: 40, Width: int32(w), Height: int32(-h), Planes: 1, BitCount: 32}
+	bi := bitmapinfoheader{Size: 40, Width: int32(physW), Height: int32(-physH), Planes: 1, BitCount: 32}
 	var bits unsafe.Pointer
 	hbm, _, _ := procCreateDIBSection.Call(hdcMem, uintptr(unsafe.Pointer(&bi)), 0,
 		uintptr(unsafe.Pointer(&bits)), 0, 0)
@@ -237,24 +275,47 @@ func captureWindowRGBA(hwnd uintptr, w, h int) *image.RGBA {
 	old, _, _ := procSelectObject.Call(hdcMem, hbm)
 	defer procSelectObject.Call(hdcMem, old)
 
-	r, _, _ := procPrintWindow.Call(hwnd, hdcMem, 2) // PW_RENDERFULLCONTENT
-	if r == 0 {
-		procBitBlt.Call(hdcMem, 0, 0, uintptr(w), uintptr(h), hdcWnd, 0, 0, 0x00CC0020) // SRCCOPY
+	if r, _, _ := procPrintWindow.Call(hwnd, hdcMem, 2); r == 0 { // PW_RENDERFULLCONTENT
+		return nil
 	}
 
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	src := unsafe.Slice((*byte)(bits), w*h*4)
-	n := w * h
-	for i := 0; i < n; i++ { // DIB 是 BGRA, image.RGBA 要 RGBA
-		img.Pix[i*4+0] = src[i*4+2]
-		img.Pix[i*4+1] = src[i*4+1]
-		img.Pix[i*4+2] = src[i*4+0]
-		img.Pix[i*4+3] = 255
+	src := unsafe.Slice((*byte)(bits), physW*physH*4)
+	dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
+	for dy := 0; dy < dstH; dy++ {
+		sy0, sy1 := dy*physH/dstH, (dy+1)*physH/dstH
+		if sy1 <= sy0 {
+			sy1 = sy0 + 1
+		}
+		row := dy * dstW * 4
+		for dx := 0; dx < dstW; dx++ {
+			sx0, sx1 := dx*physW/dstW, (dx+1)*physW/dstW
+			if sx1 <= sx0 {
+				sx1 = sx0 + 1
+			}
+			var sum [3]int
+			for sy := sy0; sy < sy1; sy++ {
+				base := sy * physW * 4
+				for sx := sx0; sx < sx1; sx++ {
+					i := base + sx*4
+					sum[0] += int(src[i+2]) // DIB 是 BGRA → RGBA
+					sum[1] += int(src[i+1])
+					sum[2] += int(src[i])
+				}
+			}
+			n := (sx1 - sx0) * (sy1 - sy0)
+			j := row + dx*4
+			dst.Pix[j+0] = byte(sum[0] / n)
+			dst.Pix[j+1] = byte(sum[1] / n)
+			dst.Pix[j+2] = byte(sum[2] / n)
+			dst.Pix[j+3] = 255
+		}
 	}
-	return img
+	return dst
 }
 
-// boxBlurRGBA 盒式模糊两轮(横向+纵向 ×2), 视觉上足够接近高斯, 半径为物理像素。
+// boxBlurRGBA 盒式模糊两轮(横向+纵向 ×2), 视觉上足够接近高斯。
+// 半径单位是**传入图像自身的像素** —— 快照管线传进来的是 1/backdropBlurDown 逻辑分辨率,
+// 所以半径用 backdropBlurPx(见常量注释), 不要再乘 DPI。
 func boxBlurRGBA(img *image.RGBA, r int) {
 	if r <= 0 || img == nil {
 		return

@@ -27,7 +27,31 @@
 - ✅ **hover 过渡动画完成并像素验收**(2026-10-06, 运行时 `anim.go`):对齐 tailwind/shadcn 的 `transition-*` 默认值(**150ms + cubic-bezier(0.4,0,0.2,1)**), 驱动是挂在**重绘目标**上的炫彩定时器(元素/窗口都验过, 实测约 30ms/帧 → 150ms 约 5 帧, 必须 `Redraw(true)` 立即重绘, 否则掉到 65ms/帧), 只在该目标还有过渡没跑完时才开、到位即关(静止零开销)。组件侧只有一行: `hv := xui.Hover(hEle, st.Hover)` / `xui.HoverItem(hOwner, i, stay)` + `xui.Fade(静止色, 悬停色, hv)`(叠加层用 `ScaleAlpha(hv)`), **不新增字段/事件**;逐项键=索引+1。中断从中断点续跑(同 CSS)。已接入 Button(5 变体)/Tabs 文字/Slider 光环/demo 图标格/Table 行/Tree 行/ComboBox 弹层条目/Menu 条目。像素实测:primary `#171717`→28→49→62→68→**69**(=`primary/80` 叠白, 与改动前一致)、表格行 255→**250**、树行 255→**245**、菜单条目 255→**245**;`anim_test.go` 钉住缓动曲线与预乘取色。踩坑记 DESIGN.md 第八节 45
 - ✅ **重绘节流调优**:xcgui 默认有 30ms 重绘节流(`XC_SetPaintFrequency`), 这是过渡只有约 5 帧的根因; demo/app 初始化已设 `a.SetPaintFrequency(10)`, 实测帧率 **30.9 → 59.0 fps**(再低无效, ~16.6ms 是硬地板; 代价 = 过渡期间每帧绘制成本不变、帧数翻倍)。另实测 `XC_SetTextRenderingHint` / `XDraw_SetTextRenderingHint` 在 D2D 模式下**是空操作**(文字区域逐像素相同), 不要用。详见 DESIGN.md 第八节 46
 - ✅ **弹层/对话框进出场动画**(2026-10-06, 运行时 `presence.go`):语义对齐 shadcn(dialog/dropdown `duration-100` fade(+zoom+slide-8px), tooltip 150ms, 缓动 CSS `ease`); `xui.Presence(...)` 与 hover 共用驱动器, 助手 `SetElementsAlpha/FadeWindowAlpha/SlideWindowAlpha`。已接入 **Dialog**(整组淡入淡出, 淡出期间键盘/点击已失效, 到位才隐藏)与 **Tooltip**(fade + 8px 滑入, 退场到位再隐藏)。**修过的 bug**: 窗口 alpha 精确=0 会让 xcgui 停止合成(退场淡出到 0 后再进场永远 ~10% 透明度), `SetWindowAlpha` 统一抬底 `AlphaFloor()`=1/255 + done 里 SW_HIDE。其余坑(透明度要绘制才落地且必须靠宿主窗口重绘带动、异型小窗定时器不可靠、普通窗口 SetTransparentAlpha 完全无效)全在 DESIGN 第八节 47
-- ✅ **backdrop-blur-xs 完成并像素验收**(2026-10-07, `components/backdrop.go`): 抓窗快照(PrintWindow) + Go 盒式模糊 + 缩放到逻辑尺寸 + 元素 BkM 图片填充, 显示在遮罩之下、随遮罩一起淡入淡出。**昨夜的"v1.4.2 缺 XImage_LoadFromData 导出"是误判**(探测证实导出存在且可用), 真正的坑是三个:BkM 图片注册在元素的 `Element_State_Flag_Leave`(0x0010) 而非窗口的 `Window_State_Flag_Leave`(0x0001), 用错永不渲染; BkM 图片按 1:1 逻辑像素居中绘制, 物理尺寸快照必须先缩到逻辑尺寸; 注册统一走 `XBkM_AddImage`(带 id)。**后续又踩两个坑**: 裁阴影带必须**拷贝**成独立图(SubImage 共享行距 → 模糊按\"行距=宽×4\"索引整幅斜切成斜粗条纹); 裁边后元素必须摆回 Body 原点 (12,12) 且按 776×566 缩放注册(元素坐标系原点含阴影带, 画在 (0,0) 内容整体偏移、主窗标题被削一半, 已修, 见 DESIGN 第八节 47 条 7~9)。验收: blurprobe 程序化 Show/Close + 像素逐点比对(模糊期望 mean=0.23, 不模糊假设 mean=4.64 被排除; 关闭还原 max=0)+ demo computer-use 真实鼠标亮/暗双主题复核(模糊内容精确对齐原位)。踩坑全记 DESIGN 第八节 47; **验收探针必须跑 `a.Run()` 消息循环**(无泵时 Presence/定时器全不工作, 结论作废)
+- ✅ **backdrop-blur-xs 完成并像素验收**(2026-10-07, `components/backdrop.go`): 抓窗快照(PrintWindow) + Go 盒式模糊 + 缩放到逻辑尺寸 + 元素 BkM 图片填充, 显示在遮罩之下、随遮罩一起淡入淡出。**昨夜的"v1.4.2 缺 XImage_LoadFromData 导出"是误判**(探测证实导出存在且可用), 真正的坑是三个:BkM 图片注册在元素的 `Element_State_Flag_Leave`(0x0010) 而非窗口的 `Window_State_Flag_Leave`(0x0001), 用错永不渲染; BkM 图片按 1:1 逻辑像素居中绘制, 物理尺寸快照必须先缩到逻辑尺寸; 注册统一走 `XBkM_AddImage`(带 id)。**后续又踩两个坑**: 裁阴影带必须**拷贝**成独立图(SubImage 共享行距 → 模糊按\"行距=宽×4\"索引整幅斜切成斜粗条纹); 裁边后元素必须摆回 Body 原点 (12,12) 且按 776×566 缩放注册(元素坐标系原点含阴影带, 画在 (0,0) 内容整体偏移、主窗标题被削一半, 已修, 见 DESIGN 第八节 47 条 7~9)。验收: blurprobe 程序化 Show/Close + 像素逐点比对(模糊期望 mean=0.23, 不模糊假设 mean=4.64 被排除; 关闭还原 max=0)+ demo computer-use 真实鼠标亮/暗双主题复核(模糊内容精确对齐原位)。踩坑全记 DESIGN 第八节 47; **验收探针必须跑 `a.Run()` 消息循环**(无泵时 Presence/定时器全不工作, 结论作废)。**2026-10-07 两轮修正**:
+  ① **全屏弹窗慢**(根因=模糊代价随面积增长, 全屏物理面积是逻辑的 DPI² 倍): 快照管线 =
+  **按物理像素抓屏(`PrintWindow` 不缩放 —— 它按 1:1 物理像素画整窗并裁剪到 DIB 尺寸,
+  DIB 必须给足物理尺寸)→ 同一次遍历里 BGRA→RGBA + 盒式降采样到 1/2 逻辑尺寸 → 双趟盒式
+  (半径 2, 等效 σ≈4 逻辑像素)→ 成对平均放大回精确逻辑尺寸**。热态实测(含上传): 常态
+  800×590 **39→~36ms**、最大化全屏 **160→~61ms**; 窗口状态刚变的第一帧有 DWM 预热
+  (75→30ms 后稳定)。顺带: `PrintWindow` 失败不再退 BitBlt(对 D2D 窗口它拿到的整幅是纯黑,
+  实测 mean=0.0), 改成放弃模糊。
+  **踩坑记录(重要)**: 中途我一度按"1/2 逻辑尺寸"要 DIB, 以为 `PrintWindow` 会缩放填满 ——
+  它其实是**裁剪**, 于是快照只剩左上角一块、再被放大 2 倍 = 用户看到的"遮罩只有界面左上角,
+  放大了好几倍"; 而我当夜用 System.Drawing 做的对照实验给出了"它会缩放"的错误结论(那次
+  实验作废), 还拿一个坏掉的度量把截图里的异常判成了"demo 既有现象"。现在的事实以
+  `components/zz_*` 那份 Go 探针为准(裁剪假设均值差 0.0 / 缩放假设 20.0)。见 DESIGN 第八节
+  47 条 6。
+  ② **遮罩四角黑块**: 遮罩原来铺**整窗矩形**, 在阴影窗口上会盖住四周 12px 阴影带、把窗口
+  自身投影再压暗 10%, 而 Body 是圆角的 → 四角露出最多, 看着就是"遮罩四角多出黑色块"
+  (实测: 窗口铺满整屏未最大化时四角 #11111b、Body 内 #ffffff; 修后开/关对话框的四角像素
+  **完全一致**)。修法=遮罩改铺 **Body 区**(面板/子元素仍是窗口绝对坐标, 只有遮罩绘制与
+  "点遮罩关闭"的命中判定换算 maskX/maskY), 与浏览器 overlay 盖 viewport 的语义一致。
+  真实鼠标验证: 点遮罩关闭 / ESC 关闭 / 重新打开均正常。见 DESIGN 第八节 47 条 10。
+  ③ demo 双击标题栏的 y 判定改为 `captionH+shadowSize`(**最大化时不计阴影**), 阴影大小抽成
+  `demo/main.go` 的 `const shadowSize = 12`(原来 `SetShadowInfo(12,...)` 与阈值里的裸数字
+  12/30 并存); 已用**真实鼠标双击**逐带验证(标题栏上半段/下半段都最大化、标题栏之下不最大化)
+- ✅ **参考实现补齐(菜单 + 图标页)**(2026-10-07): 本地 shadcn 对照页原来只有 5 页、且"反馈"页只有 Dialog —— 已补上 demo 卡 5 同构的**下拉菜单对照卡**(`dropdown-menu.tsx` 终于被用上: 条目/快捷键/勾选/单选组/子菜单/破坏性/禁用)与新的**第 6 页「图标」**(9×5 网格 + 上下翻页, 与 demo 图标页同格数; 数据来自 `lucide-react` 的 `icons` 全量记录, PascalCase→kebab 后按名升序)。顺带把 `lucide-react` 依赖 `^1.49.0 → ^1.52.0`(lock 里实际也是 1.49.0, 升级后与 xui icons 子包的 lucide-static 1.52.0 同版本)。注意: 图标页整包引入 lucide, `pnpm build` 产物 ~1MB(gzip ~299KB), 本地参考可接受。`pnpm build` 通过
+
 - ⬜ P3 剩余:CLI 远程 registry; menu/combobox 弹层的进场动画(native 弹窗淡入不可行, 只能做位置滑动, 待定)
 
 - ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
@@ -147,7 +171,7 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 | **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10(ring 画在面板矩形**外侧** 1px, 直接描面板矩形会被遮罩灰吞掉, 见 DESIGN 第八节 33);标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
 | dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
-| dialog 遮罩 bg-black/10(固定黑色,不随主题;**backdrop-blur-xs 已实现**——抓窗快照+盒式模糊+BkM 图片填充,见 DESIGN 第八节 47) | dialog.tsx |
+| dialog 遮罩 bg-black/10(固定黑色,不随主题;**只铺 Body 区, 不铺阴影窗口的阴影带**——铺上去会把窗口自身投影再压暗 10%, 四角最明显;**backdrop-blur-xs 已实现**——物理像素抓窗快照(PrintWindow 不缩放, DIB 必须给物理尺寸)+融合降采样+半分辨率盒式模糊+成对平均放大+BkM 图片填充,见 DESIGN 第八节 47) | dialog.tsx(语义权威) + DESIGN 第八节 47 条 6/10 |
 | dialog 打开时焦点进第一个可聚焦控件,Tab/Shift+Tab 在对话框内循环(焦点陷阱),ESC / 点击遮罩 / 关闭钮关闭 | radix dialog 语义 |
 | **中文 500 字重 ≈ 常规**: Label 默认常规、按钮文字常规(用粗体字形实现 500 会明显偏粗); 标签比描述"看着粗"是**颜色**差(foreground 近黑 vs muted 灰), 实测笔画同宽 | label.tsx 500 + 实测像素 |
 | 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |

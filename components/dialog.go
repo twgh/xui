@@ -40,10 +40,12 @@ const (
 // dlgFadeKey 是对话框淡入淡出用的 presence 键(见 presence.go, 与 hover 键空间隔离)。
 const dlgFadeKey int32 = 0
 
-// Dialog 模态对话框: 一个铺满整窗的遮罩元素 + 居中面板, 面板内容全部自绘。
+// Dialog 模态对话框: 一个铺满 Body(内容区)的遮罩元素 + 居中面板, 面板内容全部自绘。
 //
 // 与 shadcn dialog.tsx(radix-nova) 对齐:
-//   - 遮罩: fixed inset-0 bg-black/10, 覆盖整个窗口并拦截下层全部鼠标事件;
+//   - 遮罩: fixed inset-0 bg-black/10, 覆盖整个 Body(内容区)并拦截下层全部鼠标事件;
+//     **不铺到阴影窗口的阴影带上** —— 铺上去会把窗口自身投影再压暗 10%, 四角最明显
+//     (见 layout 里的说明);
 //   - 面板: sm:max-w-sm(384) rounded-xl(半径 radius×1.4) bg-popover p-4,
 //     组间距 gap-4, ring-1 ring-foreground/10;
 //   - 标题 text-base / 描述 text-sm text-muted-foreground, 两者间距 gap-2;
@@ -76,8 +78,8 @@ type Dialog struct {
 	open     bool
 	focusIdx int // 焦点序列的当前位置(Tab 循环的兜底基准)
 
-	panel    xc.RECT // 面板矩形(遮罩局部坐标 = 窗口坐标)
-	footerRc xc.RECT // 页脚带矩形
+	panel    xc.RECT // 面板矩形(遮罩局部坐标 —— 遮罩贴在 Body 上, 原点不再是窗口 (0,0))
+	footerRc xc.RECT // 页脚带矩形(同上)
 
 	onClose []func()
 }
@@ -389,8 +391,9 @@ func (d *Dialog) IsOpen() bool {
 	return d != nil && d.open
 }
 
-// layout 计算面板与全部子元素的位置。元素坐标原点 = 窗口左上角(含标题栏),
-// 遮罩因此铺满整个窗口; 面板按窗口居中。
+// layout 计算面板与全部子元素的位置。遮罩元素铺满 Body(内容区, 见下), 面板在遮罩内居中;
+// **面板与子元素一律用"遮罩局部坐标"** —— 子元素坐标是相对父元素原点的, 遮罩本体被摆到
+// Body 的 (mx,my) 后, 局部坐标就从 Body 左上角起算, 不要再叠加 mx/my。
 func (d *Dialog) layout() {
 	var wr xc.RECT
 	xc.XWnd_GetRect(d.hWnd, &wr)
@@ -398,9 +401,23 @@ func (d *Dialog) layout() {
 	if ow <= 0 || oh <= 0 {
 		return
 	}
-	xc.XEle_SetRect(d.overlay.Handle, &xc.RECT{Right: ow, Bottom: oh}, false, xcc.AdjustLayout_No)
+	// 遮罩铺 **Body 区**, 不铺整窗: 阴影窗口(Window_Transparent_Shadow)的窗口矩形四周含
+	// 阴影带, 遮罩盖上去会把窗口自身的投影再压暗 10% —— Body 是圆角的, 四角露出的阴影带
+	// 最多, 肉眼就是"遮罩四角多出黑色块"(实测: 铺满屏未最大化时四角 #11111b、Body 内
+	// #ffffff)。浏览器里 overlay 盖的是 viewport(= 内容区)、窗口外框仍归系统, 语义一致。
+	// 非阴影窗口 Body = 整窗, 行为不变。
+	mx, my := int32(0), int32(0)
+	var bodyRc xc.RECT
+	xc.XWnd_GetBodyRect(d.hWnd, &bodyRc)
+	if bodyRc.Right > bodyRc.Left && bodyRc.Bottom > bodyRc.Top &&
+		(bodyRc.Left > 0 || bodyRc.Top > 0 || bodyRc.Right < ow || bodyRc.Bottom < oh) {
+		mx, my = bodyRc.Left, bodyRc.Top
+		ow, oh = bodyRc.Right-bodyRc.Left, bodyRc.Bottom-bodyRc.Top
+	}
+	xc.XEle_SetRect(d.overlay.Handle, &xc.RECT{Left: mx, Top: my, Right: mx + ow, Bottom: my + oh},
+		false, xcc.AdjustLayout_No)
 	if d.backdrop != nil && d.backdropImg != 0 {
-		// 模糊层跟 Body 区走, 不铺整窗(元素坐标系含阴影带, 见 backdrop.go backdropPlacement)
+		// 模糊层与遮罩同域(见 backdrop.go backdropPlacement)
 		bx, by, bw, bh := d.backdropPlacement()
 		if bw > 0 && bh > 0 {
 			setEleRect(d.backdrop.Handle, bx, by, bw, bh)
@@ -542,13 +559,15 @@ func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 遮罩: bg-black/10(shadcn 的遮罩是固定黑色 10%, 不随主题变化)
 	p.FillRound(&p.Rc, xui.RGBA(0, 0, 0, 26), 0)
-	if d.panel.Right <= d.panel.Left || d.panel.Bottom <= d.panel.Top {
+
+	panel := d.panel // 面板/页脚都存遮罩局部坐标, 与绘制坐标系一致
+	if panel.Right <= panel.Left || panel.Bottom <= panel.Top {
 		return 0
 	}
 	radius := t.RadiusXl() // rounded-xl
 
 	// 面板: bg-popover
-	p.FillRound(&d.panel, t.Popover, radius)
+	p.FillRound(&panel, t.Popover, radius)
 
 	// 页脚带: bg-muted/50 + border-t, 只有下面两个角随面板圆角
 	if d.footerRc.Bottom > d.footerRc.Top {
@@ -565,7 +584,7 @@ func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 注意 tailwind 的 ring 是 box-shadow, 画在盒子**外侧**(压在遮罩灰底上才形成可见的
 	// 深色描边线); xcgui 的圆角矩形描边落在路径内侧, 直接描 d.panel 会把 10% 黑压在
 	// 面板白底边上(230), 与遮罩灰(229)几乎同值而不可见 —— 实测后外扩 1px 对齐浏览器
-	ringRc := d.panel
+	ringRc := panel
 	ringRc.Left--
 	ringRc.Top--
 	ringRc.Right++
@@ -579,6 +598,7 @@ func (d *Dialog) onOverlayDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *b
 	if !d.open || pPt == nil {
 		return 0
 	}
+	// pPt 与 d.panel 都是遮罩局部坐标(遮罩原点 = Body 左上角), 直接比
 	if pPt.X < d.panel.Left || pPt.X >= d.panel.Right || pPt.Y < d.panel.Top || pPt.Y >= d.panel.Bottom {
 		d.Close()
 	}
