@@ -349,6 +349,7 @@ myapp/
     - **焦点反查要沿父链**:`XWnd_GetFocusEle` 拿到的是复合控件(Edit)的内部元素, 与创建时的句柄不同 → 用 `XWidget_GetParentEle` 往上找焦点序列里的成员, 找不到再用自维护的下标兜底;
     - **Tab 序列只收交互控件**:`XObj_GetType` 白名单(Button/Edit/ComboBox/SliderBar/Editor/RichEdit/ListBox/TabBar)+ `IsEnableFocus && IsSwitchFocus`;Label 载体是原生 Button, 必须显式 `EnableSwitchFocus(false)` 才不会挤进 Tab 序列(顺带 `EnableDrawBorder(false)`, 否则它能画出原生边框);
     - **backdrop-blur-xs 后来补上了**(2026-10-07, 见第八节 47 的 backdrop-blur 小节): 当时尚以为画不出, 实际走"抓窗快照 + BkM 图片填充"能精确实现。
+    - **ring-1 要画在面板矩形外侧**(2026-10-07):tailwind 的 ring 是 box-shadow, 画在盒子**外面**压着遮罩灰底, 才形成可见的深色描边;xcgui 圆角矩形描边落在路径**内侧**, 直接描面板矩形会把 10% 黑压在面板白底边上(230), 与遮罩灰(229)几乎同值而完全不可见(像素实测)。修法 = 描边矩形外扩 1px(dialog.go onPaint)。
 
 34. **Dialog/文字/量测的一批实测结论**(2026-10-04 视觉对齐期间, 探针+像素测量):
     - **自绘文字的字号就是逻辑像素, 不要按 DPI 反除**: 曾据"按钮文字顶到边缘"推断绘制路径二次乘 DPI 并做了字号反除, 实测反证(反除后全局文字明显偏小), 已回退并记录于此。真正的原因是量测口径;
@@ -570,7 +571,9 @@ myapp/
     - **运行时 API**(`presence.go`, 与 hover 共用 anim.go 的驱动器, 该处扩展了条目级
       时长/缓动/apply/done):`Presence(hOwner, key, visible, dur, apply, done)` 返回 0..1 进度,
       `apply` 每帧把进度落到元素透明度 / 窗口位置上, `done` 到位回调一次; 助手
-      `SetElementsAlpha`(一组元素一起淡)、`SetWindowAlpha` / `FadeWindowAlpha` / `SlideWindowAlpha`
+      `SetElementsAlpha`(一组元素一起淡)、`SetSubtreeAlpha`(整棵**子树**逐个设 alpha ——
+      元素透明度**不级联到子元素**, 只设 overlay 时标题/输入框等子元素会全不透明压在
+      还没模糊的背景上, 实测踩坑)、`SetWindowAlpha` / `FadeWindowAlpha` / `SlideWindowAlpha`
       (窗口透明度 + 位移 + 自重绘)。调试用 `SetAnimationScale(f)` 把**全部**过渡放慢
       (12 倍时外部截图脚本才能抓到中间帧做像素验收)。
     - **已接入**:Dialog(遮罩+面板+全部子元素整组淡入淡出, `d.open` 立刻置 false 所以淡出期间

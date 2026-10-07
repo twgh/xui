@@ -299,7 +299,9 @@ func (d *Dialog) Show() *Dialog {
 	// 进场: 整组(模糊层 + 遮罩 + 面板 + 全部子元素)从全透明淡入 —— 对齐 shadcn dialog 的
 	// data-open:animate-in fade-in-0 zoom-in-95(时长 100ms); 缩放在 xcgui 里做不到
 	// (元素级 ani 对自绘元素无效, 见 DESIGN 第八节 47), 这里只做淡入。
-	xui.SetElementsAlpha(0, d.overlay.Handle, d.backdropHandle())
+	// 注意必须整棵子树逐个设 alpha: 元素透明度不级联, 只设 overlay 的话标题/输入框
+	// 等子元素会全不透明压在还没模糊的背景上(实测踩坑)
+	xui.SetSubtreeAlpha(0, d.overlay.Handle, d.backdropHandle())
 	d.overlay.Redraw(false)
 	xc.XWnd_Redraw(d.hWnd, true)
 	d.focusIdx = 0
@@ -337,9 +339,10 @@ func (d *Dialog) backdropHandle() int {
 }
 
 // applyFade 把进出场进度落到对话框整组元素的透明度上(元素透明度会向下作用于自绘内容,
-// 实测有效; 遮罩与面板是 overlay 自绘的, 模糊层是 BkM 图片, 因此都跟着一起淡)。
+// 实测有效; 但**不级联到子元素**, 所以用 SetSubtreeAlpha 对整棵子树逐个设置 ——
+// 遮罩、面板、模糊层与标题/输入框等内容一起淡, 对齐 shadcn 的整组 fade-in/out)。
 func (d *Dialog) applyFade(v float64) {
-	xui.SetElementsAlpha(v, d.overlay.Handle, d.backdropHandle())
+	xui.SetSubtreeAlpha(v, d.overlay.Handle, d.backdropHandle())
 }
 
 // Close 关闭对话框并触发关闭回调。
@@ -527,8 +530,16 @@ func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.Line(fr.Left, fr.Top, fr.Right, fr.Top, t.Border, 1)
 	}
 
-	// ring-1 ring-foreground/10: 贴面板边缘的描边, 画在最后(压住底色边缘)
-	p.StrokeRound(&d.panel, t.Foreground.WithAlpha(26), radius, 1)
+	// ring-1 ring-foreground/10: 贴面板边缘的描边, 画在最后(压住底色边缘)。
+	// 注意 tailwind 的 ring 是 box-shadow, 画在盒子**外侧**(压在遮罩灰底上才形成可见的
+	// 深色描边线); xcgui 的圆角矩形描边落在路径内侧, 直接描 d.panel 会把 10% 黑压在
+	// 面板白底边上(230), 与遮罩灰(229)几乎同值而不可见 —— 实测后外扩 1px 对齐浏览器
+	ringRc := d.panel
+	ringRc.Left--
+	ringRc.Top--
+	ringRc.Right++
+	ringRc.Bottom++
+	p.StrokeRound(&ringRc, t.Foreground.WithAlpha(26), radius+1, 1)
 	return 0
 }
 

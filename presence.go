@@ -73,6 +73,11 @@ func Presence(hOwner int, key int32, visible bool, dur time.Duration,
 //
 // 元素级透明度是框架在合成阶段乘上去的, 对自绘内容同样有效(实测),
 // 因此这是"让一组自绘元素一起淡入"的最省事办法; 注意它不影响窗口本身的不透明度。
+//
+// ⚠️ 元素透明度**不会级联到子元素**(XEle_SetAlpha 只作用于元素自身的绘制输出,
+// 子元素是独立元素、有自己的 alpha, 实测: 对话框只设 overlay 时, 遮罩和面板底淡了,
+// 标题/输入框等子元素仍全不透明, 前几帧像"文字浮在弹窗上")。整组进出请用
+// SetSubtreeAlpha。
 func SetElementsAlpha(v float64, hEles ...int) {
 	if v < 0 {
 		v = 0
@@ -83,6 +88,32 @@ func SetElementsAlpha(v float64, hEles ...int) {
 	for _, h := range hEles {
 		if h != 0 {
 			xc.XEle_SetAlpha(h, a)
+		}
+	}
+}
+
+// SetSubtreeAlpha 按进度 v(0..1)设置一棵元素子树(含根)的透明度。
+// 元素透明度不级联(见 SetElementsAlpha 的说明), "整组一起淡"必须显式逐个设置。
+func SetSubtreeAlpha(v float64, hRoots ...int) {
+	if v < 0 {
+		v = 0
+	} else if v > 1 {
+		v = 1
+	}
+	a := byte(v*255 + 0.5)
+	for _, h := range hRoots {
+		if h != 0 {
+			setAlphaTree(h, a)
+		}
+	}
+}
+
+func setAlphaTree(hEle int, a byte) {
+	xc.XEle_SetAlpha(hEle, a)
+	n := xc.XEle_GetChildCount(hEle)
+	for i := int32(0); i < n; i++ {
+		if h := xc.XEle_GetChildByIndex(hEle, i); h != 0 {
+			setAlphaTree(h, a)
 		}
 	}
 }
