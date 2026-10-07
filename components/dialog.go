@@ -305,10 +305,23 @@ func (d *Dialog) Show() *Dialog {
 	d.overlay.Redraw(false)
 	xc.XWnd_Redraw(d.hWnd, true)
 	d.focusIdx = 0
-	if fs := d.focusables(); len(fs) > 0 {
+	fs := d.focusables()
+	if len(fs) > 0 {
+		// 插入符宽度只在 caret 创建(获得焦点)时生效 —— 对已显示的 caret 改宽度无效,
+		// 清焦点再聚焦才生效(实测)。所以聚焦前先把宽度置 0, 淡入期间插入符隐身;
+		// 到位后恢复宽度并重铸焦点让插入符回来(焦点环则始终随整组淡入, 不闪)
+		d.setCaretWidthOf(fs[0], 0)
 		xc.XWnd_SetFocusEle(d.hWnd, fs[0])
 	}
-	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, nil)
+	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, func(float64) {
+		if len(fs) > 0 {
+			d.setCaretWidthOf(fs[0], 1)
+			if xc.XWnd_GetFocusEle(d.hWnd) == fs[0] {
+				xc.XWnd_SetFocusEle(d.hWnd, 0)
+				xc.XWnd_SetFocusEle(d.hWnd, fs[0])
+			}
+		}
+	})
 	return d
 }
 
@@ -319,6 +332,9 @@ func (d *Dialog) Hide() *Dialog {
 		return d
 	}
 	d.open = false
+	// 清焦点: 插入符随焦点消失, 淡出的 100ms 里不会闪现全亮度的插入符,
+	// 也避免键盘输入继续打进正在消失的输入框
+	xc.XWnd_SetFocusEle(d.hWnd, 0)
 	xui.Presence(d.hWnd, dlgFadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
 		showEleTree(d.overlay.Handle, false)
 		if d.backdrop != nil {
@@ -342,16 +358,17 @@ func (d *Dialog) backdropHandle() int {
 // 实测有效; 但**不级联到子元素**, 所以用 SetSubtreeAlpha 对整棵子树逐个设置 ——
 // 遮罩、面板、模糊层与标题/输入框等内容一起淡; 焦点环也因此从第一帧就随整组淡入,
 // 不会在最后闪一下, 对齐 shadcn)。
-// 输入框插入符竖条尊重持有它的编辑框元素 alpha(实测: 淡入中段 114 灰 vs 稳态 10 黑),
-// 编辑框在 overlay 子树里本就会淡; GetCaretHELE 那行是双保险 —— 万一 caret 元素
-// 不在子树里(句柄 != 编辑框)也能同步淡。
-// 注意: 别用 XWnd_ShowCaret 在进出场期间藏/显 —— 会和编辑框自身的 blink 定时器
-// 打架(实测连续闪烁); 也别把焦点推迟到淡入完成后 —— 输入框的焦点环会在最后一帧
-// 突然出现, 看着像闪一下(shadcn 的焦点环从第一帧就随整组淡入)。
+// 输入框插入符竖条不随元素 alpha 淡(原生绘制, 实测) —— 由 setCaretWidth 在进出场
+// 期间置 0 隐身, 不在这里处理。
 func (d *Dialog) applyFade(v float64) {
 	xui.SetSubtreeAlpha(v, d.overlay.Handle, d.backdropHandle())
-	if h := d.win.GetCaretHELE(); h != 0 {
-		xc.XEle_SetAlpha(h, byte(v*255+0.5))
+}
+
+// setCaretWidthOf 把指定编辑框的插入符宽度设为 w(0 = 隐身)。只处理 XC_EDIT。
+// 注意宽度仅在 caret 创建(获得焦点)时生效, 改已显示 caret 的宽度要清焦点再重聚焦。
+func (d *Dialog) setCaretWidthOf(hEle int, w int32) {
+	if hEle != 0 && xc.XObj_GetType(hEle) == xcc.XC_EDIT {
+		xc.XEdit_SetCaretWidth(hEle, w)
 	}
 }
 

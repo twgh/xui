@@ -573,13 +573,13 @@ myapp/
       元素 alpha 只作用于走 XDraw_* 命令队列的输出)→ 对话框淡入时关闭图标全黑不淡。
       修法 = d2dicon.go 出图前把元素当前 alpha(`XEle_GetAlpha`)乘进画刷颜色
       (窗口级 Painter 跳过);
-      ② **输入框插入符**:插入符竖条尊重持有它的编辑框元素 alpha(实测: 淡入中段
-      114 灰 vs 稳态 10 黑), 所以整组淡(见 SetSubtreeAlpha)天然覆盖它, 打开即聚焦
-      没有问题; `GetCaretHELE` 返回的就是持焦编辑框, applyFade 里对它再设一次 alpha
-      是双保险。两个弃用方案, 都是实测: 进出场期间 `XWnd_ShowCaret(false)` 藏/done
-      恢复 —— 与编辑框自身 blink 定时器打架, 插入符连续闪烁; 焦点推迟到淡入完成后
-      再给 —— 输入框的焦点环在最后一帧突然出现, 看着闪一下(shadcn 的焦点环从第一帧
-      就随整组淡入)。结论: 焦点打开即给, 插入符靠元素 alpha 自然淡。
+      ② **输入框插入符**:竖条不随元素 alpha 淡(原生绘制)。最终方案 = **SetCaretWidth(0) 隐身**:
+      插入符宽度只在 caret 创建(获得焦点)时生效 —— 对已显示的 caret 改宽度无效,
+      清焦点再聚焦才生效(实测 w0/w1/w5 三档: 不重铸焦点全部 2px, 重铸后 5→8px、0→隐身)。
+      所以 Show 里聚焦前先置 0, Presence done 恢复 1 并重铸焦点(清+聚, 一个回调内同步
+      完成无中间绘制); Hide 开始先 XWnd_SetFocusEle(hWnd, 0) 清焦点, 插入符自然消失。
+      焦点本身打开即给 —— 焦点环随整组淡入, 不闪。另两个弃用方案: ShowCaret 藏/显
+      (与编辑框 blink 定时器打架, 连续闪烁); 焦点晚给(焦点环最后一帧突现, 闪一下)。
     - **运行时 API**(`presence.go`, 与 hover 共用 anim.go 的驱动器, 该处扩展了条目级
       时长/缓动/apply/done):`Presence(hOwner, key, visible, dur, apply, done)` 返回 0..1 进度,
       `apply` 每帧把进度落到元素透明度 / 窗口位置上, `done` 到位回调一次; 助手
