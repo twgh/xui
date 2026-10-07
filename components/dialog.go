@@ -305,13 +305,13 @@ func (d *Dialog) Show() *Dialog {
 	d.overlay.Redraw(false)
 	xc.XWnd_Redraw(d.hWnd, true)
 	d.focusIdx = 0
-	if fs := d.focusables(); len(fs) > 0 {
-		xc.XWnd_SetFocusEle(d.hWnd, fs[0])
-	}
-	// 输入框插入符是原生 caret, 不吃元素 alpha —— 淡入期间先藏着, 到位再恢复
-	d.win.ShowCaret(false)
+	// 焦点在淡入**到位后**才交给第一个可聚焦控件: 输入框插入符是原生 caret, 不吃元素
+	// alpha, 聚焦早了它会以全亮度闪现在还没淡完的面板上; 而用 ShowCaret 藏/显又会和
+	// 编辑框自身的 blink 定时器打架(实测连续闪烁) —— 晚 100ms 聚焦两个问题都没有
 	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, func(float64) {
-		d.win.ShowCaret(true)
+		if fs := d.focusables(); len(fs) > 0 {
+			xc.XWnd_SetFocusEle(d.hWnd, fs[0])
+		}
 	})
 	return d
 }
@@ -323,14 +323,14 @@ func (d *Dialog) Hide() *Dialog {
 		return d
 	}
 	d.open = false
-	// 插入符不随元素 alpha 淡出(原生 caret), 先藏, 淡出到位再恢复
-	d.win.ShowCaret(false)
+	// 先清焦点: 插入符不随元素 alpha 淡出(原生 caret), 焦点没了它自然消失;
+	// 也避免淡出的 100ms 里键盘输入继续打进正在消失的输入框
+	xc.XWnd_SetFocusEle(d.hWnd, 0)
 	xui.Presence(d.hWnd, dlgFadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
 		showEleTree(d.overlay.Handle, false)
 		if d.backdrop != nil {
 			d.backdrop.Show(false)
 		}
-		d.win.ShowCaret(true)
 		// 遮罩是半透明合成, 必须以整窗重绘还原下方内容(局部重绘会留下变暗残影)
 		xc.XWnd_Redraw(d.hWnd, true)
 	})
