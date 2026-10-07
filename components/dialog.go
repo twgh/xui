@@ -400,7 +400,11 @@ func (d *Dialog) layout() {
 	}
 	xc.XEle_SetRect(d.overlay.Handle, &xc.RECT{Right: ow, Bottom: oh}, false, xcc.AdjustLayout_No)
 	if d.backdrop != nil && d.backdropImg != 0 {
-		setEleRect(d.backdrop.Handle, 0, 0, ow, oh)
+		// 模糊层跟 Body 区走, 不铺整窗(元素坐标系含阴影带, 见 backdrop.go backdropPlacement)
+		bx, by, bw, bh := d.backdropPlacement()
+		if bw > 0 && bh > 0 {
+			setEleRect(d.backdrop.Handle, bx, by, bw, bh)
+		}
 	}
 
 	// 面板宽度: w-full max-w-sm, 同时不超过 窗口宽 - 2rem

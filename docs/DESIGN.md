@@ -661,6 +661,13 @@ myapp/
          抓屏没事(此时 backdrop 图片还没装上), 但对话框开着时再对它 PrintWindow
          (BkM 图片 + PW_RENDERFULLCONTENT 重入 D2D 渲染)会挂死消息循环 —— 探针
          验证这类窗口要用屏幕截图(DXGI), 别用 PrintWindow。
+      9. **裁边后必须把元素摆回 Body 原点, 否则内容整体偏移**: 子元素坐标系的原点是
+         Win32 整窗**左上角(含阴影带)**, `XWnd_GetBodyRect` 返回的 (12,12) 就是这个
+         Body 相对于原点的偏移, 不是随便的裁剪建议。只裁快照、仍把元素画在 (0,0),
+         模糊背景会整体上移/左移一个阴影带宽 —— 实测主窗标题行被削掉一半。
+         修法 = 裁剪后按 `backdropPlacement()` 把元素放在 (body.Left, body.Top)、
+         尺寸 776×566 缩放注册; 窗口缩放重排(layout)也走同一函数, 保持对齐。
+         探针实测: `XWnd_GetRect`=800×590(含阴影), Body/Client=12,12→788,578(776×566)。
 
 ---
 

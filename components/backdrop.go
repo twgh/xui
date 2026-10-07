@@ -114,13 +114,11 @@ func (d *Dialog) refreshBackdrop() {
 	// BkM 图片是按 1:1 逻辑像素居中绘制的(实测), 物理尺寸的图直接喂会错位且被裁
 	boxBlurRGBA(img, int(float64(backdropBlurPx)*float64(dpi)/96))
 
-	var wr xc.RECT
-	xc.XWnd_GetRect(d.hWnd, &wr)
-	lw, lh := int(wr.Right-wr.Left), int(wr.Bottom-wr.Top)
+	bx, by, lw, lh := d.backdropPlacement()
 	if lw <= 0 || lh <= 0 {
 		return
 	}
-	img = scaleRGBA(img, lw, lh)
+	img = scaleRGBA(img, int(lw), int(lh))
 
 	if d.backdropImg != 0 {
 		xc.XImage_Release(d.backdropImg)
@@ -137,8 +135,30 @@ func (d *Dialog) refreshBackdrop() {
 	xc.XEle_ClearBkInfo(d.backdrop.Handle)
 	hm := xc.XEle_GetBkManager(d.backdrop.Handle)
 	xc.XBkM_AddImage(hm, xcc.Element_State_Flag_Leave, hImg, backdropBkImgID)
-	setEleRect(d.backdrop.Handle, 0, 0, int32(lw), int32(lh))
+	setEleRect(d.backdrop.Handle, bx, by, lw, lh)
 	d.backdrop.Show(true)
+}
+
+// backdropPlacement 返回模糊层元素的位置与尺寸(逻辑像素)。
+// 关键: 子元素坐标系的原点是 Win32 整窗左上角(**含阴影带**), XWnd_GetBodyRect 给出的
+// (12,12) 偏移正是 Body 在这个坐标系里的位置 —— 快照裁掉阴影带后必须画在 Body 位置,
+// 仍画在 (0,0) 会让内容整体偏移一个阴影带宽(实测主窗标题被削掉一半);
+// 非阴影窗口 Body=整窗, 铺满即可。
+func (d *Dialog) backdropPlacement() (x, y, w, h int32) {
+	var wr xc.RECT
+	xc.XWnd_GetRect(d.hWnd, &wr)
+	w, h = wr.Right - wr.Left, wr.Bottom - wr.Top
+	if w <= 0 || h <= 0 {
+		return 0, 0, 0, 0
+	}
+	var body xc.RECT
+	xc.XWnd_GetBodyRect(d.hWnd, &body)
+	if body.Right > body.Left && body.Bottom > body.Top &&
+		(body.Left > 0 || body.Top > 0 || body.Right < w || body.Bottom < h) {
+		x, y = body.Left, body.Top
+		w, h = body.Right - body.Left, body.Bottom - body.Top
+	}
+	return
 }
 
 // backdropBkImgID 模糊快照在元素 BkM 管理器里的固定对象 id。
