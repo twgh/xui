@@ -29,6 +29,15 @@ var (
 	demoTreeSel int32
 )
 
+// 标题栏行高度与窗口阴影边带宽度(逻辑像素)。
+// 二者必须分开用: 窗口/事件坐标的原点在**整窗**左上角, 非最大化时四周各压着 shadowSize
+// 宽的阴影带; 最大化时窗口没有阴影, 原点就是标题栏行左上角 —— 双击标题栏的 y 判定要按
+// 这个规则算(见下面的 LButtonDBClick)。都别写成裸数字。
+const (
+	captionH   int32 = 30 // 标题栏行高度(BorderSize=0 时即 cap 布局项高度)
+	shadowSize int32 = 12 // Window_Transparent_Shadow 的阴影大小(SetShadowInfo 的 nSize)
+)
+
 func main() {
 	app.InitOrExit()
 	a := app.New(true)
@@ -42,7 +51,7 @@ func main() {
 	w := window.New(0, 0, 800, 590, "xui · shadcn 风格自绘组件", 0,
 		xcc.Window_Style_Center|xcc.Window_Style_Border|xcc.Window_Style_Drag_Border|xcc.Window_Style_Drag_Window|xcc.Window_Style_Allow_MaxWindow)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
-	w.SetShadowInfo(12, 128, 8, false, xc.RGBA(0, 0, 0, 128))
+	w.SetShadowInfo(shadowSize, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
 	w.SetBorderSize(0, 0, 0, 0)
 	w.SetMinimumSize(800, 590)
@@ -52,7 +61,7 @@ func main() {
 	xui.BindWindowBackground(w.Handle) // 窗口底色随主题切换
 	tip = ui.NewTooltip()
 
-	// ===== 布局骨架: 纵向 [标题栏行 30][内容区 Fill] =====
+	// ===== 布局骨架: 纵向 [标题栏行 captionH][内容区 Fill] =====
 	w.EnableLayout(true)
 	root := widget.NewLayoutEle(0, 0, 0, 0, w.Handle)
 	root.EnableHorizon(false)
@@ -62,14 +71,14 @@ func main() {
 
 	// 标题栏行: logo/标题居左, 按钮组浮到最右(中间标题 Fill 撑开)。
 	// 行自身鼠标穿透 —— 不挡 Drag_Window 的拖动命中, 子元素(按钮)不受影响。
-	cap := widget.NewLayoutEle(0, 0, 0, 30, root.Handle)
+	cap := widget.NewLayoutEle(0, 0, 0, captionH, root.Handle)
 	cap.EnableHorizon(true)
 	cap.EnableBkTransparent(true)
 	cap.SetSpace(6)
 	cap.SetAlignV(xcc.Layout_Align_Center)
 	cap.EnableMouseThrough(true)
 	cap.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	cap.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 30)
+	cap.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, captionH)
 
 	// logo: Primary 圆角块 + 白色 "x", 绘制时取令牌随主题换色
 	logo := widget.NewLayoutEle(0, 0, 18, 18, cap.Handle)
@@ -97,7 +106,7 @@ func main() {
 
 	// 标题文字: Weight 宽度占满剩余空间把按钮组顶到行尾
 	// (横向行里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight)
-	title := widget.NewLayoutEle(0, 0, 0, 30, cap.Handle)
+	title := widget.NewLayoutEle(0, 0, 0, captionH, cap.Handle)
 	title.EnableHorizon(false)
 	title.EnableBkTransparent(true)
 	title.EnableMouseThrough(true)
@@ -182,9 +191,16 @@ func main() {
 
 	buildPage(w.Handle, content.Handle)
 
-	// 双击标题栏行最大化/还原
+	// 双击标题栏行最大化/还原。
+	// y 判定必须按窗口**实际**坐标系算: 非最大化时整窗矩形四周含 shadowSize 宽的阴影带,
+	// 而事件坐标原点是整窗左上角, 标题栏行落在 [shadowSize, shadowSize+captionH]; 最大化时
+	// 窗口没有阴影, 行落在 [0, captionH]。只写 captionH 会让非最大化时的双击判定少一段。
 	w.AddEvent_LButtonDBClick(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
-		if pPt.Y > 30 {
+		top := captionH + shadowSize
+		if w.IsMaxWindow() {
+			top = captionH
+		}
+		if pPt.Y > top {
 			return 0
 		} else if w.GetStayEle() != 0 { // 防止点到标题栏上的按钮
 			return 0
