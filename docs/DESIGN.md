@@ -294,7 +294,11 @@ myapp/
 14. **标题文字默认白色**:xcgui 标题栏文字颜色为白色(为默认蓝色标题栏设计),主题化窗口(白/黑底)需 `w.SetTitleColor(theme.Foreground)` 并挂 OnThemeChange。
 15. **窗口样式按标志位组合**:去掉系统图标和三键 = `Caption|Border|Center|Drag_Border|Allow_MaxWindow|Title`(不含 Icon/Btn_*);去掉关闭按钮后需自补 ESC 关闭(`XWnd_CloseWindow`)。
 16. **focus-visible 需自行跟踪焦点来源**:xcgui 只有单一 Focus 状态,不区分鼠标/键盘来源 → 全局跟踪鼠标按下/Tab 键(运行时 focus.go),文本输入类控件例外(始终显示,同浏览器语义)。
-17. **元素自绘里画不出某些 Lucide 图片/SVG, 因为不支持某些写法**:`XDraw_DrawSvgEx` / `XDraw_Image` / `XDraw_ImageEx` 在元素 paint 回调里**无输出**(探针实证:句柄有效、坐标与裁剪都正确,就是画不出来;图片用 `imagex.NewBySvgString` 加载同样无效)。需要图标时用线段图元复刻:`icons.go` 把 lucide 的 path 解析成折线再用 `DrawLine` 描边(支持 M/L/H/V/C/S/Q/T/Z,圆弧用专门实现);或把图片交给原生控件(`Button.SetIcon` 等)。**2026-10-06 起图标的出图改为直通 D2D 几何填充(解析出的折线仍作为回落路径保留), 抗锯齿与几何精度见第 43 条。**
+17. **元素 paint 回调里能画位图, 也能画 SVG;当年"画不出"的根因是 Lucide 的 path 写法 xcgui 的 SVG 解析器不支持**(2026-10-07 复核修正, 此前本条结论有误导):
+    - **位图完全能画**:`XDraw_Image`(1:1)/ `XDraw_ImageEx`(拉伸)在元素 paint 回调里输出正常(复核探针实证;当年"句柄有效、坐标与裁剪都正确,就是画不出来"的说法不成立);
+    - **SVG 也能画**:`svg.NewByString` 加载合法 SVG 后,`DrawSvgEx / DrawSvg / DrawSvgSize` 三条 API 在元素 paint 里都正常出图(建议先 `SetSize/SetPosition` 再画);
+    - **Lucide 原始 path 是唯一画不出的**:`svg.NewByString(lucide path)` 直接返回 **nil**(解析失败, 句柄都拿不到), 喂给绘制 API 自然无输出;`imagex.NewBySvgString` 同理。当年把"SVG 解析失败"误记成了"paint 通道画不出图片"。
+    - 因此需要图标时,用线段图元复刻:`icons.go` 把 lucide 的 path 解析成折线再用 `DrawLine` 描边(支持 M/L/H/V/C/S/Q/T/Z,圆弧用专门实现);或把图片交给原生控件(`Button.SetIcon` 等)。**2026-10-06 起图标的出图改为直通 D2D 几何填充(解析出的折线仍作为回落路径保留), 抗锯齿与几何精度见第 43 条。**
 18. **`XWnd_SetWindowPos` 吃物理像素**:框架内部坐标是逻辑像素(窗口创建时自动按 DPI 缩放),但窗口定位/尺寸透传给 Win32 → 必须自己乘 `dpi/96`,否则窗口会跑到 1/scale 的位置(实测 144 DPI 下 449 变成 299)。自绘提示窗(Tooltip)踩过这个坑。
 19. **原生 ComboBox 必须先 `CreateAdapter`**:否则 `AddItemText` / `GetCount` 会让炫彩弹"XAdTable_GetCountRow 中,输入句柄可能无效[0x0]"的错误框,并阻塞后续调用。
 20. **SliderBar 的滑块几何**:pos→滑块按钮是 `[0, W - buttonW]` 线性映射(实测 pos=0/25/50/100 → 0/47/94/188, 宽 200 时)。自绘时直接读 `XEle_GetRect(thumb)` 拿滑块矩形,与拖动行为严格一致;滑块外扩 3px 的焦点环要画在**滑动条**的 paint 里(滑块自身客户区只有 12x12,画在自己回调里会被裁)。
@@ -606,7 +610,8 @@ myapp/
     - **backdrop-blur-xs 完成**(2026-10-07, `components/backdrop.go`, 前一晚被误判卡死):
       思路 = 打开时 GDI `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗 → Go 盒式模糊 ×4 趟
       (backdrop-blur-xs=4px 逻辑)→ **元素 BkM 图片填充**显示在遮罩之下(元素透明度能跟着
-      遮罩一起淡入; 元素 paint 画不出位图是第八节 17 的绕行方案)。验收 = blurprobe 程序化
+      遮罩一起淡入。注: 当年选 BkM 是误信"元素 paint 画不出位图", 实际能画 —— 见 17 条
+      2026-10-07 修正; BkM 路线已验证且淡入一致故保留)。验收 = blurprobe 程序化
       Show/Close + 像素逐点比对(模糊+10%变暗复算期望 mean=0.23/255, 不模糊假设 mean=4.64
       被显著排除; 关闭还原全图 max=0)+ demo computer-use 真实鼠标双主题复核。
       **昨夜"XImage_LoadFromData 无导出"是误判**: 探测证实实际加载的 dll
