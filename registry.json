@@ -72,6 +72,10 @@
     "tree": {
       "files": ["tree.go"],
       "deps": []
+    },
+    "pagination": {
+      "files": ["pagination.go"],
+      "deps": []
     }
   }
 }

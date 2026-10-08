@@ -13,6 +13,7 @@ import (
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/common"
 	"github.com/twgh/xcgui/objectbase"
+	"github.com/twgh/xcgui/wapi/wutil"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xc"
@@ -284,6 +285,13 @@ func itemFixed(ele layoutItem, w, ht int32) {
 // itemFill 布局项宽度占满剩余空间(列布局中独占一行), 高度锁定为 ht。
 func itemFill(ele layoutItem, ht int32) {
 	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
+}
+
+// itemWeight 布局项按权重等分父布局的剩余空间(行布局里 Fill 会独占整行把兄弟挤到
+// 下一行, 剩余空间必须用 Weight), 高度锁定为 ht。
+func itemWeight(ele layoutItem, weight, ht int32) {
+	ele.LayoutItem_SetWidth(xcc.Layout_Size_Weight, weight)
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
 }
 
@@ -596,7 +604,8 @@ func buildPage(hWindow, hParent int) {
 
 	// ===== 页 6: 图标(icons 资源子包) =====
 	// 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
-	// 不销毁元素(见 DESIGN 第八节 44)。
+	// 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
+	// 点击把名字复制到剪贴板。
 	card9 := ui.NewCard(24, 0, 728, 490, pIcon.Handle)
 	v9 := vStack(card9, 14)
 	itemFill(ui.NewCardTitle(0, 0, 0, "图标", v9.Handle), 24)
@@ -604,16 +613,24 @@ func buildPage(hWindow, hParent int) {
 		"运行时自带 lucide 图标资源(lucide-static "+icons.Version+", 共 "+
 			strconv.Itoa(icons.Count())+" 个)。", v9.Handle).SetMuted(), 20)
 	itemFill(ui.NewLabel(0, 0, 0, 0,
-		"用法: p.Icon(icons.Path(\"star\"), &rc, color, 2); 图标名就是 lucide 的名字。",
+		"用法: p.Icon(icons.Path(\"star\"), &rc, color, 2); 悬浮图标看名字, 点击复制名字。",
 		v9.Handle).SetMuted(), 20)
 
-	navRow := hRow(v9.Handle, 32, 8)
-	prevBtn := ui.NewButton(0, 0, 0, 0, "上一页", navRow.Handle, ui.WithVariant(ui.ButtonOutline))
-	itemFixed(prevBtn, 80, 32)
-	nextBtn := ui.NewButton(0, 0, 0, 0, "下一页", navRow.Handle, ui.WithVariant(ui.ButtonOutline))
-	itemFixed(nextBtn, 80, 32)
-	iconInfo = ui.NewLabel(0, 0, 0, 0, "", navRow.Handle).SetMuted()
-	itemFill(iconInfo, 24)
+	// 搜索行: 输入框(定宽) + 结果计数 + 复制反馈(两份等宽, 各占剩余宽度一半)
+	searchRow := hRow(v9.Handle, 32, 8)
+	iconSearch = ui.NewInput(0, 0, 0, 0, searchRow.Handle,
+		ui.WithPlaceholder("搜索图标名, 如 arrow / star / chevron"))
+	itemFixed(iconSearch, 240, 32)
+	iconInfo = ui.NewLabel(0, 0, 0, 0, "", searchRow.Handle).SetMuted()
+	itemWeight(iconInfo, 1, 24)
+	iconCopied = ui.NewLabel(0, 0, 0, 0, "", searchRow.Handle).SetMuted()
+	itemWeight(iconCopied, 1, 24)
+
+	// 分页(shadcn pagination: 上一页/页码/省略号/下一页, 内容居中)
+	iconPag = ui.NewPagination(0, 0, 0, 0, v9.Handle,
+		ui.WithPrevText("上一页"), ui.WithNextText("下一页"))
+	itemFill(iconPag, 33)
+	iconPag.OnChange(func(page int) { showIconPage(page - 1) })
 
 	grid := widget.NewElement(0, 0, int32(iconCols*iconTileW), int32(iconRows*iconTileH), v9.Handle)
 	grid.EnableBkTransparent(true).EnableDrawBorder(false).EnableFocus(false) // 纯容器: 不画底(暗色下会是一块白)
@@ -625,14 +642,14 @@ func buildPage(hWindow, hParent int) {
 				newIconTile(int32(c)*iconTileW, int32(r)*iconTileH, grid.Handle))
 		}
 	}
-	prevBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-		showIconPage(iconPageIdx - 1)
-		return 0
+
+	iconSearch.OnChange(func(text string) {
+		filterIcons(text)
+		iconCopied.SetText("")
+		iconCopied.Redraw(false)
+		showIconPage(0)
 	})
-	nextBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-		showIconPage(iconPageIdx + 1)
-		return 0
-	})
+	filterIcons("")
 	showIconPage(0)
 }
 
@@ -640,18 +657,22 @@ func buildPage(hWindow, hParent int) {
 
 const (
 	iconCols  = 9
-	iconRows  = 5
-	iconTileW = 77 // 696 / 9: 名字能显示到 13 个字符
+	iconRows  = 4
+	iconTileW = 77 // 696 / 9
 	iconTileH = 60
 )
 
 var (
-	iconTiles   []*iconTile // 网格里复用的格子(翻页只换名字)
-	iconPageIdx int
-	iconInfo    *ui.Label
+	iconTiles    []*iconTile // 网格里复用的格子(翻页只换名字)
+	iconFiltered []string    // 当前筛选结果(图标名, 升序)
+	iconPageIdx  int
+	iconInfo     *ui.Label      // 结果计数 / 当前页
+	iconCopied   *ui.Label      // 复制反馈
+	iconSearch   *ui.Input      // 搜索框
+	iconPag      *ui.Pagination // 分页组件
 )
 
-// iconTile 是网格里的一格: 图标 + 名字, 悬浮 bg-accent。
+// iconTile 是网格里的一格: 只画图标(名字走悬浮提示), 悬浮 bg-accent, 点击复制名字。
 type iconTile struct {
 	ele   *widget.Element
 	name  string
@@ -684,15 +705,37 @@ func newIconTile(x, y int32, parent int) *iconTile {
 		ele.Redraw(false)
 		return 0
 	})
+	// 点击把图标名复制到剪贴板(xcgui 自带的剪贴板封装)
+	ele.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		xui.NotePointerPress()
+		return 0
+	})
+	ele.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		if t.name == "" {
+			return 0
+		}
+		if err := wutil.SetClipboardText(t.name); err != nil {
+			iconCopied.SetText("复制失败: " + err.Error())
+			iconCopied.Redraw(false)
+			return 0
+		}
+		iconCopied.SetText("已复制: " + t.name)
+		iconCopied.Redraw(false)
+		return 0
+	})
 	return t
 }
 
-// setName 换格子显示的图标(空串 = 本页没有这么多图标)。
+// setName 换格子显示的图标(空串 = 本页没有这么多图标), 并同步悬浮提示的文字。
 func (t *iconTile) setName(name string) {
 	if t.name == name {
 		return
 	}
 	t.name = name
+	if tip != nil {
+		// 悬浮气泡显示完整图标名(名字每次翻页/筛选都会变, Bind 可重复调用改文字)
+		tip.Bind(t.ele.Handle, name)
+	}
 	t.ele.Redraw(false)
 }
 
@@ -709,40 +752,42 @@ func (t *iconTile) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.FillRound(&p.Rc, th.Accent.ScaleAlpha(hv), th.RadiusSm())
 	}
 	if t.name == "" {
-		return 0
+		return 0 // 空格子(本页没有这么多图标)
 	}
-	const iconSize = 26
+	// 只画图标(名字不画: 悬浮出提示气泡, 点击复制), 居中比无名字时大一号
+	const iconSize = 28
 	iconRc := xc.RECT{
 		Left:   p.Rc.Left + (p.W()-iconSize)/2,
-		Top:    p.Rc.Top + 4,
+		Top:    p.Rc.Top + (p.H()-iconSize)/2,
 		Right:  p.Rc.Left + (p.W()-iconSize)/2 + iconSize,
-		Bottom: p.Rc.Top + 4 + iconSize,
+		Bottom: p.Rc.Top + (p.H()-iconSize)/2 + iconSize,
 	}
 	p.Icon(icons.Path(t.name), &iconRc, th.Foreground, 2)
-
-	spec := th.FontDefault // 名字用 text-xs 一档
-	spec.Size -= 2
-	p.Draw.SetFont(xui.FontHandle(spec))
-	nameRc := xc.RECT{Left: p.Rc.Left - 2, Top: iconRc.Bottom + 2, Right: p.Rc.Right + 2, Bottom: p.Rc.Bottom}
-	p.Text(shortName(t.name), &nameRc, th.MutedFore,
-		xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter|
-			xcc.TextFormatFlag_NoWrap|xcc.TextTrimming_EllipsisCharacter)
 	return 0
 }
 
-// shortName 把过长的图标名截短(GDI/D2D 两侧都没有可靠的量宽接口, 直接按字符数截,
-// 再交给 NoWrap + 省略号兜底)。
-func shortName(s string) string {
-	const max = 13
-	if len(s) > max {
-		return s[:max] + "…"
+// filterIcons 按关键字过滤图标名(大小写不敏感, 空关键字 = 全部), 结果保持名字升序。
+func filterIcons(q string) {
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q == "" {
+		iconFiltered = icons.Names()
+		return
 	}
-	return s
+	out := make([]string, 0, 64)
+	for _, n := range icons.Names() {
+		if strings.Contains(strings.ToLower(n), q) {
+			out = append(out, n)
+		}
+	}
+	iconFiltered = out
 }
 
-// showIconPage 翻到第 idx 页(越界夹紧), 名字取自 icons 资源(按名字升序)。
+// showIconPage 翻到第 idx 页(越界夹紧), 名字取自筛选结果(按名字升序)。
 func showIconPage(idx int) {
-	names := icons.Names()
+	if len(iconTiles) == 0 {
+		return
+	}
+	names := iconFiltered
 	pages := (len(names) + len(iconTiles) - 1) / len(iconTiles)
 	if pages < 1 {
 		pages = 1
@@ -763,7 +808,21 @@ func showIconPage(idx int) {
 		}
 	}
 	if iconInfo != nil {
-		iconInfo.SetText(fmt.Sprintf("共 %d 个图标 · 第 %d/%d 页", len(names), idx+1, pages))
+		if len(names) == icons.Count() {
+			iconInfo.SetText(fmt.Sprintf("共 %d 个图标 · 第 %d/%d 页", len(names), idx+1, pages))
+		} else {
+			iconInfo.SetText(fmt.Sprintf("筛选出 %d/%d 个 · 第 %d/%d 页",
+				len(names), icons.Count(), idx+1, pages))
+		}
+		// 原生按钮改文字不会自己失效, 得手动重绘(与 SetIcon 后 w.Redraw(false) 同理)
+		iconInfo.Redraw(false)
+	}
+	if iconPag != nil {
+		// 分页组件不做数据分页: 调用方把总数/每页数同步进去, 再同步当前页
+		// (SetPage 不触发 OnChange, 不会回流到 showIconPage 造成递归)
+		iconPag.SetTotal(len(names))
+		iconPag.SetPageSize(len(iconTiles))
+		iconPag.SetPage(idx + 1)
 	}
 }
 

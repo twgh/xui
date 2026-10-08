@@ -43,6 +43,10 @@ type Tooltip struct {
 
 	shown bool // 气泡当前是否处于显示(或正在淡出)状态
 	hWnd  int  // 触发元素所在的宿主窗口(进出场过渡挂它上面, 见下)
+	// shownEle 是当前气泡"描述"的那个元素: 密集元素之间快速划过时, 旧元素的
+	// MouseLeave 可能晚于新元素的 MouseStay 到达(实测: 相邻图标格之间移动),
+	// 此时按元素过滤掉这条迟到的 leave, 否则刚显示的提示会被立刻关掉。
+	shownEle int
 }
 
 // tipFadeKey 是提示气泡进出场过渡的键(见 presence.go, 与 hover 键空间隔离)。
@@ -74,7 +78,12 @@ func (t *Tooltip) Bind(hEle int, text string) *Tooltip {
 		return 0
 	})
 	w.AddEvent_MouseLeave(func(hEle int, hEleStay int, pbHandled *bool) int {
-		t.Hide()
+		// 只隐藏"当前气泡描述的元素"的离开: 鼠标在密集元素之间快速划过时, 旧元素的
+		// MouseLeave 可能晚于新元素的 MouseStay/MouseMove 到达(实测: 相邻图标格),
+		// 那条迟到的 leave 会把刚进场的气泡立刻关掉, 表现成"提示不显示"。
+		if hEle == t.shownEle {
+			t.Hide()
+		}
 		return 0
 	})
 	return t
@@ -122,6 +131,7 @@ func (t *Tooltip) show(hEle int) {
 	}
 	t.ensure()
 	t.text = text
+	t.shownEle = hEle
 
 	// 量文字尺寸: 必须用"绘制时同一个字体与限宽", 否则气泡会比文字宽一圈
 	// (此前这里量的是 14px 主题字体, 而实际绘制用 12px)
