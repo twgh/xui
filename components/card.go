@@ -37,6 +37,23 @@ func (c *Card) ContentTop() int32 { return c.Padding }
 // ContentWidth 内容区宽度。
 func (c *Card) ContentWidth() int32 { return c.GetWidth() - c.Padding*2 }
 
+// ContentStack 在内容区建一个纵向流式布局容器(卡片里那串内容都挂在它下面): 绝对定位在内容区
+// (ContentLeft/ContentTop), 宽度 = 内容区宽, 子项间距 space。
+//
+// 卡片不是布局容器, 所以它是绝对定位的; 它自己的子项才走布局(见 xui/layout.go 的布局约定)。
+// 关掉"纵向溢出换列": LayoutEle 在主轴放不下下一项时会把它甩到下一列(x += 容器宽度, y = 0),
+// 表现为控件整块消失(实测, 见 DESIGN 第八节 41)。
+func (c *Card) ContentStack(space int32) *widget.LayoutEle {
+	l := widget.NewLayoutEle(c.ContentLeft(), c.ContentTop(),
+		c.ContentWidth(), c.GetHeight()-c.Padding*2, c.Handle)
+	l.EnableHorizon(false)
+	l.EnableLayout(true)
+	l.EnableBkTransparent(true)
+	l.SetSpace(space)
+	l.EnableAutoWrap(false)
+	return l
+}
+
 func (c *Card) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
