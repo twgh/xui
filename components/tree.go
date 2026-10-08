@@ -18,6 +18,13 @@ const (
 	treeChevronH   int32 = 10 // chevron 字形纵向跨度(展开朝下旋转 90°, 宽高互换为 H×W)
 	treeBtnInset   int32 = 1  // 原生展开按钮左缘相对 RcItem.Left 的偏移(布局边框实测 ≈1.3)
 
+	// treeWakeTimerID 是"首次绘制后唤醒"占用的炫彩定时器 ID(与运行时动画定时器错开)。
+	// 用途: 树在**隐藏的祖先容器**里创建时(多页签页面/对话框), 原生项模板在隐藏期间不实例化,
+	// 首次显示只有行底/缩进线/chevron, **全树文字空白**(实测, 见 DESIGN 第八节 51); 首次绘制
+	// 之后补一次 RefreshData 就能拿到正确的文字。延时 1ms 只是"下一帧", 让刷新发生在绘制回调
+	// 之外(xcgui 定时器由消息循环驱动, 不会重入绘制)。
+	treeWakeTimerID uint32 = 0x7874
+
 	// 自定义项模板: 行高 32(与 SetItemHeightDefault 一致), chevron 槽 16×16, 文字间距 4。
 	// 展开按钮只是行为载体(点击热区)——其原生 "+/-" 图形在模板创建后用透明填充压掉
 	// (ClearBkInfo 会回落到系统默认内容, 必须再 AddBkFill 透明色盖住), 视觉由
@@ -53,6 +60,7 @@ type Tree struct {
 
 	onSel func(id int32)
 	onBg  bool // 宿主底色跟随 Background(默认按"放在 Card 上"约定跟随 Card)
+	woken bool // 是否已排过"首次绘制后唤醒"(见 treeWakeTimerID)
 }
 
 // TreeOption 组件配置项。
@@ -106,6 +114,23 @@ func NewTree(x, y, cx, cy int32, hParent int, opts ...TreeOption) *Tree {
 	t.AddEvent_Tree_Select(func(hEle int, nItemID int32, pbHandled *bool) int {
 		if t.onSel != nil {
 			t.onSel(nItemID)
+		}
+		return 0
+	})
+
+	// 首次绘制后补一次"唤醒"刷新(见 treeWakeTimerID 注释)
+	t.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		if !t.woken {
+			t.woken = true
+			xc.XEle_SetXCTimer(hEle, treeWakeTimerID, 1)
+		}
+		return 0
+	})
+	t.AddEvent_XC_Timer(func(hEle, nID int, pbHandled *bool) int {
+		if nID == int(treeWakeTimerID) {
+			xc.XEle_KillXCTimer(hEle, treeWakeTimerID)
+			t.RefreshData()
+			t.Redraw(false)
 		}
 		return 0
 	})

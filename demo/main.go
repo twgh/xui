@@ -275,7 +275,6 @@ func buildPage(hWindow, hParent int) {
 			demoTreeSel = xcc.XC_ID_ERROR
 		}
 	})
-	pageTabs.SetActive(int32(homePage))
 
 	// ===== 页 1: 表单类 =====
 	// ===== 左卡: 表单类 =====
@@ -577,6 +576,10 @@ func buildPage(hWindow, hParent int) {
 	})
 	filterIcons("")
 	showIconPage(0)
+
+	// 首页在**所有页面建完之后**才激活: SetActive 会同步触发 OnChange(实测), 里面要摸
+	// demoTree 等页面内的全局对象 —— 放在前面会在 XUI_HOME_PAGE=4 时对着 nil 树调 Select 崩掉。
+	pageTabs.SetActive(int32(homePage))
 }
 
 // ===== 图标总览页的状态与绘制 =====
