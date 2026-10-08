@@ -76,8 +76,9 @@ func (l *Label) SetFontSize(px int32) *Label {
 }
 
 // SetWrap 允许文字在宽度内自动换行(默认 NoWrap, 超宽截断为省略号)。
-// 换行需要调用方给足高度(布局里用 itemFill 指定多行高度), 高度不足时
-// 溢出行被裁剪; 对齐保持左对齐/垂直居中。
+// 换行需要调用方给足高度:**在构造参数里给**(如 NewLabel(0,0,0,48,…) 的多行说明),
+// 高度不足时溢出行被裁剪; 布局里只声明宽度(见 xui/layout.go 的布局约定)。
+// 对齐保持左对齐/垂直居中。
 func (l *Label) SetWrap() *Label {
 	l.SetTextAlign(l.GetTextAlign() &^ xcc.TextFormatFlag_NoWrap)
 	return l

@@ -321,7 +321,28 @@ myapp/
     - 列布局的主轴(纵向)间距 = `SetSpace`, 交叉轴(水平)对齐 = `SetAlignH`;行布局的行内间距 = `SetSpace`, 换行后的行距 = `SetSpaceRow`(只设 SetSpace 纵向间隙恒为 0), 交叉轴(垂直)对齐 = `SetAlignV`;
     - **`Layout_Size_Fill` = 独占一整行/列**, 兄弟项被挤到下一行(甚至挤出布局而不换行), 不能与 Fixed 项同行;等分剩余空间用 `Layout_Size_Weight`(已验证多列均分);
     - 项级 `XWidget_LayoutItem_SetAlign` 实测无效, 交叉轴对齐只能用布局级 `SetAlignH/V`(对等高项无副作用, 混合高度行居中靠它);
-    - `XWidget_LayoutItem_SetMargin` 各方向均生效;布局项默认尺寸类型不可靠, 每个项都应显式 SetWidth/Height(Fill/Fixed);
+    - `XWidget_LayoutItem_SetMargin` 各方向均生效;**布局项尺寸的默认值是 `Layout_Size_Disable`(0), 语义 = "布局不接管这一轴的尺寸, 元素保持自己当前的尺寸";一旦显式声明(Fixed/Fill/Weight), 就变成布局引擎反过来覆盖元素尺寸** —— 所以 `Fixed` 里传的值必须等于元素真正需要的尺寸, 它不是"把当前尺寸记下来"(2026-10-08 探针实测, 同一个 `ui.NewButton(36, 28)`×4 放进同一行:
+      | 写法 | 排版后元素 | 说明 |
+      | --- | --- | --- |
+      | 不设 | 36×29 | 保持创建尺寸(29 = 28 视觉 + button.go 的 pressShift 1px 预留) |
+      | 宽高都 `Fixed(36, 28)` | **36×28** | 高度被压低 1px, 按 `p.Rc-1` 算壳体 → 视觉只剩 27 |
+      | 只 `Fixed` 宽 | 36×29 | 高度那一轴仍是 Disable, 保持原样 |
+      | 只 `Fixed` 高 | 36×28 | 同上, 只有被声明的那一轴被覆盖 |
+      );
+    - 由此定下**布局约定(2026-10-08 定稿, 见 `xui/layout.go`)**: 组件构造函数已经把设计稿尺寸建在元素上
+      (Label 24 / Checkbox·Radio 24 / Badge 20 / Input 32 / Pagination 33 / Separator 1 / Progress 4 /
+      Button 视觉高 + 1px 按压预留…), 所以**只声明你要改变的那条轴, 其余留给元素**:
+      `xui.ItemFill(e)`(宽铺满)、`xui.ItemWidth(e, 240)`(锁设计常量宽)、`xui.ItemWeight(e, 1)`(按权重)、
+      `xui.ItemHeight(e, 30)`(锁高)、`xui.ItemMinSize(e, 200, 0)`(缩放轴下限)、
+      `xui.ItemMarginTop(e, 8)`(外边距, 四边各一个, 内部读改写所以互不清零);
+      两个轴一起传用 `xui.ItemSize(e, w, h)`, 其中"不要覆盖"的那条轴传 **`xui.ItemKeep`(-1)** ——
+      哨兵用 -1 而不是 0, 因为 0 是合法尺寸(用户可能真要 0 宽/高)。
+      元素自身尺寸不对时(多行说明文字要 48 高)**改创建参数**, 不要在布局里补高度 —— 布局里的尺寸
+      一旦写成常量, 就必须与设计稿一致、而不是与元素当前尺寸一致(旧约定"每项都显式 SetWidth/Height
+      并在高度传 `GetHeight()`"就是抄元素尺寸, 抄错即出 bug: 标题栏按钮曾矮 1px)。实测数据见上表:
+      不写 = 保持元素尺寸 36×29; 写错常量 = 被覆盖成 36×28(壳体少 1px);
+    - 一行里**不声明宽度**的项会保持自身宽度, 但 LayoutEle 是"横向流 + 自动换行", 行内总宽超了会把
+      后面的项顶到下一行(探针里 9 件超宽时 Input/分页被换行) —— 宽度该写还是得写;
     - 内部标签按创建时 cx 等分的自绘组件(如 Tabs)不能被布局拉伸, 用 Fixed 宽;Slider 这类元素比"可见宽度"外扩的组件, Fixed 宽 = 传入 cx + 2×外扩量。
 30. **ComboBox 原生弹层的样式接管路线**(实测踩坑, combobox.go 依赖):弹层 = 独立弹出窗口 + ListBox(本质 ListView), 只能拿到句柄做"半接管"——
     - **窗口 BkM 对这个弹层无效**: `XWnd_GetBkManager` 拿到的管理器加填充/描边完全不绘制(绿色探针实证), 弹层白底另有来源;

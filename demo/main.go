@@ -12,7 +12,6 @@ import (
 
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/common"
-	"github.com/twgh/xcgui/objectbase"
 	"github.com/twgh/xcgui/wapi/wutil"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
@@ -138,12 +137,13 @@ func main() {
 	}
 
 	showLayoutFrame := false
+	// 标题栏这排按钮都不声明布局尺寸: 尺寸在创建参数里给足(36 宽, 高度含 button.go 的
+	// 1px 按压预留), 布局默认"不接管尺寸"就会原样保留 —— 见 xui/layout.go 的约定。
 	// 显示布局对象边界按钮(ghost 图标按钮, 与最小化/关闭同排同款):
 	// 图标显示点击后的动作 —— 隐藏时 eye(去看), 显示时 eye-off(去关)
 	btnShowLayoutFrame := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconEye))
 	tip.Bind(btnShowLayoutFrame.Handle, "显示/隐藏布局对象边界")
-	itemFixed(btnShowLayoutFrame, capBtnW, capBtnH)
 	btnShowLayoutFrame.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		showLayoutFrame = !showLayoutFrame
 		app.ShowLayoutFrame(showLayoutFrame) // 显示布局对象边界
@@ -156,7 +156,6 @@ func main() {
 	toggle := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMoon))
 	tip.Bind(toggle.Handle, "切换主题")
-	itemFixed(toggle, capBtnW, capBtnH)
 	if dark {
 		toggle.SetIcon(icons.IconSun)
 	}
@@ -172,12 +171,10 @@ func main() {
 	btnMin := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMinus))
 	btnMin.SetTypeEx(xcc.Button_Type_Min)
-	itemFixed(btnMin, capBtnW, capBtnH)
 
 	btnClose := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconX))
 	btnClose.SetTypeEx(xcc.Button_Type_Close)
-	itemFixed(btnClose, capBtnW, capBtnH)
 
 	// 内容区: 页签 + 页面容器都绝对定位在里面(见 buildPage)。
 	// 必须用 LayoutEle 才能作为布局项被 Fill 排版(普通 Element 布局不排, 实测空白);
@@ -269,36 +266,15 @@ func vCol(parent int, space int32) *widget.LayoutEle {
 	return l
 }
 
-// layoutItem 所有 widget 都提升自 objectbase.Widget, 自带 LayoutItem_* 包装。
-type layoutItem interface {
-	LayoutItem_SetWidth(t xcc.Layout_Size_, w int32) *objectbase.Widget
-	LayoutItem_SetHeight(t xcc.Layout_Size_, h int32) *objectbase.Widget
-	LayoutItem_SetMargin(left, top, right, bottom int32) *objectbase.Widget
-}
-
-// itemFixed 锁定布局项为固定尺寸。
-func itemFixed(ele layoutItem, w, ht int32) {
-	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
-	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
-}
-
-// itemFill 布局项宽度占满剩余空间(列布局中独占一行), 高度锁定为 ht。
-func itemFill(ele layoutItem, ht int32) {
-	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
-}
-
-// itemWeight 布局项按权重等分父布局的剩余空间(行布局里 Fill 会独占整行把兄弟挤到
-// 下一行, 剩余空间必须用 Weight), 高度锁定为 ht。
-func itemWeight(ele layoutItem, weight, ht int32) {
-	ele.LayoutItem_SetWidth(xcc.Layout_Size_Weight, weight)
-	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
-}
-
-// itemMarginTop 顶部额外间距。
-func itemMarginTop(ele layoutItem, m int32) {
-	ele.LayoutItem_SetMargin(0, m, 0, 0)
-}
+// ===== 布局约定 =====
+//
+// 尺寸声明统一走运行时 `xui.ItemFill / xui.ItemWidth / xui.ItemWeight`, 外边距走 `xui.ItemMargin*`:
+// **只声明要改变的那条轴**, 高度留给元素自身 —— 组件构造函数已经把设计稿尺寸建在元素上
+// (Label 24 / Badge 20 / Input 32 / Pagination 33 / Button 视觉高 + 1px 按压预留…),
+// 抄成常量会随组件实现漂移(标题栏按钮曾因抄成 capBtnH 而矮 1px, 见 DESIGN 第八节 29)。
+//
+// 设计稿尺寸本身就是契约的地方才写常量: 等宽按钮 96 宽、搜索框 240 宽、表格 180 高。
+// 元素自身的尺寸不对时(如多行说明文字要 48 高), 改**创建参数**而不是布局参数。
 
 // ===== 页面 =====
 
@@ -352,36 +328,36 @@ func buildPage(hWindow, hParent int) {
 	// 组内 CardHeader/space-y-2 是 8 —— 用 SetSpace(8) 打底 + itemMarginTop 补到组间距
 	v1 := vStack(card1, 8)
 
-	itemFill(ui.NewCardTitle(0, 0, 0, "Account", v1.Handle), 24)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "修改你的账户信息, 保存后立即生效。", v1.Handle).SetMuted(), 24)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "Account", v1.Handle))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "修改你的账户信息, 保存后立即生效。", v1.Handle).SetMuted())
 
 	lblEmail := ui.NewLabel(0, 0, 0, 0, "邮箱地址", v1.Handle)
-	itemFill(lblEmail, 24)
-	itemMarginTop(lblEmail, 8) // 组边界: 8 + 8 = 16
+	xui.ItemFill(lblEmail)
+	xui.ItemMarginTop(lblEmail, 8) // 组边界: 8 + 8 = 16
 	email := ui.NewInput(0, 0, 0, 0, v1.Handle, ui.WithPlaceholder("m@example.com"))
-	itemFill(email, email.GetHeight())
+	xui.ItemFill(email)
 
 	lblBio := ui.NewLabel(0, 0, 0, 0, "个人简介", v1.Handle)
-	itemFill(lblBio, 24)
-	itemMarginTop(lblBio, 8)
+	xui.ItemFill(lblBio)
+	xui.ItemMarginTop(lblBio, 8)
 	bio := ui.NewInput(0, 0, 0, 72, v1.Handle,
 		ui.WithPlaceholder("介绍一下自己..."), ui.WithMultiline())
-	itemFill(bio, bio.GetHeight())
+	xui.ItemFill(bio)
 
 	c1 := ui.NewCheckbox(0, 0, 0, 0, "接收邮件通知", v1.Handle)
 	c1.SetChecked(true)
-	itemFill(c1, c1.GetHeight())
-	itemMarginTop(c1, 8)
+	xui.ItemFill(c1)
+	xui.ItemMarginTop(c1, 8)
 	cb2 := ui.NewCheckbox(0, 0, 0, 0, "公开展示个人主页", v1.Handle)
-	itemFill(cb2, cb2.GetHeight())
-	itemMarginTop(cb2, 4) // 开关组内 gap-3(12)
+	xui.ItemFill(cb2)
+	xui.ItemMarginTop(cb2, 4) // 开关组内 gap-3(12)
 
 	rowFormBtns := hRow(v1.Handle, 36, 8)
-	itemMarginTop(rowFormBtns, 16) // 组间距 16 + pt-2(8)
+	xui.ItemMarginTop(rowFormBtns, 16) // 组间距 16 + pt-2(8)
 	saveBtn := ui.NewButton(0, 0, 0, 0, "保存", rowFormBtns.Handle)
-	itemFixed(saveBtn, 96, saveBtn.GetHeight())
+	xui.ItemWidth(saveBtn, 96)
 	cancelBtn := ui.NewButton(0, 0, 0, 0, "取消", rowFormBtns.Handle, ui.WithVariant(ui.ButtonOutline))
-	itemFixed(cancelBtn, 96, cancelBtn.GetHeight())
+	xui.ItemWidth(cancelBtn, 96)
 
 	// ===== 右卡: 展示类 =====
 	card2 := ui.NewCard(392, 0, 380, 470, pForm.Handle)
@@ -389,50 +365,50 @@ func buildPage(hWindow, hParent int) {
 	// 组内的按钮行/徽章行各自有 hRow 间距
 	v2 := vStack(card2, 20)
 
-	itemFill(ui.NewCardTitle(0, 0, 0, "Components", v2.Handle), 24)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "Components", v2.Handle))
 
 	rowBtns1 := hRow(v2.Handle, 36, 8)
 	b := ui.NewButton(0, 0, 0, 0, "Primary", rowBtns1.Handle)
-	itemFixed(b, 104, b.GetHeight())
+	xui.ItemWidth(b, 104)
 	b = ui.NewButton(0, 0, 0, 0, "Secondary", rowBtns1.Handle, ui.WithVariant(ui.ButtonSecondary))
-	itemFixed(b, 112, b.GetHeight())
+	xui.ItemWidth(b, 112)
 	b = ui.NewButton(0, 0, 0, 0, "Outline", rowBtns1.Handle, ui.WithVariant(ui.ButtonOutline))
-	itemFixed(b, 104, b.GetHeight())
+	xui.ItemWidth(b, 104)
 
 	rowBtns2 := hRow(v2.Handle, 36, 8)
 	b = ui.NewButton(0, 0, 0, 0, "Ghost", rowBtns2.Handle, ui.WithVariant(ui.ButtonGhost))
-	itemFixed(b, 104, b.GetHeight())
+	xui.ItemWidth(b, 104)
 	b = ui.NewButton(0, 0, 0, 0, "Destructive", rowBtns2.Handle, ui.WithVariant(ui.ButtonDestructive))
-	itemFixed(b, 112, b.GetHeight())
+	xui.ItemWidth(b, 112)
 	b = ui.NewButton(0, 0, 0, 0, "Disabled", rowBtns2.Handle)
-	itemFixed(b, 104, b.GetHeight())
+	xui.ItemWidth(b, 104)
 	b.Enable(false)
 
 	sep := ui.NewSeparator(0, 0, 0, v2.Handle)
-	itemFill(sep, sep.GetHeight())
-	itemMarginTop(sep, 12)
+	xui.ItemFill(sep)
+	xui.ItemMarginTop(sep, 12)
 
 	rowBadges := hRow(v2.Handle, 20, 8)
 	badge := ui.NewBadge(0, 0, 64, 0, "Default", rowBadges.Handle)
-	itemFixed(badge, 64, badge.GetHeight())
+	xui.ItemWidth(badge, 64)
 	badge = ui.NewBadge(0, 0, 0, 0, "Secondary", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeSecondary))
-	itemFixed(badge, 78, badge.GetHeight())
+	xui.ItemWidth(badge, 78)
 	badge = ui.NewBadge(0, 0, 0, 0, "Outline", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeOutline))
-	itemFixed(badge, 72, badge.GetHeight())
+	xui.ItemWidth(badge, 72)
 	badge = ui.NewBadge(0, 0, 0, 0, "Destructive", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeDestructive))
-	itemFixed(badge, 88, badge.GetHeight())
+	xui.ItemWidth(badge, 88)
 
 	lb := ui.NewLabel(0, 0, 0, 0, "通知偏好", v2.Handle).SetMuted()
-	itemFill(lb, lb.GetHeight())
-	itemMarginTop(lb, 12)
+	xui.ItemFill(lb)
+	xui.ItemMarginTop(lb, 12)
 
 	r1 := ui.NewRadio(0, 0, 0, 0, "仅错误消息", v2.Handle)
 	r1.SetCheck(true)
-	itemFill(r1, r1.GetHeight())
+	xui.ItemFill(r1)
 	r2 := ui.NewRadio(0, 0, 0, 0, "所有消息", v2.Handle)
-	itemFill(r2, r2.GetHeight())
+	xui.ItemFill(r2)
 	r3 := ui.NewRadio(0, 0, 0, 0, "不接收", v2.Handle)
-	itemFill(r3, r3.GetHeight())
+	xui.ItemFill(r3)
 	r3.Enable(false)
 
 	// ===== 页 2: 控件 =====
@@ -443,26 +419,22 @@ func buildPage(hWindow, hParent int) {
 	g1 := hRow(v3.Handle, 56, 24)
 
 	colSw := vCol(g1.Handle, 8)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "开关", colSw.Handle).SetMuted(), 24)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "开关", colSw.Handle).SetMuted())
 	rowSw := hRow(colSw.Handle, 24, 8)
 	sw := ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchChecked(true))
-	itemFixed(sw, sw.GetWidth(), sw.GetHeight())
 	sw = ui.NewSwitch(0, 0, rowSw.Handle)
-	itemFixed(sw, sw.GetWidth(), sw.GetHeight())
 	sw = ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchSize(ui.SwitchSm))
-	itemFixed(sw, sw.GetWidth(), sw.GetHeight())
 	sw = ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchSize(ui.SwitchSm))
-	itemFixed(sw, sw.GetWidth(), sw.GetHeight())
 	sw.Enable(false)
 
 	colSl := vCol(g1.Handle, 8)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "滑动条", colSl.Handle).SetMuted(), 24)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "滑动条", colSl.Handle).SetMuted())
 	// Slider 元素比可见轨道左右各宽 9px(ring 绘制空间), cx=270 → 元素宽 288
 	rowSl := hRow(colSl.Handle, 24, 8)
 	sl := ui.NewSlider(0, 0, 270, 0, rowSl.Handle)
-	itemFixed(sl, 288, sl.GetHeight())
+	xui.ItemWidth(sl, 288)
 	sliderValue := ui.NewLabel(0, 0, 40, 24, "40", rowSl.Handle).SetMuted()
-	itemFixed(sliderValue, 40, 24)
+	xui.ItemWidth(sliderValue, 40)
 	sl.SetValue(40)
 	sl.OnChange(func(v float64) { sliderValue.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
 
@@ -470,36 +442,36 @@ func buildPage(hWindow, hParent int) {
 	g2 := hRow(v3.Handle, 136, 24)
 
 	colPg := vCol(g2.Handle, 8)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "进度", colPg.Handle).SetMuted(), 24)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "进度", colPg.Handle).SetMuted())
 	pg := ui.NewProgress(0, 0, 0, 0, colPg.Handle)
-	itemFill(pg, pg.GetHeight())
-	itemMarginTop(pg, 6)
+	xui.ItemFill(pg)
+	xui.ItemMarginTop(pg, 6)
 	pg.SetValue(64)
 	pg2 := ui.NewProgress(0, 0, 0, 0, colPg.Handle)
-	itemFill(pg2, pg2.GetHeight())
-	itemMarginTop(pg2, 12)
+	xui.ItemFill(pg2)
+	xui.ItemMarginTop(pg2, 12)
 	pg2.SetValue(100)
 
 	colTabs := vCol(g2.Handle, 8)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "标签页", colTabs.Handle).SetMuted(), 24)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "标签页", colTabs.Handle).SetMuted())
 	// Tabs 内部标签宽度按创建时的 cx 等分, 不能被布局拉伸, 用固定宽
 	tabs := ui.NewTabs(0, 0, 180, colTabs.Handle, []string{"账户", "密码", "通知"})
-	itemFixed(tabs, 180, tabs.GetHeight())
+	xui.ItemWidth(tabs, 180)
 	panel := ui.NewLabel(0, 0, 0, 22, "账户设置面板", colTabs.Handle).SetMuted()
-	itemFill(panel, panel.GetHeight())
+	xui.ItemFill(panel)
 	tabs.OnChange(func(i int32) {
 		panel.SetText([]string{"账户设置面板", "密码设置面板", "通知设置面板"}[i]).Redraw()
 	})
 	lineTabs := ui.NewTabs(0, 0, 180, colTabs.Handle, []string{"概览", "详情"},
 		ui.WithTabsVariant(ui.TabsLine), ui.WithTabsActive(1))
-	itemFixed(lineTabs, 180, lineTabs.GetHeight())
+	xui.ItemWidth(lineTabs, 180)
 
 	colCombo := vCol(g2.Handle, 8)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "下拉框", colCombo.Handle).SetMuted(), 24)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "下拉框", colCombo.Handle).SetMuted())
 	combo := ui.NewComboBox(0, 0, 180, 0, colCombo.Handle,
 		[]string{"开发环境", "测试环境", "预发环境", "灰度环境", "生产环境", "本地调试"},
 		ui.WithComboPlaceholder("选择环境"))
-	itemFixed(combo, 180, combo.GetHeight())
+	xui.ItemWidth(combo, 180)
 	combo.SetSelected(1)
 
 	// 提示气泡: 绑到"保存"按钮与下拉框上
@@ -509,26 +481,26 @@ func buildPage(hWindow, hParent int) {
 	// ===== 页 3: 反馈(对话框 + 菜单) =====
 	card4 := ui.NewCard(24, 0, 728, 108, pFeed.Handle)
 	v4 := vStack(card4, 14)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "对话框", v4.Handle).SetMuted(), 24)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "对话框", v4.Handle).SetMuted())
 
 	rowDlg := hRow(v4.Handle, 36, 8)
 	editBtn := ui.NewButton(0, 0, 0, 0, "编辑资料", rowDlg.Handle, ui.WithVariant(ui.ButtonOutline))
-	itemFixed(editBtn, 96, editBtn.GetHeight())
+	xui.ItemWidth(editBtn, 96)
 	delBtn := ui.NewButton(0, 0, 0, 0, "删除项目", rowDlg.Handle, ui.WithVariant(ui.ButtonDestructive))
-	itemFixed(delBtn, 96, delBtn.GetHeight())
-	itemFixed(ui.NewLabel(0, 0, 0, 24, "ESC / 点击遮罩 / 右上角 X 关闭, Tab 在对话框内循环", rowDlg.Handle).SetMuted(), 360, 24)
+	xui.ItemWidth(delBtn, 96)
+	xui.ItemWidth(ui.NewLabel(0, 0, 0, 24, "ESC / 点击遮罩 / 右上角 X 关闭, Tab 在对话框内循环", rowDlg.Handle).SetMuted(), 360)
 
 	buildDialogs(hWindow, editBtn, delBtn)
 
 	// 菜单卡
 	card5 := ui.NewCard(24, 124, 728, 108, pFeed.Handle)
 	v5 := vStack(card5, 14)
-	itemFill(ui.NewLabel(0, 0, 0, 0, "下拉菜单", v5.Handle).SetMuted(), 24)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "下拉菜单", v5.Handle).SetMuted())
 
 	rowMenu := hRow(v5.Handle, 36, 8)
 	menuBtn := ui.NewButton(0, 0, 0, 0, "打开菜单", rowMenu.Handle, ui.WithVariant(ui.ButtonOutline))
-	itemFixed(menuBtn, 96, menuBtn.GetHeight())
-	itemFixed(ui.NewLabel(0, 0, 0, 24, "对齐 shadcn DropdownMenu: 条目/勾选/单选/子菜单/快捷键/禁用/破坏性", rowMenu.Handle).SetMuted(), 480, 24)
+	xui.ItemWidth(menuBtn, 96)
+	xui.ItemWidth(ui.NewLabel(0, 0, 0, 24, "对齐 shadcn DropdownMenu: 条目/勾选/单选/子菜单/快捷键/禁用/破坏性", rowMenu.Handle).SetMuted(), 480)
 	menuBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		showDemoMenu(hEle)
 		return 0
@@ -537,11 +509,11 @@ func buildPage(hWindow, hParent int) {
 	// ===== 页 4: 数据(表格) =====
 	card6 := ui.NewCard(24, 0, 728, 320, pData.Handle)
 	v6 := vStack(card6, 14)
-	itemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v6.Handle), 24)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v6.Handle))
 
-	desc := ui.NewLabel(0, 0, 0, 0,
+	desc := ui.NewLabel(0, 0, 0, 48, // 多行说明: 高度写在创建参数里(布局只声明宽度)
 		"原生 List 载体 + 全自绘皮肤: 表头/行底/行边框/滚动条; 行悬浮 hover:bg-muted/50, 选中 bg-muted, 最后一行不画底边。", v6.Handle).SetMuted().SetWrap()
-	itemFill(desc, 48)
+	xui.ItemFill(desc)
 
 	demoTable = ui.NewTable(0, 0, card6.ContentWidth(), 180, v6.Handle, []ui.TableColumn{
 		{Title: "客户", Width: 200},
@@ -549,7 +521,6 @@ func buildPage(hWindow, hParent int) {
 		{Title: "金额", Width: 120},
 		{Title: "日期"}, // Width<=0: 占满剩余宽度
 	})
-	itemFixed(demoTable, card6.ContentWidth(), 180)
 	for _, r := range [][4]string{
 		{"张三", "已支付", "¥1,250.00", "2026-10-01"},
 		{"李四", "待支付", "¥300.00", "2026-10-02"},
@@ -574,13 +545,12 @@ func buildPage(hWindow, hParent int) {
 	// ===== 页 5: 结构(树形视图) =====
 	card7 := ui.NewCard(24, 0, 360, 470, pTree.Handle)
 	v7 := vStack(card7, 14)
-	itemFill(ui.NewCardTitle(0, 0, 0, "树形视图", v7.Handle), 24)
-	desc = ui.NewLabel(0, 0, 0, 0,
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "树形视图", v7.Handle))
+	desc = ui.NewLabel(0, 0, 0, 48, // 多行说明: 高度写在创建参数里(布局只声明宽度)
 		"原生 Tree 载体 + 全自绘皮肤: 缩进参考线/旋转 chevron/行悬浮选中。点击 chevron 或文字选中。", v7.Handle).SetMuted().SetWrap()
-	itemFill(desc, 48)
+	xui.ItemFill(desc)
 
-	demoTree = ui.NewTree(0, 0, card7.ContentWidth(), 0, v7.Handle)
-	itemFixed(demoTree, card7.ContentWidth(), 322)
+	demoTree = ui.NewTree(0, 0, card7.ContentWidth(), 322, v7.Handle)
 	demoTreeSel = buildDemoTree(demoTree)
 	demoTree.OnSelect(func(id int32) {
 		fmt.Printf("选中项: %s\n", demoTree.ItemText(id))
@@ -589,7 +559,7 @@ func buildPage(hWindow, hParent int) {
 	// 右侧说明卡: 树的语义对照
 	card8 := ui.NewCard(400, 0, 352, 470, pTree.Handle)
 	v8 := vStack(card8, 14)
-	itemFill(ui.NewCardTitle(0, 0, 0, "语义对照", v8.Handle), 24)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "语义对照", v8.Handle))
 	for _, line := range []string{
 		"行高 32(h-8), 视觉矩形左右内缩 4, 圆角 6",
 		"行悬浮 bg-accent, 选中 bg-accent",
@@ -599,7 +569,7 @@ func buildPage(hWindow, hParent int) {
 		"条目文字 text-sm foreground",
 	} {
 		lb := ui.NewLabel(0, 0, 0, 0, "· "+line, v8.Handle).SetMuted()
-		itemFill(lb, 24)
+		xui.ItemFill(lb)
 	}
 
 	// ===== 页 6: 图标(icons 资源子包) =====
@@ -608,33 +578,33 @@ func buildPage(hWindow, hParent int) {
 	// 点击把名字复制到剪贴板。
 	card9 := ui.NewCard(24, 0, 728, 490, pIcon.Handle)
 	v9 := vStack(card9, 14)
-	itemFill(ui.NewCardTitle(0, 0, 0, "图标", v9.Handle), 24)
-	itemFill(ui.NewLabel(0, 0, 0, 0,
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "图标", v9.Handle))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, // 说明文字 20 高: 写在创建参数里
 		"运行时自带 lucide 图标资源(lucide-static "+icons.Version+", 共 "+
-			strconv.Itoa(icons.Count())+" 个)。", v9.Handle).SetMuted(), 20)
-	itemFill(ui.NewLabel(0, 0, 0, 0,
+			strconv.Itoa(icons.Count())+" 个)。", v9.Handle).SetMuted())
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20,
 		"用法: p.Icon(icons.Path(\"star\"), &rc, color, 2); 悬浮图标看名字, 点击复制名字。",
-		v9.Handle).SetMuted(), 20)
+		v9.Handle).SetMuted())
 
 	// 搜索行: 输入框(定宽) + 结果计数 + 复制反馈(两份等宽, 各占剩余宽度一半)
 	searchRow := hRow(v9.Handle, 32, 8)
 	iconSearch = ui.NewInput(0, 0, 0, 0, searchRow.Handle,
 		ui.WithPlaceholder("搜索图标名, 如 arrow / star / chevron"))
-	itemFixed(iconSearch, 240, 32)
+	xui.ItemWidth(iconSearch, 240) // 240 = 设计稿定宽
 	iconInfo = ui.NewLabel(0, 0, 0, 0, "", searchRow.Handle).SetMuted()
-	itemWeight(iconInfo, 1, 24)
+	xui.ItemWeight(iconInfo, 1)
 	iconCopied = ui.NewLabel(0, 0, 0, 0, "", searchRow.Handle).SetMuted()
-	itemWeight(iconCopied, 1, 24)
+	xui.ItemWeight(iconCopied, 1)
 
 	// 分页(shadcn pagination: 上一页/页码/省略号/下一页, 内容居中)
 	iconPag = ui.NewPagination(0, 0, 0, 0, v9.Handle,
 		ui.WithPrevText("上一页"), ui.WithNextText("下一页"))
-	itemFill(iconPag, 33)
+	xui.ItemFill(iconPag)
 	iconPag.OnChange(func(page int) { showIconPage(page - 1) })
 
 	grid := widget.NewElement(0, 0, int32(iconCols*iconTileW), int32(iconRows*iconTileH), v9.Handle)
 	grid.EnableBkTransparent(true).EnableDrawBorder(false).EnableFocus(false) // 纯容器: 不画底(暗色下会是一块白)
-	itemFixed(grid, int32(iconCols*iconTileW), int32(iconRows*iconTileH))
+	// 网格容器尺寸在创建时就给足, 不需要声明布局尺寸
 	iconTiles = iconTiles[:0]
 	for r := 0; r < iconRows; r++ {
 		for c := 0; c < iconCols; c++ {
