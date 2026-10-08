@@ -356,13 +356,13 @@ myapp/
     - **圆角用 Win32 区域裁剪**: `wapi/wnd.SetWindowRound(hwnd, 物理像素半径)`(SetWindowRgn)稳;xcgui 的 `SetTransparentType(Shaped)` 对原生弹层实测无效;元素背景对象 `SetRectRoundAngle` 写入成功但圆角外仍是窗口白底, 两者要配合用;
     - **描边不能画在 ListBox 的 paint 事件——该事件在这个弹层窗口上不渲染输出**(探针实证: 内缩 10px 的 6px 红色粗环都画不出来); 这个窗口上能出图的只有 BkM 背景对象、条目 `DrawItem` 回调和 `XE_PAINT_END`;
     - **BkM 的 border 对象贴边画, 会被 SetWindowRgn 的窗口区域裁得只剩左边一条**(上/右/底全消失, 只留左缘; 区域与内容为何错位未深究)。ring-1 描边的出路: 先 `XEle_EnableEvent_XE_PAINT_END` 再 `AddEvent_Paint_End`(该元素及子元素绘制完成事件, 在条目之后执行 = 边框盖内容边缘, 同 shadcn), 描边整体**内缩 1px** 落在窗口区域内, 四边完整, 圆角弹层上 1px 白边距不可感知;
-    - **条目高亮/勾用 `AddEvent_ListBox_DrawItem`**(回调带 Index/NState/RcItem): 原生在弹层打开时**不给选中项置 Select 态**, 要自己拿 `XComboBox_GetSelItem` 比对(复刻 shadcn 打开时选中项自动高亮);文字是项模板的 shapeText 子元素, 在项背景之后绘制不受影响;
+    - **条目高亮/勾用 `AddEvent_ListBox_DrawItem`**(回调带 Index/NState/RcItem): 原生在弹层打开时**不给选中项置 Select 态**, 要自己拿 `XComboBox_GetSelItem` 比对求"选中项"(只用来决定右侧 check), 但**底色只画给"指针所在项"**(`NState == Stay || Select`)——shadcn 的 item 只有 `focus:bg-accent`, 选中态由右侧 check 表达, 不带常驻底色; **指针不在任何条目上时(弹层留白、弹层上下左右边缘外)没有任何底色**, 对齐 radix: 条目的 pointerleave 把焦点交回 content(`onItemLeave = content.focus()`), 高亮随之消失。两个被实测否掉的版本: ① "选中项永远高亮"(鼠标移到别项后选中项仍带灰底); ② "指针离开条目后高亮留在最后悬停项"(radix 的 `highlightedItem` 在 item 失焦后并不保留, 用 `XListBox_GetItemMouseStay` 闩住最后悬停索引会画出一个不该有的灰底)。灰底的像素验收: 指针在项上时该行背景均值 ≈ 241-246, 一离开条目(移到弹层外)同一批行(弹层 y 436..458)均值回到 249-255(= popover 白底 + 文字旁 JPEG 振铃), 即灰底消失;文字是项模板的 shapeText 子元素, 在项背景之后绘制不受影响;
     - **`SetDropHeight` 必须在弹层打开前设置才生效**(构造时), 弹出事件里设置无效(实测 set/get 均为新值但窗口不变);固定模式(`EnableDropHeightFixed(true)`)才使用该值;
     - **触发区滚轮**: 原生会滚动 ComboBox 内部文本(文字上移), `EnableEvent_XE_MOUSEWHEEL(false)` 屏蔽(事件交给父元素), 弹层 ListBox 独立不受影响;
     - **弹层退出后窗口句柄即失效**: 关闭后用旧句柄调任何 XWnd_* 会弹"句柄无效"错误框(实测 `XWnd_GetDPI`), 必须挂 `AddEvent_Combobox_Exit_List` 置空缓存句柄;
     - **弹层窗口/ListBox 每次弹出都是新建的**(退出即销毁, Exit_List 后窗口句柄即失效), 事件在每次 Popup_List 里重新注册即可, 不会重复;全局的 OnThemeChange 回调才需要 once 守卫。
-    - **滚动条残影**: 原生的滚动条显隐判定在打开时用旧条目高算好, 调矮条目后不会自己收起; 用滚动视级开关 `ShowSBarV/ShowSBarH` 显式控制(条目级 `ScrollBar.Show` 会被原生布局覆盖)。另: 弹层高度恰好等于内容高度时视口差 1-2px 也会出滚动条, 留 +4 余量。
-    - **弹层默认定位与 item-aligned 重定位**(探针实测): 原生把弹层放在触发区**正下方**(顶=触发区底、左=触发区左、宽=触发区宽)。radix Select 的默认定位是 item-aligned(shadcn select.tsx 的 SelectContent), 即**弹层盖住触发元素、选中项正对触发位置**——用 `wapi.SetWindowPos`(物理像素, `SWP_NOSIZE|NOZORDER|NOACTIVATE`)在 Popup_List 事件里重定位: 弹层顶 = 触发区顶 − (p-1 边距 4 + 选中索引×条目高), 贴屏幕边时向下压并用 `ScrollView.ScrollPosYV` 滚动让选中项仍可见。坐标链路: `XEle_GetWndClientRect`(逻辑, **原点=所属窗口 rect 原点, 含阴影边距**——实测含阴影窗口也成立) + 所属窗口 `XWidget_GetHWINDOW` → `wapi.GetWindowRect`(物理) → 逻辑差 ×DPI/96;
+    - **滚动条残影**: 原生的滚动条显隐判定在打开时用旧条目高算好, 调矮条目后不会自己收起; 用滚动视级开关 `ShowSBarV/ShowSBarH` 显式控制(条目级 `ScrollBar.Show` 会被原生布局覆盖)。弹层高度按 `comboDropHeight` 取**内容高**(见本节 52), 不再需要早期"内容高 +4 余量"的兜底。
+    - **弹层默认定位与 item-aligned 重定位**(探针实测): 原生把弹层放在触发区**正下方**(顶=触发区底、左=触发区左、宽=触发区宽)。radix Select 的默认定位是 item-aligned(shadcn select.tsx 的 SelectContent), 即**弹层盖住触发元素、选中项正对触发位置**——用 `wapi.SetWindowPos`(物理像素, `SWP_NOSIZE|NOZORDER|NOACTIVATE`)在 Popup_List 事件里重定位: 弹层顶 = 触发区顶 − (选中项在内容里的顶 − (触发区高−条目高)/2), 其中选中项在内容里的顶 = p-1 边距 4 + ListBox 固有 3px 内缩 + 选中索引×(条目高+1)= 7+29i。**两种盒子高度不同(触发区 32、条目 28), 必须按"文字中心"对齐**(选中项顶 = 触发区顶 + 2), 早期用"p-1 + 选中索引×条目高"少算 5px 且按底边对齐, 实测选中项文字比触发区文字低 3 物理像素(点开瞬间字"往下跳"), 修正后 1 物理像素内重合; **横向也必须按"文字左缘"对齐**(radix 源码 `SelectItemAlignedPosition`: `left = 触发区文字 left − (条目文字 left − 内容 left)`, 对齐的是文字而不是盒子): 弹层左缘 = 触发区左缘, 而条目文字相对弹层左缘的内缩 = p-1(4)+ListBox 固有 2+条目文字左边距, 该边距按 shadcn 的 px-2=8 时实测条目文字比触发区文字**右移 2px**(触发区文字 813..862 / 条目文字 815..862), 点开瞬间看着像"文字往内收缩"; 边距改 5 后两者墨迹起点完全重合(同为 x 813, 条目 813..859)。裸宽度仍差 ~3px(50 vs 47)——触发区文字走原生控件(Direct2D)、条目文字走 shapeText 两条不同渲染路径, 同为 4 个全角字时字形推进取整不同, 非位置问题, 视觉不可感知。注意别用"整体左移弹层窗口"来对齐: 弹层宽度 = 触发区宽度, 窗口左移会让右侧 check 与弹层右缘的距离一起变; 贴屏幕边时向下压并用 `ScrollView.ScrollPosYV` 滚动让选中项仍可见。坐标链路: `XEle_GetWndClientRect`(逻辑, **原点=所属窗口 rect 原点, 含阴影边距**——实测含阴影窗口也成立) + 所属窗口 `XWidget_GetHWINDOW` → `wapi.GetWindowRect`(物理) → 逻辑差 ×DPI/96;
 31. **xcgui 字体的 size 单位是 pt(磅), 不是像素**(重大全局坑, 实测确认): `font.NewEX(name, size, style)` 文档写明"size: 字体大小, 单位(pt, 磅)", 渲染尺寸 = size×DPI/72 物理像素。此前 FontHandle 把主题的 14(逻辑 px) 直接当 pt 传入, 144 DPI 下渲染出 28 物理像素 em = **18.7 逻辑像素**, 全组件文字放大了 1.33×(墨迹实测 26-27 物理像素, 与 14pt 完全吻合)。修法: **pt = px×72/96(= ×0.75, 与 DPI 无关)**, 在 FontHandle 里统一换算(14px→11pt=14.67px, pt 取整导致 14 这类 ×0.75=10.5 的值有 ±0.67px 误差; 12/13/16px 恰好或接近取整)。排查入口: 同一截图里对比组件文字与已知 14px 参考的墨迹高度。
 32. 用 pnpm 添加 shadcn 组件会报错, 应该用npx。
 33. **Dialog 用"窗口内覆盖元素"实现**(探针 .verify/probe_dialog + demo 实测, dialog.go 依赖):
@@ -793,6 +793,23 @@ myapp/
            一眼看出"**只来了一次 Paint, SHOW 一次都不来**" —— 父容器 Show 不会给子元素发 `XE_SHOW`, 所以
            "我可见了"不能用 SHOW 事件判断, 只能拿首次绘制当信号; 另外"在页签 OnChange 里手动
            `RefreshData()` 后截图立即正常"这一步把原因锁死在"模板没实例化", 而不是几何/主题/颜色。
+
+         52. **ComboBox 弹层高度: 内容高 = n×(项高+1) + 2×pad + 5, 取该值才无滚动且留白对称**
+         (2026-10-08, ListBox 探针参数矩阵 + demo 截图/像素剖面实测): 症状是 6 项弹层悬浮最后一项时
+         hover 背景底边正好贴住弹层底边、滚轮还能再滚一下。
+         - ListBox 内容有**固有内缩**: 首项 top = pad + 3(上下各固有 3px、左右固有 2px), 行步进 =
+           项高 + 1px(相邻项 top 差 29 @ 项高 28); 内容高 = n×(项高+1) + 2×pad + 5
+           (顶固有 3 + 底固有 3 − 最后 1px 间隙)。公式在 pad=0/4/8 与 n=3/5/6/10 上均验证过。
+         - 弹层高度 < 内容高 → 出滚动条且"差多少滚多少"(实测 6 项 H=180 内容 187 → range=10, 能再滚
+           一下); > 内容高 → 底部多留白。**高度取内容高**时: 无滚动、顶部/底部留白对称(各 pad+3)。
+         - 固定模式必须在**弹层打开前**`EnableDropHeightFixed(true) + SetDropHeight(h)`(组件在构造期
+           调, 见 `components/combobox.go` 的 `comboDropHeight`)。
+         - 探针手法: ListBox 弹层内 `AddEvent_ListBox_DrawItem` 打印 `pItem.RcItem` 可拿到每项真实
+           绘制矩形(项坐标与滚动量都能看出); 弹层打开后用 `GetScrollBarVObj().GetRange()/XSBar_GetCurPos()`
+           判有无滚动。
+         - 验收(截图 + 像素剖面): 悬浮最后一项时 hover 背景底边与弹层底边框间应有 ~pad+3 留白;
+           滚轮不产生位移 —— 对比滚动前后同一竖线(x=item 右侧空白列)的灰/白分段, 各条 hover/选中带
+           的 y 区间应完全不变(变化只说明鼠标 hover 换了行)。
 
          ---
 

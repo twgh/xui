@@ -68,12 +68,11 @@ func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboB
 	// 触发区不吃滚轮: 原生会滚动内部文本(实测滚轮使文字上移), shadcn 的触发区对
 	// 滚轮无响应; 禁用后事件交给父元素, 弹层 ListBox 是独立元素不受影响。
 	cb.EnableEvent_XE_MOUSEWHEEL(false)
-	// 弹层高度: 条目数 × 条目高 + p-1 上下边距, 在构造时设置(实测必须在弹层打开前
-	// 设置才生效; 固定模式原生才使用该值)。+4 余量: 高度恰好等于内容时视口差 1-2px
-	// 也会出滚动条(实测)。超过 10 项给最大高度, 交给滚动条。
+	// 弹层高度: 按内容高公式设置(见 comboDropHeight), 在构造时设置(实测必须在弹层
+	// 打开前设置才生效; 固定模式原生才使用该值)。超过 10 项给最大高度, 交给滚动条。
 	if n := int32(len(items)); n > 0 {
-		h := n*comboItemH + 8 + 4
-		if maxH := int32(10)*comboItemH + 8 + 4; h > maxH {
+		h := comboDropHeight(n)
+		if maxH := comboDropHeight(10); h > maxH {
 			h = maxH
 		}
 		cb.EnableDropHeightFixed(true)
@@ -185,7 +184,8 @@ var comboPopup = struct {
 
 // alignComboPopup 把弹层挪到 item-aligned 位置(radix Select 的默认定位):
 // 弹层盖住触发元素, 当前选中项正对触发元素位置(select.tsx 的 SelectContent
-// position="item-aligned")。
+// position="item-aligned")。两种盒子高度不同(触发区 32、条目 comboItemH),
+// 按**文字中心**对齐(见下面 off 的推导), 否则点开瞬间选中项文字会往下跳。
 //
 // 坐标链路(探针实测): XEle_GetWndClientRect 是逻辑像素, 原点=所属窗口矩形原点
 // (含阴影边距); wapi.GetWindowRect 是物理屏幕像素 → 逻辑差值 × DPI/96 换算。
@@ -210,11 +210,17 @@ func alignComboPopup(hCombo, hWindow int) {
 	}
 	sc := float64(dpi) / 96
 
-	// 选中项在弹层内容里的纵向偏移: p-1 顶边距 + 前面条目高; 未选中时弹层顶对齐触发区顶。
-	off := int32(4)
-	if sel := xc.XComboBox_GetSelItem(hCombo); sel > 0 {
-		off += sel * comboItemH
+	// 弹层顶部相对触发区顶部的偏移: 让"选中项"与触发区按**文字中心**重合(radix 的
+	// item-aligned 就是把选中项盖在触发区上)。两种盒子高度不同(触发器高 32、条目
+	// comboItemH), 所以按中心对齐: 选中项顶 = 触发区顶 + (触发区高-项高)/2。
+	// 选中项在内容里的顶 = p-1 + ListBox 固有 3px 内缩 + 前面条目(步进 = 项高+1,
+	// 见 comboDropHeight); 未选中时按 radix 把焦点放首项, 首项与触发区中心重合。
+	sel := xc.XComboBox_GetSelItem(hCombo)
+	if sel < 0 {
+		sel = 0
 	}
+	selTop := comboPad + 3 + sel*(comboItemH+1)
+	off := selTop - (trig.Bottom-trig.Top-comboItemH)/2
 	desired := mrc.Top + int32(float64(trig.Top-off)*sc)
 	left := mrc.Left + int32(float64(trig.Left)*sc)
 
@@ -228,7 +234,7 @@ func alignComboPopup(hCombo, hWindow int) {
 		cut := int32(float64(screenTop-desired) / sc)
 		desired = screenTop
 		if lb := widget.NewListBoxByHandle(comboPopup.list); lb != nil && cut > 0 {
-			lb.ScrollPosYV(off - 4) // 保留 p-1 顶边距, 选中项作为首个可见项
+			lb.ScrollPosYV(selTop - comboPad) // 保留 p-1 顶边距, 选中项作为首个可见项
 		}
 	}
 	if desired+ph > screenBottom {
@@ -243,6 +249,24 @@ func alignComboPopup(hCombo, hWindow int) {
 
 // comboItemH 是弹层条目高度: shadcn SelectItem = text-sm(20) + py-1(4×2)。
 const comboItemH int32 = 28
+
+// comboPad 是弹层内容四周内边距(shadcn 的 p-1)。
+const comboPad int32 = 4
+
+// comboDropHeight 返回 n 个条目时下拉弹层应有的高度(逻辑像素)。
+//
+// 探针实测(itemH=28, pad=4, 亦验证了 pad=0/8 与 n=3/5/6/10):
+//   - ListBox 内容有固有内缩: 首项 top = pad+3(上下各固有 3px、左右固有 2px);
+//   - 行步进 = 项高 + 1px(相邻项 top 相差 29);
+//   - 内容高 = n*(项高+1) + 2*pad + 5(顶固有 3 + 底固有 3 - 最后 1px 间隙);
+//   - 弹层高 < 内容高会出滚动(差多少滚多少, 实测 H=180/6 项差 7px),
+//     高 > 内容高则底部多留白。
+//
+// 取高度 = 内容高: 无滚动, 且顶部/底部留白对称(pad+3 = 7px)。旧算法(28n+12)
+// 在 6 项时少 7px, 底部贴边且能再滚一下。
+func comboDropHeight(n int32) int32 {
+	return n*(comboItemH+1) + 2*comboPad + 5
+}
 
 // styleComboPopup 给原生下拉弹层做主题上色与样式对齐。
 //
@@ -294,7 +318,15 @@ func styleComboPopup(hCombo, hWindow, hListBox int) {
 			if f := xui.FontHandle(xui.Current().FontDefault); f != 0 {
 				xc.XShapeText_SetFont(h, f)
 			}
-			xc.XWidget_LayoutItem_SetMargin(h, 8, 0, 0, 0) // px-2
+			// 文字左边距: 目标是让条目文字与触发区文字**左边缘重合**——radix 的
+			// SelectItemAlignedPosition 正是按文字对齐(left = 触发区文字 left − 条目文字
+			// 相对内容左缘的偏移), 而不是对齐盒子。条目文字相对弹层左缘的内缩 = p-1(4)
+			// + ListBox 固有 2 + 本边距; 边距 8(px-2, shadcn 原值)时实测条目文字比触发区
+			// 文字右移 2px, 点开瞬间看着像"文字往内收缩", 取 5 后两者墨迹起点完全重合
+			// (同为 x 813, 弹层关闭时触发区文字 813..862 / 打开时条目文字 813..859)。
+			// 注意: 不能靠移动弹层窗口来对齐 —— 弹层宽度 = 触发区宽度, 窗口左移会使右侧
+			// check 与弹层右缘的距离跟着变, 只有改条目的文字内距才能左右都对。
+			xc.XWidget_LayoutItem_SetMargin(h, 5, 0, 0, 0)
 		}
 		return 0
 	})
@@ -327,7 +359,7 @@ func applyComboPopupStyle() {
 	}
 	lb.ClearBkInfo()
 	lb.SetItemHeightDefault(comboItemH, comboItemH)
-	lb.SetPadding(4, 4, 4, 4) // p-1: 条目距弹层边缘 4px
+	lb.SetPadding(comboPad, comboPad, comboPad, comboPad) // p-1: 条目距弹层边缘 4px(加固有 3px 内缩 = 视觉 7px)
 	lb.SetDrawItemBkFlags(0)  // 原生项背景(方角灰块)全弃, 交给 DrawItem 自绘
 	lb.EnableAutoShowScrollBar(true)
 	// 滚动条显隐: 原生的显示判定在打开时用旧条目高算好, 我们把条目调矮后它不会
@@ -351,8 +383,8 @@ func applyComboPopupStyle() {
 	styleComboScrollBar(lb.GetScrollBarHObj(), t)
 }
 
-// comboPopupDrawItem 自绘条目: hover/选中画 rounded-md 的 accent 底(focus:bg-accent),
-// 选中项右侧画 check 图标(select.tsx: CheckIcon absolute right-2 size-4)。
+// comboPopupDrawItem 自绘条目: 高亮项画 rounded-md 的 accent 底(shadcn 只给 focus 项底色:
+// focus:bg-accent), 选中项右侧画 check 图标(select.tsx: CheckIcon absolute right-2 size-4)。
 // 文字是项模板里的 shapeText 子元素, 在项背景之后绘制, 不受本回调影响。
 func comboPopupDrawItem(hEle int, hDraw int, pItem *xc.ListBox_Item_, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
@@ -363,13 +395,16 @@ func comboPopupDrawItem(hEle int, hDraw int, pItem *xc.ListBox_Item_, pbHandled 
 	t := xui.Current()
 
 	// 选中项: 原生在弹层打开时不会给选中项置 Select 态(探针实证), 这里自己比对
-	// 当前选中索引, 复刻 shadcn 打开时选中项自动高亮(focus 选中项)的行为。
+	// 当前选中索引。
 	sel := int32(-1)
 	if comboPopup.combo > 0 {
 		sel = xc.XComboBox_GetSelItem(comboPopup.combo)
 	}
-	hot := pItem.NState == xcc.List_Item_State_Stay || pItem.NState == xcc.List_Item_State_Select ||
-		(pItem.NState == xcc.List_Item_State_Leave && pItem.Index == sel)
+	// 底色只属于"指针所在项": shadcn 的 item 是 focus:bg-accent(选中态由右侧 check 表达, 不带
+	// 常驻底色)。指针不在条目上(弹层留白、弹层上下左右边缘外)就**没有任何底色** —— 对齐 radix:
+	// 条目的 pointerleave 把焦点交回 content(onItemLeave = content.focus()), 高亮随之消失;
+	// 既不停留在最后悬停项, 也不回落到选中项(这两版都被实测否掉了)。
+	hot := pItem.NState == xcc.List_Item_State_Stay || pItem.NState == xcc.List_Item_State_Select
 	// 高亮叠在弹层底色(popover)之上, 按过渡值淡入淡出
 	if hv := xui.HoverItem(hEle, pItem.Index, hot); hv > 0 {
 		// rounded-md 在 shadcn 里 = var(--radius)-4 = 6, 对应本主题的 RadiusSm
