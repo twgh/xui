@@ -73,19 +73,19 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 
 | 组件 | 说明 |
 |---|---|
-| Button | 5 变体(Primary/Secondary/Outline/Ghost/Destructive)× 3 尺寸,hover/按下/禁用/焦点环;`WithIcon` 可做图标按钮 |
+| Button | 6 变体(Primary/Secondary/Outline/Ghost/Destructive/Link)× 8 尺寸档(xs/sm/default/lg + 4 个方形图标档),hover/按下/禁用/焦点环;`WithIcon` 做图标按钮 |
 | Checkbox / Radio | 自绘指示器 + 原生状态管理 |
 | Input | 原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环,占位符随主题 |
-| Switch / Progress / Slider | 开关 / 进度条 / 滑块 |
-| Tabs | 标签页(下划线指示条随活动页滑动) |
-| ComboBox | 下拉框(列表由独立透明弹出窗口承载) |
+| Switch / Progress / Slider | 开关 / 进度条 / 滑块;滑块支持自定义值域与步进(`WithSliderRange` / `WithSliderStep`) |
+| Tabs | 标签页(下划线指示条随活动页滑动),支持纵向堆叠(`WithTabsVertical`) |
+| ComboBox | 下拉框(列表由独立透明弹出窗口承载);触发区支持 sm 尺寸(`WithComboSize`) |
 | Menu | 下拉菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点) |
 | Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述 + 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环 |
 | Table | 数据表格(原生 `List` 载体 + 全自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽支持"占满剩余宽度" |
 | Tree | 树形视图(原生 `Tree` 载体 + 全自绘皮肤):缩进参考线/旋转 chevron/行悬浮选中;叶节点留空槽位文字全树对齐,点击 chevron 展开收起 |
 | Pagination | 分页(纯自绘单元素,鼠标驱动):上一页/下一页 + 页码 + 省略号折叠(>7 页),内容居中、当前页为描边态;`SetTotal/SetPageSize/SetPage/OnChange` |
-| Label / Card / Badge / Separator | 静态展示组件 |
+| Label / Card / Badge / Separator | 静态展示组件:Badge 6 变体(含 ghost/link,悬停生效)、Card 支持 `sm` 尺寸与说明/页脚、Separator 支持垂直 |
 
 每个组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环。
 

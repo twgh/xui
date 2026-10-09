@@ -7,6 +7,14 @@ import (
 	"github.com/twgh/xui"
 )
 
+// TabsOrientation 标签栏取向, 对应 shadcn tabs.tsx 的 orientation。
+type TabsOrientation int
+
+const (
+	TabsHorizontal TabsOrientation = iota // 标签横向排列, 列表 h-8
+	TabsVertical                          // 标签纵向堆叠, 列表 h-fit
+)
+
 // TabsVariant 是标签栏的视觉变体, 对应 shadcn tabs.tsx 的 TabsList variant。
 type TabsVariant int
 
@@ -15,10 +23,12 @@ const (
 	TabsLine                       // 透明列表, 选中项只加下划线
 )
 
-// tabsH 是列表高度(shadcn 为 h-8), tabsPad 是列表内边距(p-[3px], 同时给焦点环留位)。
+// 标签栏尺寸(逻辑像素, 逐条对应 tabs.tsx 的类)。
 const (
-	tabsH   int32 = 32
-	tabsPad int32 = 3
+	tabsH     int32 = 32 // 横向列表高: h-8
+	tabsPad   int32 = 3  // 列表内边距: p-[3px](同时给焦点环留位)
+	tabsVTabH int32 = 24 // 纵向单个标签高: text-sm 行高 20 + py-0.5×2
+	tabsTextX int32 = 6  // 纵向标签的文字左边距: px-1.5
 )
 
 // Tabs 自绘标签栏(等价 shadcn 的 Tabs + TabsList + TabsTrigger)。
@@ -26,21 +36,23 @@ const (
 // 外观全部由本组件绘制。
 //
 // 与 shadcn tabs.tsx(radix-nova) 对齐:
-//   - 列表: rounded-lg p-[3px] h-8, default 变体 bg-muted, line 变体 bg-transparent;
-//   - 标签: 等宽(flex-1) rounded-md, 未选 text-foreground/60 hover 到 text-foreground,
-//     选中 bg-background + text-foreground;
-//   - line 变体选中项在列表底边画 h-0.5 的 bg-foreground 下划线;
+//   - 列表: rounded-lg p-[3px] h-8(纵向为 h-fit + 标签堆叠), default 变体 bg-muted,
+//     line 变体 bg-transparent;
+//   - 标签: 横向等宽(flex-1)居中, 纵向 w-full 左对齐(justify-start), rounded-md,
+//     未选 text-foreground/60 hover 到 text-foreground, 选中 bg-background + text-foreground;
+//   - line 变体选中项: 横向在列表底边画 h-0.5 下划线, 纵向在标签右侧画 w-0.5 指示条;
 //   - focus-visible: 标签边框变 Ring 色 + ring-3 ring-ring/50(环画在列表的绘制回调里,
 //     因为标签自身客户区只有标签大小, 画不下外扩的环)。
 //
 // 注意: 标签内容是面板, 与本组件无关——用 OnChange 自行切换面板可见性。
 type Tabs struct {
 	*widget.Element
-	list    []*widget.Button
-	labels  []string
-	active  int32
-	variant TabsVariant
-	cb      func(index int32)
+	list     []*widget.Button
+	labels   []string
+	active   int32
+	variant  TabsVariant
+	vertical bool
+	cb       func(index int32)
 }
 
 // TabsOption 标签栏配置项。
@@ -52,25 +64,52 @@ func WithTabsVariant(v TabsVariant) TabsOption { return func(t *Tabs) { t.varian
 // WithTabsActive 设置初始选中项。
 func WithTabsActive(i int32) TabsOption { return func(t *Tabs) { t.active = i } }
 
-// NewTabs 创建标签栏。cx 是列表宽度, 标签等宽平分(cx - p-[3px]x2)。
+// WithTabsOrientation 设置取向(默认横向)。
+func WithTabsOrientation(o TabsOrientation) TabsOption {
+	return func(t *Tabs) { t.vertical = o == TabsVertical }
+}
+
+// WithTabsVertical 改为纵向堆叠(等价 WithTabsOrientation(TabsVertical))。
+func WithTabsVertical() TabsOption { return func(t *Tabs) { t.vertical = true } }
+
+// NewTabs 创建标签栏。cx 是列表宽度: 横向时标签等宽平分, 纵向时是标签宽度(高度自适应为 n 行)。
 func NewTabs(x, y, cx int32, hParent int, labels []string, opts ...TabsOption) *Tabs {
-	el := widget.NewElement(x, y, cx, tabsH, hParent)
+	tb := &Tabs{labels: labels}
+	for _, o := range opts { // 先应用配置: 取向决定列表尺寸
+		o(tb)
+	}
+	count := int32(len(labels))
+	if count <= 0 {
+		count = 1
+	}
+	cy := tabsH
+	if tb.vertical {
+		cy = count*tabsVTabH + tabsPad*2
+	}
+	if cx <= 0 {
+		cx = tabsVTabH * 8
+	}
+
+	el := widget.NewElement(x, y, cx, cy, hParent)
 	if el == nil {
 		return nil
 	}
-	tb := &Tabs{Element: el, labels: labels}
-	for _, o := range opts {
-		o(tb)
-	}
+	tb.Element = el
 	el.EnableBkTransparent(true)
 	el.AddEvent_Paint(tb.onPaintList)
 
-	count := int32(len(labels))
-	w := (cx - tabsPad*2) / count
+	tabW := (cx - tabsPad*2) / count
 	for i, text := range labels {
+		var bx, by, bw, bh int32
+		if tb.vertical {
+			bx, by = tabsPad, tabsPad+int32(i)*tabsVTabH
+			bw, bh = cx-tabsPad*2, tabsVTabH
+		} else {
+			bx, by = tabsPad+int32(i)*tabW, tabsPad
+			bw, bh = tabW, tabsH-tabsPad*2
+		}
 		// 标签是列表的子元素, 坐标相对列表
-		off := int32(i) * w
-		btn := widget.NewButton(tabsPad+off, tabsPad, w, tabsH-tabsPad*2, text, el.Handle)
+		btn := widget.NewButton(bx, by, bw, bh, text, el.Handle)
 		if btn == nil {
 			continue
 		}
@@ -118,7 +157,7 @@ func (t *Tabs) OnChange(fn func(index int32)) *Tabs {
 }
 
 // onPaintList 绘制列表底与"画在标签外侧"的两个元素:
-// 焦点环(ring-3 需要 3px 外扩空间)与 line 变体的下划线(位于列表底边)。
+// 焦点环(ring-3 需要 3px 外扩空间)与 line 变体的指示条(横向下划线 / 纵向右侧竖条)。
 func (t *Tabs) onPaintList(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
@@ -139,9 +178,15 @@ func (t *Tabs) onPaintList(hEle int, hDraw int, pbHandled *bool) int {
 		rc := btn.GetRectEx()
 		st := xui.StateOf(btn.Handle)
 		if int32(i) == t.active && t.variant == TabsLine {
-			// 选中下划线: h-0.5 bg-foreground, 贴在列表底边
-			line := xc.RECT{Left: rc.Left, Top: p.Rc.Bottom - 2, Right: rc.Right, Bottom: p.Rc.Bottom}
-			p.FillRound(&line, th.Foreground, 1)
+			if t.vertical {
+				// after:inset-y-0 after:-right-1 after:w-0.5 —— 贴在标签右侧
+				line := xc.RECT{Left: rc.Right + 1, Top: rc.Top, Right: rc.Right + 3, Bottom: rc.Bottom}
+				p.FillRound(&line, th.Foreground, 1)
+			} else {
+				// after:inset-x-0 after:bottom-[-5px] after:h-0.5 —— 贴在列表底边
+				line := xc.RECT{Left: rc.Left, Top: p.Rc.Bottom - 2, Right: rc.Right, Bottom: p.Rc.Bottom}
+				p.FillRound(&line, th.Foreground, 1)
+			}
 		}
 		// focus-visible:ring-3 ring-ring/50
 		if st.Focused && xui.FocusedByKeyboard() {
@@ -207,7 +252,14 @@ func (t *Tabs) onPaintTab(hEle int, hDraw int, pbHandled *bool) int {
 	}); f != 0 {
 		p.Draw.SetFont(f)
 	}
-	p.Text(t.labels[idx], &p.Rc, color, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+	// 横向 justify-center, 纵向 justify-start(左对齐 + px-1.5)
+	rc := p.Rc
+	align := xcc.TextAlignFlag_Center | xcc.TextAlignFlag_Vcenter
+	if t.vertical {
+		rc.Left += tabsTextX
+		align = xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter
+	}
+	p.Text(t.labels[idx], &rc, color, align)
 	return 0
 }
 

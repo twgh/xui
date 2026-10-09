@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"math"
+
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xui"
@@ -42,13 +44,38 @@ const (
 type Slider struct {
 	*widget.Element
 	cb    func(v float64)
-	pos   int32 // 千分比 0..1000
+	pos   int32   // 千分比 0..1000(内部刻度)
+	min   float64 // 值域下限(radix 的 min), 默认 0
+	max   float64 // 值域上限(radix 的 max), 默认 100
+	step  float64 // 步进(radix 的 step), 0 = 连续取值
 	drag  bool
 	hover bool
 }
 
+// SliderOption 滑动条配置项。
+type SliderOption func(*Slider)
+
+// WithSliderRange 设置值域(对应 radix slider 的 min/max), 默认 0~100。
+func WithSliderRange(min, max float64) SliderOption {
+	return func(s *Slider) {
+		if max > min {
+			s.min, s.max = min, max
+		}
+	}
+}
+
+// WithSliderStep 设置步进(对应 radix 的 step), 默认 0 = 连续取值。
+// 设置后取值吸附到 `min + n*step`, 键盘左右键也按一个步进移动。
+func WithSliderStep(step float64) SliderOption {
+	return func(s *Slider) {
+		if step > 0 {
+			s.step = step
+		}
+	}
+}
+
 // NewSlider 创建滑动条。cx 是**可见轨道**宽度; cy 传 0 时使用滑块 + 焦点环所需的最小高度(18)。
-func NewSlider(x, y, cx, cy int32, hParent int) *Slider {
+func NewSlider(x, y, cx, cy int32, hParent int, opts ...SliderOption) *Slider {
 	if cy <= 0 {
 		cy = sliderThumb + sliderRingPad*2
 	}
@@ -60,7 +87,10 @@ func NewSlider(x, y, cx, cy int32, hParent int) *Slider {
 	if e == nil {
 		return nil
 	}
-	s := &Slider{Element: e}
+	s := &Slider{Element: e, max: 100}
+	for _, o := range opts {
+		o(s)
+	}
 	e.EnableFocus(true) // 可聚焦, 支持键盘方向键
 
 	e.AddEvent_Paint(s.onPaint)
@@ -103,7 +133,16 @@ func NewSlider(x, y, cx, cy int32, hParent int) *Slider {
 			vkLeft  = 0x25
 			vkRight = 0x27
 		)
+		// 有步进时左右键按一个步进移动(radix 行为), 否则 ±5%
 		step := sliderRange / 20
+		if s.step > 0 {
+			if span := s.max - s.min; span > 0 {
+				step = int32(math.Round(s.step / span * float64(sliderRange)))
+			}
+			if step < 1 {
+				step = 1
+			}
+		}
 		old := s.pos
 		switch wParam {
 		case vkLeft:
@@ -146,6 +185,9 @@ func (s *Slider) setPosFromX(px int32) {
 	} else if v > sliderRange {
 		v = sliderRange
 	}
+	if s.step > 0 { // 有步进时吸附到刻度
+		v = s.posOf(s.snap(s.valueAt(v)))
+	}
 	if v != s.pos {
 		s.pos = v
 		s.Redraw(true)
@@ -155,24 +197,58 @@ func (s *Slider) setPosFromX(px int32) {
 	}
 }
 
-// Value 返回当前值(0~100)。
-func (s *Slider) Value() float64 {
-	return float64(s.pos) / float64(sliderRange) * 100
+// valueAt 把内部千分比位置换算成对外值(不做步进吸附)。
+func (s *Slider) valueAt(pos int32) float64 {
+	return s.min + float64(pos)/float64(sliderRange)*(s.max-s.min)
 }
 
-// SetValue 设置当前值, v 会被夹取到 0~100。
-func (s *Slider) SetValue(v float64) *Slider {
-	if v < 0 {
-		v = 0
-	} else if v > 100 {
-		v = 100
+// posOf 把对外值换算成内部千分比位置(夹取到值域)。
+func (s *Slider) posOf(v float64) int32 {
+	span := s.max - s.min
+	if span <= 0 {
+		return 0
 	}
-	s.pos = int32(v/100*float64(sliderRange) + 0.5)
+	p := int32((v-s.min)/span*float64(sliderRange) + 0.5)
+	if p < 0 {
+		p = 0
+	} else if p > sliderRange {
+		p = sliderRange
+	}
+	return p
+}
+
+// snap 按步进吸附(step <= 0 时原样返回)。
+func (s *Slider) snap(v float64) float64 {
+	if s.step <= 0 {
+		return v
+	}
+	v = s.min + math.Round((v-s.min)/s.step)*s.step
+	if v < s.min {
+		v = s.min
+	} else if v > s.max {
+		v = s.max
+	}
+	return v
+}
+
+// Value 返回当前值(默认值域 0~100, 可用 WithSliderRange 改)。
+func (s *Slider) Value() float64 {
+	return s.snap(s.valueAt(s.pos))
+}
+
+// SetValue 设置当前值, v 会被夹取到值域并按步进吸附。
+func (s *Slider) SetValue(v float64) *Slider {
+	if v < s.min {
+		v = s.min
+	} else if v > s.max {
+		v = s.max
+	}
+	s.pos = s.posOf(s.snap(v))
 	s.Redraw(true)
 	return s
 }
 
-// OnChange 注册值变化回调(v 为 0~100), 拖动过程中会连续触发。
+// OnChange 注册值变化回调(v 为当前值域内的值), 拖动过程中会连续触发。
 func (s *Slider) OnChange(fn func(v float64)) *Slider {
 	s.cb = fn
 	return s

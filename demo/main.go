@@ -461,6 +461,45 @@ func buildPage(hWindow, hParent int) {
 		return 0
 	})
 
+	// ===== 对齐 shadcn 后补充的档位(尺寸/link/ghost/纵向标签页/范围滑条/sm 下拉框) =====
+	card10 := ui.NewCard(24, 244, 728, 250, pFeed.Handle)
+	v10 := card10.ContentStack(14)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "新增变体: 尺寸档位 / link / ghost / 纵向标签页 / 范围滑条 / sm 下拉框", v10.Handle))
+
+	// 按钮: xs/sm/default/lg + 方形图标按钮(cx 传 0 = 用预设边长) + link
+	rowSz := xui.HStack(v10.Handle, 38, 8)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Xs", rowSz.Handle, ui.WithSize(ui.ButtonSizeXs)), 52)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Sm", rowSz.Handle, ui.WithSize(ui.ButtonSizeSm)), 56)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Default", rowSz.Handle), 84)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Lg", rowSz.Handle, ui.WithSize(ui.ButtonSizeLg)), 64)
+	// 方形按钮不声明宽度: 元素已按预设边长建好
+	ui.NewButton(0, 0, 0, 0, "", rowSz.Handle, ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconPlus))
+	ui.NewButton(0, 0, 0, 0, "", rowSz.Handle, ui.WithSize(ui.ButtonSizeIconSm), ui.WithIcon(icons.IconCheck))
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Link", rowSz.Handle, ui.WithVariant(ui.ButtonLink)), 64)
+
+	// 徽章: ghost(悬停出底色) / link(悬停加下划线)
+	rowBg := xui.HStack(v10.Handle, 20, 8)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Ghost", rowBg.Handle, ui.WithBadgeVariant(ui.BadgeGhost)), 64)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Link", rowBg.Handle, ui.WithBadgeVariant(ui.BadgeLink)), 56)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Default", rowBg.Handle), 64)
+
+	// 纵向标签页 | 垂直分隔线 | sm 下拉框 + 步进滑条(0~10, step 1)
+	rowV := xui.HStack(v10.Handle, 80, 16)
+	ui.NewSeparator(0, 0, 80, rowV.Handle, ui.WithSeparatorVertical())
+	xui.ItemWidth(ui.NewTabs(0, 0, 108, rowV.Handle, []string{"账户", "密码", "通知"}, ui.WithTabsVertical()), 108)
+	colV := xui.VStackWeight(rowV.Handle, 1, 10)
+	xui.ItemFill(ui.NewComboBox(0, 0, 0, 0, colV.Handle,
+		[]string{"开发环境", "测试环境", "生产环境"},
+		ui.WithComboSize(ui.ComboSizeSm), ui.WithComboPlaceholder("sm 尺寸")))
+	rowSt := xui.HStack(colV.Handle, 24, 8)
+	stSl := ui.NewSlider(0, 0, 220, 0, rowSt.Handle,
+		ui.WithSliderRange(0, 10), ui.WithSliderStep(1))
+	xui.ItemWidth(stSl, 238) // 220 + 2×9(滑块两端 ring 的绘制余量)
+	stVal := ui.NewLabel(0, 0, 32, 24, "3", rowSt.Handle).SetMuted()
+	xui.ItemWidth(stVal, 32)
+	stSl.SetValue(3)
+	stSl.OnChange(func(v float64) { stVal.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
+
 	// ===== 页 4: 数据(表格) =====
 	card6 := ui.NewCard(24, 0, 728, 320, pData.Handle)
 	v6 := card6.ContentStack(14)

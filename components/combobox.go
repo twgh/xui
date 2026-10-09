@@ -16,15 +16,26 @@ import (
 // 因此只在弹出时做主题上色(见 stylePopup)。
 //
 // 与 shadcn select.tsx(radix-nova) 对齐:
-//   - 触发区: h-8 rounded-lg border-input bg-background, 左侧 px-2.5 文字, 右侧 chevron-down 图标;
-//   - 未选择时显示占位符(muted 色), 且箭头半透明;
+//   - 触发区: size=default h-8 rounded-lg / size=sm h-7, border-input bg-transparent
+//     (放卡上 = Card 色), 左侧 px-2.5 文字, 右侧 chevron-down 图标;
+//   - 未选择时显示占位符(muted 色);
 //   - focus-visible: 边框变 Ring + ring-3 ring-ring/50(键盘焦点才显示);
 //   - 禁用 opacity-50。
 type ComboBox struct {
 	*widget.ComboBox
 	placeholder string
 	cb          func(index int32)
+	size        ComboBoxSize
 }
+
+// ComboBoxSize 触发区尺寸预设, 对应 shadcn select.tsx 的 size
+// (data-[size=default]:h-8 / data-[size=sm]:h-7)。
+type ComboBoxSize int
+
+const (
+	ComboSizeDefault ComboBoxSize = iota // 高 32
+	ComboSizeSm                          // 高 28, 圆角 min(--radius-md, 10)
+)
 
 // ComboBoxOption 下拉框配置项。
 type ComboBoxOption func(*ComboBox)
@@ -34,19 +45,29 @@ func WithComboPlaceholder(s string) ComboBoxOption {
 	return func(c *ComboBox) { c.placeholder = s }
 }
 
+// WithComboSize 设置触发区尺寸预设(sm = h-7 = 28)。
+func WithComboSize(s ComboBoxSize) ComboBoxOption {
+	return func(c *ComboBox) { c.size = s }
+}
+
 // NewComboBox 创建下拉框。cy 传 0 时使用默认高度 32; items 是初始选项。
 func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboBoxOption) *ComboBox {
+	c := &ComboBox{}
+	for _, o := range opts { // 先应用配置: 尺寸预设决定默认高度
+		o(c)
+	}
 	if cy <= 0 {
-		cy = 32
+		if c.size == ComboSizeSm {
+			cy = 28
+		} else {
+			cy = 32
+		}
 	}
 	cb := widget.NewComboBox(x, y, cx, cy, hParent)
 	if cb == nil {
 		return nil
 	}
-	c := &ComboBox{ComboBox: cb}
-	for _, o := range opts {
-		o(c)
-	}
+	c.ComboBox = cb
 
 	// 组合框必须有适配器表才能装数据(没有它 AddItemText 会报"句柄无效")
 	cb.CreateAdapter()
@@ -145,12 +166,21 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		bg = t.Input.WithAlpha(128) // disabled:bg-input/50
 		border = xui.None
 	}
+	// 圆角: default = rounded-lg(RadiusLg); sm = rounded-[min(--radius-md,10px)]
+	radius := t.RadiusLg()
+	if c.size == ComboSizeSm {
+		if md := t.RadiusMd(); md < 10 {
+			radius = md
+		} else {
+			radius = 10
+		}
+	}
 	if st.Focused && !st.Disabled && xui.FocusedByKeyboard() {
 		// focus-visible:border-ring + ring-3 ring-ring/50
-		p.FocusFrame(t.Ring, bg, t.RadiusLg())
+		p.FocusFrame(t.Ring, bg, radius)
 	} else {
-		p.FillRound(&p.Rc, bg, t.RadiusLg())
-		p.StrokeRound(&p.Rc, border, t.RadiusLg(), 1)
+		p.FillRound(&p.Rc, bg, radius)
+		p.StrokeRound(&p.Rc, border, radius, 1)
 	}
 
 	// 文字交给原生绘制(自己再画一遍会与原生文字重叠成重影), 这里只按状态同步颜色。

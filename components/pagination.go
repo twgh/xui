@@ -3,7 +3,6 @@ package ui
 import (
 	"strconv"
 
-	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -361,13 +360,7 @@ func (g *Pagination) refresh() {
 // 所以量宽必须给足 width 并加 NoWrap, 此时 CX 就是真实逻辑宽度(汉字 15px/字 @14px 字号),
 // 不需要任何倍率校正。
 func pagTextWidth(text string, hFont int) int32 {
-	if text == "" || hFont == 0 {
-		return 0
-	}
-	var sz xc.SIZE
-	app.GetTextShowRect(text, -1, hFont,
-		xcc.TextAlignFlag_Left|xcc.TextFormatFlag_NoWrap, 1000, &sz)
-	return sz.CX
+	return xui.TextWidth(text, hFont) // 量宽口径收在运行时(见 xui/text.go)
 }
 
 // pagItemKind 是条目类型。

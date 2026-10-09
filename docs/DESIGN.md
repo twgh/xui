@@ -281,6 +281,28 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |
 | **字体单位**: xcgui 字体 size 是 pt 不是 px, FontHandle 统一按 px×0.75 换算(14px→11pt); 之前全局文字放大 1.33× | font.go(见第八节 31) |
 
+### 变体/尺寸与上游的映射、已知差异
+
+对照 `shadcn/src/components/ui/*.tsx` 逐个核过一轮(2026-10-09)。**令牌名**要求与 CSS 变量逐字符对应(见 3.1),**组件变体名**是 Go API、不参与批量转译, 允许更直白, 但差异必须记在这里:
+
+| 组件 | 映射 / 实现 | 说明 |
+|---|---|---|
+| Button variant | `ButtonPrimary` = shadcn 的 `default`(用 primary 色), 另有 `ButtonDefault` 别名 | 上游把这个变体叫 `default`; 其余 secondary/outline/ghost/destructive/link 同名 |
+| Button size | `ButtonSizeXs/Sm/Default/Lg` = h-6/h-7/h-8/h-9(24/28/32/36); `ButtonSizeIcon/IconXs/IconSm/IconLg` = size-6/7/8/9 方形 | 与上游 8 档一一对应(像素实测吻合); 方形档 cx 传 0 即用预设边长 |
+| Badge variant | default/secondary/outline/destructive/ghost/link 六档齐全 | 悬停样式恒生效(**shadcn 写作 `[a]:hover:*`, 只有包在链接里才生效**; Go 侧没有链接概念) |
+| Badge 悬停 | `ghost` = hover 出 bg-muted, `link` = hover 加下划线 | 下划线手绘(无下划线标志位, 见下方"下划线") |
+| Card | `WithCardSize(CardSizeSm)` = `--card-spacing` 4→3(16→12) | 标题字号上游是 `text-base` + `font-medium`, 中文下 500 回落常规 → `NewCardTitle` 用 16 常规(不是粗体); sm 卡片标题自己 `SetFontSize(14)` |
+| Separator | `WithSeparatorVertical()` 支持垂直 | 上游 `data-vertical:w-px` |
+| Tabs | `WithTabsVertical()` 支持垂直(标签堆叠、左对齐、指示条在右侧) | 上游 `group-data-vertical/tabs:*` |
+| Slider | `WithSliderRange(min,max)` / `WithSliderStep(step)` | 对应 radix 的 min/max/step; 默认仍是 0~100 连续 |
+| ComboBox 触发区 | `WithComboSize(ComboSizeSm)` = h-7 + `rounded-[min(--radius-md,10px)]` | 对应 select.tsx 的 `data-[size=sm]` |
+| Menu | 缺上游的 `inset` prop(带图标条目的左缩进) | 未实现 |
+| Pagination | **本项目扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
+| 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
+| 未实现 | Button 的 `aria-invalid` 态(表单校验场景)、`CardAction` | — |
+
+**下划线(Button link / Badge link)**: xcgui 没有下划线文本标志位(`TextFormatFlag_` 里没有), 只能手绘: 宽度用 `xui.TextWidth` 量, y = 行盒中心 + 0.3em + 4px(`underline-offset-4`), 1px 线(`button.go` / `separator.go`)。实测(150% DPI): "Link" 下方 1 条 43 物理像素宽的横线, 紧贴文字下沿。
+
 ---
 
 ## 五、CLI 与 registry
@@ -341,7 +363,7 @@ registry.json 条目(shadcn 同构格式):
 7. **Edit 自绘**:原生背景需 `EnableBkTransparent` 处理,BeautifyEdit 已验证。
 8. **字体**:主题携带字体方案(微软雅黑等中文环境默认字体),font 包管理。
 9. **拷贝模式的代价**:组件 bug 不会随依赖自动修复 → 用 `xui update` + "组件文件写薄"缓解。
-10. **元素绘制裁剪**:绘制被裁剪在元素自身客户区内,描边沿路径居中(贴边描边外半侧被裁),外扩式焦点环完全不可见 → 焦点框画在边框内侧(填充式,见 FocusFrame),需完整可见的描边请内缩。`XDraw_SetClipRect` 放宽裁剪区**无法突破**这层元素裁剪(实测:按下位移把底边推出 3px 后仍被裁掉,壳体高度少 3px)——要做"整体位移"这类越界绘制,应给元素预留像素(见 `button.go` 的 `pressShift`)。
+10. **元素绘制裁剪**:绘制被裁剪在元素自身客户区内,描边沿路径居中(贴边描边外半侧被裁),外扩式焦点环完全不可见 → 焦点框画在边框内侧(填充式,见 FocusFrame),需完整可见的描边请内缩。`XDraw_SetClipRect` 放宽裁剪区**无法突破**这层元素裁剪(实测:按下位移把底边推出 3px 后仍被裁掉,壳体高度少 3px)——要做"整体位移"这类越界绘制,应给元素预留像素(见 `button.go` 的 `pressShift`)。**1px 细条元素(分隔线)不要用画线**:线宽沿路径居中,画在元素边缘会有一半落在客户区外被裁掉 —— 150% DPI 下实测只剩 1 个物理像素、且整条比 Border 令牌淡一档;正确做法是直接 `p.FillRound(&p.Rc, t.Border, 0)` 填满整条(2026-10-09 修, `separator.go`)。
 11. **实心按钮 hover 用透明度**:shadcn 的 `hover:bg-primary/80` 语义用 `WithAlpha` 实现,比 lighten/darken 在近黑/近白主题色上有可感知变化,且明暗主题行为一致。
 12. **cy=0 的控件高度就是 0**:xcgui 不会按内容自适应,高度为 0 的控件直接不渲染(探针实证)→ 组件构造函数对 cy<=0 一律补默认高度。
 13. **窗口背景必须用 Leave 状态注册**:xcgui 的 `XBkM_AddFill` 按"当前组合状态"选填充,窗口绘制时处于 `Window_State_Flag_Leave`,用 `Element_State_Flag_Nothing(0)` 注册的填充永远不被选中;且需先 `XBkM_Clear` 清默认填充(paint 事件 / BkManagerEx / SetBkInfo XML 均无法改变窗口背景,探针实证)。已封装为 `xui.BindWindowBackground`。
