@@ -7,14 +7,14 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-08)
+## 当前状态(截至 2026-10-09)
 
 **阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(P3 仅剩"CLI 远程 registry"与"native 弹层进场动画"两项未定);P4(文档站、主题画廊)未开始。路线图见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
 - ✅ **P0 运行时**:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter、字体缓存(单位坑见 31)、focus-visible 焦点来源跟踪(16)
-- ✅ **P1 组件**:Button(5 变体×3 尺寸)、Checkbox、Radio、Input、Label、Separator+Badge、Card
+- ✅ **P1 组件**:Button(6 变体×8 尺寸档)、Checkbox、Radio、Input、Label、Separator+Badge、Card
 - ✅ **P2 组件**:Switch(2 尺寸)、Progress、Slider、Tabs(default/line)、Tooltip、ComboBox、图标系统
 - ✅ **Slider 渲染缺陷彻底修复**:悬浮/拖动冒方块、两端 ring 被裁、灰环残留(根因与结论见 25/26/27/28)
 - ✅ **CLI**:`init / add / list`(registry.json 驱动,组件源码拷入用户项目);`update / --all` **未实现**
@@ -32,12 +32,14 @@
 - ✅ **backdrop-blur-xs**(2026-10-07):抓窗快照 + Go 盒式模糊 + BkM 图片填充;改物理像素管线后全屏弹窗 160ms → 61ms(47)
 - ✅ **Pagination + demo 图标页改造**(2026-10-08):恒定 7 槽位折叠, 搜索 / 翻页 / 悬浮 Tooltip / 点击复制图标名(53)
 - ✅ **图标系统**:抗锯齿改**直通 D2D 几何填充**(`d2dicon.go`);**lucide 资源预处理**(2130 个图标, `icons/` 子包)—— 原理 / 坑 / 性能见 43/44,速览见下方「图标系统」
+- ✅ **与 shadcn 逐条核对变体/尺寸并补齐**(2026-10-09):核对本地 18 个 tsx 的 cva variants/props 后补齐 —— Button 补 Link 变体 + 8 档尺寸(xs/sm/default/lg + 4 个方形图标档)、Badge 补 ghost/link、Card 补 sm 尺寸与说明/页脚、ComboBox 补 sm 触发区、Slider 补 min/max/step、Separator/Tabs 补纵向取向;像素实测按钮高度 24/28/32/36 与 shadcn h-6/7/8/9 完全吻合。映射与**仍然存在的差异**(aria-invalid / CardAction / Menu inset / chart·sidebar 令牌)记在 DESIGN 第四节末「变体/尺寸与上游的映射、已知差异」;1px 细条的绘制结论见 10
 
 ## 待办
 
 - ⬜ **P3 剩余**:CLI 远程 registry;menu/combobox 弹层的进场动画(native 弹窗淡入不可行, 只能做位置滑动, 待定)
 - ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
-- ⬜ Button Link 变体(下划线)未实现;text 手绘后 Input 仍是原生文字
+- ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 的 `inset`、`--chart-1..5`/`--sidebar-*` 令牌未建模
+- ⬜ text 手绘后 Input 仍是原生文字
 - ⬜ CLI `update / --all` 未实现(见上)
 
 ## 仓库结构
@@ -112,7 +114,8 @@ go test ./...
 | 当前进度 / 待办 / 命令 / 仓库结构 / 验证工作流 | **本文** |
 | 架构原理、分层边界、主题令牌、组件解剖 | DESIGN.md 一~四节 |
 | **交互语义(改交互前必看)** | DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」+ 本地 shadcn 源码 |
-| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~53) |
+| **我们与 shadcn 的差异 / 变体尺寸映射** | DESIGN.md 第四节末「变体/尺寸与上游的映射、已知差异」 |
+| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~54) |
 | 用到的 xcgui API 清单 | DESIGN.md 第九节 |
 | agent 会话硬规则 | AGENTS.md |
 | 面向用户的安装与用法 | README.md |
