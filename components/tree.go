@@ -306,11 +306,11 @@ func (t *Tree) onDrawItem(hEle, hDraw int, pItem *xc.Tree_Item_, pbHandled *bool
 		w2, h2 := treeChevronW/2, treeChevronH/2
 		if pItem.BExpand {
 			// ˅ = 收起字形顺时针转 90°, 宽高互换(宽 H、高 W), 否则会画成细长的竖箭头
-			p.Line(cx-h2, cy-w2, cx, cy+w2, th.MutedFore, 2) // ˅ 左斜边
-			p.Line(cx, cy+w2, cx+h2, cy-w2, th.MutedFore, 2) // ˅ 右斜边
+			p.Line(cx-h2, cy-w2, cx, cy+w2, th.MutedForeground, 2) // ˅ 左斜边
+			p.Line(cx, cy+w2, cx+h2, cy-w2, th.MutedForeground, 2) // ˅ 右斜边
 		} else {
-			p.Line(cx-w2, cy-h2, cx+w2, cy, th.MutedFore, 2) // > 上斜边
-			p.Line(cx+w2, cy, cx-w2, cy+h2, th.MutedFore, 2) // > 下斜边
+			p.Line(cx-w2, cy-h2, cx+w2, cy, th.MutedForeground, 2) // > 上斜边
+			p.Line(cx+w2, cy, cx-w2, cy+h2, th.MutedForeground, 2) // > 下斜边
 		}
 	}
 	return 0
@@ -336,7 +336,7 @@ func (t *Tree) styleScrollBars(th *xui.Theme) {
 	if sl := sb.GetButtonSliderObj(); sl != nil && sl.Handle > 0 {
 		sl.ClearBkInfo()
 		sl.AddBkFill(xcc.Element_State_Flag_Leave, uint32(th.Border))
-		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(th.MutedFore))
-		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(th.MutedFore))
+		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(th.MutedForeground))
+		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(th.MutedForeground))
 	}
 }

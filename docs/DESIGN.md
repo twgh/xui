@@ -75,20 +75,24 @@ type Theme struct {
 
     Background, Foreground Color // 窗口底色 / 默认正文文字
 
-    Card, CardFore       Color
-    Popover, PopoverFore Color // 弹出层(菜单、下拉)底色
+    Card, CardForeground       Color
+    Popover, PopoverForeground Color // 弹出层(菜单、下拉)底色
 
-    Primary, PrimaryFore         Color // 主操作色 / 其上的文字
-    Secondary, SecondaryFore     Color // 次要填充
-    Muted, MutedFore             Color // 弱化填充(输入框底、禁用底) / 弱化文字(说明、占位符)
-    Accent, AccentFore           Color // 悬停高亮
-    Destructive, DestructiveFore Color // 破坏性操作
+    Primary, PrimaryForeground         Color // 主操作色 / 其上的文字
+    Secondary, SecondaryForeground     Color // 次要填充
+    Muted, MutedForeground             Color // 弱化填充(输入框底、禁用底) / 弱化文字(说明、占位符)
+    Accent, AccentForeground           Color // 悬停高亮
+    Destructive, DestructiveForeground Color // 破坏性操作
 
     Border, Input, Ring Color // Input 通常与 Border 相同; Ring = 焦点环
     Radius              int32 // 基准圆角 px
     FontDefault, FontMono FontSpec
 }
 ```
+
+> **字段命名约定(2026-10-09 定)**: 字段名 = shadcn CSS 变量的**直接 CamelCase, 不做缩写** —— `--accent-foreground` → `AccentForeground`。早前实现曾缩写成 `AccentFore`, 已统一(否则批量转译社区主题要带一张特例表)。
+> 两处与上游的差异要知道:① `DestructiveForeground` 是本项目的**扩展令牌** —— nova 预设已删除 `--destructive-foreground`(破坏性按钮直接写死白字), 我们保留它以便组件取"破坏色上的文字"; ② shadcn 的 `--chart-1..5` 与 `--sidebar-*` **本项目未建模**, 转译社区主题时忽略(将来做图表/侧栏组件再补)。
+> 基准圆角与 shadcn 一致: `--radius` 在 nova 预设下 = 0.625rem = 10px, 对应 `Theme.Radius = 10`。
 
 Color 封装 uint32,提供 `xui.Hex("#fafafa")`(底层 `xc.HexRGB2RGBA`)。主题文件长得和 CSS 一样,任何 shadcn 社区主题都能机械转译成 Go(`init` 生成的 `ui/theme.go` 默认取内置主题的**副本** —— `light = *xui.Light()`, 见 `cmd/xui/main.go` 的 `themeTemplate`):
 
@@ -351,7 +355,7 @@ registry.json 条目(shadcn 同构格式):
 18. **`XWnd_SetWindowPos` 吃物理像素**:框架内部坐标是逻辑像素(窗口创建时自动按 DPI 缩放),但窗口定位/尺寸透传给 Win32 → 必须自己乘 `dpi/96`,否则窗口会跑到 1/scale 的位置(实测 144 DPI 下 449 变成 299)。自绘提示窗(Tooltip)踩过这个坑。
 19. **原生 ComboBox 必须先 `CreateAdapter`**:否则 `AddItemText` / `GetCount` 会让炫彩弹"XAdTable_GetCountRow 中,输入句柄可能无效[0x0]"的错误框,并阻塞后续调用。
 20. **SliderBar 的滑块几何**:pos→滑块按钮是 `[0, W - buttonW]` 线性映射(实测 pos=0/25/50/100 → 0/47/94/188, 宽 200 时)。自绘时直接读 `XEle_GetRect(thumb)` 拿滑块矩形,与拖动行为严格一致;滑块外扩 3px 的焦点环要画在**滑动条**的 paint 里(滑块自身客户区只有 12x12,画在自己回调里会被裁)。
-21. **原生滚动条要手动收敛**:弹层 ListBox 的滚动条默认是系统配色(与主题完全不搭)。做法:`lb.SetScrollBarSize(8)` + `lb.EnableAutoShowScrollBar(true)` + `sb.ShowButton(false)`(去掉上下箭头)+ `sb.SetSliderPadding(2)` + 轨道透明,滑块用 `AddBkFill(Leave/Stay, Border/MutedFore)` 上色;这些背景对象在主题切换时要 `ClearBkInfo()` 后再重新添加(否则累积超过 20 个炫彩会报错)。
+21. **原生滚动条要手动收敛**:弹层 ListBox 的滚动条默认是系统配色(与主题完全不搭)。做法:`lb.SetScrollBarSize(8)` + `lb.EnableAutoShowScrollBar(true)` + `sb.ShowButton(false)`(去掉上下箭头)+ `sb.SetSliderPadding(2)` + 轨道透明,滑块用 `AddBkFill(Leave/Stay, Border/MutedForeground)` 上色;这些背景对象在主题切换时要 `ClearBkInfo()` 后再重新添加(否则累积超过 20 个炫彩会报错)。
 22. **SliderBar 的滑块按钮在 hover 时会冒方块**:原生 Button 的四态会画边框/焦点矩形,`EnableBkTransparent(true)` + `EnableDrawBorder(false)` + `EnableDrawFocus(false)` 三件套只能压住一部分——Focus 态的方块三件套+`ClearBkInfo()`+空 paint 回调都压不住, 最终结论见第 25 条(弃用原生按钮, 纯自绘)。
 23. **原生绘制的文字不要自己再画一遍**:ComboBox 这类由原生绘制文本的控件,在 paint 里再画一次文字会出现重影(错位的一层) → 文本交给原生,只在 paint 里同步颜色(`SetTextColor` / `SetDefaultTextColor`),`*pbHandled = true` 只能拦住"绘制回调"本身,拦不住原生文本。
 24. **异型透明窗口可以做到真透明,且背景对象支持圆角**(旧结论"背景管理器没有圆角矩形对象,开了 Window_Transparent_Shaped 整窗什么都不画"是错的,已由探针推翻):
@@ -481,7 +485,7 @@ registry.json 条目(shadcn 同构格式):
     - `SetDrawRowBkFlags(Nothing)` 只关掉原生行背景/分割线**绘制**, **不影响**行悬浮 `List_Item_State_Stay` 的状态跟踪与重绘触发(实测鼠标移入行即触发重绘并上报 state=1);
     - 表体透明用 `EnableBkTransparent(true)`: 元素未绘制区域**真的透出宿主底色**(与 ComboBox 弹层的"白底回退"不同); 表头是独立子元素, 要另外 `GetHeaderHELE()` → `EnableBkTransparent` + `EnableDrawBorder/Focus(false)`, 否则表头保留默认灰底;
     - 行底色/行边框/表头底**全部在绘制回调里实时取令牌** → 换肤零成本(不需要 OnThemeChange); 只有"必须下发给原生对象"的东西才要重刷 —— 形状文本(单元格/表头)的字色字体、滚动条的背景对象 → 用一个 `applyTheme` 统一处理, 并挂 `xui.OnThemeChange`;
-    - 滚动条只能走背景管理器(同第 21 条): `GetScrollBarVObj()` + `ShowButton(false)` + `SetSliderPadding(2)` + `EnableBkTransparent(true)` + ClearBkInfo/AddBkFill(Leave/Stay 用表面色, 滑块用 Border/MutedFore); 换肤时先 `ClearBkInfo` 再重加不会累积;
+    - 滚动条只能走背景管理器(同第 21 条): `GetScrollBarVObj()` + `ShowButton(false)` + `SetSliderPadding(2)` + `EnableBkTransparent(true)` + ClearBkInfo/AddBkFill(Leave/Stay 用表面色, 滑块用 Border/MutedForeground); 换肤时先 `ClearBkInfo` 再重加不会累积;
     - 纵向滚动条会占掉内容宽度: 自适应列(占满剩余宽度)要让出 ~12px, 否则最后一列被滚动条盖住; 且滚动条显隐切换时要重算列宽 → 按"是否需要滚动"翻转时 `SetColumnWidth` 重排;
     - 列宽: 原生没有权重/百分比列, 自适应列要自己算 `元素宽度 − 2×内缩 − (需要滚动条?12:0) − 固定列宽之和`;
     - 滚动条尺寸 `SetScrollBarSize(8)` + `SetSliderPadding(2)` → 滑块实际只有 4 逻辑像素宽, 观感与 shadcn 的细滚动条一致;

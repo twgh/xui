@@ -88,13 +88,13 @@ func (b *Badge) WithVariant(v BadgeVariant) *Badge {
 func (b *Badge) resolve(t *xui.Theme) (bg, border, fore xui.Color) {
 	switch b.variant {
 	case BadgeSecondary:
-		return t.Secondary, xui.None, t.SecondaryFore
+		return t.Secondary, xui.None, t.SecondaryForeground
 	case BadgeOutline:
 		return xui.None, t.Border, t.Foreground
 	case BadgeDestructive:
 		return t.Destructive.WithAlpha(26), xui.None, t.Destructive
 	default:
-		return t.Primary, xui.None, t.PrimaryFore
+		return t.Primary, xui.None, t.PrimaryForeground
 	}
 }
 

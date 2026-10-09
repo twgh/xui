@@ -68,7 +68,7 @@ func (i *Input) applyTheme(t *xui.Theme) {
 	i.SetTextColor(uint32(t.Foreground))
 	if i.placeholder != "" {
 		i.SetDefaultText(i.placeholder)
-		i.SetDefaultTextColor(uint32(t.MutedFore))
+		i.SetDefaultTextColor(uint32(t.MutedForeground))
 	}
 	i.SetCaretColor(uint32(t.Primary))
 	i.Redraw(false)

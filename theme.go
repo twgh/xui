@@ -22,21 +22,21 @@ type Theme struct {
 
 	// 卡片 / 弹层
 	Card        Color
-	CardFore    Color
+	CardForeground    Color
 	Popover     Color // 弹出层(菜单、下拉)底色
-	PopoverFore Color
+	PopoverForeground Color
 
 	// 语义色
 	Primary         Color // 主操作色
-	PrimaryFore     Color // 主操作色上的文字
+	PrimaryForeground     Color // 主操作色上的文字
 	Secondary       Color // 次要填充
-	SecondaryFore   Color
+	SecondaryForeground   Color
 	Muted           Color // 弱化填充(输入框底、禁用底)
-	MutedFore       Color // 弱化文字(说明、占位符)
+	MutedForeground       Color // 弱化文字(说明、占位符)
 	Accent          Color // 悬停高亮
-	AccentFore      Color
+	AccentForeground      Color
 	Destructive     Color // 破坏性操作
-	DestructiveFore Color
+	DestructiveForeground Color
 
 	// 边框与焦点环
 	Border Color

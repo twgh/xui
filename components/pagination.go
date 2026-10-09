@@ -420,7 +420,7 @@ func (g *Pagination) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		switch it.kind {
 		case pagEllipsis:
 			// size-8 + more-horizontal(muted-foreground), 无悬停反馈
-			g.drawIcon(p, icons.IconMoreHorizontal, shell, t.MutedFore)
+			g.drawIcon(p, icons.IconMoreHorizontal, shell, t.MutedForeground)
 
 		case pagPage:
 			if it.page == g.page {

@@ -94,12 +94,12 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	case st.Disabled: // disabled:opacity-50 —— 组级透明, 壳体变淡, 勾保持原色(与按钮文字同理)
 		a := byte(128)
 		if checked {
-			fill, border, check = t.Primary.WithAlpha(a), t.Primary.WithAlpha(a), t.PrimaryFore
+			fill, border, check = t.Primary.WithAlpha(a), t.Primary.WithAlpha(a), t.PrimaryForeground
 		} else {
 			fill, border, check = t.Background.WithAlpha(a), t.Input.WithAlpha(a), xui.None
 		}
 	case checked: // data-checked:bg-primary border-primary
-		fill, border, check = t.Primary, t.Primary, t.PrimaryFore
+		fill, border, check = t.Primary, t.Primary, t.PrimaryForeground
 	default: // border-input
 		fill, border = t.Background, t.Input
 	}
@@ -123,7 +123,7 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	fore := t.Foreground
 	if st.Disabled {
-		fore = t.MutedFore
+		fore = t.MutedForeground
 	}
 	p.Text(c.GetText(), &textRC, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	return 0

@@ -440,7 +440,7 @@ func (t *Table) styleScrollBars(th *xui.Theme) {
 	if sl := sb.GetButtonSliderObj(); sl != nil && sl.Handle > 0 {
 		sl.ClearBkInfo()
 		sl.AddBkFill(xcc.Element_State_Flag_Leave, uint32(th.Border))
-		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(th.MutedFore))
-		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(th.MutedFore))
+		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(th.MutedForeground))
+		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(th.MutedForeground))
 	}
 }

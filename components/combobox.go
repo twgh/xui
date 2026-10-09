@@ -154,14 +154,14 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 
 	// 文字交给原生绘制(自己再画一遍会与原生文字重叠成重影), 这里只按状态同步颜色。
-	// 未选中时原生显示 defaultText(占位符), 用 MutedFore 色。
+	// 未选中时原生显示 defaultText(占位符), 用 MutedForeground 色。
 	// 禁用是组级透明(disabled:opacity-50): 文字核心保持原色, 只有壳体变淡。
 	fore := t.Foreground
 	if c.GetSelItem() < 0 {
-		fore = t.MutedFore
+		fore = t.MutedForeground
 	}
 	c.SetTextColor(uint32(fore))
-	c.SetDefaultTextColor(uint32(t.MutedFore))
+	c.SetDefaultTextColor(uint32(t.MutedForeground))
 
 	// 右侧 chevron-down: select.tsx 用 text-muted-foreground(全色, 不随状态加透明)
 	icon := xc.RECT{
@@ -170,7 +170,7 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		Right:  p.Rc.Right - 10,
 		Bottom: p.Rc.Top + (p.H()-16)/2 + 16,
 	}
-	p.Icon(icons.IconChevronDown, &icon, t.MutedFore, 2)
+	p.Icon(icons.IconChevronDown, &icon, t.MutedForeground, 2)
 	return 0
 }
 
@@ -314,7 +314,7 @@ func styleComboPopup(hCombo, hWindow, hListBox int) {
 			return 0
 		}
 		if h := lb.GetTemplateObject(pItem.Index, 1); h != 0 {
-			xc.XShapeText_SetTextColor(h, uint32(xui.Current().PopoverFore))
+			xc.XShapeText_SetTextColor(h, uint32(xui.Current().PopoverForeground))
 			if f := xui.FontHandle(xui.Current().FontDefault); f != 0 {
 				xc.XShapeText_SetFont(h, f)
 			}
@@ -418,7 +418,7 @@ func comboPopupDrawItem(hEle int, hDraw int, pItem *xc.ListBox_Item_, pbHandled 
 			Right:  rc.Right - 8,
 			Bottom: rc.Top + (rc.Bottom-rc.Top+16)/2,
 		}
-		p.Icon(icons.IconCheck, &icon, t.PopoverFore, 2)
+		p.Icon(icons.IconCheck, &icon, t.PopoverForeground, 2)
 	}
 	return 0
 }
@@ -437,7 +437,7 @@ func styleComboScrollBar(sb *widget.ScrollBar, t *xui.Theme) {
 	if sl := sb.GetButtonSliderObj(); sl != nil && sl.Handle > 0 {
 		sl.ClearBkInfo()
 		sl.AddBkFill(xcc.Element_State_Flag_Leave, uint32(t.Border))
-		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(t.MutedFore))
-		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(t.MutedFore))
+		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(t.MutedForeground))
+		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(t.MutedForeground))
 	}
 }

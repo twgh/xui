@@ -196,7 +196,7 @@ var dark = *xui.Dark()
 // 自定义示例(改字段即可, 不必重写整个结构体):
 //	func init() {
 //		light.Primary = xui.Hex("#2563eb")
-//		light.PrimaryFore = xui.Hex("#ffffff")
+//		light.PrimaryForeground = xui.Hex("#ffffff")
 //		light.Radius = 8
 //	}
 `

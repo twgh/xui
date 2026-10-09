@@ -173,9 +173,9 @@ func (b *Button) textColor(t *xui.Theme, st xui.State) xui.Color {
 	// 本身加 50% alpha 则只有 194, 明显偏暗)。变淡的只是壳体, 文字保持原色。
 	switch b.variant {
 	case ButtonPrimary:
-		return t.PrimaryFore
+		return t.PrimaryForeground
 	case ButtonSecondary:
-		return t.SecondaryFore
+		return t.SecondaryForeground
 	case ButtonDestructive:
 		return t.Destructive
 	default: // Outline / Ghost

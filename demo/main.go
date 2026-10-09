@@ -98,7 +98,7 @@ func main() {
 		}); f != 0 {
 			p.Draw.SetFont(f)
 		}
-		p.TextCenter("x", t.PrimaryFore)
+		p.TextCenter("x", t.PrimaryForeground)
 		return 0
 	})
 	logo.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, 18)

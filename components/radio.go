@@ -92,13 +92,13 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	var fill, border, dot xui.Color
 	switch {
 	case st.Disabled && checked:
-		fill, border, dot = t.Primary.ScaleAlpha(0.5), t.Primary.ScaleAlpha(0.5), t.PrimaryFore.ScaleAlpha(0.5)
+		fill, border, dot = t.Primary.ScaleAlpha(0.5), t.Primary.ScaleAlpha(0.5), t.PrimaryForeground.ScaleAlpha(0.5)
 	case st.Disabled:
 		// 禁用 = 上述颜色再 ×50%: 注意是"乘"不是覆盖(暗色 input 自带 15% alpha,
 		// 覆盖成 50% 会画出一个亮的实心灰盘)
 		fill, border, dot = idleFill.ScaleAlpha(0.5), t.Input.ScaleAlpha(0.5), t.Input.ScaleAlpha(0.5)
 	case checked:
-		fill, border, dot = t.Primary, t.Primary, t.PrimaryFore
+		fill, border, dot = t.Primary, t.Primary, t.PrimaryForeground
 	default:
 		fill, border, dot = idleFill, t.Input, t.Input
 	}

@@ -165,7 +165,7 @@ func (s *Switch) thumbColor(t *xui.Theme, checked bool) xui.Color {
 		return t.Background
 	}
 	if checked {
-		return t.PrimaryFore
+		return t.PrimaryForeground
 	}
 	return t.Foreground
 }

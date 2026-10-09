@@ -378,7 +378,7 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 	//   destructive: text-destructive, hot: bg-destructive/10(dark /20), 文字不变
 	//   disabled: opacity-50(组级透明), 不参与高亮
 	//   Label: text-xs muted, 永不高亮(原生已置禁用)
-	fore := t.PopoverFore
+	fore := t.PopoverForeground
 	hotBg := t.Accent
 	isDestructive := it != nil && it.destructive
 	if isDestructive {
@@ -399,7 +399,7 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 	if hv > 0 {
 		p.FillRound(&rc, hotBg.ScaleAlpha(hv), t.RadiusSm())
 		if !isDestructive {
-			fore = xui.Fade(fore, t.AccentFore, hv)
+			fore = xui.Fade(fore, t.AccentForeground, hv)
 		}
 	}
 
@@ -419,7 +419,7 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 			Family: t.FontDefault.Family,
 			Size:   t.FontDefault.Size - 2, // text-xs
 		}))
-		d.SetBrushColor(uint32(t.MutedFore))
+		d.SetBrushColor(uint32(t.MutedForeground))
 	} else {
 		d.SetFont(xui.FontHandle(t.FontDefault))
 		d.SetBrushColor(uint32(fore))
@@ -429,9 +429,9 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 
 	// 快捷键: 右对齐 text-xs muted(hot 时跟随 accent-foreground)
 	if shortcut != "" {
-		sc := t.MutedFore
+		sc := t.MutedForeground
 		if hv > 0 {
-			sc = xui.Fade(sc, t.AccentFore, hv)
+			sc = xui.Fade(sc, t.AccentForeground, hv)
 		}
 		if disabled {
 			sc = sc.WithAlpha(128)

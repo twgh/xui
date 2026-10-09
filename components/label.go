@@ -99,7 +99,7 @@ func (l *Label) applyTheme(t *xui.Theme) {
 		l.SetFont(h)
 	}
 	if l.muted {
-		l.Button.SetTextColor(uint32(t.MutedFore))
+		l.Button.SetTextColor(uint32(t.MutedForeground))
 	} else {
 		l.Button.SetTextColor(uint32(t.Foreground))
 	}
