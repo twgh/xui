@@ -1,24 +1,25 @@
 # AGENTS.md — xui 项目会话规则
 
-shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。当前 P0 运行时 + P1 组件已完成并视觉验收,详见 **docs/HANDOFF.md**(交接状态)、**docs/DESIGN.md**(架构 + xcgui 踩坑清单,第八节必读)、**README.md**(用法)。
+shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。**本文件只放硬规则与"去哪查",不做内容副本**:
+
+- **docs/HANDOFF.md** — 当前进度 / 待办 / 仓库结构 / 常用命令 / 视觉验证工作流
+- **docs/DESIGN.md** — 知识库:架构原理(一~四节) + **xcgui 踩坑全集(第八节, 按编号)** + API 清单(第九节);**交互语义权威汇总在第四节末**
+- **README.md** — 面向用户的安装与用法
+- 本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn\src\components\ui\*.tsx`,令牌在 `src/index.css`)是交互语义的**唯一权威**
 
 ## 硬规则
 
-- **绘制坐标是逻辑像素**:`XEle_GetClientRect` 返回未缩放矩形,框架渲染时统一 DPI 变换;自绘**禁止**再按 DPI 预缩放
-- **组件禁止缓存颜色**:paint 回调里 `xui.Current()` 实时取令牌;需要同步原生 API 的颜色用 `xui.OnThemeChange`
-- **事件一律 `AddEvent*` 系列**(有 2000 回调上限问题);不使用背景管理器管理组件外观
-- **渲染固定 Direct2D**:`app.New(true)`,demo 是标准样板(含无图标无三键标题栏样式)
-- 修改组件交互语义前,**先读 `D:\GOProject\src\ui\shadcn\src\components\ui\*.tsx`**——本地 shadcn 参考实现是语义的唯一权威(令牌在 `src/index.css`)
+- **绘制坐标是逻辑像素**:`XEle_GetClientRect` 返回未缩放矩形,框架渲染时统一 DPI 变换;自绘**禁止**再按 DPI 预缩放(见 DESIGN 6/10)
+- **组件禁止缓存颜色**:paint 回调里 `xui.Current()` 实时取令牌;需要同步原生 API 的颜色用 `xui.OnThemeChange`(见 DESIGN 3.2)
+- **事件一律 `AddEvent*` 系列**(有 2000 回调上限问题);不用背景管理器管理组件外观(见 DESIGN 2/3)
+- **渲染固定 Direct2D**:`app.New(true)`,demo 是标准样板(含无图标无三键标题栏样式,见 DESIGN 38)
+- **改交互语义前**:先查 DESIGN 第四节末的语义汇总表,再读本地 shadcn 源码 —— 勿凭记忆改动
 
-## 交互语义速查(与 shadcn 对齐,勿凭记忆改动)
+## 运行时基建(踩过坑, 照做)
 
-hover 透明度(/80 等)、focus-visible 键盘才显示焦点框(ring-3 ring-ring/50 + 边框变 Ring 色;文本输入框点击也显示)、disabled 原色 opacity-50、active:translate-y-px 按压下沉 1px(文字需手动绘制)、destructive 软色调。焦点来源跟踪在 `focus.go`。
-
-hover 过渡(150ms cubic-bezier(0.4,0,0.2,1))一律用运行时的 `xui.Hover(hEle, 悬停中)` / `xui.HoverItem(hOwner, 索引, 悬停中)` 取值 + `xui.Fade(静止色, 悬停色, hv)` 取色(叠加层用 `ScaleAlpha(hv)`);**不要在组件里自己起定时器或缓存过渡值**(驱动/生命周期归运行时,见 DESIGN 第八节 45)。
-
-**应用初始化要 `a.SetPaintFrequency(10)`**:xcgui 默认有 **30ms 重绘节流**(`XC_SetPaintFrequency`, 这就是 hover 过渡只有约 5 帧的根因), 设 10 后实测 30.9 → 59.0 fps(见 DESIGN 第八节 46)。`XC_SetTextRenderingHint` 在 D2D 模式下是空操作, 不要用(同节)。
-
-弹层/对话框进出场用 `xui.Presence(...)` + `SetElementsAlpha/FadeWindowAlpha/SlideWindowAlpha`, **不要自己起定时器**;过渡挂宿主窗口、别挂弹层小窗;窗口 alpha 永远不精确 = 0(用 `SetWindowAlpha`/`AlphaFloor`, 0 会让 xcgui 停止合成);要 Win32 HWND 用窗口 wrapper 的 `GetHWND()`, 别拿 xcgui 窗口句柄喂 `XWidget_GetHWND`(弹模态错误框, 表现为"点了没反应")。坑见 DESIGN 第八节 47。
+- **hover 过渡**一律用运行时 `xui.Hover(hEle, 悬停中)` / `xui.HoverItem(hOwner, 索引, 悬停中)` 取值 + `xui.Fade(静止色, 悬停色, hv)` 取色(叠加层用 `ScaleAlpha(hv)`);**不要在组件里自己起定时器或缓存过渡值**(见 DESIGN 45)
+- **应用初始化 `a.SetPaintFrequency(10)`**:xcgui 默认有 30ms 重绘节流(hover 过渡只有约 5 帧的根因),设 10 后实测 30.9 → 59.0 fps。`XC_SetTextRenderingHint` 在 D2D 下是空操作,不要用(见 DESIGN 46)
+- **弹层/对话框进出场**用 `xui.Presence(...)` + `SetElementsAlpha / FadeWindowAlpha / SlideWindowAlpha`,**不要自己起定时器**;过渡挂**宿主窗口**、别挂弹层小窗;窗口 alpha 永远不精确 = 0(0 会让 xcgui 停止合成);要 Win32 HWND 用窗口 wrapper 的 `GetHWND()`,别拿 xcgui 窗口句柄喂 `XWidget_GetHWND`(弹模态错误框,表现为"点了没反应")(见 DESIGN 47)
 
 ## 常用命令
 
@@ -26,10 +27,11 @@ hover 过渡(150ms cubic-bezier(0.4,0,0.2,1))一律用运行时的 `xui.Hover(hE
 go build -ldflags="-s -w -H windowsgui" -trimpath -o demo/demo.exe ./demo && demo\demo.exe   # demo = 全组件视觉验证目标
 cd D:\GOProject\src\ui\shadcn && pnpm dev    # shadcn 参考实现, localhost:5173
 go run ./cmd/xui list                        # CLI 本地测试
+go test ./...                                # 图标解析器 + 资源完整性 + 缓动曲线
 ```
 
 ## 工作流惯例
 
-- 视觉改动必须截图放大验证:主模型有视觉就直接看 + crop 放大;像素级数值用 PIL 脚本测量,不靠目测;无视觉的模型用 vision CLI(`C:\Users\twgh\AppData\Local\agent-vision-toolkit\bin`)
+- 视觉改动必须截图放大验证:主模型有视觉就直接看 + crop 放大;像素级数值用脚本(PIL)测量,不靠目测;无视觉的模型用 vision CLI(`C:\Users\twgh\AppData\Local\agent-vision-toolkit\bin`)(完整流程见 HANDOFF)
 - 疑难渲染问题写探针程序二分定位,完事删除
-- 每次发现 xcgui 未文档化的行为,补进 docs/DESIGN.md 第八节
+- 每次发现 xcgui 未文档化的行为,补进 `docs/DESIGN.md` 第八节(新条目编号往后排;交互语义类补进第四节末的表)

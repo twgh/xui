@@ -108,7 +108,7 @@ func initProject(dir string) {
 	add([]string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card"}, dir)
 	fmt.Println("\n完成。接下来:")
 	fmt.Println("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
-	fmt.Printf("  2. 在代码中 import 目录 %s 下的组件 (包名 %s)\n", dir, filepath.Base(dir))
+	fmt.Printf("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)\n", dir)
 	fmt.Println("  3. 主题在 " + themePath + " 中, 随意修改")
 }
 
@@ -176,75 +176,28 @@ const themeTemplate = `package ui
 
 import "github.com/twgh/xui"
 
-// 这是你的主题文件 — 改这里即可全局换肤, 组件在绘制时实时读取。
-// 令牌与 shadcn-ui 的 CSS 变量一一对应, 任何 shadcn 主题都能照抄过来。
+// 这是你的主题文件 —— 改这里即可全局换肤, 组件在绘制时实时读取令牌。
+// 默认取内置主题(nova 预设 neutral)的**副本**, 逐字段改即可自定义;
+// 想从零写一份也行 —— 令牌与 shadcn-ui 的 CSS 变量一一对应, 字段表见 docs/DESIGN.md 3.1。
 
-// Active 当前使用的主题。想要暗色: Active = uiDark
+// Active 当前使用的主题。想要暗色: Active = dark
 var Active = light
 
 func init() {
-	xui.SetTheme(Active)
+	xui.SetTheme(&Active)
 }
 
-// light 亮色主题(shadcn zinc 转译)。
-var light = &xui.Theme{
-	Name:       "light",
-	Background: xui.Hex("#ffffff"),
-	Foreground: xui.Hex("#09090b"),
+// light 亮色主题(内置 xui.Light() 的副本)。
+var light = *xui.Light()
 
-	Card:        xui.Hex("#ffffff"),
-	CardFore:    xui.Hex("#09090b"),
-	Popover:     xui.Hex("#ffffff"),
-	PopoverFore: xui.Hex("#09090b"),
+// dark 暗色主题(内置 xui.Dark() 的副本)。
+var dark = *xui.Dark()
 
-	Primary:         xui.Hex("#18181b"),
-	PrimaryFore:     xui.Hex("#fafafa"),
-	Secondary:       xui.Hex("#f4f4f5"),
-	SecondaryFore:   xui.Hex("#18181b"),
-	Muted:           xui.Hex("#f4f4f5"),
-	MutedFore:       xui.Hex("#71717a"),
-	Accent:          xui.Hex("#f4f4f5"),
-	AccentFore:      xui.Hex("#18181b"),
-	Destructive:     xui.Hex("#dc2626"),
-	DestructiveFore: xui.Hex("#fafafa"),
-
-	Border: xui.Hex("#e4e4e7"),
-	Input:  xui.Hex("#e4e4e7"),
-	Ring:   xui.Hex("#18181b"),
-	Radius: 8,
-
-	FontDefault: xui.FontSpec{Family: "微软雅黑", Size: 14},
-	FontMono:    xui.FontSpec{Family: "Consolas", Size: 14},
-}
-
-// dark 暗色主题(shadcn zinc 转译)。
-var dark = &xui.Theme{
-	Name:       "dark",
-	Background: xui.Hex("#09090b"),
-	Foreground: xui.Hex("#fafafa"),
-
-	Card:        xui.Hex("#09090b"),
-	CardFore:    xui.Hex("#fafafa"),
-	Popover:     xui.Hex("#09090b"),
-	PopoverFore: xui.Hex("#fafafa"),
-
-	Primary:         xui.Hex("#fafafa"),
-	PrimaryFore:     xui.Hex("#18181b"),
-	Secondary:       xui.Hex("#27272a"),
-	SecondaryFore:   xui.Hex("#fafafa"),
-	Muted:           xui.Hex("#27272a"),
-	MutedFore:       xui.Hex("#a1a1aa"),
-	Accent:          xui.Hex("#27272a"),
-	AccentFore:      xui.Hex("#fafafa"),
-	Destructive:     xui.Hex("#7f1d1d"),
-	DestructiveFore: xui.Hex("#fafafa"),
-
-	Border: xui.Hex("#27272a"),
-	Input:  xui.Hex("#27272a"),
-	Ring:   xui.Hex("#d4d4d8"),
-	Radius: 8,
-
-	FontDefault: xui.FontSpec{Family: "微软雅黑", Size: 14},
-	FontMono:    xui.FontSpec{Family: "Consolas", Size: 14},
-}
+// 自定义示例(改字段即可, 不必重写整个结构体):
+//	func init() {
+//		light.Primary = xui.Hex("#2563eb")
+//		light.PrimaryFore = xui.Hex("#ffffff")
+//		light.Radius = 8
+//	}
 `
+

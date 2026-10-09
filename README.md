@@ -66,8 +66,8 @@ func main() {
 xui.SetTheme(xui.Dark())          // 一行全局换肤
 ```
 
-主题文件 `ui/theme.go` 里是一组与 shadcn CSS 变量一一对应的令牌,
-把任何 shadcn 社区主题的 `:root { --background: … }` 照抄过来即可。
+主题文件 `ui/theme.go` 默认是**内置主题的副本**(逐字段改即可换肤),也可以照 shadcn 的
+`:root` / `.dark` 自己写一份 —— 令牌与 CSS 变量一一对应(字段表见 docs/DESIGN.md 3.1)。
 
 ## 组件
 
@@ -79,6 +79,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块 |
 | Tabs | 标签页(下划线指示条随活动页滑动) |
 | ComboBox | 下拉框(列表由独立透明弹出窗口承载) |
+| Menu | 下拉菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点) |
 | Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述 + 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环 |
 | Table | 数据表格(原生 `List` 载体 + 全自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽支持"占满剩余宽度" |
@@ -89,9 +90,9 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 每个组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环。
 
 hover 带过渡动画(默认 **150ms + cubic-bezier(0.4,0,0.2,1)**,与 tailwind / shadcn 的 `transition-*`
-默认值一致;表格行/树行/菜单条目这类逐项高亮同样有过渡)。过渡由运行时管理(临时开一个约 30ms/帧的
-定时器,跑完自动关,静止时零开销),组件侧只写一行:`hv := xui.Hover(hEle, st.Hover)` +
-`xui.Fade(静止色, 悬停色, hv)`。整体时长/开关可调:
+默认值一致;表格行/树行/菜单条目这类逐项高亮同样有过渡)。过渡由运行时管理(临时开一个 16ms 的
+定时器,跑完自动关,静止时零开销;实际帧率受下面的 `SetPaintFrequency` 节流),组件侧只写一行:
+`hv := xui.Hover(hEle, st.Hover)` + `xui.Fade(静止色, 悬停色, hv)`。整体时长/开关可调:
 
 ```go
 xui.SetHoverDuration(200 * time.Millisecond) // 改时长
@@ -184,3 +185,14 @@ pnpm dev        # http://localhost:5173
 - 组件源码:`src/components/ui/*.tsx`(语义的唯一权威来源)
 - 主题令牌:`src/index.css` 的 `:root` / `.dark`
 - `src/App.tsx` 是与 `demo/` 同构的对照页,改完两遍跑一遍即可比对
+
+## 项目文档
+
+| 文档 | 内容 |
+|---|---|
+| README.md | 本文:安装 / 用法 / 组件一览 |
+| [docs/DESIGN.md](docs/DESIGN.md) | 知识库:架构原理、主题系统、**xcgui 踩坑全集(第八节)**、已验证 API 清单 |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | 开发交接:当前进度 / 待办 / 仓库结构 / 常用命令 / 视觉验证工作流 |
+| [AGENTS.md](AGENTS.md) | AI 会话入口硬规则与文档导航 |
+
+> 改任何组件的交互前,先看 DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」,再对照本地 shadcn 源码。

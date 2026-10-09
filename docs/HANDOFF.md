@@ -1,75 +1,56 @@
 # HANDOFF — 交接文档
 
-> 新会话/新人接手从这里开始。读完本文件 → 按需查 AGENTS.md(硬规则)→ DESIGN.md(架构与踩坑)→ README.md(用法)。
+> **本文只回答"现在到哪了"**:当前状态、待办、命令、仓库结构、验证工作流、去哪查。
+> 设计原理 / xcgui 踩坑细节 / 交互语义**一律不在这里重复** —— 见 **DESIGN.md**(第八节 = 踩坑全集按编号;第四节末 = 语义权威汇总表)。agent 会话硬规则见 **AGENTS.md**,面向用户的用法见 **README.md**。
 
 ## 项目一句话
 
-`github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现的源码为唯一权威。
+`github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(2026-10-07)
+## 当前状态(截至 2026-10-08)
 
-- ✅ **P0 运行时**完成:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter 绘制助手、字体缓存、focus-visible 焦点来源跟踪
-- ✅ **P1 组件**完成并视觉验收:Button(5 变体×3 尺寸)、Checkbox、Radio、Input、Label、Separator+Badge、Card
-- ✅ **P2 组件**完成并视觉验收:Switch(2 尺寸)、Progress、Slider、Tabs(default/line 两变体)、Tooltip、ComboBox、图标系统(矢量复刻 lucide path,非 SVG 渲染——原因见 DESIGN.md 第八节 17;抗锯齿出图见第八节 43)
-- ✅ **P3 首项 Dialog 完成**(详见下方 Dialog 条目)
-- ✅ **Slider 渲染缺陷彻底修复**(2026-10-04,computer-use 真实鼠标逐场景验证):①悬浮冒灰方块/②拖动后冒白方块(根因:原生 SliderBar 的滑块按钮 BkInfo 在 Stay/Down/Focus 态的残留绘制, 全套压制无效 → **弃用原生载体, 改纯自绘 Element + 自实现拖拽/点击跳转/键盘**,见 DESIGN.md 第八节 25);③两端 ring 被裁剪(几何重排,见第八节 26);④hover 离开/点击后灰环残留(根因:透明元素重绘不擦底, onPaint 开头先铺宿主底色, 见第八节 28)。期间误判过 `FillRoundRect` 半径语义(x2 导致全组件过圆, 已回退, 结论见第八节 27)
-- ✅ **CLI** 完成:`xui init / add / list`(registry.json 驱动,组件源码拷入用户项目)
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(P3 仅剩"CLI 远程 registry"与"native 弹层进场动画"两项未定);P4(文档站、主题画廊)未开始。路线图见 DESIGN 第七节。
+
+**已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
+
+- ✅ **P0 运行时**:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter、字体缓存(单位坑见 31)、focus-visible 焦点来源跟踪(16)
+- ✅ **P1 组件**:Button(5 变体×3 尺寸)、Checkbox、Radio、Input、Label、Separator+Badge、Card
+- ✅ **P2 组件**:Switch(2 尺寸)、Progress、Slider、Tabs(default/line)、Tooltip、ComboBox、图标系统
+- ✅ **Slider 渲染缺陷彻底修复**:悬浮/拖动冒方块、两端 ring 被裁、灰环残留(根因与结论见 25/26/27/28)
+- ✅ **CLI**:`init / add / list`(registry.json 驱动,组件源码拷入用户项目);`update / --all` **未实现**
 - ✅ **demo + 用户项目 E2E**:拷贝出的组件在独立用户模块编译/运行/渲染全部正常
-- ✅ **demo 布局化**(2026-10-04):卡片内容改用 `widget.NewLayoutEle` 流式布局(vStack 列布局 / hRow 行布局 / vCol Weight 等分列),不再手算 y。LayoutEle 的真实语义(默认横向流、Fill 独占整行、间距 API 分工等)全部探针实测,已记入 DESIGN.md 第八节 29
-- ✅ **布局 API 收口**(2026-10-08):布局项声明统一到 `xui.Item*`(只声明要改变的那条轴, 哨兵 `xui.ItemKeep=-1` 表示不覆盖; 含尺寸/外边距/最小尺寸, `layout.go`), 容器骨架统一到 `xui.HStack` / `xui.VStackWeight` / `ui.Card.ContentStack`(`container.go` + card.go, 布局项尺寸与"纵向溢出换列"都在构造里处理好), demo 里 52 处尺寸声明 + 25 处容器构造全部改用 —— 手抄 `LayoutItem_SetWidth/Height` 与 `EnableHorizon/SetSpace/EnableAutoWrap` 的时代结束
-- ✅ **参考实现补齐**(2026-10-04):switch/progress/slider/tabs/tooltip/**select** 的 radix-nova 源码已从 registry 拉取落盘到 `shadcn/src/components/ui/`(select 里的 `IconPlaceholder` 换成了直接导入 lucide-react 图标,本项目没有 icon-placeholder),App.tsx 加了 Controls 对照卡(与 demo 卡 3 同构:开关/滑动条/进度/标签页/下拉框,line 变体 + Tooltip 包住保存按钮)。`pnpm build` 通过 + 浏览器渲染验证。tsconfig.app.json 加了 `ignoreDeprecations: "6.0"`(新 TS 的 baseUrl 弃用报错)
-- ✅ **table 参考实现补齐**(2026-10-05):`npx shadcn@latest add table` 落盘 `shadcn/src/components/ui/table.tsx`, App.tsx 加了"数据表格"对照卡(与 demo 数据页同构:12 行、容器高 180 出现滚动条、第 2 行 `data-state="selected"`)。顺带修掉 `dropdown-menu.tsx` 里残留的 `IconPlaceholder` 导入(同样换成 lucide-react `Check`/`ChevronRight`),`pnpm build` 恢复通过
-- ✅ **ComboBox 弹层对齐 shadcn**(2026-10-04,computer-use 截图 + PIL 像素实测):①弹层边框只剩左边一条(根因:BkM border 贴边画被 SetWindowRgn 裁掉三面 + ListBox 自身 paint 事件在该弹层窗口上不渲染输出,内缩 10px 的 6px 红环都画不出来)→ ring 改画在 `XE_PAINT_END` 并内缩 1px,四边完整;②弹层定位改为 **item-aligned**(盖住触发元素、选中项正对触发位置,对齐 radix SelectContent 默认),`wapi.SetWindowPos` 物理像素重定位 + 屏幕边界截断滚动。结论记入 DESIGN.md 第八节 30
-- ✅ **Dialog 完成并视觉/交互验收**(2026-10-04,computer-use 真实鼠标键盘 + PIL 像素实测):路线选**窗口内覆盖元素**(不是 ModalWindow/DoModal):全窗自绘遮罩(bg-black/10, 实测 255→229 精确 0.9 合成)+ 居中面板(bg-popover/rounded-xl/ring-foreground/10),标题(text-base)/描述(text-sm muted)/任意内容容器/页脚(-mx-4 -mb-4 贴边、border-t、bg-muted/50、只有下两角圆角)+ 右上角幽灵图标关闭钮。交互:ESC / 点遮罩 / 关闭钮关闭,打开时焦点进第一个可聚焦控件,Tab 在对话框内循环(Shift+Tab 反向),点面板内不关闭;关闭后整窗重绘擦掉遮罩。Button 新增 `WithIcon`(lucide 图标替代文字, 16px 居中)供关闭钮复用;Label 现在 `EnableSwitchFocus(false)` + 灭原生边框。坑与探针结论见 DESIGN.md 第八节 33,对照卡已加到 shadcn App.tsx(dialog.tsx 落盘)
-- ✅ **Dialog/文字视觉对齐打磨**(2026-10-04,与用户逐轮截图对比):灭掉内容容器点击后出现的原生蓝焦点框/深色边框;行盒按 leading-none 收紧并给文本元素上下外扩(避免元素裁字);页脚高度全量计入(面板不再矮一截);页脚按钮量宽 ×2 校正(`GetTextShowRect` 在 144 DPI 下约为实绘宽度的一半),按钮宽度与 shadcn 的 48 逻辑像素完全一致;字重收敛到常规(中文 500≈常规);Tooltip 量宽字体与绘制对齐 + 定位去掉重复的客户区偏移(箭头贴住元素上边)。结论全部记入 DESIGN.md 第八节 34
-- ✅ **Menu(原生菜单皮肤)完成并视觉/交互验收**(2026-10-05, computer-use + zoom):路线 = 原生 Menu 承载行为 + 窗口级 XWM_MENU_DRAW_BACKGROUND/DRAWITEM 自绘皮肤(每窗口注册一次, 绘制实时取令牌)。条目/勾选/单选(组内互斥)/分组标签/分隔栏/快捷键("	" 借原生算宽)/子菜单/禁用/破坏性全对齐 dropdown-menu.tsx;弹窗圆角 SetWindowRound、元素锚点定位(sideOffset=4, 翻转+夹紧)。探针结论记 DESIGN.md 第八节 36;**注意全屏缩略截图里暗色弹层会假显亮底, 弹层验收必须 zoom**。demo 卡 5 新增
-- ✅ **Table(List)完成并视觉/交互验收**(2026-10-05, `components/table.go`):路线 = **原生 `List` 载体 + 外观全自绘**(原生 List 的灰表头/横竖网格线/系统滚动条/白底全部压掉)。为什么不是原生 `Table`:`widget.Table` 是 Shape 系的"单元格画布"(合并单元格、逐格画线、无滚动/无虚拟行), 与 shadcn 的可滚动行列表语义不符, 故 P3 里的 Table/List 两项合并为同一个组件(registry 名 `table`)。对齐 shadcn table.tsx:表头 h-10(40)/px-2 + 1px 底边, 数据行 36(p-2 + text-sm), 行 `border-b`(**最后一行不画** = `[&_tr:last-child]:border-0`), 行悬浮 `hover:bg-muted/50`、选中 `bg-muted`;容器底色取 Card(同 ComboBox 的"组件都放卡片上"约定, 可用 `WithTableOnBackground` 改为 Background)。API:`NewTable(x,y,cx,cy,parent,cols)` + `AddRow/SetCell/SetRow/CellText/Rows/Clear/Select/Selected/OnSelect/Refresh/FitColumns`,列宽 `Width<=0` 表示占满剩余宽度(滚动条显隐翻转时自动重算)。像素实测(亮/暗双主题):行底 `#f5f5f5`→暗 `#262626`, 悬浮 `#fafafa`→暗 `#1f1f1f`, 行边框 `#e5e5e5`→暗白 10% 合成, 行高 54 物理/36 逻辑、表头 60/40, 自适应列 = `cx − 4 − 12`(滚动条让步)。踩坑全部记入 DESIGN.md 第八节 40、41(demo 那个"表格整块消失"是 LayoutEle **纵向溢出换列**, 见 41)
-- ✅ **Tree(树形视图)完成并视觉/交互验收**(2026-10-06, `components/tree.go`):路线 = **原生 `Tree` 载体 + 外观全自绘**(展开/收起、点击 chevron 展开、选中、滚动全原生;原生项背景/连接线/分割线/展开按钮 "+/-" 图形全部压掉)。shadcn 无官方 tree 组件,语义按社区通行实现并复用本项目已验收令牌:行高 32(h-8)、视觉矩形左右内缩 4、圆角 6、悬浮/选中 bg-accent(同 select/menu 条目)、每级缩进 16 + 祖先 1px 参考线、chevron 加大居中于点击热区(收起朝右/展开朝下)、叶节点留空槽位文字全树对齐、条目文字 text-sm。自定义项模板(行高 32 + 16px 按钮槽)+ `XE_TREE_DRAWITEM` 自绘;换肤走 `RefreshData()`。像素实测(亮/暗):行高 48 物理/32 逻辑、每级缩进 24/16、选中/hover `#f5f5f5`→暗 `#262626`、普通行透出 Card `#171717`(暗)、文字 `#fafafa`(暗)。交互 computer-use 真实点击验证:chevron 展开/收起、行选中、hover、运行时 Dark/Light 切换整树换肤。踩坑记 DESIGN.md 第八节 42;demo 新增"结构"页(隐藏页创建时选中态丢失已在 demo 规避);shadcn App.tsx 加了同构"树形视图"对照卡(手写 TreeRow,非官方组件)。**2026-10-08 补修**:隐藏容器(页签/对话框)里建的树,首次显示**只有行底和 chevron、文字全空**,切一次页或手动 `RefreshData()` 才正常 —— **是当天的布局重构引入的回归**(旧代码 `NewTree(...,0,...)` + 布局项 `itemFixed(t,cw,322)`, 页面首次显示那次排版把 0→322 变更时顺手实例化了项模板;重构把高度挪进创建参数并去掉声明后, 再没有"可见时的排版"落到树上),已用 `git worktree` 拉 24fcb6b 重建对比确认;修法 = 组件内挂"首次绘制后下一帧补一次 RefreshData"自愈(见 DESIGN 第八节 51);顺带修 `XUI_HOME_PAGE=4` 启动即崩(SetActive 同步触发 OnChange 时树还没建)
-- ✅ **hover 过渡动画完成并像素验收**(2026-10-06, 运行时 `anim.go`):对齐 tailwind/shadcn 的 `transition-*` 默认值(**150ms + cubic-bezier(0.4,0,0.2,1)**), 驱动是挂在**重绘目标**上的炫彩定时器(元素/窗口都验过, 实测约 30ms/帧 → 150ms 约 5 帧, 必须 `Redraw(true)` 立即重绘, 否则掉到 65ms/帧), 只在该目标还有过渡没跑完时才开、到位即关(静止零开销)。组件侧只有一行: `hv := xui.Hover(hEle, st.Hover)` / `xui.HoverItem(hOwner, i, stay)` + `xui.Fade(静止色, 悬停色, hv)`(叠加层用 `ScaleAlpha(hv)`), **不新增字段/事件**;逐项键=索引+1。中断从中断点续跑(同 CSS)。已接入 Button(5 变体)/Tabs 文字/Slider 光环/demo 图标格/Table 行/Tree 行/ComboBox 弹层条目/Menu 条目。像素实测:primary `#171717`→28→49→62→68→**69**(=`primary/80` 叠白, 与改动前一致)、表格行 255→**250**、树行 255→**245**、菜单条目 255→**245**;`anim_test.go` 钉住缓动曲线与预乘取色。踩坑记 DESIGN.md 第八节 45
-- ✅ **重绘节流调优**:xcgui 默认有 30ms 重绘节流(`XC_SetPaintFrequency`), 这是过渡只有约 5 帧的根因; demo/app 初始化已设 `a.SetPaintFrequency(10)`, 实测帧率 **30.9 → 59.0 fps**(再低无效, ~16.6ms 是硬地板; 代价 = 过渡期间每帧绘制成本不变、帧数翻倍)。另实测 `XC_SetTextRenderingHint` / `XDraw_SetTextRenderingHint` 在 D2D 模式下**是空操作**(文字区域逐像素相同), 不要用。详见 DESIGN.md 第八节 46
-- ✅ **弹层/对话框进出场动画**(2026-10-06, 运行时 `presence.go`):语义对齐 shadcn(dialog/dropdown `duration-100` fade(+zoom+slide-8px), tooltip 150ms, 缓动 CSS `ease`); `xui.Presence(...)` 与 hover 共用驱动器, 助手 `SetElementsAlpha/FadeWindowAlpha/SlideWindowAlpha`。已接入 **Dialog**(整组淡入淡出, 淡出期间键盘/点击已失效, 到位才隐藏)与 **Tooltip**(fade + 8px 滑入, 退场到位再隐藏)。**修过的 bug**: 窗口 alpha 精确=0 会让 xcgui 停止合成(退场淡出到 0 后再进场永远 ~10% 透明度), `SetWindowAlpha` 统一抬底 `AlphaFloor()`=1/255 + done 里 SW_HIDE。其余坑(透明度要绘制才落地且必须靠宿主窗口重绘带动、异型小窗定时器不可靠、普通窗口 SetTransparentAlpha 完全无效)全在 DESIGN 第八节 47
-- ✅ **backdrop-blur-xs 完成并像素验收**(2026-10-07, `components/backdrop.go`): 抓窗快照(PrintWindow) + Go 盒式模糊 + 缩放到逻辑尺寸 + 元素 BkM 图片填充, 显示在遮罩之下、随遮罩一起淡入淡出。**昨夜的"v1.4.2 缺 XImage_LoadFromData 导出"是误判**(探测证实导出存在且可用), 真正的坑是三个:BkM 图片注册在元素的 `Element_State_Flag_Leave`(0x0010) 而非窗口的 `Window_State_Flag_Leave`(0x0001), 用错永不渲染; BkM 图片按 1:1 逻辑像素居中绘制, 物理尺寸快照必须先缩到逻辑尺寸; 注册统一走 `XBkM_AddImage`(带 id)。**后续又踩两个坑**: 裁阴影带必须**拷贝**成独立图(SubImage 共享行距 → 模糊按\"行距=宽×4\"索引整幅斜切成斜粗条纹); 裁边后元素必须摆回 Body 原点 (12,12) 且按 776×566 缩放注册(元素坐标系原点含阴影带, 画在 (0,0) 内容整体偏移、主窗标题被削一半, 已修, 见 DESIGN 第八节 47 条 7~9)。验收: blurprobe 程序化 Show/Close + 像素逐点比对(模糊期望 mean=0.23, 不模糊假设 mean=4.64 被排除; 关闭还原 max=0)+ demo computer-use 真实鼠标亮/暗双主题复核(模糊内容精确对齐原位)。踩坑全记 DESIGN 第八节 47; **验收探针必须跑 `a.Run()` 消息循环**(无泵时 Presence/定时器全不工作, 结论作废)。**2026-10-07 两轮修正**:
-  ① **全屏弹窗慢**(根因=模糊代价随面积增长, 全屏物理面积是逻辑的 DPI² 倍): 快照管线 =
-  **按物理像素抓屏(`PrintWindow` 不缩放 —— 它按 1:1 物理像素画整窗并裁剪到 DIB 尺寸,
-  DIB 必须给足物理尺寸)→ 同一次遍历里 BGRA→RGBA + 盒式降采样到 1/2 逻辑尺寸 → 双趟盒式
-  (半径 2, 等效 σ≈4 逻辑像素)→ 成对平均放大回精确逻辑尺寸**。热态实测(含上传): 常态
-  800×590 **39→~36ms**、最大化全屏 **160→~61ms**; 窗口状态刚变的第一帧有 DWM 预热
-  (75→30ms 后稳定)。顺带: `PrintWindow` 失败不再退 BitBlt(对 D2D 窗口它拿到的整幅是纯黑,
-  实测 mean=0.0), 改成放弃模糊。
-  **踩坑记录(重要)**: 中途我一度按"1/2 逻辑尺寸"要 DIB, 以为 `PrintWindow` 会缩放填满 ——
-  它其实是**裁剪**, 于是快照只剩左上角一块、再被放大 2 倍 = 用户看到的"遮罩只有界面左上角,
-  放大了好几倍"; 而我当夜用 System.Drawing 做的对照实验给出了"它会缩放"的错误结论(那次
-  实验作废), 还拿一个坏掉的度量把截图里的异常判成了"demo 既有现象"。现在的事实以
-  `components/zz_*` 那份 Go 探针为准(裁剪假设均值差 0.0 / 缩放假设 20.0)。见 DESIGN 第八节
-  47 条 6。
-  ② **遮罩四角黑块**: 遮罩原来铺**整窗矩形**, 在阴影窗口上会盖住四周 12px 阴影带、把窗口
-  自身投影再压暗 10%, 而 Body 是圆角的 → 四角露出最多, 看着就是"遮罩四角多出黑色块"
-  (实测: 窗口铺满整屏未最大化时四角 #11111b、Body 内 #ffffff; 修后开/关对话框的四角像素
-  **完全一致**)。修法=遮罩改铺 **Body 区**(面板/子元素仍是窗口绝对坐标, 只有遮罩绘制与
-  "点遮罩关闭"的命中判定换算 maskX/maskY), 与浏览器 overlay 盖 viewport 的语义一致。
-  真实鼠标验证: 点遮罩关闭 / ESC 关闭 / 重新打开均正常。见 DESIGN 第八节 47 条 10。
-  ③ demo 双击标题栏的 y 判定改为 `captionH+shadowSize`(**最大化时不计阴影**), 阴影大小抽成
-  `demo/main.go` 的 `const shadowSize = 12`(原来 `SetShadowInfo(12,...)` 与阈值里的裸数字
-  12/30 并存); 已用**真实鼠标双击**逐带验证(标题栏上半段/下半段都最大化、标题栏之下不最大化)
-- ✅ **参考实现补齐(菜单 + 图标页)**(2026-10-07): 本地 shadcn 对照页原来只有 5 页、且"反馈"页只有 Dialog —— 已补上 demo 卡 5 同构的**下拉菜单对照卡**(`dropdown-menu.tsx` 终于被用上: 条目/快捷键/勾选/单选组/子菜单/破坏性/禁用)与新的**第 6 页「图标」**(9×5 网格 + 上下翻页, 与 demo 图标页同格数; 数据来自 `lucide-react` 的 `icons` 全量记录, PascalCase→kebab 后按名升序)。顺带把 `lucide-react` 依赖 `^1.49.0 → ^1.52.0`(lock 里实际也是 1.49.0, 升级后与 xui icons 子包的 lucide-static 1.52.0 同版本)。注意: 图标页整包引入 lucide, `pnpm build` 产物 ~1MB(gzip ~299KB), 本地参考可接受。`pnpm build` 通过
+- ✅ **demo 布局化 + 布局 API 收口**(2026-10-04~08):改用 `widget.NewLayoutEle` 流式布局;布局项统一到 `xui.Item*`(只声明要改变的那条轴, 哨兵 `xui.ItemKeep=-1`), 容器骨架统一到 `xui.HStack` / `xui.VStackWeight` / `ui.Card.ContentStack`;语义与"纵向溢出换列"坑见 29/41
+- ✅ **参考实现补齐**(本地 shadcn 对照页):switch/progress/slider/tabs/tooltip/select/table/dropdown-menu 源码落盘 + `App.tsx` 对照卡(含新第 6 页「图标」);`pnpm build` 通过
+- ✅ **ComboBox 弹层对齐 shadcn**:ring 四边完整(画在 `XE_PAINT_END` 内缩 1px)、item-aligned 定位 + 屏幕边界截断滚动(30)
+- ✅ **Dialog**(2026-10-04):路线 = 窗口内覆盖元素(全窗遮罩 + 居中面板 + 页脚 + 幽灵图标关闭钮), ESC / 点遮罩 / 关闭钮关闭 + Tab 焦点陷阱;backdrop-blur-xs(33/34/47)
+- ✅ **Menu**(2026-10-05):原生菜单承载行为 + 窗口级 `XWM_MENU_DRAW_*` 自绘皮肤(36)
+- ✅ **Table**(2026-10-05):原生 List 载体 + 外观全自绘(表头/行底/边框/滚动条)(40/41)
+- ✅ **Tree**(2026-10-06):原生 Tree 载体 + `XE_TREE_DRAWITEM` 自绘;"隐藏容器首显空白"回归已改为组件内自愈(42/51)
+- ✅ **hover 过渡动画**(2026-10-06):150ms cubic-bezier(0.4,0,0.2,1), 运行时 `anim.go` 驱动, 组件侧只用 `xui.Hover / HoverItem + Fade`(45)
+- ✅ **重绘节流调优**:应用初始化 `a.SetPaintFrequency(10)`, 实测 30.9 → 59.0 fps;`XC_SetTextRenderingHint` 在 D2D 下是空操作(46)
+- ✅ **弹层/对话框进出场动画**(2026-10-06):`xui.Presence(...)` + `SetElementsAlpha / FadeWindowAlpha / SlideWindowAlpha`;窗口 alpha 永远不精确 = 0(47)
+- ✅ **backdrop-blur-xs**(2026-10-07):抓窗快照 + Go 盒式模糊 + BkM 图片填充;改物理像素管线后全屏弹窗 160ms → 61ms(47)
+- ✅ **Pagination + demo 图标页改造**(2026-10-08):恒定 7 槽位折叠, 搜索 / 翻页 / 悬浮 Tooltip / 点击复制图标名(53)
+- ✅ **图标系统**:抗锯齿改**直通 D2D 几何填充**(`d2dicon.go`);**lucide 资源预处理**(2130 个图标, `icons/` 子包)—— 原理 / 坑 / 性能见 43/44,速览见下方「图标系统」
 
-- ✅ **Pagination 组件 + demo 图标页改造**(2026-10-08, `components/pagination.go`, 亮/暗双主题 + computer-use 真实鼠标验收): 新组件**纯自绘单元素**(同 slider 路线, 不拼 Button 子元素 —— 页码数量随数据变化, 拼子元素要反复增删/重排): 条目 = `[上一页][1][2]…[n][下一页]`, 内容居中(justify-center)、页码 32 方形(ghost/当前页 outline)、上一页/下一页 = chevron(size-4)+文字, 页数 >7 折成 首/末页+当前页±1+省略号(省略号不可点), 到边界时上一页/下一页按禁用画(50% 透明且不响应鼠标); 悬停 `xui.HoverItem` 逐项过渡、按下 `active:translate-y-px` 下沉 1px; API `NewPagination/SetTotal/SetPageSize/SetPage/Page/PageCount/OnChange`(`SetPage` 不回调, 供调用方同步数据游标)。**demo 图标页**: 加搜索框(Input, 按名过滤, 大小写不敏感)、换成分页组件、格子默认**只画图标**(4×9 一页)、**悬浮出 Tooltip 显示完整图标名、点击把名字复制到剪贴板**(`wutil.SetClipboardText` + 搜索行右侧的"已复制: xxx"反馈), 格数 9×5 → **9×4**(腾出搜索行/分页行的位置)。**踩坑**: `XC_GetTextShowRect` 的 `width=0` 是"按一个字符宽折行"(不是不限宽) → 量宽得给足 width + NoWrap, 详见 DESIGN 第八节 48; 组件在 OnChange 前用立即重绘会吞掉调用方的待重绘区域(原生 Label 改文字后要显式 `Redraw(false)`), 同节 48。**折叠策略改成"恒定 7 个槽位"**(首段 `1 2 3 4 5 … n` / 中段 `1 … p-1 p p+1 … n` / 末段 `1 … n-4 … n`): shadcn 文档那版三段分别占 6/7/7 个槽位, 翻页跨段时整行宽出一个页码位, 居中排布下"下一页"会跟着右移 —— 实测连点 10 次同一坐标无法命中(用户反馈"点着点着就点不到了"), 恒定槽位后同坐标连点 10 次稳定到第 11 页。另修 **Tooltip 在密集元素上"不显示"**(旧元素的迟到 MouseLeave 把刚进场的气泡秒关, 见 DESIGN 第八节 49)
+## 待办
 
-- ⬜ P3 剩余:CLI 远程 registry; menu/combobox 弹层的进场动画(native 弹窗淡入不可行, 只能做位置滑动, 待定)
-
-- ⬜ 发布 GitHub(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
+- ⬜ **P3 剩余**:CLI 远程 registry;menu/combobox 弹层的进场动画(native 弹窗淡入不可行, 只能做位置滑动, 待定)
+- ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
+- ⬜ Button Link 变体(下划线)未实现;text 手绘后 Input 仍是原生文字
+- ⬜ CLI `update / --all` 未实现(见上)
 
 ## 仓库结构
 
 ```
 D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
-├── *.go                          运行时: color/theme/themes_builtin/manager/
-│                                 draw(Painter)/icons(图标几何+直通D2D 出图)/focus/font/state
-│                                 anim(hover 过渡: 炫彩定时器驱动 + cubic-bezier 缓动 + Fade)
+├── *.go                          运行时: color / theme / themes_builtin / manager
+│                                 draw(Painter) / icons(图标几何+D2D 直通出图) / focus / font / state
+│                                 anim(hover 过渡) / presence(进出场) / container·layout(布局骨架)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
-│   ├── button.go  checkbox.go  radio.go  input.go  switch.go  progress.go
-│   ├── slider.go  tabs.go  combobox.go  tooltip.go  dialog.go  menu.go
-│   ├── label.go   separator.go(含 Badge)  card.go  table.go  tree.go
+│                                 button checkbox radio input label separator(含 Badge) card
+│                                 switch progress slider tabs tooltip combobox dialog
+│                                 menu table tree pagination
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
@@ -78,7 +59,8 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── icons_test.go                 解析器语法 + 资源完整性测试(go test ./...)
 ├── demo\                         演示应用(也是全组件编译测试目标)
 ├── registry.json                 组件清单(files + deps)
-├── docs\DESIGN.md                架构设计 + xcgui 踩坑清单(第八节必读)
+├── docs\DESIGN.md                知识库: 架构设计 + xcgui 踩坑全集(第八节必读)
+├── docs\HANDOFF.md               本文
 ├── README.md                     用法
 └── AGENTS.md                     agent 会话自动加载的入口规则
 
@@ -89,8 +71,7 @@ D:\GOProject\src\ui\shadcn\       ← 本地部署的 shadcn-ui 参考实现(语
 
 D:\GOProject\src\tools\llama-launcher\  ← 同技术栈的成品项目(可参考)
 ├── internal\ui\caption.go        菜单美化, 标题上自定义按钮
-└── internal\ui\builder.go        List美化,LayoutEle 布局盒子的成熟用法(lkSize 尺寸描述 /
-                                  Box/Card 工厂 / widget 自带 LayoutItem_* 包装),
+└── internal\ui\builder.go        List 美化, LayoutEle 布局盒子的成熟用法
                                   其布局语义结论与本项目 DESIGN.md 第八节 29 一致
 ```
 
@@ -111,6 +92,9 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
 # 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..5 = 表单/控件/反馈/数据/结构/图标
+
+# 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线)
+go test ./...
 ```
 
 ## 关键设计决策(一句话版, 详见 DESIGN.md)
@@ -118,67 +102,20 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 1. **copy-not-install**:组件源码由 CLI 拷进用户 `ui/` 目录,归用户;运行时(theme/icons/helpers)走 go.mod
 2. **绘制时取令牌**:组件永不缓存颜色,paint 回调里 `xui.Current()` 现取 → 切主题 = 换指针 + Redraw
 3. **行为/视觉分层**:xcgui 原生控件 = 无头行为层,`AddEvent_Paint` + `drawx` 只管视觉
-4. **交互语义逐条对齐 shadcn 源码**:改动交互前先读 `shadcn/src/components/ui/*.tsx`
+4. **交互语义逐条对齐 shadcn 源码**:改交互前先在 DESIGN 第四节末的语义汇总表确认,再读 `shadcn/src/components/ui/*.tsx`
 5. **组件文件写薄**:绘制细节下沉运行时助手,降低拷贝模式下的升级冲突面
 
-## xcgui 踩坑清单(浓缩版, 全文见 DESIGN.md 第八节)
+## 文档导航(去哪查什么)
 
-- **绘制坐标是逻辑像素**(DPI=144 实测):`XEle_GetClientRect` 返回未缩放矩形,框架渲染时变换;自绘**不要**再按 DPI 预缩放(双重缩放 → 指示器撑满被裁)
-- **元素绘制裁剪在自身客户区内**:外扩式焦点环不可见;贴边描边的外半侧被裁 → FocusFrame 用"边缘填充 + 内缩填充"两层结构
-- **cy=0 的控件高度就是 0**,不渲染 → 组件构造函数都补了默认高度
-- **窗口背景**:必须 `XBkM_Clear` + `XBkM_AddFill(Window_State_Flag_Leave)`,用 Nothing(0) 状态注册不生效
-- **标题文字默认白色**(为蓝色标题栏设计),主题化窗口需 `SetTitleColor` 跟随主题
-- **事件一律 AddEvent\***(2000 回调上限)、**不碰背景管理器**(累积上限 20,窗口背景的 Clear+AddFill 除外)
-- **弹层真透明**:`SetTransparentType(Window_Transparent_Shaped)` + `SetTransparentAlpha(255)` 后,窗口形状 = 自身自绘内容中不透明像素的并集 → 圆角外/箭头两侧真透明。**此时不能再给窗口挂背景填充**(挂了整窗变不透明方块,旧 Tooltip 就是这么退化的)。详见 DESIGN.md 第八节 24;背景对象圆角用法也在那一条
-- **`Window_Style_Nothing`/`Center` 的窗口自身不绘制任何东西**(只画子元素),别拿它当普通宿主窗口
-- **自绘标题栏窗口样式**: `Caption|Border|Drag_Window`(无默认图标/标题/三键) + 30px BorderSize, 展示元素要 `EnableMouseThrough(true)` 才不挡拖动, 见 DESIGN 第八节 38; demo 是标准样板
-- **渲染固定 Direct2D**(`app.New(true)`)
-- **解析 lucide path 时 arc 的标志位是单字符**:`a.25.25 0 00.407.195` 是 flag=0 / flag=0 / x=.407 / y=.195, 按"数字"贪婪切会读成 `00.407` → 参数不足 → **后面整段图形被静默丢掉**(图标只画一半)。解析器已按 SVG 语法逐字符读标志(见 DESIGN.md 第八节 44);自定义图标走 `icons.Path(...)` 或直接贴 path 都行
-- **直通 D2D 填充几何: figure 数必须少**(D2D 填充自重叠路径是 stencil-and-cover, 代价随 figure 数**近似平方增长**: 45 个图标一帧 9 figure → 4ms, 199 figure → 1.6 秒)。描边要展开成"每条子路径一条闭合轮廓", 别写成"每段一个四边形 + 每顶点一个圆帽"。详见 DESIGN 第八节 43
-- **直通 D2D 绘制(第三方 COM 接口)必须先 `XDraw_ConvRect` 把客户区坐标换算成画布对齐坐标**:炫彩只在刷新自己的 `XDraw_*` 命令时才施加元素变换/裁剪, 直通调用拿到的是**窗口坐标系**(不换算就会画到元素外面, 症状可能是"图标莫名消失");另外 `XDraw_GetD2dRenderTarget`/`XC_GetD2dFactory` 交出来的是**真 COM 指针**, 可纯 Go 直通调用(ABI: 禁 float 形参、8 字节结构体按值打包);注意 `ID2D1SimplifiedGeometrySink` 除 `Close` 外全是 void —— 返回值是寄存器垃圾, 当成 HRESULT 查会静默回落。详见 DESIGN.md 第八节 43
-- **LayoutEle 默认是"横向流 + 自动换行", 不是竖排**:纵向堆叠必须 `EnableHorizon(false)`;列布局主轴间距用 `SetSpace`, 行布局换行行距用 `SetSpaceRow`(只设 SetSpace 纵向间隙恒 0);`Fill` 独占一整行, 等分用 `Weight`;项级 `LayoutItem_SetAlign` 无效, 用布局级 `SetAlignH/V`(详见 DESIGN.md 第八节 29)
-- 顶层 Tabs 分页: 页面容器 Show(false)→Show(true) 后其内部布局元素不会自动重排(空白壳), **对显示的页面调 `AdjustLayout()`** 再 Redraw(demo buildPage);ESC 关闭用 `XWnd_CloseWindow`
-- **LayoutEle 纵向(列)布局也会"溢出换列"**: 主轴上剩余高度放不下下一项时, 该项会被甩到下一列(`x += 容器宽度, y = 0`)→ 表现为控件整块消失。列布局一律 `EnableAutoWrap(false)`, 并保证容器高度足够(见 DESIGN 第八节 41)
-- 原生 List 作表格载体: 内容区**左上各内缩 2 逻辑像素**、**表头单元格比数据单元格靠左 2px**、行间距默认 1px(`SetRowSpace(0)` 去掉);`List_Item_.RcItem` 注释写"未使用"但**实际有效**, `XE_LIST_DRAWITEM` 按**单元格**触发、矩形首尾相接 → 逐格画行底与行边框;纵向滚动条会吃掉内容宽度(自适应列要让出 ~12px)(见 DESIGN 第八节 40)
-- 窗口布局(EnableLayout): 布局项必须 LayoutEle; 主轴剩余用 **Weight** 不是 Fill(Fill 独占整行/列与兄弟重叠); 客户区已避开阴影带; 详见 DESIGN 第八节 39
-- 元素 BkM 图片填充: 状态用 `Element_State_Flag_Leave`(0x0010) 不是窗口的 0x0001; 图片按 **1:1 逻辑像素居中**绘制(先缩放到元素逻辑尺寸再喂); 注册走 `XBkM_AddImage`(带 id); 用错状态/尺寸 = 永不渲染或错位(见 DESIGN 第八节 47)
-
-## 与 shadcn 对齐的语义(改交互前先对照源码)
-
-| 语义 | shadcn 源码依据 |
+| 想了解 | 去哪 |
 |---|---|
-| **hover 过渡 = 150ms cubic-bezier(0.4,0,0.2,1)**(tailwind `transition-*` 默认值); 组件侧 `xui.Hover(ele, 悬停中)` / `xui.HoverItem(hOwner, idx, 悬停中)` + `xui.Fade(静止色, 悬停色, hv)`, 叠加层用 `ScaleAlpha(hv)` | button/tabs/switch/badge 的 `transition-all`; table/select/checkbox 的 `transition-colors`; 见 DESIGN.md 第八节 45 |
-| hover:bg-primary/80(实心)/80 透明度 | button.tsx variant.default |
-| focus-visible 键盘才显示焦点框,ring-3 ring-ring/50,边框变 Ring 色 | button/input/checkbox 的 focus-visible:* |
-| 文本输入框点击聚焦也显示环(浏览器对文本控件恒匹配 focus-visible) | input.tsx |
-| disabled:opacity-50 原色半透明 | 各组件 disabled:* |
-| active:translate-y-px 按下整体下沉 1px(含文字→文字手动绘制) | button.tsx 基类 |
-| destructive 软色调(bg-destructive/10 + 红字) | button.tsx / badge.tsx |
-| radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground) | radio-group.tsx |
-| checkbox size-4 rounded-[4px],选中 bg-primary 白勾 | checkbox.tsx |
-| card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl | card.tsx |
-| badge h-5 胶囊(rounded-4xl) | badge.tsx |
-| switch 轨道 32x18(选中 bg-primary/未选 bg-input),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground | switch.tsx(radix-nova) |
-| switch 元素比轨道每边大 3px:给 focus-visible 的 ring-3 留绘制空间,同时外扩点击热区(≈ after:-inset-*) | switch.tsx |
-| progress = h-1 rounded-full bg-muted 轨道 + bg-primary 指示器(宽度按百分比) | progress.tsx |
-| slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见 DESIGN.md 第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),hover/拖动中/focus-visible 显示 ring-3 | slider.tsx |
-| slider 元素比可见轨道左右各宽 9px(滑块半径 6 + ring 3, 给两端 ring 留绘制空间, 见 DESIGN.md 第八节 26);滑块中心在轨道两端之间移动, 位置由 pos 自算 | slider.tsx(radix 滑块中心贴轨道端点) |
-| slider 交互全自实现:点击跳转 + LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ KeyDown 左右 ±5%/Home/End | — |
-| tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
-| tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
-| select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见 DESIGN 第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见 DESIGN 第八节 30) |
-| menu 弹层 = bg-popover rounded-lg p-1 ring-1 ring-foreground/10(内缩 1px); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border(原生槽高仅 4px); 快捷键右对齐 text-xs muted | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见 DESIGN 第八节 36) |
-| table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm` | table.tsx(已落盘) + table.go(原生 List 接管路线见 DESIGN 第八节 40) |
-| tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本项目令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见 DESIGN 第八节 42) |
-| tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
-| **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
-| dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10(ring 画在面板矩形**外侧** 1px, 直接描面板矩形会被遮罩灰吞掉, 见 DESIGN 第八节 33);标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
-| dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
-| dialog 遮罩 bg-black/10(固定黑色,不随主题;**只铺 Body 区, 不铺阴影窗口的阴影带**——铺上去会把窗口自身投影再压暗 10%, 四角最明显;**backdrop-blur-xs 已实现**——物理像素抓窗快照(PrintWindow 不缩放, DIB 必须给物理尺寸)+融合降采样+半分辨率盒式模糊+成对平均放大+BkM 图片填充,见 DESIGN 第八节 47) | dialog.tsx(语义权威) + DESIGN 第八节 47 条 6/10 |
-| dialog 打开时焦点进第一个可聚焦控件,Tab/Shift+Tab 在对话框内循环(焦点陷阱),ESC / 点击遮罩 / 关闭钮关闭 | radix dialog 语义 |
-| **中文 500 字重 ≈ 常规**: Label 默认常规、按钮文字常规(用粗体字形实现 500 会明显偏粗); 标签比描述"看着粗"是**颜色**差(foreground 近黑 vs muted 灰), 实测笔画同宽 | label.tsx 500 + 实测像素 |
-| 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |
-| **字体单位**: xcgui 字体 size 是 pt 不是 px, FontHandle 统一按 px×0.75 换算(14px→11pt); 之前全局文字放大 1.33× | font.go(见 DESIGN 第八节 31) |
+| 当前进度 / 待办 / 命令 / 仓库结构 / 验证工作流 | **本文** |
+| 架构原理、分层边界、主题令牌、组件解剖 | DESIGN.md 一~四节 |
+| **交互语义(改交互前必看)** | DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」+ 本地 shadcn 源码 |
+| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~53) |
+| 用到的 xcgui API 清单 | DESIGN.md 第九节 |
+| agent 会话硬规则 | AGENTS.md |
+| 面向用户的安装与用法 | README.md |
 
 ## 视觉验证工作流(本项目惯例)
 
@@ -199,49 +136,21 @@ go run ./cmd/xui list / init <目录> / add <组件...>
 
 - 疑难渲染问题写探针程序(`.verify/probeN` 独立 main 包, `go build -o .verify/probeN/probeN.exe ./.verify/probeN` 后运行;`.verify/` 已被 go 工具链忽略),完事删掉
 - 需要"真实鼠标"验证 hover/点击时, 探针里用 `wapi.SetCursorPos` 比外部脚本可靠;从 PowerShell 移动鼠标要注意它是 DPI-unaware 进程, 坐标会被虚拟化/偏移, 别拿截图坐标直接当屏幕坐标用(踩过坑)
-- 浏览器对照:shadcn 参考页 + xui demo 同屏对比
-- 同一张截图里量两边(ours vs ref)是最可靠的对照法
+- **验收探针必须跑 `a.Run()` 消息循环**(无泵时 Presence/定时器全不工作, 结论作废)
+- 浏览器对照:shadcn 参考页 + xui demo 同屏对比;同一张截图里量两边(ours vs ref)是最可靠的对照法
+- **弹层类组件的暗色验收一律 zoom/像素测量**:全屏缩略截图里暗色弹层会假显亮底(36)
 
-## 已知待办 / 注意事项
+## 环境 / 注意事项
 
 - shadcn dev server 由会话后台启动,机器重启后需按上文命令重启
-- Button Link 变体(下划线)未实现;text 手绘后 Input 仍是原生文字
-- hover 过渡用运行时 `anim.go` 的炫彩定时器(不是 ani 包), 时长可用 `xui.SetHoverDuration` 覆盖(传 0 = 关掉过渡);新增 hover 反馈时**只用 `xui.Hover`/`HoverItem` + `Fade`**, 别自己起定时器
+- hover 过渡用运行时 `anim.go` 的炫彩定时器(不是 ani 包), 时长可用 `xui.SetHoverDuration` 覆盖(传 0 = 关掉过渡);**新增 hover 反馈只用 `xui.Hover`/`HoverItem` + `Fade`, 别自己起定时器**
 - 用户项目须 `app.New(true)`(D2D)+ `EnableAutoDPI`,demo 是标准样板
+- 弹层/对话框过渡挂**宿主窗口**,别挂弹层小窗;要 Win32 HWND 用窗口 wrapper 的 `GetHWND()`,别拿 xcgui 窗口句柄喂 `XWidget_GetHWND`(弹模态错误框)
 
-## 已完成: 图标抗锯齿(方案二 D2D 直通填充)
+## 图标系统(速览)
 
-- 图标出图改为**直通 D2D 几何填充**(`d2dicon.go` + `icons.go`): lucide path → CPU 描边展开(段四边形 + 圆帽)
-  → `ID2D1PathGeometry` → `RT::FillGeometry`; 无需 cgo/汇编/字体/SVG 库。GDI 渲染(`app.New(false)`)
-  或资源创建失败时自动回落到旧折线描边。
-- 关键坑与结论全部记入 **docs/DESIGN.md 第八节 43**(含 COM 指针/vtable 索引表/ABI 三规则/void 方法陷阱/
-  "直通调用必须自己 `XDraw_ConvRect` 换算坐标"/WINDING 同向/隐形窗口); 验证清单已逐项过:
-  四个标题栏图标 + 下拉框 chevron + 弹层勾选 + 菜单勾选/子菜单箭头 + 对话框关闭钮 + IconSearch 全家桶(150% DPI);
-  暗色主题 + hover + tooltip; GDI 回落不崩; 其余组件视觉无回归。
-- 探针程序与临时计划已完成使命并删除(`probe/`、`.verify/`)。像素测量用的是脚本 + PIL, 未靠目测。
-
-## 已完成: lucide 图标资源(预处理)
-
-- `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), **每图标一个 `IconXxx` 常量**
-  (推荐: `p.Icon(icons.IconEye, &rc, color, 2)`) + 按名字取(`icons.Path("eye")`, 给"名字来自用户
-  输入/配置"的场合)。数据由 `scripts/gen_icons.py` 从 `lucide-static` 的 SVG 生成(图元转换 /
-  相对指令绝对化 / 数字归一 / `!` 填充标记), 一次产出名字表 `lucide_gen.go` 与常量
-  `lucide_icons_*.go`(表里存的就是常量本身)。**生成器默认取最新版**, `--version` 可钉版
-  (要跟参考实现严格对齐时钉 lucide-react 的同版本)。
-- 体积(实测 2026-10-06, 同基准 `-s -w`): 只用常量 **+0 字节**(2130 条数据只进 1 条),
-  调 `Path`/`Names` 等引用整张表 **+426KB**。组件也改用它了 —— 上一版手抄的 11 个 `xui.IconXxx`
-  常量已删(手抄漂移当天就被测试抓到过 `eye`/`moon` 是旧版图形), 现在漂移在结构上不可能。
-- 名字映射是**单射**的硬要求: lucide 有成对的"只差一个连字符"的名字(`arrow-down-0-1` /
-  `arrow-down-01` 是别名, 数据相同), 生成器在"数字段紧跟数字段"处补下划线(见 DESIGN.md 第八节 44)。
-- 转换规则与三个隐蔽坑(SVG 每个图元独立坐标系必须绝对化;arc 标志位是单字符, `a.25.25 0 00.407.195`
-  按数字切会静默丢半张图;`fill=currentColor` 图元同时继承描边, 要输出"填充+描边"两条)记在
-  **DESIGN.md 第八节 44**;运行时解析器同步修好, 现在贴 lucide 原始 path 也不会断。
-- 验收: 同屏对照浏览器渲染的原始 SVG(150% DPI 对齐), 32 个图标像素差 ≤4.2/255、新版的 9 个 ≤4.7/255;
-  `go test ./...` 会把全部 2130 个图标过一遍解析器(完整性回归)。
-- **demo 第 6 个页签「图标」**是这份资源的浏览入口: 9x5 格自绘格子 + 上下翻页 + 悬浮 bg-accent,
-  亮/暗两套主题都验过(`XUI_HOME_PAGE=5` 直接启动到该页)。
-- **图标页卡顿已修**(2026-10-06, 45 个图标同框 = 天然的压力测试): 根因是 D2D 填充自重叠路径
-  走 stencil-and-cover, 代价随**填充几何的 figure 数**近似平方增长, 而最初的描边展开是"每段一个
-  四边形 + 每个顶点一个圆帽"(上百 figure/图标) → 719ms/帧。改成"每条子路径一条闭合轮廓"
-  (外侧圆弧 + 内侧偏移线交点 + 两端半圆帽)后平均 4.11 条轮廓/图标 → **4.14ms/帧**;
-  结论见 DESIGN 第八节 43, 回归由 `TestIconGeometryFigureCount` / `TestStrokeOutline` 守住。
+- `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), **每图标一个 `IconXxx` 常量**;按名字取用 `icons.Path("eye")`(给"名字来自用户输入/配置"的场合)。数据由 `scripts/gen_icons.py` 生成(默认取最新版, `--version` 可钉版)
+- 出图走**直通 D2D 几何填充**(`d2dicon.go`), GDI 模式(`app.New(false)`)自动回落折线描边
+- 体积(实测, 同基准 `-s -w`): 只用常量 **+0 字节**;调 `Path/Names` 引用整张表 **+426KB**
+- demo 第 6 页「图标」是浏览入口(`XUI_HOME_PAGE=5`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
+- **原理、坑、性能结论见 DESIGN 第八节 43(抗锯齿 / figure 数)与 44(资源预处理 / 名字单射 / arc 标志位)**

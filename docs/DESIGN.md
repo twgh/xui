@@ -2,7 +2,9 @@
 
 > 基于 xcgui release-1.4.2 源码验证。目标:像 shadcn-ui 一样,把自绘组件的**源码**交到用户手里,由用户掌控主题与样式。
 >
-> **状态(2026-10-03)**:P0 运行时 + P1 组件 + CLI 已实现并通过视觉验收,交互语义已与本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)逐条对齐。本文是设计时的架构文档;**当前进度与接手指南见 HANDOFF.md**,实现细节以 `components/*.go` 与 `AGENTS.md` 为准。
+> **本文是知识库,不是进度表**:一~七节 = 架构原理与设计决策,第八节 = xcgui 踩坑全集(按主题编号,只增不改),第九节 = 已验证 API 清单。**不含日期、进度、待办**。
+> 交互语义的**权威汇总**在 **第四节末尾**(改交互前先看那里);当前进度 / 待办 / 命令 / 验证工作流见 **HANDOFF.md**;agent 会话入口硬规则见 **AGENTS.md**;面向用户的用法见 **README.md**。实现细节以 `components/*.go` 为准。
+> 本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn\src\components\ui\*.tsx`)是交互语义的唯一权威,改语义前先读它。
 
 ---
 
@@ -69,26 +71,33 @@ github.com/twgh/xui               运行时模块(go.mod 依赖,不拷贝)
 
 ```go
 type Theme struct {
-    Background, Foreground         Color
-    Card, CardForeground           Color
-    Primary, PrimaryForeground     Color
-    Secondary, SecondaryForeground Color
-    Muted, MutedForeground         Color
-    Accent, AccentForeground       Color
-    Destructive, DestructiveForeground Color
-    Border, Input, Ring            Color
-    Radius                         int32 // 基准圆角 px
-    FontDefault, FontMono          FontSpec
+    Name string // 主题名(调试 / 主题切换菜单用)
+
+    Background, Foreground Color // 窗口底色 / 默认正文文字
+
+    Card, CardFore       Color
+    Popover, PopoverFore Color // 弹出层(菜单、下拉)底色
+
+    Primary, PrimaryFore         Color // 主操作色 / 其上的文字
+    Secondary, SecondaryFore     Color // 次要填充
+    Muted, MutedFore             Color // 弱化填充(输入框底、禁用底) / 弱化文字(说明、占位符)
+    Accent, AccentFore           Color // 悬停高亮
+    Destructive, DestructiveFore Color // 破坏性操作
+
+    Border, Input, Ring Color // Input 通常与 Border 相同; Ring = 焦点环
+    Radius              int32 // 基准圆角 px
+    FontDefault, FontMono FontSpec
 }
 ```
 
-Color 封装 uint32,提供 `xui.Hex("#fafafa")`(底层 `xc.HexRGB2RGBA`)。主题文件长得和 CSS 一样,任何 shadcn 社区主题都能机械转译成 Go:
+Color 封装 uint32,提供 `xui.Hex("#fafafa")`(底层 `xc.HexRGB2RGBA`)。主题文件长得和 CSS 一样,任何 shadcn 社区主题都能机械转译成 Go(`init` 生成的 `ui/theme.go` 默认取内置主题的**副本** —— `light = *xui.Light()`, 见 `cmd/xui/main.go` 的 `themeTemplate`):
 
 ```go
-var Dark = xui.Theme{
+var dark = &xui.Theme{
+    Name:       "dark",
     Background: xui.Hex("#09090b"),
     Foreground: xui.Hex("#fafafa"),
-    Primary:    xui.Hex("#18181b"),
+    Primary:    xui.Hex("#fafafa"),
     ...
     Radius:     8,
 }
@@ -113,12 +122,16 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 ### 3.3 主题管理器
 
 ```go
-xui.SetTheme(&myTheme)   // 切换 + 通知已注册窗口重绘(内部 XWnd_Redraw)
-xui.OnThemeChange(fn)    // 需要同步原生 API 颜色的地方订阅(如 SetTextColor)
-xui.Themes.Dark()        // 内置主题
+xui.SetTheme(&myTheme)      // 切换 + 通知已注册窗口重绘(内部 XWnd_Redraw)
+xui.OnThemeChange(fn)       // 需要同步原生 API 颜色的地方订阅(如 SetTextColor), 返回反注册函数
+xui.Dark() / xui.Light()    // 内置主题(*Theme)
 ```
 
 组件若只在 paint 里取色,**无需订阅**;只有同步给原生 API 的颜色(文字色、窗口底色)才需要回调。
+
+**API 形状决策(2026-10-09 定, 早前设计稿写的 `xui.Themes.Dark()` 已废弃)**:内置主题用**包级函数** `xui.Light() / xui.Dark()`,**不提供 `xui.Themes` 命名空间对象**。Go 里"包本身就是命名空间",用一个全局单例对象当模块不合惯例(收益只是省一个点号,代价是多一个可变全局 + godoc 层级更深)。将来做第七节 P4 的"主题画廊"(几十上百个主题, 包级函数会污染根包名)时,正确解法是新增 **`xui/themes` 子包**(`themes.Get(name)` / `themes.All()`, 与本仓库 `icons` 子包同构),根包保留这两个函数作默认兜底;届时 `xui.Light()` 迁到 `themes.Light()` 保留别名即可, 非破坏。
+
+> 相关实现约定:`OnThemeChange` 返回的反注册函数**必须真的生效**(早期实现用 `&f == &fn` 比函数地址, 恒为假 → 是空操作, 已改为自增 id 句柄);窗口底色绑定(`BindWindowBackground`)由管理器持有, `UnregisterWindow` 会一并解绑, 避免主题切换时对失效句柄调 `XWnd_*` 弹错误框。
 
 ---
 
@@ -137,32 +150,38 @@ package ui
 type ButtonVariant int
 
 const (
-    BtnPrimary ButtonVariant = iota
-    BtnSecondary
-    BtnOutline    // 透明底 + Border token
-    BtnGhost      // 透明底, hover 用 Accent
-    BtnDestructive
+    ButtonPrimary ButtonVariant = iota // 实心主按钮
+    ButtonSecondary                     // 弱化填充
+    ButtonOutline                       // 边框按钮
+    ButtonGhost                         // 幽灵按钮, hover 才有底色
+    ButtonDestructive                   // 破坏性(软色调)
 )
 
 type ButtonSize int
 
-const (BtnSm, BtnMd, BtnLg, BtnIcon)
+const (
+    ButtonSizeSm      ButtonSize = iota // 高 28
+    ButtonSizeDefault                   // 高 32
+    ButtonSizeLg                        // 高 36
+)
 
 type Button struct {
     *widget.Button
     variant ButtonVariant
     size    ButtonSize
+    icon    string // 非空时绘制图标替代文字(WithIcon)
 }
 
-type ButtonConfig func(*Button) // 函数选项模式, 等价 cva 的 variants 参数
+type ButtonOption func(*Button) // 函数选项模式, 等价 cva 的 variants 参数
 
-func Variant(v ButtonVariant) ButtonConfig { return func(b *Button) { b.variant = v } }
-func Size(s ButtonSize) ButtonConfig       { return func(b *Button) { b.size = s } }
+func WithVariant(v ButtonVariant) ButtonOption { return func(b *Button) { b.variant = v } }
+func WithSize(s ButtonSize) ButtonOption       { return func(b *Button) { b.size = s } }
+func WithIcon(path string) ButtonOption        { return func(b *Button) { b.icon = path } }
 
-func NewButton(x, y, cx, cy int32, text string, hParent int, cfgs ...ButtonConfig) *Button {
+func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOption) *Button {
     b := &Button{Button: widget.NewButton(x, y, cx, cy, text, hParent)}
-    for _, c := range cfgs {
-        c(b)
+    for _, o := range opts {
+        o(b)
     }
     b.EnableBkTransparent(true)
     b.AddEvent_Paint(b.onPaint)
@@ -197,24 +216,66 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 
 | 组件 | 载体 | 方案 | 验证来源 |
 |---|---|---|---|
-| Button | embed Button | paint 壳, 原生文字 | BeautifyButton 示例 |
+| Button | embed Button | paint 壳, 原生文字(WithIcon 时自绘图标) | BeautifyButton 示例 |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
 | Input | embed Edit | 只画边框+焦点环, 原生光标/IME | BeautifyEdit 示例 |
-| Switch | embed Button | 轨道+滑块, ani 做过渡(可选) | — |
-| Progress/Slider | embed 原生 | 官方配方移植成 token | BeautifyProgressBar/SliderBar 示例 |
-| ComboBox | embed ComboBox | 画输入框; 下拉 ListView 在 `AddEvent_Combobox_Popup_List` 里皮肤化 | 库文档 FAQ |
-| Tabs | embed TabBar | paint | — |
-| Dialog | 纯 Element 覆盖层 | 全窗遮罩元素(自绘黑 10% + 面板) + 面板子元素;ESC/点遮罩关闭, Tab 焦点循环(见第八节 33) | — |
-| Menu | 原生菜单 | `XMenu_EnableDrawBackground/EnableDrawItem` + `AddEvent_Menu_Draw_Background/DrawItem` | element.go 已确认事件存在 |
-| Card/Badge/Separator | 纯 Element | paint | — |
-| Tooltip | FloatWindow | paint | — |
-| Table/List | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做 | Basic/List 示例 + 本仓库探针 |
-| Tree | 原生 + 项模板 | 模板创建事件里皮肤化 + EnableTemplateReuse | 库文档 |
-| Icon | svg.Svg | 内嵌 lucide(MIT), `SetUserFillColor` 主题着色, `d.DrawSvgSize` 绘制 | svg 包已确认 |
+| Switch | 纯自绘 Element | 轨道+滑块, 尺寸预设; hover 过渡走运行时 `anim.go`(第八节 45) | — |
+| Label/Separator/Badge | 纯 Element | paint | — |
+| Progress | 纯自绘 Element | h-1 圆角轨道 + 指示器(宽度按百分比) | BeautifyProgressBar 配方移植成 token |
+| Slider | 纯自绘 Element | **弃用原生 SliderBar**(滑块按钮 BkInfo 残留压不住, 见第八节 25), 自实现拖拽/点击跳转/键盘 | BeautifySliderBar 示例 + 探针 |
+| ComboBox | embed ComboBox | 画输入框; 下拉 ListView 弹层在 `AddEvent_Combobox_Popup_List` 里半接管(第八节 30) | 库文档 FAQ |
+| Tabs | embed TabBar | paint(default/line 两变体) | — |
+| Dialog | 纯 Element 覆盖层 | 全窗遮罩元素(自绘黑 10% + backdrop-blur) + 面板子元素;ESC/点遮罩关闭, Tab 焦点循环(第八节 33) | — |
+| Menu | 原生菜单 | `XMenu_EnableDrawBackground/EnableDrawItem` + `AddEvent_Menu_Draw_Background/DrawItem`(第八节 36) | element.go 已确认事件存在 |
+| Tooltip | FloatWindow | paint, 异型透明窗口 + 进出场 fade/slide(第八节 24/47) | — |
+| Table | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做 | Basic/List 示例 + 本仓库探针 |
+| Tree | 原生 Tree + 项模板 | `XE_TREE_DRAWITEM` 自绘行底/参考线/chevron, 模板子元素保留(第八节 42) | 库文档 + 探针 |
+| Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53) | — |
+| Icon | 直通 D2D 几何填充 | lucide path → 描边展开 → `FillGeometry`(第八节 43); 回落折线描边 / `svg.Svg` | svg 包 + D2D 探针 |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
 尺寸预设对标 shadcn(`h-9 px-4` 之类),经 DPI 助手换算。
+
+### 与 shadcn 对齐的语义(权威汇总)
+
+> **这是交互语义的唯一汇总表**;改任何组件的交互前先查这里,再回到本地 shadcn 参考实现(`shadcn/src/components/ui/*.tsx`)确认。每条的根因/实测见第八节对应条目。
+
+| 语义 | shadcn 源码依据 |
+|---|---|
+| **hover 过渡 = 150ms cubic-bezier(0.4,0,0.2,1)**(tailwind `transition-*` 默认值); 组件侧 `xui.Hover(ele, 悬停中)` / `xui.HoverItem(hOwner, idx, 悬停中)` + `xui.Fade(静止色, 悬停色, hv)`, 叠加层用 `ScaleAlpha(hv)` | button/tabs/switch/badge 的 `transition-all`; table/select/checkbox 的 `transition-colors`; 见第八节 45 |
+| hover:bg-primary/80(实心)/80 透明度 | button.tsx variant.default |
+| focus-visible 键盘才显示焦点框,ring-3 ring-ring/50,边框变 Ring 色 | button/input/checkbox 的 focus-visible:* |
+| 文本输入框点击聚焦也显示环(浏览器对文本控件恒匹配 focus-visible) | input.tsx |
+| disabled:opacity-50 原色半透明 | 各组件 disabled:* |
+| active:translate-y-px 按下整体下沉 1px(含文字→文字手动绘制) | button.tsx 基类 |
+| destructive 软色调(bg-destructive/10 + 红字) | button.tsx / badge.tsx |
+| radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground) | radio-group.tsx |
+| checkbox size-4 rounded-[4px],选中 bg-primary 白勾 | checkbox.tsx |
+| card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl | card.tsx |
+| badge h-5 胶囊(rounded-4xl) | badge.tsx |
+| switch 轨道 32x18(选中 bg-primary/未选 bg-input),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground | switch.tsx(radix-nova) |
+| switch 元素比轨道每边大 3px:给 focus-visible 的 ring-3 留绘制空间,同时外扩点击热区(≈ after:-inset-*) | switch.tsx |
+| progress = h-1 rounded-full bg-muted 轨道 + bg-primary 指示器(宽度按百分比) | progress.tsx |
+| slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),hover/拖动中/focus-visible 显示 ring-3 | slider.tsx |
+| slider 元素比可见轨道左右各宽 9px(滑块半径 6 + ring 3, 给两端 ring 留绘制空间, 见第八节 26);滑块中心在轨道两端之间移动, 位置由 pos 自算 | slider.tsx(radix 滑块中心贴轨道端点) |
+| slider 交互全自实现:点击跳转 + LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ KeyDown 左右 ±5%/Home/End | — |
+| tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
+| tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
+| select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见第八节 30) |
+| menu 弹层 = bg-popover rounded-lg p-1 ring-1 ring-foreground/10(内缩 1px); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border(原生槽高仅 4px); 快捷键右对齐 text-xs muted | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见第八节 36) |
+| table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm` | table.tsx(已落盘) + table.go(原生 List 接管路线见第八节 40) |
+| tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本项目令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
+| pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
+| tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
+| **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
+| dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10(ring 画在面板矩形**外侧** 1px, 直接描面板矩形会被遮罩灰吞掉, 见第八节 33);标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
+| dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
+| dialog 遮罩 bg-black/10(固定黑色,不随主题;**只铺 Body 区, 不铺阴影窗口的阴影带**——铺上去会把窗口自身投影再压暗 10%, 四角最明显;**backdrop-blur-xs 已实现**——物理像素抓窗快照(PrintWindow 不缩放, DIB 必须给物理尺寸)+融合降采样+半分辨率盒式模糊+成对平均放大+BkM 图片填充,见第八节 47) | dialog.tsx(语义权威) + 第八节 47 条 6/10 |
+| dialog 打开时焦点进第一个可聚焦控件,Tab/Shift+Tab 在对话框内循环(焦点陷阱),ESC / 点击遮罩 / 关闭钮关闭 | radix dialog 语义 |
+| **中文 500 字重 ≈ 常规**: Label 默认常规、按钮文字常规(用粗体字形实现 500 会明显偏粗); 标签比描述"看着粗"是**颜色**差(foreground 近黑 vs muted 灰), 实测笔画同宽 | label.tsx 500 + 实测像素 |
+| 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |
+| **字体单位**: xcgui 字体 size 是 pt 不是 px, FontHandle 统一按 px×0.75 换算(14px→11pt); 之前全局文字放大 1.33× | font.go(见第八节 31) |
 
 ---
 
@@ -238,45 +299,34 @@ registry.json 条目(shadcn 同构格式):
 
 组件源码放在仓库 `components/` 目录,demo 应用直接 import 它们编译——**demo 编译通过 = 全部组件可用**,CI 即测试。
 
+> **实现现状**:`init / add / list` 已实现;**`update` / `--all` 未实现**,v2 远程 registry 未做(进度与待办见 HANDOFF.md)。
+
 ---
 
 ## 六、仓库结构
 
-```
-xui/
-├── xui/            # 运行时模块(theme/color/icons/draw helpers/state)
-├── components/     # 组件源码 = registry 内容(每组件一目录)
-├── cmd/xui/        # CLI
-├── demo/           # 演示应用(CI 编译目标 + 截图生成)
-├── registry.json
-└── docs/
-```
+**目录树只维护在 [HANDOFF.md 的「仓库结构」节](HANDOFF.md#仓库结构)**(含 `icons/`、`scripts/` 等子包的真实布局)。这里只重申一条设计边界,不重复树:
 
-用户项目执行 `xui init && xui add button` 后:
-
-```
-myapp/
-├── go.mod      # + require github.com/twgh/xui
-└── ui/
-    ├── theme.go    # 用户自己的主题(init 拷贝, 想怎么改怎么改)
-    └── button.go   # 用户所有, 可改
-```
+- 组件源码放在 `components/`(扁平单包 `package ui`,一组件一文件),demo 直接 import 编译 —— **demo 编译通过 = 全部组件可用**,CI 即测试。
+- 用户项目执行 `xui init && xui add button` 后得到 `ui/theme.go` + 拷入的 `ui/*.go`,**归用户所有、可改**(copy-not-install)。
 
 ---
 
 ## 七、路线图
 
-| 阶段 | 内容 | 验收标准 | 状态 |
-|---|---|---|---|
-| **P0 运行时** | Color、Theme 令牌、主题管理器、内置主题、绘制助手、HoverTracker、DPI 助手 | 单测通过(变体纯函数不开窗可测) | ✅ |
-| **P1 MVP** | Button、Checkbox、Radio、Input、Label、Separator、Badge、Card + demo 页 | light/dark × hover/focus/disabled × DPI 截图 | ✅ |
-| **P2** | Switch、Slider、Progress、Tabs、ComboBox、Tooltip、图标系统 + 暗色切换演示 | 同上 | ✅ |
-| **P3** | Dialog ✅、Menu 皮肤 ✅、Table/List 皮肤 ✅、Tree 皮肤、hover 过渡动画、CLI 完整化(update) | 同上 | 🟡 |
-| **P4** | 文档站、主题画廊(批量转译 shadcn 社区主题为 Go) | — | ⬜ |
+| 阶段 | 内容 | 验收标准 |
+|---|---|---|
+| **P0 运行时** | Color、Theme 令牌、主题管理器、内置主题、绘制助手、HoverTracker、DPI 助手 | 单测通过(变体纯函数不开窗可测) |
+| **P1 MVP** | Button、Checkbox、Radio、Input、Label、Separator、Badge、Card + demo 页 | light/dark × hover/focus/disabled × DPI 截图 |
+| **P2** | Switch、Slider、Progress、Tabs、ComboBox、Tooltip、图标系统 + 暗色切换演示 | 同上 |
+| **P3** | Dialog、Menu 皮肤、Table 皮肤、Tree 皮肤、Pagination、hover/弹层过渡动画、CLI 完整化(update) | 同上 |
+| **P4** | 文档站、主题画廊(批量转译 shadcn 社区主题为 Go) | — |
+
+> 各阶段**进度与状态见 HANDOFF.md**(本文不再维护状态列)。
 
 ---
 
-## 八、风险与已规避项(基于 1.4.2 源码逐条验证)
+## 八、xcgui 踩坑全集(基于 1.4.2 源码逐条实测;编号稳定, 只增不改)
 
 1. **渲染模式二选一**:`app.New(true)` = Direct2D,`false` = GDI+。`GDI_*` 系列函数仅 GDI+ 模式可用,圆角抗锯齿 D2D 更好。**运行时统一按 D2D 设计**,demo 固定 D2D。
 2. **2000 回调上限**:一律 `AddEvent*` 系列注册(复用回调,无上限风险)。
@@ -294,11 +344,10 @@ myapp/
 14. **标题文字默认白色**:xcgui 标题栏文字颜色为白色(为默认蓝色标题栏设计),主题化窗口(白/黑底)需 `w.SetTitleColor(theme.Foreground)` 并挂 OnThemeChange。
 15. **窗口样式按标志位组合**:去掉系统图标和三键 = `Caption|Border|Center|Drag_Border|Allow_MaxWindow|Title`(不含 Icon/Btn_*);去掉关闭按钮后需自补 ESC 关闭(`XWnd_CloseWindow`)。
 16. **focus-visible 需自行跟踪焦点来源**:xcgui 只有单一 Focus 状态,不区分鼠标/键盘来源 → 全局跟踪鼠标按下/Tab 键(运行时 focus.go),文本输入类控件例外(始终显示,同浏览器语义)。
-17. **元素 paint 回调里能画位图, 也能画 SVG;当年"画不出"的根因是 Lucide 的 path 写法 xcgui 的 SVG 解析器不支持**(2026-10-07 复核修正, 此前本条结论有误导):
-    - **位图完全能画**:`XDraw_Image`(1:1)/ `XDraw_ImageEx`(拉伸)在元素 paint 回调里输出正常(复核探针实证;当年"句柄有效、坐标与裁剪都正确,就是画不出来"的说法不成立);
-    - **SVG 也能画, 但渲染结果不一定对**:`svg.NewByString` 加载合法 SVG 后,`DrawSvgEx / DrawSvg / DrawSvgSize` 三条 API 在元素 paint 里都正常出图(建议先 `SetSize/SetPosition` 再画);但**能画 ≠ 画得对** —— lucide 的归一化 path(绝对坐标、空格分隔)虽能解析成功, 渲染却走样: 圆弧变形、`fill="none"` 的子路径被糊成填充块(svgprobe 截图实证, 2026-10-07);
-    - **Lucide 原始 path 是唯一画不出的**:`svg.NewByString(lucide path)` 直接返回 **nil**(解析失败, 句柄都拿不到), 喂给绘制 API 自然无输出;`imagex.NewBySvgString` 同理。当年把"SVG 解析失败"误记成了"paint 通道画不出图片"。
-    - 因此需要图标时,用线段图元复刻:`icons.go` 把 lucide 的 path 解析成折线再用 `DrawLine` 描边(支持 M/L/H/V/C/S/Q/T/Z,圆弧用专门实现);或把图片交给原生控件(`Button.SetIcon` 等)。**2026-10-06 起图标的出图改为直通 D2D 几何填充(解析出的折线仍作为回落路径保留), 抗锯齿与几何精度见第 43 条。**
+17. **元素 paint 回调里能画位图、也能画 SVG;图标走专用管线**(2026-10-07 复核修正 —— 此前本条曾记成"paint 画不出图片", 有误导):
+    - **位图能画**:`XDraw_Image`(1:1)/ `XDraw_ImageEx`(拉伸)在 paint 回调里输出正常。
+    - **SVG 能画, 但不保证画对**:`svg.NewByString` + `DrawSvgEx / DrawSvg / DrawSvgSize` 出图正常(建议先 `SetSize/SetPosition`);但对 lucide 那种归一化 path 渲染走样(圆弧变形、`fill="none"` 子路径被糊成填充块), `svg.NewByString(原始 lucide path)` 更是直接返回 **nil**。
+    - **所以图标不用 SVG**:`icons.go` 把 lucide path 解析成折线, 再用**直通 D2D 几何填充**出图(抗锯齿/几何精度见第 43 条), 折线描边保留为回落路径;也可以把图片交给原生控件(`Button.SetIcon` 等)。
 18. **`XWnd_SetWindowPos` 吃物理像素**:框架内部坐标是逻辑像素(窗口创建时自动按 DPI 缩放),但窗口定位/尺寸透传给 Win32 → 必须自己乘 `dpi/96`,否则窗口会跑到 1/scale 的位置(实测 144 DPI 下 449 变成 299)。自绘提示窗(Tooltip)踩过这个坑。
 19. **原生 ComboBox 必须先 `CreateAdapter`**:否则 `AddItemText` / `GetCount` 会让炫彩弹"XAdTable_GetCountRow 中,输入句柄可能无效[0x0]"的错误框,并阻塞后续调用。
 20. **SliderBar 的滑块几何**:pos→滑块按钮是 `[0, W - buttonW]` 线性映射(实测 pos=0/25/50/100 → 0/47/94/188, 宽 200 时)。自绘时直接读 `XEle_GetRect(thumb)` 拿滑块矩形,与拖动行为严格一致;滑块外扩 3px 的焦点环要画在**滑动条**的 paint 里(滑块自身客户区只有 12x12,画在自己回调里会被裁)。
@@ -421,7 +470,7 @@ myapp/
     - **布局项必须是 LayoutEle**: 普通 Element 设置 `LayoutItem_*` 也不被排版(探针实证 red 块不占位、尺寸保持 0 → 连带裁掉全部子元素, 表现为整块空白);
     - **主轴剩余空间用 Weight 不是 Fill**: 纵向布局里 Fill 高度 = 独占整列(与前面 Fixed 项重叠, 实测 content 574=全高盖住 cap 30); 横向行里 Fill 宽度会把后面的 Fixed 兄弟挤到下一行(按钮消失)。DESIGN 第八节 29 的"Fill 独占一行"就是指主轴; 交叉轴用 Fill 铺满没问题;
     - **绝对定位容器要 `EnableLayout(false)`**: LayoutEle 默认排版开着, 内容区里绝对定位的 tabs/pages 会被当布局项排走(实测 tabs 跑到窗口底部);
-    - **双击最大化自己补**: border 归零后原生 caption 区域没了, 窗口级 `AddEvent_LButtonDBClick` 里 `IsMaxWindow() ? ShowWindow(SW_RESTORE) : MaxWindow()`(MaxWindow 只管最大化, 不会切换); 最大化/还原时窗口布局自动跟随, 按钮组(Weight 顶右)始终贴右上角;
+    - **双击最大化自己补**: border 归零后原生 caption 区域没了, 窗口级 `AddEvent_LButtonDBClick` 里 `IsMaxWindow() ? ShowWindow(SW_RESTORE) : MaxWindow()`(MaxWindow 只管最大化, 不会切换); 最大化/还原时窗口布局自动跟随, 按钮组(Weight 顶右)始终贴右上角。**双击命中带的 y 阈值 = `captionH + shadowSize`(最大化时不计阴影)**: 子元素坐标原点是含阴影带的窗口左上角, 阴影大小抽成 `demo/main.go` 的 `const shadowSize = 12`(别把 12/30 裸数字散在阈值里); 已用真实鼠标逐带验证(标题栏上半段/下半段都最大化、标题栏之下不最大化);
     - 纯容器(cap 行/内容区/页面)一律 `EnableMouseThrough(true)` 不挡 Drag_Window 拖动, 子元素(按钮)不受影响。
 
 40. **原生 List 皮肤接管路线**(2026-10-05, components/table.go): 载体是原生 `List`(表头/纵向滚动/行选中/项模板复用全部原生), 外观全自绘。逐条实测:
@@ -811,9 +860,13 @@ myapp/
            滚轮不产生位移 —— 对比滚动前后同一竖线(x=item 右侧空白列)的灰/白分段, 各条 hover/选中带
            的 y 区间应完全不变(变化只说明鼠标 hover 换了行)。
 
-         ---
+53. **Pagination: 折叠必须"恒定槽位", 且组件在 OnChange 前不要用立即重绘**(2026-10-08, `components/pagination.go` + demo 图标页, 亮/暗双主题 + 真实鼠标验收):
+    - **组件路线 = 纯自绘单元素**(同 slider, 不拼 Button 子元素): 页码数量随数据变化, 拼子元素要反复增删/重排; 条目 = `[上一页][1][2]…[n][下一页]`, 内容居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = `chevron(size-4)` + 文字; 悬停 `xui.HoverItem` 逐项过渡、按下 `active:translate-y-px` 下沉 1px; 到边界时上一页/下一页按禁用画(50% 透明且不响应鼠标)。API `NewPagination / SetTotal / SetPageSize / SetPage / Page / PageCount / OnChange`(`SetPage` 不回调, 供调用方同步数据游标)。
+    - **折叠策略必须"恒定 7 个槽位"** —— 首段 `1 2 3 4 5 … n` / 中段 `1 … p-1 p p+1 … n` / 末段 `1 … n-4 … n`。shadcn 文档那版三段分别占 6/7/7 个槽位, 翻页跨段时整行**宽出一个页码位**, 居中排布下"下一页"跟着右移 —— 实测连点 10 次同一坐标点不到(用户反馈"点着点着就点不到了"); 恒定槽位后同坐标连点 10 次稳定到第 11 页。
+    - **组件在 `OnChange` 之前用 `Redraw(true)` 会吞掉调用方的待重绘区域** → 调用方在回调里改的原生控件文字(Label 等)滞后到下一次无关重绘才出现; 组件改状态后一律 `Redraw(false)`, 原生控件自己改完文字也要显式 `Redraw(false)`(同第 48 条)。
+    - **demo 图标页改造**(属状态, 详见 HANDOFF): 加搜索框(Input 按名过滤, 大小写不敏感)、用本组件翻页、格子默认只画图标(9×4 一页)、悬浮出 Tooltip 显示完整图标名、点击把名字复制到剪贴板。
 
-
+---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
 
