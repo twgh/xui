@@ -3,6 +3,7 @@ package xui
 import (
 	"sync"
 
+	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 )
@@ -133,6 +134,30 @@ func BindWindowBackground(hWindow int) {
 	cur := mgr.current
 	mgr.mu.Unlock()
 	applyWindowBackground(hWindow, cur)
+}
+
+// OnThemeChangeFor 订阅主题切换, 并在 hEle 销毁时**自动反注册**。
+// 组件构造函数用它替代裸 OnThemeChange —— 元素/窗口反复创建时, 裸订阅会在全局
+// 订阅表里无限累积, 句柄被复用后还可能把回调刷到无关元素上。
+// 实测(探针 .verify/probe_destroy): 元素显式 Destroy、随父窗口 CloseWindow 连带销毁、
+// 以及嵌套在子容器里的元素, 都会触发 XE_DESTROY, 所以这条绑定是可靠的。
+func OnThemeChangeFor(hEle int, fn func(*Theme)) {
+	if fn == nil {
+		return
+	}
+	unsub := OnThemeChange(fn)
+	if hEle == 0 {
+		return
+	}
+	e := widget.NewElementByHandle(hEle)
+	if e == nil {
+		return
+	}
+	// 走 AddEvent* 事件总线(不是 XEle_RegEventC, 那条路有 2000 回调上限)。
+	e.AddEvent_Destroy(func(int, *bool) int {
+		unsub()
+		return 0
+	})
 }
 
 // applyWindowBackground 把窗口底色重刷为主题 Background 令牌。

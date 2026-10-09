@@ -40,7 +40,7 @@ func NewLabel(x, y, cx, h int32, text string, hParent int) *Label {
 	btn.EnableSwitchFocus(false)
 	xui.AttachWindow(btn.Handle)
 	l.applyTheme(xui.Current())
-	xui.OnThemeChange(func(t *xui.Theme) { l.applyTheme(t) })
+	xui.OnThemeChangeFor(btn.Handle, func(t *xui.Theme) { l.applyTheme(t) })
 	btn.AddEvent_Paint(l.onPaint)
 	return l
 }

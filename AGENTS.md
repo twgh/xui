@@ -10,7 +10,7 @@ shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。**本文件只
 ## 硬规则
 
 - **绘制坐标是逻辑像素**:`XEle_GetClientRect` 返回未缩放矩形,框架渲染时统一 DPI 变换;自绘**禁止**再按 DPI 预缩放(见 DESIGN 6/10)
-- **组件禁止缓存颜色**:paint 回调里 `xui.Current()` 实时取令牌;需要同步原生 API 的颜色用 `xui.OnThemeChange`(见 DESIGN 3.2)
+- **组件禁止缓存颜色**:paint 回调里 `xui.Current()` 实时取令牌;需要同步原生 API 的颜色用 `xui.OnThemeChangeFor(元素句柄, fn)`(元素销毁时自动反注册;仅非元素的长生命周期订阅才用裸 `OnThemeChange`)(见 DESIGN 3.2/3.3)
 - **事件一律 `AddEvent*` 系列**(有 2000 回调上限问题);不用背景管理器管理组件外观(见 DESIGN 2/3)
 - **渲染固定 Direct2D**:`app.New(true)`,demo 是标准样板(含无图标无三键标题栏样式,见 DESIGN 38)
 - **改交互语义前**:先查 DESIGN 第四节末的语义汇总表,再读本地 shadcn 源码 —— 勿凭记忆改动

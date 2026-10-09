@@ -135,7 +135,7 @@ xui.Dark() / xui.Light()    // 内置主题(*Theme)
 
 **API 形状决策(2026-10-09 定, 早前设计稿写的 `xui.Themes.Dark()` 已废弃)**:内置主题用**包级函数** `xui.Light() / xui.Dark()`,**不提供 `xui.Themes` 命名空间对象**。Go 里"包本身就是命名空间",用一个全局单例对象当模块不合惯例(收益只是省一个点号,代价是多一个可变全局 + godoc 层级更深)。将来做第七节 P4 的"主题画廊"(几十上百个主题, 包级函数会污染根包名)时,正确解法是新增 **`xui/themes` 子包**(`themes.Get(name)` / `themes.All()`, 与本仓库 `icons` 子包同构),根包保留这两个函数作默认兜底;届时 `xui.Light()` 迁到 `themes.Light()` 保留别名即可, 非破坏。
 
-> 相关实现约定:`OnThemeChange` 返回的反注册函数**必须真的生效**(早期实现用 `&f == &fn` 比函数地址, 恒为假 → 是空操作, 已改为自增 id 句柄);窗口底色绑定(`BindWindowBackground`)由管理器持有, `UnregisterWindow` 会一并解绑, 避免主题切换时对失效句柄调 `XWnd_*` 弹错误框。
+> 相关实现约定:`OnThemeChange` 返回的反注册函数**必须真的生效**(早期实现用 `&f == &fn` 比函数地址, 恒为假 → 是空操作, 已改为自增 id 句柄);窗口底色绑定(`BindWindowBackground`)由管理器持有, `UnregisterWindow` 会一并解绑, 避免主题切换时对失效句柄调 `XWnd_*` 弹错误框;**组件构造函数里的主题订阅一律用 `xui.OnThemeChangeFor(元素句柄, fn)`**(元素销毁时自动反注册, 见第八节 54), 裸 `OnThemeChange` 只用于非元素的长生命周期订阅。
 
 ---
 
@@ -869,6 +869,11 @@ registry.json 条目(shadcn 同构格式):
     - **折叠策略必须"恒定 7 个槽位"** —— 首段 `1 2 3 4 5 … n` / 中段 `1 … p-1 p p+1 … n` / 末段 `1 … n-4 … n`。shadcn 文档那版三段分别占 6/7/7 个槽位, 翻页跨段时整行**宽出一个页码位**, 居中排布下"下一页"跟着右移 —— 实测连点 10 次同一坐标点不到(用户反馈"点着点着就点不到了"); 恒定槽位后同坐标连点 10 次稳定到第 11 页。
     - **组件在 `OnChange` 之前用 `Redraw(true)` 会吞掉调用方的待重绘区域** → 调用方在回调里改的原生控件文字(Label 等)滞后到下一次无关重绘才出现; 组件改状态后一律 `Redraw(false)`, 原生控件自己改完文字也要显式 `Redraw(false)`(同第 48 条)。
     - **demo 图标页改造**(属状态, 详见 HANDOFF): 加搜索框(Input 按名过滤, 大小写不敏感)、用本组件翻页、格子默认只画图标(9×4 一页)、悬浮出 Tooltip 显示完整图标名、点击把名字复制到剪贴板。
+
+54. **元素销毁事件会为子元素逐个触发(含嵌套), 顺序在窗口 `XE_DESTROY` 之后**(2026-10-09, 探针 `.verify/probe_destroy` 实测):
+    - **三种销毁路径都触发** `XE_DESTROY`(33) + `XE_DESTROY_END`(42): ① 元素显式 `Destroy()`; ② 直接挂在窗口上的元素随 `CloseWindow` 连带销毁; ③ **嵌套在子容器(LayoutEle)里的元素同样触发**。
+    - **顺序**: 窗口的 `XE_DESTROY` 先到, 再按层级逐个销毁子元素(实测日志 `WINDOW → C(嵌套) → A(直挂)`)。
+    - **意义**: 这是"把订阅/缓存绑到元素生命周期"的依据 —— 运行时的 `xui.OnThemeChangeFor(hEle, fn)`(主题订阅随元素销毁自动反注册)与 `anim.go` 里 `AddEvent_Destroy_End` 清理 hover 状态, 都挂在这上面。对裸句柄注册要用 `widget.NewElementByHandle(hEle)`, 且**必须走 `AddEvent*` 事件总线**(不能用 `XEle_RegEventC` 那套有 2000 上限的注册)。
 
 ---
 

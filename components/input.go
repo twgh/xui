@@ -53,7 +53,7 @@ func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
 
 	// 文字颜色需要实时同步给原生 API, 订阅主题切换
 	in.applyTheme(xui.Current())
-	xui.OnThemeChange(func(t *xui.Theme) { in.applyTheme(t) })
+	xui.OnThemeChangeFor(in.Handle, func(t *xui.Theme) { in.applyTheme(t) })
 
 	in.AddEvent_Paint(in.onPaint)
 	xui.AttachWindow(in.Handle)

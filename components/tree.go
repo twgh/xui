@@ -138,7 +138,7 @@ func NewTree(x, y, cx, cy int32, hParent int, opts ...TreeOption) *Tree {
 	})
 
 	t.applyTheme(xui.Current())
-	xui.OnThemeChange(func(th *xui.Theme) { t.applyTheme(th) })
+	xui.OnThemeChangeFor(t.Handle, func(th *xui.Theme) { t.applyTheme(th) })
 	xui.AttachWindow(t.Handle)
 	return t
 }
