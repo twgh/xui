@@ -28,13 +28,14 @@
 - ✅ **Tree**(2026-10-06):原生 Tree 载体 + `XE_TREE_DRAWITEM` 自绘;"隐藏容器首显空白"回归已改为组件内自愈(42/51)
 - ✅ **hover 过渡动画**(2026-10-06):150ms cubic-bezier(0.4,0,0.2,1), 运行时 `anim.go` 驱动, 组件侧只用 `xui.Hover / HoverItem + Fade`(45)
 - ✅ **重绘节流调优**:应用初始化 `a.SetPaintFrequency(10)`, 实测 30.9 → 59.0 fps;`XC_SetTextRenderingHint` 在 D2D 下是空操作(46)
-- ✅ **弹层/对话框进出场动画**(2026-10-06):`xui.Presence(...)` + `SetElementsAlpha / FadeWindowAlpha / SlideWindowAlpha`;窗口 alpha 永远不精确 = 0(47)
+- ✅ **弹层/对话框进出场动画**(2026-10-06):`xui.Presence(...)` + `SetElementsAlpha / FadeWindowAlpha / SlideWindowAlpha`;窗口 alpha 永远不精确 = 0(47)。⚠️ **异型透明窗上不要用整窗 alpha 做动画**(只认第一次调用, 见 57), 淡入淡出改成元素 alpha
 - ✅ **backdrop-blur-xs**(2026-10-07):抓窗快照 + Go 盒式模糊 + BkM 图片填充;改物理像素管线后全屏弹窗 160ms → 61ms(47)
 - ✅ **Pagination + demo 图标页改造**(2026-10-08):恒定 7 槽位折叠, 搜索 / 翻页 / 悬浮 Tooltip / 点击复制图标名(53)
 - ✅ **图标系统**:抗锯齿改**直通 D2D 几何填充**(`d2dicon.go`);**lucide 资源预处理**(2130 个图标, `icons/` 子包)—— 原理 / 坑 / 性能见 43/44,速览见下方「图标系统」
 - ✅ **与 shadcn 逐条核对变体/尺寸并补齐**(2026-10-09):核对本地 18 个 tsx 的 cva variants/props 后补齐 —— Button 补 Link 变体 + 8 档尺寸(xs/sm/default/lg + 4 个方形图标档)、Badge 补 ghost/link、Card 补 sm 尺寸与说明/页脚、ComboBox 补 sm 触发区、Slider 补 min/max/step、Separator/Tabs 补纵向取向;像素实测按钮高度 24/28/32/36 与 shadcn h-6/7/8/9 完全吻合。映射与**仍然存在的差异**(aria-invalid / CardAction / Menu inset / chart·sidebar 令牌)记在 DESIGN 第四节末「变体/尺寸与上游的映射、已知差异」;1px 细条的绘制结论见 10
 - ✅ **demo 全面布局化 + 分类重规划 + `Card` 改布局容器**(2026-10-09):窗口 800×590 → **1200×820**(最小 960×660), 页面/卡片去掉全部"算出来的绝对坐标", 改为流式布局(窗口最大化即整页自适应, 像素实测: 卡片左边距 36 = 阴影 12 + 页边距 24 ✓, 最大化时 24 ✓, 数据页表格跟随长到 ~1000 逻辑高)。页签重规划为 **基础 / 表单 / 导航 / 反馈 / 数据 / 图标**(原"控件/结构/新增变体"散布的内容各归其位, 不再挤在一页)。`Card` 底层换 `LayoutEle`、内容区随卡片尺寸联动(见 DESIGN 第八节 56);布局尺寸语义(尤其"`Fill` ≠ 剩余空间"、"`Weight` 需父级确定尺寸")见第八节 55
 - ✅ **页面宿主的"叠放换页"不需要绝对定位**(2026-10-09):布局会跳过 `Show(false)` 的子项(排成 0x0), 所以 6 个页是宿主里的 6 个 Fill/Weight 兄弟, 切页只 `Show` + `AdjustLayout`(实测, 见 55)
+- ✅ **Tooltip 气泡"显示着却看不见"根因修复**(2026-10-09):症状是悬停后提示不出现(用户侧描述"点几次切换主题后 ToolTip 就不显示了"), 实际窗口**被显示出来了**(可见、矩形正确、位置还随动画滑动), 但 layered alpha 被永久钉在 3/255 —— 异型透明窗的整窗透明度**只认第一次调用**(探针复现, 见 57)。修法: 进出场改淡**元素** alpha, 整窗 alpha 只在显示后设一次 1; 验收=亮/暗双主题各 3 轮、连续 6 次切主题后每轮气泡像素增量完全一致
 
 ## 待办
 
@@ -118,7 +119,7 @@ go test ./...
 | 架构原理、分层边界、主题令牌、组件解剖 | DESIGN.md 一~四节 |
 | **交互语义(改交互前必看)** | DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」+ 本地 shadcn 源码 |
 | **我们与 shadcn 的差异 / 变体尺寸映射** | DESIGN.md 第四节末「变体/尺寸与上游的映射、已知差异」 |
-| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~56) |
+| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~57) |
 | 界面布局怎么写(容器/尺寸/随窗口自适应) | DESIGN.md 第八节 55(尺寸语义) + 56(Card), 样板在 `demo/main.go` |
 | 用到的 xcgui API 清单 | DESIGN.md 第九节 |
 | agent 会话硬规则 | AGENTS.md |
@@ -144,7 +145,9 @@ go test ./...
 - 疑难渲染问题写探针程序(`.verify/probeN` 独立 main 包, `go build -o .verify/probeN/probeN.exe ./.verify/probeN` 后运行;`.verify/` 已被 go 工具链忽略),完事删掉
 - 布局类问题**用 `xc.XEle_GetRectLogic` 打印各元素矩形**判定, 比截图量像素快且准(探针里 `AdjustLayout()` 之后读;注意窗口必须 `Show` 过才有非零尺寸, 见 DESIGN 8.55)
 - 要按**物理/逻辑像素精确量测**时, 自己用 Win32 抓窗口(GetWindowRect + CopyFromScreen)比 MCP 截图可靠: MCP 截图会被缩放到模型尺寸。**抓之前必须把抓图进程设为 per-monitor DPI-aware**(`SetProcessDpiAwarenessContext(-4)`), 否则 GetWindowRect 给虚拟化坐标、CopyFromScreen 抓物理像素, 两者差 150% —— 抓出来的图左边会多出一条桌面(踩过)
-- 需要"真实鼠标"验证 hover/点击时, 探针里用 `wapi.SetCursorPos` 比外部脚本可靠;从 PowerShell 移动鼠标要注意它是 DPI-unaware 进程, 坐标会被虚拟化/偏移, 别拿截图坐标直接当屏幕坐标用(踩过坑)
+- 需要"真实鼠标"验证 hover/点击时, 探针里用 `wapi.SetCursorPos` 比外部脚本可靠;从 PowerShell 移动鼠标要注意它是 DPI-unaware 进程, 坐标会被虚拟化/偏移, 别拿截图坐标直接当屏幕坐标用(踩过坑)。脚本里出现中文时**必须存成 UTF-8 **带 BOM**** —— PowerShell 5.1 按 ANSI 读 `.ps1`, 无 BOM 的中文串会把语法读坏(报一堆莫名其妙的 "Unexpected token")
+- ⚠️ **定位窗口一律用"枚举进程顶层窗口 + 取可见且面积最大"**, 不要用 `Process.MainWindowHandle`: 弹层/提示这类小窗(带 `WS_EX_TOOLWINDOW`)一旦创建, 它就会返回**小窗**, 之后用它算出来的坐标、抓出来的图全是错的(踩过: 整个复现流程因此偏了半天)。诊断脚本见 DESIGN 第九节的 Win32 诊断 API 一行
+- **"窗口可见 ≠ 屏幕上有东西"**: 判断弹层/提示这类异型透明窗有没有真的显示, 不能只看 `IsWindowVisible`/矩形 —— 用 `PrintWindow` 抓它自己的内容(证明"画了")与 `CopyFromScreen` 抓同一块屏幕(证明"屏幕上有没有")对照, 再读 `GetLayeredWindowAttributes` 的 alpha;`可见 + 矩形正确 + 像素为空` ⇒ 整窗 alpha/形状问题(见 57)
 - **验收探针必须跑 `a.Run()` 消息循环**(无泵时 Presence/定时器全不工作, 结论作废)
 - 浏览器对照:shadcn 参考页 + xui demo 同屏对比;同一张截图里量两边(ours vs ref)是最可靠的对照法
 - **弹层类组件的暗色验收一律 zoom/像素测量**:全屏缩略截图里暗色弹层会假显亮底(36)

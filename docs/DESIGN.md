@@ -915,6 +915,15 @@ registry.json 条目(shadcn 同构格式):
     - 内容区高度是 **Auto**(按内容自撑), 于是卡片高度可以 Auto(自撑)也可以固定/Weight, 内容一律从上往下排。内容要撑满卡片高度(表格/树)时: 卡片高度给 Weight, 再对内容区与目标子项声明 `xui.ItemFillHeight`(Weight 1, 受 55 的"父级确定尺寸"约束)。
     - 一个卡片只有一个内容区: 重复调用 `ContentStack` 返回同一个(只改 space)。页脚 `CardFooter` 以**卡片**为父句柄创建、声明宽度铺满 —— 内容区高度给了 Fill/Weight 时会自动让出页脚那一段。
 
+57. **异型透明窗(Shaped)的"整窗透明度"只认第一次调用, 之后永远冻结**(2026-10-09, 探针 `.verify/probe_alpha` + 抓屏/像素实测; Tooltip 气泡"窗口明明显示了却看不见"的根因):
+    - **症状**: 悬停后提示气泡**确实被显示出来**(枚举窗口可见、矩形正确、位置还随进场动画滑动), 但屏幕上什么都没有 —— 用户侧的各种描述(如"点几次切换主题后 ToolTip 就不显示了")都源于此。
+    - **定位过程(手法值得复用)**: ① ⚠️ `Process.MainWindowHandle` 在 tooltip 小窗(懒创建, 带 `WS_EX_TOOLWINDOW`)存在后**返回的是小窗而不是主窗口**, 用它算坐标会让后续所有悬停/抓图全错(踩过; 改成"枚举进程顶层窗口, 取可见且面积最大"); ② 用 `PrintWindow` 抓小窗自己的内容 vs `CopyFromScreen` 抓同一块屏幕, 二分出"**画是画了的**, 只是屏幕上没有" ⇒ 合成/透明度问题; ③ `user32!GetLayeredWindowAttributes` 读出 layered alpha = **3/255**(窗口可见但几乎全透明)。
+    - **根因**(探针复现): `XWnd_SetTransparentAlpha` 对 `Window_Transparent_Shaped` 窗口**只在第一次调用时生效** —— 那一发把窗口切成 layered 并写进 `SetLayeredWindowAttributes`, 之后无论设什么值、`XWnd_Redraw(本窗, 立即)`、`XEle_Redraw`、`SetWindowPos` 移动、重绘宿主窗口、`ShowWindow`, **layered alpha 都停在首次那个值不再变化**(实测 3 → 200/120/60/90/30 全部无效)。于是"进场动画第一帧"的极小值被永久钉住 ⇒ `FadeWindowAlpha` / `SlideWindowAlpha` 这类**整窗 alpha 动画在异型窗上等于没做**。(`Window_Transparent_Simple` 则是从建窗起就不是 layered 模式、该 API 同样不生效。)
+    - **修法**(`components/tooltip.go`): 进出场**改用元素 alpha**(`xui.SetElementsAlpha` / `XEle_SetAlpha`, 由框架在合成阶段逐帧乘上去, 每帧都生效, 对话框整组淡入就是这么做的, 见 47); 整窗 alpha 只在**窗口显示出来之后**设一次 `1`(不透明)钉住; 位置滑动仍走 `SetWindowPos`; 驱动计时器仍挂宿主窗口(异型小窗自己的定时器会掉到约 100ms/帧)。
+    - 首次进场不再需要"把窗口 alpha 压到底"防闪: 元素 alpha 直接以 0 起步, 首帧什么都不画即可(**元素** alpha 允许为 0; 只有**窗口** alpha 不能为 0, 否则 xcgui 会停止合成该窗口, 见 `SetWindowAlpha`)。
+    - **验收**(真实鼠标 + 抓屏像素, 亮/暗双主题各 3 轮): 亮色下悬停处"深色像素"由 7996 升到 9022(气泡是深色块); 暗色下"亮色像素"由 0 升到 2979(气泡是浅色块) —— 连续 6 次切换主题后每轮增量完全一致, 即"切主题把气泡弄坏"的现象消失。
+    - **通用判据**: `IsWindowVisible=true` + 矩形正确 + **屏幕像素为空** ⇒ 先怀疑整窗 alpha / 窗口形状, 不要只凭"窗口可见"下结论。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -932,6 +941,7 @@ registry.json 条目(shadcn 同构格式):
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
 - `XWnd_SetWindowPos(物理像素)`、`XC_hWindowFromHWnd`、`XEle_GetWndClientRect`、`XWnd_GetClientRect`、`wapi.ShowWindow/SetForegroundWindow/GetSystemMetrics/GetWindowLongPtrW`
 - backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验收)
+- 排查"窗口可见但屏幕上看不见"(见 57):`user32!EnumWindows` + `GetWindowThreadProcessId` 枚举进程窗口(⚠️ 别用 `Process.MainWindowHandle`, 弹层小窗存在时它会返回小窗)、`IsWindowVisible`、`user32!GetLayeredWindowAttributes`(读 layered alpha/颜色键)、`PrintWindow` 与 `CopyFromScreen` 对照(画了 vs 屏幕上没有)
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽)
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55)
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)

@@ -118,10 +118,21 @@ func (t *Tooltip) Hide() {
 	// 退场: fade-out-0(shadcn 的 tooltip 退场没有位移), 到位后隐藏窗口。
 	// 过渡挂在**触发元素所在的宿主窗口**上: 气泡自己的异型置顶小窗做重绘目标时,
 	// xcgui 的定时器实测会掉到约 100ms/帧(见 DESIGN 第八节 47), 宿主窗口这条
-	// 驱动链与 hover 相同(约 16~30ms/帧), 因此把驱动与重绘都放在它上面。
+	// 驱动链与 hover 相同(约 16~30ms/帧), 因此把驱动放在它上面。
 	xui.Presence(t.hWnd, tipFadeKey, false, xui.TooltipDuration,
-		xui.FadeWindowAlpha(t.win.Handle),
-		func(v float64) { t.win.ShowWindow(xcc.SW_HIDE) })
+		t.fade, func(v float64) { t.win.ShowWindow(xcc.SW_HIDE) })
+}
+
+// fade 是气泡进出场的每帧回调: 按进度设置气泡的不透明度并立即重绘。
+//
+// 淡的是**元素** alpha(XEle_SetAlpha), 不是整窗 alpha(XWnd_SetTransparentAlpha):
+// 异型透明窗(Window_Transparent_Shaped)的整窗透明度**只认第一次调用**, 之后再设什么
+// 值、再怎么重绘(本窗 / 元素 / 宿主窗)都不再变化 —— 实测现象是"窗口位置在动、
+// layered alpha 恒为首次那个值", 于是气泡整块几乎是全透明的, 屏幕上根本看不到它。
+// 元素 alpha 是框架在合成阶段乘上去的, 每帧都生效(对话框整组淡入同理, 见 47/57)。
+func (t *Tooltip) fade(v float64) {
+	xui.SetElementsAlpha(v, t.ele.Handle)
+	t.win.Redraw(true) // 立即重绘: 元素 alpha 要画一遍才落地
 }
 
 func (t *Tooltip) show(hEle int) {
@@ -186,9 +197,10 @@ func (t *Tooltip) show(hEle int) {
 	py := int32(float64(y) * scale)
 	fresh := !t.shown
 	if fresh {
-		// 进场前把透明度压到底(1/255, 见 SetWindowAlpha): 若首次绘制带着上一次的
-		// 255 会闪现一帧全亮。绝不能预设成 0 —— alpha=0 会让 xcgui 停止合成该窗口。
-		xui.SetWindowAlpha(t.win.Handle, xui.AlphaFloor())
+		// 进场前把气泡元素压成全透明(淡的是元素 alpha, 见 fade 的说明): 首帧就不会
+		// 带着上一次的 255 闪一下。元素 alpha 允许为 0 —— 只有**窗口** alpha 不能为 0
+		// (0 会让 xcgui 停止合成该窗口, 见 SetWindowAlpha)。
+		xui.SetElementsAlpha(0, t.ele.Handle)
 	}
 	t.win.SetWindowPos(xcc.HWND_TOPMOST, px, py,
 		int32(float64(ww)*scale), int32(float64(wh)*scale),
@@ -201,6 +213,9 @@ func (t *Tooltip) show(hEle int) {
 		// 已经显示着(只是在目标之间横移): 只挪位置, 不重播进场动画
 		return
 	}
+	// 整窗 alpha 固定为"不透明": 它就是异型窗**第一次**落地的那个透明度, 之后再改也
+	// 不生效(见 fade 的说明), 所以必须在窗口已经显示出来之后把它钉在 255。
+	xui.SetWindowAlpha(t.win.Handle, 1)
 	t.shown = true
 	t.hWnd = hWnd
 	// 进场(shadcn tooltip: fade-in-0 + zoom-in-95 + slide-in-from-<side>-2, 150ms):
@@ -209,8 +224,12 @@ func (t *Tooltip) show(hEle int) {
 	if t.below {
 		off = -off
 	}
-	xui.Presence(t.hWnd, tipFadeKey, true, xui.TooltipDuration,
-		xui.SlideWindowAlpha(t.win.Handle, px, py, 0, off, 255), nil)
+	xui.Presence(t.hWnd, tipFadeKey, true, xui.TooltipDuration, func(v float64) {
+		oy := py + int32(float64(off)*(1-v)+0.5)
+		t.win.SetWindowPos(xcc.HWND_TOPMOST, px, oy, 0, 0,
+			xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
+		t.fade(v)
+	}, nil)
 }
 
 func (t *Tooltip) ensure() {
