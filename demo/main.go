@@ -280,15 +280,28 @@ func row(parent int, ht, space int32) *widget.LayoutEle {
 	return r
 }
 
-// col 建一行里的一列: 宽度按权重等分, 高度占满, 子项间距 space。
-// 列内都是"按内容自撑"的卡片时用它即可(高度 Fill, 等价于父级整高)。
+// col 建一行里的一列: 宽度按权重等分, **高度按内容自撑(Auto)**, 子项间距 space。
+//
+// 高度为什么必须 Auto(而不是 xui.VStackWeight 的 Fill): 列里装的是"高度自撑"的卡片,
+// 而 xcgui 对"Auto 高的卡片挂在**任意一轴是 Fill** 的父级里"的编排是坏的 —— 卡片内容区
+// 里的 Fill 子项(原生 Edit/ComboBox 这种整宽有边框的控件)会按**卡片宽**排版, 右边缘正好
+// 压到卡片边框上(实测: 输入框宽 = 卡片宽 568 而不是内容区宽 536, 见 DESIGN 第八节 59)。
 func col(parent int, weight, space int32) *widget.LayoutEle {
-	return xui.VStackWeight(parent, weight, space)
+	l := widget.NewLayoutEle(0, 0, 0, 0, parent)
+	l.EnableHorizon(false)
+	l.EnableLayout(true)
+	l.EnableBkTransparent(true)
+	l.EnableAutoWrap(false)
+	l.SetSpace(space)
+	l.LayoutItem_SetWidth(xcc.Layout_Size_Weight, weight)
+	l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	return l
 }
 
 // colStretch 建一行里"能长高"的一列: 宽度按权重等分, 高度也按权重占满。
-// 与 col(xui.VStackWeight) 只差高度那一维 —— 它用 Fill(= 父级整高), 列内再想用
-// Weight 占剩余高度时会因为"父级尺寸不确定"而失效(实测, 见 DESIGN 第八节 55)。
+// 与 col 只差高度那一维 —— 它用 Weight(= 父级剩余空间), 供列内 stretchCard(高度 Fill)这类
+// "越高越好"的面板用; col 是 Auto(按内容自撑), 只适合列内是"高度自撑"的卡片
+// (两种高度写法对内容区 Fill 子项宽度的影响不同, 见 DESIGN 第八节 59)。
 func colStretch(parent int, weight, space int32) *widget.LayoutEle {
 	l := widget.NewLayoutEle(0, 0, 0, 0, parent)
 	l.EnableHorizon(false)
@@ -513,11 +526,17 @@ func buildBasePage(body *widget.LayoutEle) {
 
 // ===== 页 2: 表单(输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框) =====
 
+// 骨架是"一行两列、每列把两张卡竖着排", 不是"两行各两列":
+// 行高只有 Weight(按剩余空间等分)可用, 卡片比行高时下一行就会压到上一行的卡片上
+// (实测: 输入框卡 430 高, 行只分到 363, 第二行的卡片上沿 379 直接盖住它 —— 用户报的
+// "下方两个卡片盖住上方卡片")。竖排在同一列里则天然按内容顺序往下走, 不重叠。
 func buildFormPage(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
+	colL := col(r.Handle, 1, gap)
+	colR := col(r.Handle, 1, gap)
 
-	// ---- 列 1: 输入框 ----
-	_, v := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	// ---- 左列 1: 输入框 ----
+	_, v := autoCard(colL.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "输入框", v.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "原生 Edit 载体: 只画边框与焦点环, 光标/输入法/选区都是原生的", v.Handle))
 
@@ -536,8 +555,8 @@ func buildFormPage(body *widget.LayoutEle) {
 	dis.SetValue("不可编辑")
 	dis.Enable(false)
 
-	// ---- 列 2: 选择控件 ----
-	_, v2 := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	// ---- 右列 1: 选择控件 ----
+	_, v2 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "选择控件", v2.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "复选框 / 单选框 / 开关, 尺寸与状态语义逐条对齐 shadcn", v2.Handle))
 
@@ -571,10 +590,8 @@ func buildFormPage(body *widget.LayoutEle) {
 	swDis := ui.NewSwitch(0, 0, rs.Handle, ui.WithSwitchSize(ui.SwitchSm))
 	swDis.Enable(false)
 
-	// ---- 第二行: 滑动条 + 下拉框 ----
-	r2 := row(body.Handle, 0, gap)
-
-	_, v3 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
+	// ---- 左列 2: 滑动条 ----
+	_, v3 := autoCard(colL.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "滑动条", v3.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "纯自绘: 点击跳转 / 拖拽 / 键盘左右 ±5%, hover 与拖动显示光环", v3.Handle))
 
@@ -597,7 +614,8 @@ func buildFormPage(body *widget.LayoutEle) {
 	st.SetValue(3)
 	st.OnChange(func(v float64) { stVal.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
 
-	_, v4 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
+	// ---- 右列 2: 下拉框 ----
+	_, v4 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "下拉框", v4.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "原生 ComboBox 行为 + 自绘弹层(item-aligned 定位, 盖住触发区)", v4.Handle))
 

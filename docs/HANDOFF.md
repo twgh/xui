@@ -40,6 +40,8 @@
 
 ## 待办
 
+- **页面滚动容器**: 页面内容比窗口高时, 现在被页面自身的 `EnableOverflowHide` 裁掉(表单页在默认窗口下底部约裁掉一行)。要么给页面套滚动容器(`widget.ScrollView` 一类的自绘滚动条 + 内容高度撑开), 要么让内容自适应(见 DESIGN 8.59)
+
 - ⬜ **P3 剩余**:CLI 远程 registry;menu/combobox 弹层的进场动画(native 弹窗淡入不可行, 只能做位置滑动, 待定)
 - ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
 - ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 的 `inset`、`--chart-1..5`/`--sidebar-*` 令牌未建模
