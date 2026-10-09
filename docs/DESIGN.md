@@ -221,6 +221,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | 组件 | 载体 | 方案 | 验证来源 |
 |---|---|---|---|
 | Button | embed Button | paint 壳, 原生文字(WithIcon 时自绘图标) | BeautifyButton 示例 |
+| Card | LayoutEle(布局容器) | 圆角面板 + ring 描边; 内容区是 Fill 子项、内边距用外边距表达(随卡片缩放), 高度可按内容自撑(Auto), 见第八节 56 | — |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
 | Input | embed Edit | 只画边框+焦点环, 原生光标/IME | BeautifyEdit 示例 |
 | Switch | 纯自绘 Element | 轨道+滑块, 尺寸预设; hover 过渡走运行时 `anim.go`(第八节 45) | — |
@@ -420,7 +421,7 @@ registry.json 条目(shadcn 同构格式):
       后面的项顶到下一行(探针里 9 件超宽时 Input/分页被换行) —— 宽度该写还是得写;
     - 内部标签按创建时 cx 等分的自绘组件(如 Tabs)不能被布局拉伸, 用 Fixed 宽;Slider 这类元素比"可见宽度"外扩的组件, Fixed 宽 = 传入 cx + 2×外扩量。
     - **容器骨架收进运行时**(2026-10-08, `container.go`): app 真正反复手抄的只有三种骨架, 固定成入口 ——
-      卡片内容区 `card.ContentStack(space)`(绝对定位在内容区)、横向行 `xui.HStack(parent, ht, space)`
+      卡片内容区 `card.ContentStack(space)`(卡片是布局容器, 内容区是它的 Fill 子项 + 内边距外边距, 随卡片缩放)、横向行 `xui.HStack(parent, ht, space)`
       (宽 Fill / 高 Fixed(ht) / 交叉轴居中)、等宽列 `xui.VStackWeight(parent, weight, space)`
       (宽 Weight / 高 Fill);**布局项尺寸与"纵向溢出换列"都在构造里处理好**(所以列容器一律
       `EnableAutoWrap(false)`), app 代码只往里塞控件。其它组合(如"铺满父级的纵向区")用
@@ -897,6 +898,23 @@ registry.json 条目(shadcn 同构格式):
     - **顺序**: 窗口的 `XE_DESTROY` 先到, 再按层级逐个销毁子元素(实测日志 `WINDOW → C(嵌套) → A(直挂)`)。
     - **意义**: 这是"把订阅/缓存绑到元素生命周期"的依据 —— 运行时的 `xui.OnThemeChangeFor(hEle, fn)`(主题订阅随元素销毁自动反注册)与 `anim.go` 里 `AddEvent_Destroy_End` 清理 hover 状态, 都挂在这上面。对裸句柄注册要用 `widget.NewElementByHandle(hEle)`, 且**必须走 `AddEvent*` 事件总线**(不能用 `XEle_RegEventC` 那套有 2000 上限的注册)。
 
+55. **布局尺寸语义实测全集: `Fill` ≠ "剩余空间", `Weight` 只在父级尺寸"确定"时生效**(2026-10-09, 探针 `.verify/probe_layout` 六组对照 + demo 布局重构; demo 之前那套"卡片用绝对坐标摆"的做法就是被这些语义逼出来的):
+    - **`Fill` = 父级整尺寸(减自身四边外边距)**, 不是"剩下的都给它": `Fill/Fill + margin 24` 在 800×600 的父级里得到 752×552 ✓; 但**前面还有兄弟项时它不会让位** —— 竖向 `[Fixed 60][Fill]` 里 Fill 拿到的仍是整高 600(而非 540), 直接溢出容器。竖向堆叠想要"剩下的高度"不能用 Fill。
+    - **`Weight` 才是"按比例分剩余空间"**: 竖向 `[Fixed 60][Weight 1]`(父 400)→ 340 ✓; `Percent` 同源(Percent 50 在同一个父级里 = 170, 即剩余空间的百分比)。
+    - **但 `Weight`/`Percent` 只在父级尺寸"确定"时才成立**: 父级是 `Fixed`、或是被 `Weight` 解析出来的尺寸、或是**窗口本身** → 正常; 父级是 `Fill` 或 `Auto` → **恒为 0**(实测: `root(Fill)` 里的 Weight 高度 = 0, 换成窗口直属后立刻正确)。**宽度方向不受影响** —— 横排里 `Weight` 列在 Fill 宽的行里一直正常。
+    - 推论(已踩): **竖向主链中间不要垫 `Fill` 容器**。要从窗口开始一路 `Weight`, 每级都是确定尺寸, 下一级的 Weight 才算得出来 —— demo 的窗口骨架因此删掉了原来那层 `root(Fill)`, 改成 `[标题栏行 Fixed][内容区 Weight 1]` 直接挂在窗口上。
+    - **`Auto` = 按内容自撑**: 两张 Auto 高度卡片竖排各自高度准确(120/184, 与内容理论值一致)、互不挤压 —— 这是"卡片不用手算高度"的正解。Auto 卡片里**不要放 Weight 子项**(Auto 父级 → 0), 里面用 Auto / Fixed 就好。
+    - **要让"面板随窗口长高", 整条竖链必须全 Weight**: 窗口 → 内容(Weight) → 页(Weight) → 内容区(Weight + 外边距) → 行(横排, 高 Weight) → 列(宽 Weight + **高 Weight**) → 卡片(高 Weight) → 内容区(Weight) → 面板(Weight)。实测面板 700 高窗口下 628、900 高下 828, 逐级跟随 ✓。注意"列"的高度: `xui.VStackWeight` 用的是 `Fill`(= 父级整高), 列内再用 Weight 就废了 —— demo 因此加了 `colStretch`(高度 Weight, 见 `demo/main.go`)。
+    - **普通 `widget.Element`(非 LayoutEle)可以当布局项**: 被父布局排版、跟随缩放都正常(探针对照 A/B 一致)。而 `EnableLayout / EnableHorizon / EnableAutoWrap` 这些"**当容器排子项**"的开关只有 LayoutEle(与窗口)有 —— 所以卡片能否排自己的内容取决于它是不是 LayoutEle(见 56)。
+    - **`Show(false)` 的子项会被布局跳过**(排成 0x0): 页签式"同位置叠放多页"因此不需要绝对定位 —— 竖向堆叠里隐藏的页不占位。改可见性后**必须重排宿主**(`AdjustLayout`), 否则新显示的那页拿不到尺寸(实测只排那一页时仍是 0x0)。
+    - **窗口必须 `Show` 过之后布局才有非零尺寸**: `Show` 之前即使调 `AdjustLayout`, root 恒 0x0(探针里读不到数值就是这个原因, 不是探针写错了)。
+    - 另: `xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距); 本项目暂用"子项外边距"达到同样效果, 未实测。
+
+56. **Card 改成布局容器: 内容区随卡片尺寸自动联动**(2026-10-09, `components/card.go`):
+    - 卡片底层由 `widget.Element` 换成 `widget.LayoutEle`(竖直流式 + `EnableAutoWrap(false)`), 内容区 `ContentStack(space)` 是它的 **Fill 宽 + 外边距 = 内边距** 的子项 —— 卡片被父布局拉伸时内容区与其中的控件自动跟随。旧写法要调用方拿 `ContentWidth()` 去算, 那个值取的是**创建那一刻**的宽度, 卡片一缩放就错(且卡片本来就不该知道自己的最终宽度)。
+    - 内容区高度是 **Auto**(按内容自撑), 于是卡片高度可以 Auto(自撑)也可以固定/Weight, 内容一律从上往下排。内容要撑满卡片高度(表格/树)时: 卡片高度给 Weight, 再对内容区与目标子项声明 `xui.ItemFillHeight`(Weight 1, 受 55 的"父级确定尺寸"约束)。
+    - 一个卡片只有一个内容区: 重复调用 `ContentStack` 返回同一个(只改 space)。页脚 `CardFooter` 以**卡片**为父句柄创建、声明宽度铺满 —— 内容区高度给了 Fill/Weight 时会自动让出页脚那一段。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -909,7 +927,8 @@ registry.json 条目(shadcn 同构格式):
 - `svg.NewByString / SetUserFillColor / SetUserStrokeColor / SetSize`
 - `ani.NewAnima / AnimaGroup`、`ease` 缓动
 - `XWnd_Redraw / XWnd_GetDPI`、`XC_EnableAutoDPI / XC_EnableDPI`
-- LayoutEle:`EnableLayout / EnableHorizon / SetAlignH(V) / SetSpace / SetSpaceRow / EnableAutoWrap / SetPadding`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin`(语义见第八节 29;Go 包装无 AdjustLayout)
+- LayoutEle:`EnableLayout / IsEnableLayout / EnableHorizon / EnableAutoWrap / EnableOverflowHide / SetAlignH(V) / SetSpace / SetSpaceRow / ShowLayoutFrame / GetWidthIn(HeightIn)`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin/SetMinSize`、尺寸类型 `xcc.Layout_Size_{Fixed,Fill,Auto,Weight,Percent,Disable}` 与对齐 `xcc.Layout_Align_*`(语义与"Fill≠剩余空间 / Weight 需父级确定尺寸"见第八节 29/41/55;Go 包装无 AdjustLayout, 用 `XEle_AdjustLayout`);`EnableLayout/EnableHorizon/EnableAutoWrap` **只有 LayoutEle 与窗口有**(普通 Element 只能当布局项)
+- 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距), 本项目暂用子项外边距替代, 未实测
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
 - `XWnd_SetWindowPos(物理像素)`、`XC_hWindowFromHWnd`、`XEle_GetWndClientRect`、`XWnd_GetClientRect`、`wapi.ShowWindow/SetForegroundWindow/GetSystemMetrics/GetWindowLongPtrW`
 - backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验收)

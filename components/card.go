@@ -3,6 +3,7 @@ package ui
 import (
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
+	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 )
 
@@ -22,59 +23,77 @@ type CardOption func(*Card)
 func WithCardSize(s CardSize) CardOption { return func(c *Card) { c.size = s } }
 
 // Card 自绘卡片容器: 圆角面板 + 边框, 自带标题/说明/页脚类型的静态排版助手。
-// 子元素创建时以 Card 为父句柄, 用 ContentLeft/ContentTop 计算坐标。
 //
 // 与 shadcn card.tsx 对齐: rounded-xl, bg-card, ring-1 ring-foreground/10
 // (卡片描边是 10% 前景色, 不是 Border 令牌), 内边距 16(或 size=sm 的 12)。
+//
+// **卡片本身是布局容器**(底层 LayoutEle, 竖直流式): 内容区
+// (ContentStack 返回的那个)是它的子项, 随卡片尺寸自动跟随 —— 卡片被父布局拉伸/切成
+// Auto 高度时, 内容区与其内的控件一起跟随, 不需要调用方重算宽度。
+// 卡片若要按内容自撑高度, 把布局项高度声明成 `xcc.Layout_Size_Auto` 即可。
 type Card struct {
-	*widget.Element
+	*widget.LayoutEle
 	Padding int32 // 内容内边距(逻辑像素)
 	size    CardSize
+	stack   *widget.LayoutEle // 内容区(懒建, 只建一个)
 }
 
-// NewCard 创建卡片。cx/cy 是卡片尺寸; opts 见 WithCardSize。
+// NewCard 创建卡片。cx/cy 是卡片尺寸(放进布局时由布局项声明覆盖); opts 见 WithCardSize。
 func NewCard(x, y, cx, cy int32, hParent int, opts ...CardOption) *Card {
-	ele := widget.NewElement(x, y, cx, cy, hParent)
+	ele := widget.NewLayoutEle(x, y, cx, cy, hParent)
 	if ele == nil {
 		return nil
 	}
-	c := &Card{Element: ele, Padding: 16}
+	c := &Card{LayoutEle: ele, Padding: 16}
 	for _, o := range opts {
 		o(c)
 	}
 	if c.size == CardSizeSm {
 		c.Padding = 12
 	}
+	// 竖直流式 + 关掉"纵向溢出换列": LayoutEle 在主轴放不下下一项时会把它甩到下一列
+	// (x += 容器宽度, y = 0), 表现为控件整块消失(实测, 见 DESIGN 第八节 41)。
+	ele.EnableHorizon(false)
+	ele.EnableLayout(true)
+	ele.EnableAutoWrap(false)
 	ele.EnableBkTransparent(true)
 	ele.AddEvent_Paint(c.onPaint)
 	xui.AttachWindow(ele.Handle)
 	return c
 }
 
-// ContentLeft 内容区左边界(相对卡片)。
+// ContentLeft 内容区左边界(相对卡片) —— 即内边距。
 func (c *Card) ContentLeft() int32 { return c.Padding }
 
-// ContentTop 内容区上边界(相对卡片)。
+// ContentTop 内容区上边界(相对卡片) —— 即内边距。
 func (c *Card) ContentTop() int32 { return c.Padding }
 
-// ContentWidth 内容区宽度。
+// ContentWidth 内容区当前宽度(卡片宽 - 两侧内边距)。
 func (c *Card) ContentWidth() int32 { return c.GetWidth() - c.Padding*2 }
 
-// ContentStack 在内容区建一个纵向流式布局容器(卡片里那串内容都挂在它下面): 绝对定位在内容区
-// (ContentLeft/ContentTop), 宽度 = 内容区宽, 子项间距 space。
+// ContentStack 取卡片的内容区 —— 一个纵向流式布局容器, 卡片里那串内容都挂在它下面。
+// 子项间距 space; 内边距由内容区的四边外边距表达, 所以它会随卡片尺寸自动伸缩
+// (卡片被父布局拉伸时, 内容区宽度跟着变, 不需要调用方重算)。
 //
-// 卡片不是布局容器, 所以它是绝对定位的; 它自己的子项才走布局(见 xui/layout.go 的布局约定)。
-// 关掉"纵向溢出换列": LayoutEle 在主轴放不下下一项时会把它甩到下一列(x += 容器宽度, y = 0),
-// 表现为控件整块消失(实测, 见 DESIGN 第八节 41)。
+// 高度按**内容自撑**(Auto): 卡片高度可以是 Auto(自撑)也可以是固定值, 内容都贴着上边排。
+// 内容要撑满卡片高度(表格/树/图标网格这类"越高越好"的内容)时, 卡片高度给固定值(或 Fill),
+// 再对内容区与目标子项声明 `xui.ItemFillHeight`。
+//
+// 同一个卡片只建一个内容区: 重复调用返回同一个, 只是把 space 改掉。
 func (c *Card) ContentStack(space int32) *widget.LayoutEle {
-	l := widget.NewLayoutEle(c.ContentLeft(), c.ContentTop(),
-		c.ContentWidth(), c.GetHeight()-c.Padding*2, c.Handle)
-	l.EnableHorizon(false)
-	l.EnableLayout(true)
-	l.EnableBkTransparent(true)
-	l.SetSpace(space)
-	l.EnableAutoWrap(false)
-	return l
+	if c.stack == nil {
+		l := widget.NewLayoutEle(0, 0, 0, 0, c.Handle)
+		l.EnableHorizon(false)
+		l.EnableLayout(true)
+		l.EnableBkTransparent(true)
+		l.EnableAutoWrap(false)
+		l.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+		l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+		l.LayoutItem_SetMargin(c.Padding, c.Padding, c.Padding, c.Padding)
+		c.stack = l
+	}
+	c.stack.SetSpace(space)
+	return c.stack
 }
 
 func (c *Card) onPaint(hEle int, hDraw int, pbHandled *bool) int {
@@ -104,7 +123,10 @@ func NewCardDescription(x, y, cx int32, text string, hParent int) *Label {
 }
 
 // CardFooter 卡片页脚容器: 顶边一条 border-t + bg-muted/50, 只有**下两角**随卡片圆角
-// (shadcn card.tsx 的 CardFooter)。放进内容后由调用方把它贴到卡片底边。
+// (shadcn card.tsx 的 CardFooter)。
+//
+// 用法: 在 ContentStack 之后创建, 以**卡片**为父句柄(不是内容区), 再声明宽度铺满 ——
+// 它是卡片的布局项, 自己占满宽度并贴在卡片底边; 内容区若声明 Fill 高度会自动让出这一段。
 type CardFooter struct {
 	*widget.Element
 }

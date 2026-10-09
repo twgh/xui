@@ -95,6 +95,18 @@ func ItemWeight(item Item, weight int32) {
 	item.LayoutItem_SetWidth(xcc.Layout_Size_Weight, weight)
 }
 
+// ItemFillHeight 让布局项高度占满父级的**剩余空间**(纵向按权重分配), 宽度不覆盖。
+//
+// 注意与宽度方向的 ItemFill 语义不同(实测, 见 DESIGN 第八节 55):
+//   - 宽度 `Fill` = "铺满父级整宽", 竖向链里这样用没问题;
+//   - 高度若也用 `Fill`, 拿到的是**父级整高**(减自身边距), 不是剩余空间 ——
+//     前面还有兄弟项(标题/说明)时就会溢出, 所以这里用 `Weight 1`。
+//   - `Weight` 只在**父级高度确定**时才算得出剩余空间(窗口直属 / Fixed / Weight 父级都行);
+//     父级是 Fill 或 Auto 时会被算成 0 —— 卡片高度是 Auto 时不要用本函数。
+func ItemFillHeight(item Item) {
+	item.LayoutItem_SetHeight(xcc.Layout_Size_Weight, 1)
+}
+
 // ItemMinSize 限制布局项在**缩放类尺寸**(Auto/Fill/Weight/Percent)下的最小宽高, 0 = 不限制。
 //
 // Fixed 轴不受它影响(固定值就是固定值); 典型用法: Fill 铺满但有下限。

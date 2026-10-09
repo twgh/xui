@@ -1,7 +1,13 @@
-// xui 组件演示: light/dark 一键换肤 + 全部组件(含表格)。
-// 卡片内容用 LayoutEle 流式布局, 不再手算 y。
-// 顶层用 Tabs 分页展示(表单/控件/反馈/数据/结构/图标), 主题用环境变量 XUI_THEME=dark 切换。
-// 控制启动首页可用环境变量 XUI_HOME_PAGE = 0..5 分别对应 表单/控件/反馈/数据/结构/图标。
+// xui 组件演示: light/dark 一键换肤 + 全部组件。
+//
+// 布局: 窗口 → [标题栏行][内容区: 页签行 + 页面宿主], 页面与卡片全部走**流式布局**,
+// 不写"算出来的绝对坐标" —— 窗口拉大/最大化时整页自适应:
+//   - 页面 = 铺满宿主的竖向流式容器; 隐藏的页会被布局跳过(实测 0x0), 所以不需要叠放定位;
+//   - 卡片 = 宽度铺满 + 高度按内容自撑(Auto); 表格/树这类"越高越好"的内容声明成撑满剩余高度;
+//   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
+//
+// 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
+// 启动页 XUI_HOME_PAGE = 0..5 = 基础 / 表单 / 导航 / 反馈 / 数据 / 图标。
 package main
 
 import (
@@ -22,11 +28,27 @@ import (
 	"github.com/twgh/xui/icons"
 )
 
+// 页面序号, 与 pageTitles 一一对应。
+const (
+	pageBase  = iota // 基础: 按钮 / 徽章 / 分隔线 / 标签 / 卡片
+	pageForm         // 表单: 输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框
+	pageNav          // 导航: 标签页 / 分页 / 菜单
+	pageFeed         // 反馈: 对话框 / 提示气泡 / 进度
+	pageData         // 数据: 表格 / 树
+	pageIcons        // 图标: 图标总览
+	pageCount
+)
+
+// pageTitles 的个数必须与 pageCount 一致(页签与页一一对应)。
+var pageTitles = [...]string{"基础", "表单", "导航", "反馈", "数据", "图标"}
+
 var (
 	tip         *ui.Tooltip
 	demoTable   *ui.Table
 	demoTree    *ui.Tree
 	demoTreeSel int32
+	// inResize 防重入: 尺寸事件里要主动重排布局, 重排又可能再发尺寸消息。
+	inResize bool
 )
 
 // 标题栏行高度与窗口阴影边带宽度(逻辑像素)。
@@ -36,6 +58,8 @@ var (
 const (
 	captionH   int32 = 30 // 标题栏行高度(BorderSize=0 时即 cap 布局项高度)
 	shadowSize int32 = 12 // Window_Transparent_Shadow 的阴影大小(SetShadowInfo 的 nSize)
+	pagePad    int32 = 24 // 页面内容四周留白
+	gap        int32 = 16 // 页面内行/列间距
 )
 
 func main() {
@@ -48,30 +72,29 @@ func main() {
 	// 低于 16 也不再涨(实测 ~16.6ms 硬地板)。见 docs/DESIGN.md 第八节 46。
 	a.SetPaintFrequency(10)
 
-	w := window.New(0, 0, 800, 590, "xui · shadcn 风格自绘组件", 0,
+	w := window.New(0, 0, 1200, 820, "xui · shadcn 风格自绘组件", 0,
 		xcc.Window_Style_Center|xcc.Window_Style_Border|xcc.Window_Style_Drag_Border|xcc.Window_Style_Drag_Window|xcc.Window_Style_Allow_MaxWindow)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
 	w.SetShadowInfo(shadowSize, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
 	w.SetBorderSize(0, 0, 0, 0)
-	w.SetMinimumSize(800, 590)
+	w.SetMinimumSize(960, 660)
 	w.SetFont(xui.FontHandle(xui.Current().FontDefault))
 
 	xui.RegisterWindow(w.Handle)
 	xui.BindWindowBackground(w.Handle) // 窗口底色随主题切换
 	tip = ui.NewTooltip()
 
-	// ===== 布局骨架: 纵向 [标题栏行 captionH][内容区 Fill] =====
+	// ===== 布局骨架: 直接挂在窗口上 —— [标题栏行 captionH][内容区 Weight 1] =====
+	// 为什么不套一层 root: 竖轴上 "占满剩余空间" 只有 `Weight` 能做到, 而 **Weight 只在
+	// 父级尺寸确定时才生效**(窗口直属 / Fixed / Weight 父级都算; 父级是 Fill 或 Auto 时
+	// 恒为 0, 实测见 DESIGN 第八节 55)。窗口是唯一"天然确定"的父级, 所以这一层必须直接
+	// 是窗口的子项 —— 中间垫一个 Fill 容器, 下面的 Weight 就全废了。
 	w.EnableLayout(true)
-	root := widget.NewLayoutEle(0, 0, 0, 0, w.Handle)
-	root.EnableHorizon(false)
-	root.EnableBkTransparent(true)
-	root.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	root.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
 
 	// 标题栏行: logo/标题居左, 按钮组浮到最右(中间标题 Fill 撑开)。
 	// 行自身鼠标穿透 —— 不挡 Drag_Window 的拖动命中, 子元素(按钮)不受影响。
-	cap := widget.NewLayoutEle(0, 0, 0, captionH, root.Handle)
+	cap := widget.NewLayoutEle(0, 0, 0, captionH, w.Handle)
 	cap.EnableHorizon(true)
 	cap.EnableBkTransparent(true)
 	cap.SetSpace(6)
@@ -176,18 +199,30 @@ func main() {
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconX))
 	btnClose.SetTypeEx(xcc.Button_Type_Close)
 
-	// 内容区: 页签 + 页面容器都绝对定位在里面(见 buildPage)。
-	// 必须用 LayoutEle 才能作为布局项被 Fill 排版(普通 Element 布局不排, 实测空白);
-	// 但不要 EnableLayout —— 关闭排版后它自己的子元素保持绝对定位。
-	content := widget.NewLayoutEle(0, 0, 0, 0, root.Handle)
+	// 内容区: 竖向流式 [页签行][页面宿主 Weight 1]。它自己是窗口的 Weight 布局项;
+	// 打开布局后, 页签行与页面宿主就交给它排, 不再需要绝对定位。
+	content := widget.NewLayoutEle(0, 0, 0, 0, w.Handle)
 	content.EnableHorizon(false)
-	content.EnableLayout(false) // 子元素(tabs/pages)保持绝对定位
+	content.EnableLayout(true)
 	content.EnableBkTransparent(true)
-	content.EnableMouseThrough(true) // 纯容器, 空白处透给窗口拖动
+	content.EnableAutoWrap(false)
 	content.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	content.LayoutItem_SetHeight(xcc.Layout_Size_Weight, 1)
 
-	buildPage(w.Handle, content.Handle)
+	buildPages(w.Handle, content.Handle)
+
+	// 窗口尺寸变化: 布局会自己重排, 但表格的"自适应列宽"是按元素**当前**宽度算的,
+	// 必须显式重算一次(Table.FitColumns 就是为这种场合准备的)。
+	w.AddEvent_Size(func(hWindow int, nFlags uint, pPt *xc.SIZE, pbHandled *bool) int {
+		if inResize {
+			return 0
+		}
+		inResize = true
+		w.AdjustLayout()
+		fitTable()
+		inResize = false
+		return 0
+	})
 
 	// 双击标题栏行最大化/还原。
 	// y 判定必须按窗口**实际**坐标系算: 非最大化时整窗矩形四周含 shadowSize 宽的阴影带,
@@ -217,305 +252,492 @@ func main() {
 	a.Exit()
 }
 
-// ===== 布局 =====
-// 容器骨架走现成入口: 卡片内容区 `ui.Card.ContentStack`, 横向行 `xui.HStack`, 等宽列
-// `xui.VStackWeight`(布局项尺寸由它们自己写好); 布局项尺寸走 `xui.Item*`(见下方"布局约定");
-// LayoutEle 的实测语义与坑见 DESIGN 第八节 29/41。
-
-// ===== 布局约定 =====
+// ===== 布局脚手架 =====
 //
-// 尺寸声明统一走运行时 `xui.ItemFill / xui.ItemWidth / xui.ItemWeight`, 外边距走 `xui.ItemMargin*`:
-// **只声明要改变的那条轴**, 高度留给元素自身 —— 组件构造函数已经把设计稿尺寸建在元素上
-// (Label 24 / Badge 20 / Input 32 / Pagination 33 / Button 视觉高 + 1px 按压预留…),
-// 抄成常量会随组件实现漂移(标题栏按钮曾因抄成 capBtnH 而矮 1px, 见 DESIGN 第八节 29)。
-//
-// 设计稿尺寸本身就是契约的地方才写常量: 等宽按钮 96 宽、搜索框 240 宽、表格 180 高。
-// 元素自身的尺寸不对时(如多行说明文字要 48 高), 改**创建参数**而不是布局参数。
+// 容器骨架优先用现成入口: 横向行 `xui.HStack`(高固定、子项垂直居中)、等宽列
+// `xui.VStackWeight`; 布局项尺寸走 `xui.Item*`(见 xui/layout.go 的布局约定:
+// **只声明要改变的那条轴**, 元素自身尺寸由组件构造函数建好)。
+// 下面这几个是 demo 自己的组合(容器行 / 卡片 / 分组标题), 都用布局表达, 不出现绝对坐标。
 
-// ===== 页面 =====
-
-// buildPage 演示页: 顶层 Tabs 分页(表单/控件/反馈/数据/结构/图标), 每页是一个绝对定位的
-// 容器元素, 切换时 Show/Hide + 重绘。页面内容静态创建一次即可
-// (主题切换走整窗重绘, 不需要重建)。
-// 后续新增组件展示时: 开一个新页面容器 + 对应 Tab 即可, 页面之间互不挤压。
-func buildPage(hWindow, hParent int) {
-	pageCount := 6
-	homePage, _ := strconv.Atoi(os.Getenv("XUI_HOME_PAGE"))
-	if homePage < 0 || homePage > pageCount-1 {
-		homePage = 0
+// row 建一行"放卡片的容器行": 宽度铺满, 高度 ht(传 0 = 占满剩余高度),
+// 子项间距 space, 交叉轴顶端对齐(卡片各自按内容自撑高度, 不要被拉成一样高)。
+func row(parent int, ht, space int32) *widget.LayoutEle {
+	r := widget.NewLayoutEle(0, 0, 0, ht, parent)
+	r.EnableHorizon(true)
+	r.EnableLayout(true)
+	r.EnableBkTransparent(true)
+	r.EnableAutoWrap(false)
+	r.SetSpace(space)
+	r.SetAlignV(xcc.Layout_Align_Top)
+	r.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	if ht > 0 {
+		r.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
+	} else {
+		// 高度用 Weight 而不是 Fill: 两者在"只有一个子项"时尺寸相同, 但 Weight 是**确定尺寸**,
+		// 列里的 Weight 子项才算得出剩余空间(见 DESIGN 第八节 55)。
+		xui.ItemFillHeight(r)
 	}
+	return r
+}
+
+// col 建一行里的一列: 宽度按权重等分, 高度占满, 子项间距 space。
+// 列内都是"按内容自撑"的卡片时用它即可(高度 Fill, 等价于父级整高)。
+func col(parent int, weight, space int32) *widget.LayoutEle {
+	return xui.VStackWeight(parent, weight, space)
+}
+
+// colStretch 建一行里"能长高"的一列: 宽度按权重等分, 高度也按权重占满。
+// 与 col(xui.VStackWeight) 只差高度那一维 —— 它用 Fill(= 父级整高), 列内再想用
+// Weight 占剩余高度时会因为"父级尺寸不确定"而失效(实测, 见 DESIGN 第八节 55)。
+func colStretch(parent int, weight, space int32) *widget.LayoutEle {
+	l := widget.NewLayoutEle(0, 0, 0, 0, parent)
+	l.EnableHorizon(false)
+	l.EnableLayout(true)
+	l.EnableBkTransparent(true)
+	l.EnableAutoWrap(false)
+	l.SetSpace(space)
+	l.LayoutItem_SetWidth(xcc.Layout_Size_Weight, weight)
+	xui.ItemFillHeight(l)
+	return l
+}
+
+// autoCard 建一张"宽度铺满、高度按内容自撑"的卡片, 并返回它的内容区。
+// 卡片内部是布局容器, 内容区随卡片宽度伸缩(见 ui.Card 的注释)。
+func autoCard(parent int, space int32) (*ui.Card, *widget.LayoutEle) {
+	c := ui.NewCard(0, 0, 0, 0, parent)
+	c.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	c.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	return c, c.ContentStack(space)
+}
+
+// stretchCard 建一张"宽度铺满、高度占满父级剩余高度"的卡片(给表格/树这类要长高的面板)。
+func stretchCard(parent int, space int32) (*ui.Card, *widget.LayoutEle) {
+	c := ui.NewCard(0, 0, 0, 0, parent)
+	c.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	xui.ItemFillHeight(c)
+	return c, c.ContentStack(space)
+}
+
+// hint 建一个弱化的小标题(分组说明), 高度用 Label 默认的 24。
+func hint(parent int, text string) *ui.Label {
+	return ui.NewLabel(0, 0, 0, 0, text, parent).SetMuted()
+}
+
+// desc 建一段多行说明文字(高度写在创建参数里, 布局只声明宽度)。
+func desc(parent int, text string) *ui.Label {
+	return ui.NewLabel(0, 0, 0, 36, text, parent).SetMuted().SetWrap()
+}
+
+// fitTable 按表格元素的当前宽度重算自适应列宽(页面/窗口尺寸变了之后调用)。
+func fitTable() {
+	if demoTable != nil {
+		demoTable.FitColumns()
+	}
+}
+
+// envHomePage 读启动页环境变量并夹取到合法范围。
+func envHomePage() int {
+	i, _ := strconv.Atoi(os.Getenv("XUI_HOME_PAGE"))
+	if i < 0 || i >= pageCount {
+		return 0
+	}
+	return i
+}
+
+// ===== 页面骨架 =====
+
+// buildPages 建页签行与页面宿主。
+//
+// 页面宿主是竖向流式容器, 每个页都是它的 Fill 布局项 —— **隐藏的页会被布局跳过**
+// (实测: 隐藏页尺寸被排成 0x0), 所以"同一时刻只有一页可见"天然成立, 不需要绝对定位叠放。
+// 页面内容静态创建一次即可(主题切换走整窗重绘, 不需要重建)。
+func buildPages(hWindow, host int) {
+	home := envHomePage()
+
+	// 页签行: 左右与窗口留白对齐
+	tabs := ui.NewTabs(0, 0, 520, host, pageTitles[:])
+	xui.ItemMargin(tabs, pagePad, 8, 0, 6)
+
+	pageHost := widget.NewLayoutEle(0, 0, 0, 0, host)
+	pageHost.EnableHorizon(false)
+	pageHost.EnableLayout(true)
+	pageHost.EnableBkTransparent(true)
+	pageHost.EnableAutoWrap(false)
+	pageHost.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	// 高度必须用 Weight(剩余空间), 不能用 Fill: Fill 是"父级整高", 会把页签行那一段也算进去,
+	// 整个页面区就往下溢出、页面底部的留白被挤出窗口(实测)。
+	xui.ItemFillHeight(pageHost)
 
 	pages := make([]*widget.LayoutEle, pageCount)
+	bodies := make([]*widget.LayoutEle, pageCount)
 	for i := range pages {
-		// hParent 是内容区元素(布局项, 客户区宽 784); 页面在其中绝对定位互叠
-		pages[i] = widget.NewLayoutEle(0, 44, 784, 500, hParent)
-		pages[i].EnableBkTransparent(true).EnableDrawBorder(false).EnableFocus(false)
-		pages[i].EnableLayout(false)      // 禁用布局, 因为内部用的绝对坐标
-		pages[i].EnableMouseThrough(true) // 纯容器, 空白处透给窗口拖动
-		pages[i].Show(i == homePage)
+		pages[i], bodies[i] = newPage(pageHost.Handle)
 	}
-	pForm, pCtrl, pFeed, pData, pTree, pIcon := pages[0], pages[1], pages[2], pages[3], pages[4], pages[5]
 
-	pageTabs := ui.NewTabs(16, 6, 500, hParent, []string{"表单", "控件", "反馈", "数据", "结构", "图标"})
-	pageTabs.OnChange(func(i int32) {
+	buildBasePage(bodies[pageBase])
+	buildFormPage(bodies[pageForm])
+	buildNavPage(bodies[pageNav])
+	buildFeedPage(bodies[pageFeed], hWindow)
+	buildDataPage(bodies[pageData])
+	buildIconPage(bodies[pageIcons])
+
+	show := func(i int) {
 		for j, p := range pages {
-			vis := int(i) == j
-			p.Show(vis)
-			// 布局元素在父容器隐藏期间不排版, 恢复可见后必须手动重排,
-			// 否则页面内容空白(实测只有卡片壳)
-			if vis {
-				p.AdjustLayout()
-				p.Redraw(false)
-			}
+			p.Show(j == i)
 		}
-		// 隐藏页上创建的树, 启动时的 SetSelectItem 选中态会丢(实测, 见 DESIGN 第八节 42),
-		// 首次显示结构页时补一次选中
-		if int(i) == 4 && demoTreeSel != xcc.XC_ID_ERROR {
+		// 可见性变了必须重排宿主: 隐藏的页不参与排版, 显示的那页才会拿到整个高度。
+		// 页面自身也要重排(布局元素在父容器隐藏期间不排版, 恢复可见后不重排就是空白)。
+		pageHost.AdjustLayout()
+		pages[i].AdjustLayout()
+		pages[i].Redraw(false)
+		fitTable()
+	}
+
+	// 首页在**所有页面建完之后**才显示: 树的启动选中态在隐藏页上会丢(见 DESIGN 第八节 42)。
+	show(home)
+
+	tabs.OnChange(func(i int32) {
+		show(int(i))
+		if int(i) == pageData && demoTreeSel != xcc.XC_ID_ERROR {
 			demoTree.Select(demoTreeSel)
 			demoTreeSel = xcc.XC_ID_ERROR
 		}
 	})
+	tabs.SetActive(int32(home)) // 会同步触发一次 OnChange(实测)
+}
 
-	// ===== 页 1: 表单类 =====
-	// ===== 左卡: 表单类 =====
-	card1 := ui.NewCard(24, 0, 340, 470, pForm.Handle)
-	// 结构对齐 shadcn App.tsx 的 Account 卡: CardContent space-y-4(16) 分组,
-	// 组内 CardHeader/space-y-2 是 8 —— 用 SetSpace(8) 打底 + itemMarginTop 补到组间距
-	v1 := card1.ContentStack(8)
+// newPage 建一个页面: 铺满宿主的容器 + 其内带四周留白的内容区(竖向流式, 子项间距 gap)。
+func newPage(host int) (page, body *widget.LayoutEle) {
+	page = widget.NewLayoutEle(0, 0, 0, 0, host)
+	page.EnableHorizon(false)
+	page.EnableLayout(true)
+	page.EnableBkTransparent(true)
+	page.EnableAutoWrap(false)
+	page.EnableOverflowHide(true) // 窗口小于内容时裁掉, 不要画到页签行上去
+	page.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	xui.ItemFillHeight(page) // 高度 = 页面宿主的剩余空间(且是确定尺寸, 页内的 Weight 才算得出来)
 
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "Account", v1.Handle))
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "修改你的账户信息, 保存后立即生效。", v1.Handle).SetMuted())
+	body = widget.NewLayoutEle(0, 0, 0, 0, page.Handle)
+	body.EnableHorizon(false)
+	body.EnableLayout(true)
+	body.EnableBkTransparent(true)
+	body.EnableAutoWrap(false)
+	body.SetSpace(gap)
+	body.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	xui.ItemFillHeight(body)
+	body.LayoutItem_SetMargin(pagePad, pagePad, pagePad, pagePad)
+	return page, body
+}
 
-	lblEmail := ui.NewLabel(0, 0, 0, 0, "邮箱地址", v1.Handle)
-	xui.ItemFill(lblEmail)
-	xui.ItemMarginTop(lblEmail, 8) // 组边界: 8 + 8 = 16
-	email := ui.NewInput(0, 0, 0, 0, v1.Handle, ui.WithPlaceholder("m@example.com"))
-	xui.ItemFill(email)
+// ===== 页 1: 基础(按钮 / 徽章 / 分隔线 / 标签 / 卡片) =====
 
-	lblBio := ui.NewLabel(0, 0, 0, 0, "个人简介", v1.Handle)
-	xui.ItemFill(lblBio)
-	xui.ItemMarginTop(lblBio, 8)
-	bio := ui.NewInput(0, 0, 0, 72, v1.Handle,
-		ui.WithPlaceholder("介绍一下自己..."), ui.WithMultiline())
-	xui.ItemFill(bio)
+func buildBasePage(body *widget.LayoutEle) {
+	r := row(body.Handle, 0, gap)
 
-	c1 := ui.NewCheckbox(0, 0, 0, 0, "接收邮件通知", v1.Handle)
+	// ---- 列 1: 按钮 ----
+	_, v := autoCard(col(r.Handle, 3, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "按钮", v.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "6 个变体 · 4 档尺寸 + 4 个方形图标档, 悬停 150ms 过渡", v.Handle))
+
+	xui.ItemFill(hint(v.Handle, "变体"))
+	rb := xui.HStack(v.Handle, 36, 8)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Default", rb.Handle), 104)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Secondary", rb.Handle, ui.WithVariant(ui.ButtonSecondary)), 112)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Outline", rb.Handle, ui.WithVariant(ui.ButtonOutline)), 104)
+	rb = xui.HStack(v.Handle, 36, 8)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Ghost", rb.Handle, ui.WithVariant(ui.ButtonGhost)), 96)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Destructive", rb.Handle, ui.WithVariant(ui.ButtonDestructive)), 112)
+	linkBtn := ui.NewButton(0, 0, 0, 0, "Link", rb.Handle, ui.WithVariant(ui.ButtonLink))
+	xui.ItemWidth(linkBtn, 88)
+	disBtn := ui.NewButton(0, 0, 0, 0, "Disabled", rb.Handle)
+	xui.ItemWidth(disBtn, 104)
+	disBtn.Enable(false)
+
+	xui.ItemFill(hint(v.Handle, "尺寸档位(Xs / Sm / Default / Lg)"))
+	rs := xui.HStack(v.Handle, 40, 8)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Xs", rs.Handle, ui.WithSize(ui.ButtonSizeXs)), 56)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Sm", rs.Handle, ui.WithSize(ui.ButtonSizeSm)), 60)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Default", rs.Handle), 88)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Lg", rs.Handle, ui.WithSize(ui.ButtonSizeLg)), 68)
+
+	xui.ItemFill(hint(v.Handle, "图标按钮(方形档, 宽度由预设给出)"))
+	ri := xui.HStack(v.Handle, 40, 8)
+	iconBtn := ui.NewButton(0, 0, 0, 0, "", ri.Handle, ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconPlus))
+	tip.Bind(iconBtn.Handle, "Icon")
+	iconBtn = ui.NewButton(0, 0, 0, 0, "", ri.Handle, ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconCheck))
+	tip.Bind(iconBtn.Handle, "Icon(另一个)")
+	ui.NewButton(0, 0, 0, 0, "", ri.Handle, ui.WithSize(ui.ButtonSizeIconSm), ui.WithIcon(icons.IconSettings))
+	ui.NewButton(0, 0, 0, 0, "", ri.Handle, ui.WithSize(ui.ButtonSizeIconXs), ui.WithIcon(icons.IconX))
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "", ri.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMoon)), 36)
+
+	// ---- 列 2: 徽章 / 分隔线 / 标签 ----
+	_, v2 := autoCard(col(r.Handle, 2, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "徽章 · 分隔线 · 标签", v2.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "徽章 6 个变体; 分隔线横/竖; 标签含弱化与禁用态", v2.Handle))
+
+	xui.ItemFill(hint(v2.Handle, "徽章"))
+	rg := xui.HStack(v2.Handle, 24, 8)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Default", rg.Handle), 68)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Secondary", rg.Handle, ui.WithBadgeVariant(ui.BadgeSecondary)), 84)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Outline", rg.Handle, ui.WithBadgeVariant(ui.BadgeOutline)), 76)
+	rg = xui.HStack(v2.Handle, 24, 8)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Destructive", rg.Handle, ui.WithBadgeVariant(ui.BadgeDestructive)), 92)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Ghost", rg.Handle, ui.WithBadgeVariant(ui.BadgeGhost)), 64)
+	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Link", rg.Handle, ui.WithBadgeVariant(ui.BadgeLink)), 56)
+
+	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
+
+	xui.ItemFill(hint(v2.Handle, "分隔线与标签"))
+	rl := xui.HStack(v2.Handle, 24, 12)
+	xui.ItemWidth(ui.NewLabel(0, 0, 0, 0, "常规文本", rl.Handle), 96)
+	ui.NewSeparator(0, 0, 20, rl.Handle, ui.WithSeparatorVertical())
+	xui.ItemWidth(ui.NewLabel(0, 0, 0, 0, "弱化文本", rl.Handle).SetMuted(), 96)
+	ui.NewSeparator(0, 0, 20, rl.Handle, ui.WithSeparatorVertical())
+	disLabel := ui.NewLabel(0, 0, 0, 0, "禁用文本", rl.Handle)
+	xui.ItemWidth(disLabel, 96)
+	disLabel.Enable(false)
+
+	// ---- 第二行: 卡片本身(直接以真卡片呈现, 不套外壳) ----
+	cardDemo, vd := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "卡片", vd.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "圆角面板 + ring 描边; 内容区随卡片尺寸自适应, 页脚贴底且只有下两角圆角", vd.Handle))
+	rd := xui.HStack(vd.Handle, 36, 12)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "了解详情", rd.Handle, ui.WithVariant(ui.ButtonOutline)), 104)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "开始使用", rd.Handle), 104)
+
+	footer := ui.NewCardFooter(0, 0, 0, 0, cardDemo.Handle)
+	xui.ItemFill(footer)
+	ui.NewLabel(16, 10, 0, 24, "CardFooter · border-t + bg-muted/50, 只随卡片下两角圆角", footer.Handle)
+}
+
+// ===== 页 2: 表单(输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框) =====
+
+func buildFormPage(body *widget.LayoutEle) {
+	r := row(body.Handle, 0, gap)
+
+	// ---- 列 1: 输入框 ----
+	_, v := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "输入框", v.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "原生 Edit 载体: 只画边框与焦点环, 光标/输入法/选区都是原生的", v.Handle))
+
+	xui.ItemFill(hint(v.Handle, "邮箱地址"))
+	xui.ItemFill(ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithPlaceholder("m@example.com")))
+	xui.ItemFill(hint(v.Handle, "带初始值"))
+	filled := ui.NewInput(0, 0, 0, 0, v.Handle)
+	xui.ItemFill(filled)
+	filled.SetValue("twgh")
+	xui.ItemFill(hint(v.Handle, "多行(高度写在创建参数里)"))
+	xui.ItemFill(ui.NewInput(0, 0, 0, 72, v.Handle,
+		ui.WithPlaceholder("介绍一下自己…"), ui.WithMultiline()))
+	xui.ItemFill(hint(v.Handle, "禁用"))
+	dis := ui.NewInput(0, 0, 0, 0, v.Handle)
+	xui.ItemFill(dis)
+	dis.SetValue("不可编辑")
+	dis.Enable(false)
+
+	// ---- 列 2: 选择控件 ----
+	_, v2 := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "选择控件", v2.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "复选框 / 单选框 / 开关, 尺寸与状态语义逐条对齐 shadcn", v2.Handle))
+
+	xui.ItemFill(hint(v2.Handle, "复选框"))
+	c1 := ui.NewCheckbox(0, 0, 0, 0, "接收邮件通知", v2.Handle)
 	c1.SetChecked(true)
 	xui.ItemFill(c1)
-	xui.ItemMarginTop(c1, 8)
-	cb2 := ui.NewCheckbox(0, 0, 0, 0, "公开展示个人主页", v1.Handle)
-	xui.ItemFill(cb2)
-	xui.ItemMarginTop(cb2, 4) // 开关组内 gap-3(12)
+	xui.ItemFill(ui.NewCheckbox(0, 0, 0, 0, "公开展示个人主页", v2.Handle))
+	c3 := ui.NewCheckbox(0, 0, 0, 0, "不可勾选", v2.Handle)
+	xui.ItemFill(c3)
+	c3.Enable(false)
 
-	rowFormBtns := xui.HStack(v1.Handle, 36, 8)
-	xui.ItemMarginTop(rowFormBtns, 16) // 组间距 16 + pt-2(8)
-	saveBtn := ui.NewButton(0, 0, 0, 0, "保存", rowFormBtns.Handle)
-	xui.ItemWidth(saveBtn, 96)
-	cancelBtn := ui.NewButton(0, 0, 0, 0, "取消", rowFormBtns.Handle, ui.WithVariant(ui.ButtonOutline))
-	xui.ItemWidth(cancelBtn, 96)
+	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
 
-	// ===== 右卡: 展示类 =====
-	card2 := ui.NewCard(392, 0, 380, 470, pForm.Handle)
-	// shadcn App.tsx 的 Components 卡: CardContent space-y-5(20) 分组,
-	// 组内的按钮行/徽章行各自有 hRow 间距
-	v2 := card2.ContentStack(20)
+	xui.ItemFill(hint(v2.Handle, "单选框"))
+	ra := ui.NewRadio(0, 0, 0, 0, "仅错误消息", v2.Handle)
+	xui.ItemFill(ra)
+	xui.ItemFill(ui.NewRadio(0, 0, 0, 0, "所有消息", v2.Handle))
+	ra.SetCheck(true)
+	rd := ui.NewRadio(0, 0, 0, 0, "不可选", v2.Handle)
+	xui.ItemFill(rd)
+	rd.Enable(false)
 
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "Components", v2.Handle))
+	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
 
-	rowBtns1 := xui.HStack(v2.Handle, 36, 8)
-	b := ui.NewButton(0, 0, 0, 0, "Primary", rowBtns1.Handle)
-	xui.ItemWidth(b, 104)
-	b = ui.NewButton(0, 0, 0, 0, "Secondary", rowBtns1.Handle, ui.WithVariant(ui.ButtonSecondary))
-	xui.ItemWidth(b, 112)
-	b = ui.NewButton(0, 0, 0, 0, "Outline", rowBtns1.Handle, ui.WithVariant(ui.ButtonOutline))
-	xui.ItemWidth(b, 104)
+	xui.ItemFill(hint(v2.Handle, "开关(default / sm)"))
+	rs := xui.HStack(v2.Handle, 24, 12)
+	ui.NewSwitch(0, 0, rs.Handle, ui.WithSwitchChecked(true))
+	ui.NewSwitch(0, 0, rs.Handle)
+	ui.NewSwitch(0, 0, rs.Handle, ui.WithSwitchSize(ui.SwitchSm), ui.WithSwitchChecked(true))
+	swDis := ui.NewSwitch(0, 0, rs.Handle, ui.WithSwitchSize(ui.SwitchSm))
+	swDis.Enable(false)
 
-	rowBtns2 := xui.HStack(v2.Handle, 36, 8)
-	b = ui.NewButton(0, 0, 0, 0, "Ghost", rowBtns2.Handle, ui.WithVariant(ui.ButtonGhost))
-	xui.ItemWidth(b, 104)
-	b = ui.NewButton(0, 0, 0, 0, "Destructive", rowBtns2.Handle, ui.WithVariant(ui.ButtonDestructive))
-	xui.ItemWidth(b, 112)
-	b = ui.NewButton(0, 0, 0, 0, "Disabled", rowBtns2.Handle)
-	xui.ItemWidth(b, 104)
-	b.Enable(false)
+	// ---- 第二行: 滑动条 + 下拉框 ----
+	r2 := row(body.Handle, 0, gap)
 
-	sep := ui.NewSeparator(0, 0, 0, v2.Handle)
-	xui.ItemFill(sep)
-	xui.ItemMarginTop(sep, 12)
+	_, v3 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "滑动条", v3.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "纯自绘: 点击跳转 / 拖拽 / 键盘左右 ±5%, hover 与拖动显示光环", v3.Handle))
 
-	rowBadges := xui.HStack(v2.Handle, 20, 8)
-	badge := ui.NewBadge(0, 0, 64, 0, "Default", rowBadges.Handle)
-	xui.ItemWidth(badge, 64)
-	badge = ui.NewBadge(0, 0, 0, 0, "Secondary", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeSecondary))
-	xui.ItemWidth(badge, 78)
-	badge = ui.NewBadge(0, 0, 0, 0, "Outline", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeOutline))
-	xui.ItemWidth(badge, 72)
-	badge = ui.NewBadge(0, 0, 0, 0, "Destructive", rowBadges.Handle, ui.WithBadgeVariant(ui.BadgeDestructive))
-	xui.ItemWidth(badge, 88)
-
-	lb := ui.NewLabel(0, 0, 0, 0, "通知偏好", v2.Handle).SetMuted()
-	xui.ItemFill(lb)
-	xui.ItemMarginTop(lb, 12)
-
-	r1 := ui.NewRadio(0, 0, 0, 0, "仅错误消息", v2.Handle)
-	r1.SetCheck(true)
-	xui.ItemFill(r1)
-	r2 := ui.NewRadio(0, 0, 0, 0, "所有消息", v2.Handle)
-	xui.ItemFill(r2)
-	r3 := ui.NewRadio(0, 0, 0, 0, "不接收", v2.Handle)
-	xui.ItemFill(r3)
-	r3.Enable(false)
-
-	// ===== 页 2: 控件 =====
-	card3 := ui.NewCard(24, 0, 728, 290, pCtrl.Handle)
-	v3 := card3.ContentStack(14)
-
-	// 第一组: 开关 | 滑动条
-	g1 := xui.HStack(v3.Handle, 56, 24)
-
-	colSw := xui.VStackWeight(g1.Handle, 1, 8)
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "开关", colSw.Handle).SetMuted())
-	rowSw := xui.HStack(colSw.Handle, 24, 8)
-	sw := ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchChecked(true))
-	sw = ui.NewSwitch(0, 0, rowSw.Handle)
-	sw = ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchSize(ui.SwitchSm))
-	sw = ui.NewSwitch(0, 0, rowSw.Handle, ui.WithSwitchSize(ui.SwitchSm))
-	sw.Enable(false)
-
-	colSl := xui.VStackWeight(g1.Handle, 1, 8)
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "滑动条", colSl.Handle).SetMuted())
-	// Slider 元素比可见轨道左右各宽 9px(ring 绘制空间), cx=270 → 元素宽 288
-	rowSl := xui.HStack(colSl.Handle, 24, 8)
-	sl := ui.NewSlider(0, 0, 270, 0, rowSl.Handle)
-	xui.ItemWidth(sl, 288)
-	sliderValue := ui.NewLabel(0, 0, 40, 24, "40", rowSl.Handle).SetMuted()
-	xui.ItemWidth(sliderValue, 40)
+	xui.ItemFill(hint(v3.Handle, "连续(0~100)"))
+	rowS := xui.HStack(v3.Handle, 24, 8)
+	sl := ui.NewSlider(0, 0, 200, 0, rowS.Handle)
+	xui.ItemWidth(sl, 218) // 220 = 可见轨道 200 + 两端各 9(滑块 ring 的绘制余量)
+	slVal := ui.NewLabel(0, 0, 40, 0, "40", rowS.Handle).SetMuted()
+	xui.ItemWidth(slVal, 40)
 	sl.SetValue(40)
-	sl.OnChange(func(v float64) { sliderValue.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
+	sl.OnChange(func(v float64) { slVal.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
 
-	// 第二组: 进度 | 标签页 | 下拉框
-	g2 := xui.HStack(v3.Handle, 136, 24)
+	xui.ItemFill(hint(v3.Handle, "范围步进(0~10, step 1)"))
+	rowS2 := xui.HStack(v3.Handle, 24, 8)
+	st := ui.NewSlider(0, 0, 200, 0, rowS2.Handle,
+		ui.WithSliderRange(0, 10), ui.WithSliderStep(1))
+	xui.ItemWidth(st, 218)
+	stVal := ui.NewLabel(0, 0, 40, 0, "3", rowS2.Handle).SetMuted()
+	xui.ItemWidth(stVal, 40)
+	st.SetValue(3)
+	st.OnChange(func(v float64) { stVal.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
 
-	colPg := xui.VStackWeight(g2.Handle, 1, 8)
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "进度", colPg.Handle).SetMuted())
-	pg := ui.NewProgress(0, 0, 0, 0, colPg.Handle)
-	xui.ItemFill(pg)
-	xui.ItemMarginTop(pg, 6)
-	pg.SetValue(64)
-	pg2 := ui.NewProgress(0, 0, 0, 0, colPg.Handle)
-	xui.ItemFill(pg2)
-	xui.ItemMarginTop(pg2, 12)
-	pg2.SetValue(100)
+	_, v4 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "下拉框", v4.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "原生 ComboBox 行为 + 自绘弹层(item-aligned 定位, 盖住触发区)", v4.Handle))
 
-	colTabs := xui.VStackWeight(g2.Handle, 1, 8)
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "标签页", colTabs.Handle).SetMuted())
-	// Tabs 内部标签宽度按创建时的 cx 等分, 不能被布局拉伸, 用固定宽
-	tabs := ui.NewTabs(0, 0, 180, colTabs.Handle, []string{"账户", "密码", "通知"})
-	xui.ItemWidth(tabs, 180)
-	panel := ui.NewLabel(0, 0, 0, 22, "账户设置面板", colTabs.Handle).SetMuted()
+	xui.ItemFill(hint(v4.Handle, "默认尺寸"))
+	combo := ui.NewComboBox(0, 0, 0, 0, v4.Handle,
+		[]string{"开发环境", "测试环境", "预发环境", "灰度环境", "生产环境", "本地调试"},
+		ui.WithComboPlaceholder("选择环境"))
+	xui.ItemFill(combo)
+	combo.SetSelected(1)
+	tip.Bind(combo.Handle, "切换运行时环境")
+
+	xui.ItemFill(hint(v4.Handle, "sm 尺寸"))
+	xui.ItemFill(ui.NewComboBox(0, 0, 0, 0, v4.Handle,
+		[]string{"开发环境", "测试环境", "生产环境"},
+		ui.WithComboSize(ui.ComboSizeSm), ui.WithComboPlaceholder("sm 尺寸")))
+}
+
+// ===== 页 3: 导航(标签页 / 分页 / 菜单) =====
+
+func buildNavPage(body *widget.LayoutEle) {
+	r := row(body.Handle, 0, gap)
+
+	// ---- 列 1: 标签页 ----
+	_, v := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "标签页", v.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "default / line 两个变体 + 纵向取向; 标签等宽、选中态走 background", v.Handle))
+
+	xui.ItemFill(hint(v.Handle, "default"))
+	tabs := ui.NewTabs(0, 0, 240, v.Handle, []string{"账户", "密码", "通知"})
+	xui.ItemWidth(tabs, 240)
+	panel := ui.NewLabel(0, 0, 0, 0, "账户设置面板", v.Handle).SetMuted()
 	xui.ItemFill(panel)
 	tabs.OnChange(func(i int32) {
 		panel.SetText([]string{"账户设置面板", "密码设置面板", "通知设置面板"}[i]).Redraw()
 	})
-	lineTabs := ui.NewTabs(0, 0, 180, colTabs.Handle, []string{"概览", "详情"},
+
+	xui.ItemFill(hint(v.Handle, "line"))
+	// Tabs 的标签宽度按创建时给的 cx 等分, 不能被布局拉伸, 所以用固定宽度
+	lineTabs := ui.NewTabs(0, 0, 200, v.Handle, []string{"概览", "详情"},
 		ui.WithTabsVariant(ui.TabsLine), ui.WithTabsActive(1))
-	xui.ItemWidth(lineTabs, 180)
+	xui.ItemWidth(lineTabs, 200)
 
-	colCombo := xui.VStackWeight(g2.Handle, 1, 8)
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "下拉框", colCombo.Handle).SetMuted())
-	combo := ui.NewComboBox(0, 0, 180, 0, colCombo.Handle,
-		[]string{"开发环境", "测试环境", "预发环境", "灰度环境", "生产环境", "本地调试"},
-		ui.WithComboPlaceholder("选择环境"))
-	xui.ItemWidth(combo, 180)
-	combo.SetSelected(1)
+	xui.ItemFill(hint(v.Handle, "纵向"))
+	vTabs := ui.NewTabs(0, 0, 96, v.Handle, []string{"账户", "密码", "通知"}, ui.WithTabsVertical())
+	xui.ItemWidth(vTabs, 96)
 
-	// 提示气泡: 绑到"保存"按钮与下拉框上
-	tip.Bind(saveBtn.Handle, "保存当前修改(Ctrl+S)")
-	tip.Bind(combo.Handle, "切换运行时环境")
-
-	// ===== 页 3: 反馈(对话框 + 菜单) =====
-	card4 := ui.NewCard(24, 0, 728, 108, pFeed.Handle)
-	v4 := card4.ContentStack(14)
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "对话框", v4.Handle).SetMuted())
-
-	rowDlg := xui.HStack(v4.Handle, 36, 8)
-	editBtn := ui.NewButton(0, 0, 0, 0, "编辑资料", rowDlg.Handle, ui.WithVariant(ui.ButtonOutline))
-	xui.ItemWidth(editBtn, 96)
-	delBtn := ui.NewButton(0, 0, 0, 0, "删除项目", rowDlg.Handle, ui.WithVariant(ui.ButtonDestructive))
-	xui.ItemWidth(delBtn, 96)
-	xui.ItemWidth(ui.NewLabel(0, 0, 0, 24, "ESC / 点击遮罩 / 右上角 X 关闭, Tab 在对话框内循环", rowDlg.Handle).SetMuted(), 360)
-
-	buildDialogs(hWindow, editBtn, delBtn)
-
-	// 菜单卡
-	card5 := ui.NewCard(24, 124, 728, 108, pFeed.Handle)
-	v5 := card5.ContentStack(14)
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "下拉菜单", v5.Handle).SetMuted())
-
-	rowMenu := xui.HStack(v5.Handle, 36, 8)
-	menuBtn := ui.NewButton(0, 0, 0, 0, "打开菜单", rowMenu.Handle, ui.WithVariant(ui.ButtonOutline))
-	xui.ItemWidth(menuBtn, 96)
-	xui.ItemWidth(ui.NewLabel(0, 0, 0, 24, "对齐 shadcn DropdownMenu: 条目/勾选/单选/子菜单/快捷键/禁用/破坏性", rowMenu.Handle).SetMuted(), 480)
+	// ---- 列 2: 下拉菜单 ----
+	_, v2 := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "下拉菜单", v2.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "原生菜单承载行为 + 窗口级自绘皮肤", v2.Handle))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0,
+		"条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 分组标签 / 禁用 / 破坏性", v2.Handle).SetMuted())
+	rm := xui.HStack(v2.Handle, 36, 8)
+	menuBtn := ui.NewButton(0, 0, 0, 0, "打开菜单", rm.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(menuBtn, 104)
 	menuBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		showDemoMenu(hEle)
 		return 0
 	})
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "条目 hover 走 bg-accent, 与表格行 / 树行同一口径", v2.Handle).SetMuted())
 
-	// ===== 对齐 shadcn 后补充的档位(尺寸/link/ghost/纵向标签页/范围滑条/sm 下拉框) =====
-	card10 := ui.NewCard(24, 244, 728, 250, pFeed.Handle)
-	v10 := card10.ContentStack(14)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "新增变体: 尺寸档位 / link / ghost / 纵向标签页 / 范围滑条 / sm 下拉框", v10.Handle))
+	// ---- 第二行: 分页 ----
+	_, v3 := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "分页", v3.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"折叠采用恒定 7 槽位: 首段/中段/末段占位宽度一致, 连点同一坐标不会点空", v3.Handle))
 
-	// 按钮: xs/sm/default/lg + 方形图标按钮(cx 传 0 = 用预设边长) + link
-	rowSz := xui.HStack(v10.Handle, 38, 8)
-	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Xs", rowSz.Handle, ui.WithSize(ui.ButtonSizeXs)), 52)
-	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Sm", rowSz.Handle, ui.WithSize(ui.ButtonSizeSm)), 56)
-	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Default", rowSz.Handle), 84)
-	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Lg", rowSz.Handle, ui.WithSize(ui.ButtonSizeLg)), 64)
-	// 方形按钮不声明宽度: 元素已按预设边长建好
-	ui.NewButton(0, 0, 0, 0, "", rowSz.Handle, ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconPlus))
-	ui.NewButton(0, 0, 0, 0, "", rowSz.Handle, ui.WithSize(ui.ButtonSizeIconSm), ui.WithIcon(icons.IconCheck))
-	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Link", rowSz.Handle, ui.WithVariant(ui.ButtonLink)), 64)
+	pagInfo := ui.NewLabel(0, 0, 0, 0, "", v3.Handle).SetMuted()
+	xui.ItemFill(pagInfo)
+	pag := ui.NewPagination(0, 0, 0, 0, v3.Handle,
+		ui.WithPrevText("上一页"), ui.WithNextText("下一页"))
+	xui.ItemFill(pag)
+	pagInfo.SetText("共 120 条 · 每页 10 条 · 当前第 5 页")
+	pag.SetTotal(120)
+	pag.SetPageSize(10)
+	pag.SetPage(5)
+	pag.OnChange(func(p int) {
+		pagInfo.SetText(fmt.Sprintf("共 120 条 · 每页 10 条 · 当前第 %d 页", p))
+		pagInfo.Redraw(false)
+	})
+}
 
-	// 徽章: ghost(悬停出底色) / link(悬停加下划线)
-	rowBg := xui.HStack(v10.Handle, 20, 8)
-	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Ghost", rowBg.Handle, ui.WithBadgeVariant(ui.BadgeGhost)), 64)
-	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Link", rowBg.Handle, ui.WithBadgeVariant(ui.BadgeLink)), 56)
-	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Default", rowBg.Handle), 64)
+// ===== 页 4: 反馈(对话框 / 提示气泡 / 进度) =====
 
-	// 纵向标签页 | 垂直分隔线 | sm 下拉框 + 步进滑条(0~10, step 1)
-	rowV := xui.HStack(v10.Handle, 80, 16)
-	ui.NewSeparator(0, 0, 80, rowV.Handle, ui.WithSeparatorVertical())
-	xui.ItemWidth(ui.NewTabs(0, 0, 108, rowV.Handle, []string{"账户", "密码", "通知"}, ui.WithTabsVertical()), 108)
-	colV := xui.VStackWeight(rowV.Handle, 1, 10)
-	xui.ItemFill(ui.NewComboBox(0, 0, 0, 0, colV.Handle,
-		[]string{"开发环境", "测试环境", "生产环境"},
-		ui.WithComboSize(ui.ComboSizeSm), ui.WithComboPlaceholder("sm 尺寸")))
-	rowSt := xui.HStack(colV.Handle, 24, 8)
-	stSl := ui.NewSlider(0, 0, 220, 0, rowSt.Handle,
-		ui.WithSliderRange(0, 10), ui.WithSliderStep(1))
-	xui.ItemWidth(stSl, 238) // 220 + 2×9(滑块两端 ring 的绘制余量)
-	stVal := ui.NewLabel(0, 0, 32, 24, "3", rowSt.Handle).SetMuted()
-	xui.ItemWidth(stVal, 32)
-	stSl.SetValue(3)
-	stSl.OnChange(func(v float64) { stVal.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
+func buildFeedPage(body *widget.LayoutEle, hWindow int) {
+	r := row(body.Handle, 0, gap)
 
-	// ===== 页 4: 数据(表格) =====
-	card6 := ui.NewCard(24, 0, 728, 320, pData.Handle)
-	v6 := card6.ContentStack(14)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v6.Handle))
+	// ---- 列 1: 对话框 ----
+	_, v := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "对话框", v.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "窗口内覆盖元素: 全窗遮罩(backdrop-blur) + 居中面板 + Tab 焦点陷阱", v.Handle))
+	rd := xui.HStack(v.Handle, 36, 8)
+	editBtn := ui.NewButton(0, 0, 0, 0, "编辑资料", rd.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(editBtn, 104)
+	delBtn := ui.NewButton(0, 0, 0, 0, "删除项目", rd.Handle, ui.WithVariant(ui.ButtonDestructive))
+	xui.ItemWidth(delBtn, 104)
+	buildDialogs(hWindow, editBtn, delBtn)
+	xui.ItemFill(desc(v.Handle, "ESC / 点击遮罩 / 右上角 X 关闭; Tab 与 Shift+Tab 在对话框内循环。"))
 
-	desc := ui.NewLabel(0, 0, 0, 48, // 多行说明: 高度写在创建参数里(布局只声明宽度)
-		"原生 List 载体 + 全自绘皮肤: 表头/行底/行边框/滚动条; 行悬浮 hover:bg-muted/50, 选中 bg-muted, 最后一行不画底边。", v6.Handle).SetMuted().SetWrap()
-	xui.ItemFill(desc)
+	// ---- 列 2: 提示气泡 ----
+	_, v2 := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "提示气泡", v2.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "独立透明弹窗承载, 不抢焦点; 延迟 0, 进出场走淡入淡出", v2.Handle))
+	rt := xui.HStack(v2.Handle, 36, 8)
+	hoverBtn := ui.NewButton(0, 0, 0, 0, "悬浮我", rt.Handle, ui.WithVariant(ui.ButtonSecondary))
+	xui.ItemWidth(hoverBtn, 104)
+	tip.Bind(hoverBtn.Handle, "我是提示气泡")
+	xui.ItemFill(desc(v2.Handle, "绑定的元素自身有弹层时(如 ComboBox), 弹层打开要主动 HideTooltip。"))
 
-	demoTable = ui.NewTable(0, 0, card6.ContentWidth(), 180, v6.Handle, []ui.TableColumn{
+	// ---- 第二行: 进度 ----
+	_, v3 := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "进度", v3.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "h-1 圆角轨道 + 指示器(宽度按百分比)", v3.Handle))
+	for _, val := range []float64{24, 64, 100} {
+		pg := ui.NewProgress(0, 0, 0, 0, v3.Handle)
+		xui.ItemFill(pg)
+		pg.SetValue(val)
+	}
+}
+
+// ===== 页 5: 数据(表格 / 树) =====
+
+func buildDataPage(body *widget.LayoutEle) {
+	r := row(body.Handle, 0, gap)
+
+	// ---- 表格(整行占满剩余高度, 表格跟随窗口长高) ----
+	_, v := stretchCard(colStretch(r.Handle, 3, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v.Handle))
+	xui.ItemFill(desc(v.Handle, "原生 List 载体 + 全自绘皮肤: 表头 / 行底 / 行边框 / 滚动条。"+
+		"行悬浮 hover:bg-muted/50, 选中的行 bg-muted, 最后一行不画底边。"))
+	xui.ItemFillHeight(v) // 内容区占满卡片剩余高度
+	demoTable = ui.NewTable(0, 0, 0, 0, v.Handle, []ui.TableColumn{
 		{Title: "客户", Width: 200},
 		{Title: "状态", Width: 120},
 		{Title: "金额", Width: 120},
 		{Title: "日期"}, // Width<=0: 占满剩余宽度
 	})
-	for _, r := range [][4]string{
+	xui.ItemFill(demoTable)
+	xui.ItemFillHeight(demoTable) // 表格占满内容区里"标题/说明之外"的剩余高度
+	for _, cells := range [][4]string{
 		{"张三", "已支付", "¥1,250.00", "2026-10-01"},
 		{"李四", "待支付", "¥300.00", "2026-10-02"},
 		{"王五", "已退款", "¥99.00", "2026-10-03"},
@@ -529,76 +751,62 @@ func buildPage(hWindow, hParent int) {
 		{"冯三", "处理中", "¥640.00", "2026-10-11"},
 		{"陈四", "已支付", "¥1,990.00", "2026-10-12"},
 	} {
-		demoTable.AddRow(r[0], r[1], r[2], r[3])
+		demoTable.AddRow(cells[0], cells[1], cells[2], cells[3])
 	}
 	demoTable.Select(1)
 	demoTable.OnSelect(func(row int32) {
 		fmt.Printf("选中行: %d\n", row)
 	})
 
-	// ===== 页 5: 结构(树形视图) =====
-	card7 := ui.NewCard(24, 0, 360, 470, pTree.Handle)
-	v7 := card7.ContentStack(14)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "树形视图", v7.Handle))
-	desc = ui.NewLabel(0, 0, 0, 48, // 多行说明: 高度写在创建参数里(布局只声明宽度)
-		"原生 Tree 载体 + 全自绘皮肤: 缩进参考线/旋转 chevron/行悬浮选中。点击 chevron 或文字选中。", v7.Handle).SetMuted().SetWrap()
-	xui.ItemFill(desc)
-
-	demoTree = ui.NewTree(0, 0, card7.ContentWidth(), 322, v7.Handle)
+	// ---- 树 ----
+	_, v2 := stretchCard(colStretch(r.Handle, 2, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "树形视图", v2.Handle))
+	xui.ItemFill(desc(v2.Handle, "原生 Tree 载体 + 全自绘皮肤: 缩进参考线 / 旋转 chevron / 行悬浮与选中 bg-accent。"+
+		"点击 chevron 或文字选中。"))
+	xui.ItemFillHeight(v2)
+	demoTree = ui.NewTree(0, 0, 0, 0, v2.Handle)
+	xui.ItemFill(demoTree)
+	xui.ItemFillHeight(demoTree)
 	demoTreeSel = buildDemoTree(demoTree)
 	demoTree.OnSelect(func(id int32) {
 		fmt.Printf("选中项: %s\n", demoTree.ItemText(id))
 	})
+}
 
-	// 右侧说明卡: 树的语义对照
-	card8 := ui.NewCard(400, 0, 352, 470, pTree.Handle)
-	v8 := card8.ContentStack(14)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "语义对照", v8.Handle))
-	for _, line := range []string{
-		"行高 32(h-8), 视觉矩形左右内缩 4, 圆角 6",
-		"行悬浮 bg-accent, 选中 bg-accent",
-		"每级缩进 16, 祖先层级画 1px 参考线",
-		"chevron 加大居中于点击热区: 收起朝右/展开朝下",
-		"叶节点留空槽位, 文字全树对齐",
-		"条目文字 text-sm foreground",
-	} {
-		lb := ui.NewLabel(0, 0, 0, 0, "· "+line, v8.Handle).SetMuted()
-		xui.ItemFill(lb)
-	}
+// ===== 页 6: 图标(icons 资源子包) =====
+// 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
+// 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
+// 点击把名字复制到剪贴板。
 
-	// ===== 页 6: 图标(icons 资源子包) =====
-	// 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
-	// 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
-	// 点击把名字复制到剪贴板。
-	card9 := ui.NewCard(24, 0, 728, 490, pIcon.Handle)
-	v9 := card9.ContentStack(14)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "图标", v9.Handle))
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, // 说明文字 20 高: 写在创建参数里
+func buildIconPage(body *widget.LayoutEle) {
+	_, v := autoCard(body.Handle, 14)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "图标", v.Handle))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 40,
 		"运行时自带 lucide 图标资源(lucide-static "+icons.Version+", 共 "+
-			strconv.Itoa(icons.Count())+" 个)。", v9.Handle).SetMuted())
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 20,
-		"用法: p.Icon(icons.Path(\"star\"), &rc, color, 2); 悬浮图标看名字, 点击复制名字。",
-		v9.Handle).SetMuted())
+			strconv.Itoa(icons.Count())+" 个)。\n用法: p.Icon(icons.Path(\"star\"), &rc, color, 2); "+
+			"悬浮图标看名字, 点击复制名字。", v.Handle).SetMuted().SetWrap())
+	// 内容区水平居中: 固定尺寸的图标网格才会居中(Fill 宽的子项不受影响)
+	v.SetAlignH(xcc.Layout_Align_Center)
 
 	// 搜索行: 输入框(定宽) + 结果计数 + 复制反馈(两份等宽, 各占剩余宽度一半)
-	searchRow := xui.HStack(v9.Handle, 32, 8)
+	searchRow := xui.HStack(v.Handle, 32, 8)
 	iconSearch = ui.NewInput(0, 0, 0, 0, searchRow.Handle,
 		ui.WithPlaceholder("搜索图标名, 如 arrow / star / chevron"))
-	xui.ItemWidth(iconSearch, 240) // 240 = 设计稿定宽
+	xui.ItemWidth(iconSearch, 260)
 	iconInfo = ui.NewLabel(0, 0, 0, 0, "", searchRow.Handle).SetMuted()
 	xui.ItemWeight(iconInfo, 1)
 	iconCopied = ui.NewLabel(0, 0, 0, 0, "", searchRow.Handle).SetMuted()
 	xui.ItemWeight(iconCopied, 1)
 
 	// 分页(shadcn pagination: 上一页/页码/省略号/下一页, 内容居中)
-	iconPag = ui.NewPagination(0, 0, 0, 0, v9.Handle,
+	iconPag = ui.NewPagination(0, 0, 0, 0, v.Handle,
 		ui.WithPrevText("上一页"), ui.WithNextText("下一页"))
 	xui.ItemFill(iconPag)
 	iconPag.OnChange(func(page int) { showIconPage(page - 1) })
 
-	grid := widget.NewElement(0, 0, int32(iconCols*iconTileW), int32(iconRows*iconTileH), v9.Handle)
+	// 网格容器尺寸在创建时就给足(格子是固定尺寸), 不需要声明布局尺寸
+	grid := widget.NewElement(0, 0, int32(iconCols*iconTileW), int32(iconRows*iconTileH), v.Handle)
 	grid.EnableBkTransparent(true).EnableDrawBorder(false).EnableFocus(false) // 纯容器: 不画底(暗色下会是一块白)
-	// 网格容器尺寸在创建时就给足, 不需要声明布局尺寸
 	iconTiles = iconTiles[:0]
 	for r := 0; r < iconRows; r++ {
 		for c := 0; c < iconCols; c++ {
@@ -615,10 +823,6 @@ func buildPage(hWindow, hParent int) {
 	})
 	filterIcons("")
 	showIconPage(0)
-
-	// 首页在**所有页面建完之后**才激活: SetActive 会同步触发 OnChange(实测), 里面要摸
-	// demoTree 等页面内的全局对象 —— 放在前面会在 XUI_HOME_PAGE=4 时对着 nil 树调 Select 崩掉。
-	pageTabs.SetActive(int32(homePage))
 }
 
 // ===== 图标总览页的状态与绘制 =====
@@ -857,7 +1061,7 @@ func buildDialogs(hWindow int, editTrigger, delTrigger *ui.Button) {
 	edit.SetDescription("修改你的公开资料, 完成后点击保存。")
 	edit.BindTrigger(editTrigger)
 
-	// 内容容器是普通元素, 子元素按显式坐标摆放(高度由对话框自动量出)。
+	// 内容容器是普通元素, 子元素按显式坐标摆放(对话框宽度固定, 高度由对话框自动量出)。
 	// 对齐 shadcn App.tsx: 两个 space-y-2 组(标签 14 + 8 + 输入框 32), 组间 gap-4
 	cw := edit.ContentWidth()
 	ui.NewLabel(0, -2, cw, 20, "显示名称", edit.Content())
