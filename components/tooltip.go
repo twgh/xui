@@ -236,23 +236,36 @@ func (t *Tooltip) ensure() {
 	if t.win != nil {
 		return
 	}
-	w := window.New(0, 0, 10, 10, "", 0, xcc.Window_Style_Nothing)
+	w := window.NewEx(
+		xcc.WS_EX_TOOLWINDOW|xcc.WS_EX_NOACTIVATE|xcc.WS_EX_TRANSPARENT,
+		0, "", 0, 0, 10, 10, "", 0, xcc.Window_Style_Nothing)
 	w.SetBorderSize(0, 0, 0, 0)
 	// 真透明: 异型窗口带透明通道, 窗口形状 = 自身绘制内容中不透明像素的并集。
 	// 本组件的气泡与箭头全部由 paint 回调自绘(元素已 EnableBkTransparent), 因此
 	// 气泡圆角之外、箭头两侧天然是全透明的, 压在别的元素上也不会露出方形底。
 	w.SetTransparentType(xcc.Window_Transparent_Shaped)
 	w.SetTransparentAlpha(255)
-	hwnd := w.GetHWND()
-	ex := wapi.GetWindowLongPtrW(hwnd, wapi.GWL_EXSTYLE)
-	wapi.SetWindowLongPtrW(hwnd, wapi.GWL_EXSTYLE,
-		ex|int(xcc.WS_EX_TOOLWINDOW)|int(xcc.WS_EX_NOACTIVATE)|int(xcc.WS_EX_TRANSPARENT))
 	w.SetWindowPos(xcc.HWND_TOPMOST, 0, 0, 0, 0,
 		xcc.SWP_NOMOVE|xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE)
 
 	ele := widget.NewElement(0, 0, 10, 10, w.Handle)
 	ele.EnableBkTransparent(true)
 	ele.AddEvent_Paint(t.onPaint)
+	// 气泡是独立置顶小窗, 不在主题管理器的"已注册窗口"清单里, 宿主窗口重绘也不会带动它
+	// 的内容 —— 不订阅的话, 切主题时**正挂在屏幕上的**气泡会一直保持旧配色, 直到鼠标移开
+	// 重新进场(实测)。按元素订阅, 元素随窗口销毁时自动反注册。
+	xui.OnThemeChangeFor(ele.Handle, func(*xui.Theme) {
+		if !t.shown {
+			return
+		}
+		// 走一遍 show 而不是单纯重绘: 主题可能换字体/字号, 气泡尺寸得按新度量重算;
+		// 目标元素已被 Unbind 时退化成纯重绘(配色照样要跟上)。
+		if t.tips[t.shownEle] == "" {
+			t.win.Redraw(true)
+			return
+		}
+		t.show(t.shownEle)
+	})
 	t.win, t.ele = w, ele
 }
 

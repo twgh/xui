@@ -20,7 +20,7 @@ shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。**本文件只
 
 - **hover 过渡**一律用运行时 `xui.Hover(hEle, 悬停中)` / `xui.HoverItem(hOwner, 索引, 悬停中)` 取值 + `xui.Fade(静止色, 悬停色, hv)` 取色(叠加层用 `ScaleAlpha(hv)`);**不要在组件里自己起定时器或缓存过渡值**(见 DESIGN 45)
 - **应用初始化 `a.SetPaintFrequency(10)`**:xcgui 默认有 30ms 重绘节流(hover 过渡只有约 5 帧的根因),设 10 后实测 30.9 → 59.0 fps。`XC_SetTextRenderingHint` 在 D2D 下是空操作,不要用(见 DESIGN 46)
-- **弹层/对话框进出场**用 `xui.Presence(...)` + `SetElementsAlpha / FadeWindowAlpha / SlideWindowAlpha`,**不要自己起定时器**;过渡挂**宿主窗口**、别挂弹层小窗;**异型透明窗(`Window_Transparent_Shaped`)上不要用整窗 alpha 做动画** —— 它只认第一次调用、之后永远冻结, 淡入淡出改成元素 alpha(见 DESIGN 8.57);窗口 alpha 永远不精确 = 0(0 会让 xcgui 停止合成);要 Win32 HWND 用窗口 wrapper 的 `GetHWND()`,别拿 xcgui 窗口句柄喂 `XWidget_GetHWND`(弹模态错误框,表现为"点了没反应")(见 DESIGN 47)
+- **弹层/对话框进出场**用 `xui.Presence(...)` + `SetElementsAlpha / FadeWindowAlpha / SlideWindowAlpha`,**不要自己起定时器**;过渡挂**宿主窗口**、别挂弹层小窗;**异型透明窗(`Window_Transparent_Shaped`)上不要用整窗 alpha 做动画** —— 它只认第一次调用、之后永远冻结, 淡入淡出改成元素 alpha(见 DESIGN 8.57);**组件自建的弹层小窗不在主题管理器的重绘清单里, 要自己 `OnThemeChangeFor` 订阅并重绘**(否则切主题时挂在屏幕上的弹层还是旧配色, 见 DESIGN 8.58);窗口 alpha 永远不精确 = 0(0 会让 xcgui 停止合成);要 Win32 HWND 用窗口 wrapper 的 `GetHWND()`,别拿 xcgui 窗口句柄喂 `XWidget_GetHWND`(弹模态错误框,表现为"点了没反应")(见 DESIGN 47)
 
 ## 常用命令
 
