@@ -36,6 +36,10 @@ func HStack(parent int, ht, space int32) *widget.LayoutEle {
 
 // VStackWeight 建一个纵向流容器, 宽度按权重等分**横向父布局**的剩余宽度(做等宽列用, 传 1 = 等分),
 // 高度占满父级, 子项间距 space。
+//
+// 注意高度是 `Fill`(父级整高): 列里装的是"高度自撑(Auto)"的卡片时**别用它**, 要自己拼一个
+// "Weight 宽 + Auto 高"的列 —— 否则卡片内容区里的整宽控件(原生 Edit/ComboBox/分隔线)会按
+// 卡片宽排版、右边缘压到卡片边框上(实测, 见 DESIGN 第八节 59)。它适合列内是"吃剩余高度"的面板。
 func VStackWeight(parent int, weight, space int32) *widget.LayoutEle {
 	l := widget.NewLayoutEle(0, 0, 0, 0, parent)
 	l.EnableHorizon(false)
