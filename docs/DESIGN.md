@@ -968,6 +968,12 @@ registry.json 条目(shadcn 同构格式):
     - **现象(用户报)**: Link 徽章鼠标悬浮后移开, 下划线留在画布上不消失; Button Link 无此问题。
     - **根因(两条叠加)**: ①徽章 link/ghost 变体静止态 `bg=None`,`FillRound` 跳过 —— 透明元素重绘不擦底(见 28), 上一帧像素留在画布; ②过渡内核 `hoverTick` 里当某一帧的值**恰好到达目标**时该帧不重绘(`v == target` 时 `active=false`), 颜色类过渡无所谓(倒数第二帧 v≈0.02 与静止色视觉相同), 但"下划线"是 `hv>0` 就全色画的**二值可见物** —— 倒数第二帧(v≈0.02)的全色下划线被画上去后再也没人擦。
     - **修法**: ①`onPaint` 开头铺宿主底色 `t.Card`(同 61);②下划线透明度随过渡值缩放 `fore.ScaleAlpha(hv)` —— 倒数第二帧 alpha≈2, 肉眼不可见; 顺带淡入淡出也更平滑(shadcn 的 underline 本身不参与 transition, 但 GUI 侧缩放更接近"整体过渡"的观感)。**推论: 凡以过渡值为开关条件的可见物, 透明度一律跟 `hv` 走, 不要只判 `hv>0`。**
+63. **开着对话框最小化再还原 = 整窗元素绘制/命中全灭, 只能"最小化前挂起、还原后重显"规避**(2026-10-10, `components/dialog.go`):
+    - **现象(用户报)**: 弹窗打开后点任务栏最小化, 再还原 —— 弹窗消失(只剩 backdrop 的模糊快照), 点遮罩/页面全无反应。
+    - **诊断(探针 + demo 逐层排查)**: 还原后元素树状态**全部正常**(`IsShow=true`、alpha=255、矩形正确、z 序 overlay>backdrop>页面), 绘制回调**照常触发**且 `p.Rc` 正确 —— 但绘制输出不上屏、鼠标事件不到达任何元素(含页面原生控件); 无弹窗可见时还原完全正常。结论是 xcgui 异型阴影窗口(`Window_Transparent_Shadow`)还原后合成/命中管线对"对话框遮罩子树可见期间"的状态损坏, **引擎级, 组件层无法事后根治**。
+    - **试过无效的事后修复**(全部实测): 还原时重抬 z 序 + backdrop 压回 overlay 之下、`XWnd_Redraw(true)` 整窗重绘、重新显隐整棵子树、延迟到消息循环里整套重物化(重拍快照 + 重新 Show) —— 全部无效; 在 WM_ACTIVATE 里直接操作元素更会把整窗合成打断(全窗白屏)。
+    - **修法 = 挂起/恢复**(对话框状态保留, 不触发 onClose): `AddEvent_WindProc` 拦 `WM_SIZE` —— `wParam==SIZE_MINIMIZED(1)` 时**同步**隐藏整组(清焦点 + `showEleTree(false)` + backdrop 隐藏; 不能走 Hide, 其淡出完成回调是异步的)置 suspended; `wParam==SIZE_RESTORED(0)/SIZE_MAXIMIZED(2)` 且 suspended 时用 `app.AfterFunc(0, ...)`(= `time.AfterFunc` + `XC_CallUT`, 回调被投递到 UI 线程执行)做 `materialize()` + `SetSubtreeAlpha(1)` 无动画直接显示。引擎全程只见"隐藏状态的还原", 与已验证可靠的路径一致。
+    - **三个时序/机制坑**: ①`XE_SIZE` 在还原时不保证触发, 程序化最小化**不发 WM_ACTIVATE(WA_INACTIVE)** —— 抓"最小化"只能拦 `WM_SIZE/SIZE_MINIMIZED`; ②WM_ACTIVATE/WM_SIZE 里直接操作元素会把还原流程的合成打断(实测全窗白屏), 恢复动作必须延迟出消息处理(用 `XC_CallUT` 类机制投递到消息循环); ③**炫彩定时器是独立命名空间**(排查过程中踩到): `AddEvent_XC_Timer` 只接收 `XWnd_SetXCTimer` 启动的定时器, 用 Win32 的 `XWnd_SetTimer` 启动的话回调**永远不会被派发**(与 anim.go 的 animTimerID 机制同源, 自用 ID 避开 0x7875) —— 最终修法用 AfterFunc 避开了这套机制; ④**还原后立即启动的 Presence 过渡帧不会被驱动**(整组 alpha 卡 0, SetSubtreeAlpha(0) 之后全组隐身) —— 恢复显示必须无动画, 之后用户再打开仍走正常淡入。
 
 ---
 

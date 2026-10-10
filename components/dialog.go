@@ -74,9 +74,10 @@ type Dialog struct {
 	descText  string
 	showClose bool
 
-	width    int32
-	open     bool
-	focusIdx int // 焦点序列的当前位置(Tab 循环的兜底基准)
+	width     int32
+	open      bool
+	suspended bool // 最小化挂起中: 子树已同步隐藏, 还原后重新 Show(见构造函数注释)
+	focusIdx  int  // 焦点序列的当前位置(Tab 循环的兜底基准)
 
 	panel    xc.RECT // 面板矩形(遮罩局部坐标 —— 遮罩贴在 Body 上, 原点不再是窗口 (0,0))
 	footerRc xc.RECT // 页脚带矩形(同上)
@@ -150,6 +151,56 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 		if d.open {
 			d.layout()
 			xc.XWnd_Redraw(d.hWnd, false)
+		}
+		return 0
+	})
+	// ⚠️ 异型阴影窗口的引擎级 bug: 开着对话框最小化再还原, 整窗元素绘制/命中全部
+	// 失效(只剩 backdrop 的静态快照图; 元素树查询与绘制回调看似正常但输出不上屏、
+	// 鼠标不到达), 组件层的"事后修复"都救不回来 —— 重抬 z 序/重显子树/整窗重绘/
+	// 整套重物化(延迟到消息循环里做)全部实测无效; 对话框不可见时还原完全正常
+	// (见 DESIGN 第八节 63)。规避 = 挂起/恢复: 最小化时把对话框整棵子树**同步隐藏**
+	// (open 状态保留, 不触发 onClose), 还原后重新 Show —— 引擎全程只见"隐藏状态的
+	// 还原", 走的是已验证可靠的路径, 用户还原后看到的还是原弹窗。
+	// 注意两个时序坑: ①程序化最小化不发 WM_ACTIVATE(inactive), 只能靠
+	// WM_SIZE/SIZE_MINIMIZED 抓时机; ②WM_ACTIVATE/WM_SIZE 里直接操作元素会把
+	// 还原流程的合成打断(实测全窗白屏), 恢复动作放 AfterFunc 中延迟到消息循环。
+	win.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+		if message == wapi.WM_SIZE {
+			switch wParam {
+			case 1: // SIZE_MINIMIZED: 挂起 —— 同步隐藏整组(Hide 的淡出完成回调是异步的, 最小化期间不会执行)
+				if d.open && !d.suspended {
+					d.suspended = true
+					xc.XWnd_SetFocusEle(d.hWnd, 0)
+					showEleTree(d.overlay.Handle, false)
+					if d.backdrop != nil {
+						d.backdrop.Show(false)
+					}
+				}
+			case 0, 2: // SIZE_RESTORED / SIZE_MAXIMIZED: 预约恢复(AfterFunc(0) 不像 SetTimer 会去重,
+				// 还原会连发多条 WM_SIZE → 调度多个回调, 靠回调内的 suspended 判重)
+				if d.suspended && d.open {
+					app.AfterFunc(0, func() {
+						if !d.suspended {
+							return
+						}
+						d.suspended = false
+						if d.open {
+							// 还原后不能走 Show() 的 Presence 淡入 —— 实测还原后立即启动的过渡
+							// 帧不会被驱动(整组 alpha 卡在 0, 什么都看不见), 先无动画直接显示;
+							// 之后用户再打开仍走正常淡入路径
+							d.materialize()
+							xui.SetSubtreeAlpha(1, d.overlay.Handle, d.backdropHandle())
+							d.overlay.Redraw(false)
+							xc.XWnd_Redraw(d.hWnd, true)
+							d.focusIdx = 0
+							if fs := d.focusables(); len(fs) > 0 {
+								d.setCaretWidthOf(fs[0], 1) // 挂起时清过焦点, caret 已销毁, 重建即到位
+								xc.XWnd_SetFocusEle(d.hWnd, fs[0])
+							}
+						}
+					})
+				}
+			}
 		}
 		return 0
 	})
@@ -263,6 +314,19 @@ func (d *Dialog) OnClose(fn func()) *Dialog {
 	return d
 }
 
+// materialize 重拍背景快照 + 显示整组 + 布局 + 抬 z 序(Show 与最小化恢复共用)。
+// 先抓快照再显示再布局: 内容高度量的是"可见子元素"的占位, 隐藏状态下量出来是 0;
+// z 序是模糊层先抬顶、遮罩再抬顶压住它(两者都在其余内容之上)。
+func (d *Dialog) materialize() {
+	d.refreshBackdrop()
+	showEleTree(d.overlay.Handle, true)
+	d.layout()
+	if d.backdrop != nil {
+		d.backdrop.SetZOrderEx(0, xcc.Zorder_Top)
+	}
+	d.overlay.SetZOrderEx(0, xcc.Zorder_Top)
+}
+
 // clickBinder 任何带原生点击事件的控件(Button / Label / Checkbox / Radio / Switch ...)。
 type clickBinder interface {
 	AddEvent_BnClick(fn xc.XE_BNCLICK1, allowAddingMultiple ...bool) int
@@ -288,16 +352,7 @@ func (d *Dialog) Show() *Dialog {
 		return d
 	}
 	d.open = true
-	// 先抓背景快照(此刻遮罩/模糊层都还藏着, 抓到的是无对话框的画面), 再显示再布局:
-	// 内容高度量的是"可见子元素"的占位, 隐藏状态下量出来是 0
-	d.refreshBackdrop()
-	showEleTree(d.overlay.Handle, true)
-	d.layout()
-	// z 序: 模糊层先抬顶, 遮罩再抬顶压住它(两者都在其余内容之上)
-	if d.backdrop != nil {
-		d.backdrop.SetZOrderEx(0, xcc.Zorder_Top)
-	}
-	d.overlay.SetZOrderEx(0, xcc.Zorder_Top)
+	d.materialize()
 	// 进场: 整组(模糊层 + 遮罩 + 面板 + 全部子元素)从全透明淡入 —— 对齐 shadcn dialog 的
 	// data-open:animate-in fade-in-0 zoom-in-95(时长 100ms); 缩放在 xcgui 里做不到
 	// (元素级 ani 对自绘元素无效, 见 DESIGN 第八节 47), 这里只做淡入。
@@ -336,6 +391,7 @@ func (d *Dialog) Hide() *Dialog {
 	d.open = false
 	// 清焦点: 插入符随焦点消失, 淡出的 100ms 里不会闪现全亮度的插入符,
 	// 也避免键盘输入继续打进正在消失的输入框
+	d.suspended = false // 挂起中被隐藏(如还原前按了 ESC): 清标记, 否则下次最小化不会挂起
 	xc.XWnd_SetFocusEle(d.hWnd, 0)
 	xui.Presence(d.hWnd, dlgFadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
 		showEleTree(d.overlay.Handle, false)
