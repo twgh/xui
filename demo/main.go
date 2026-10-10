@@ -72,7 +72,7 @@ func main() {
 	// 低于 16 也不再涨(实测 ~16.6ms 硬地板)。见 docs/DESIGN.md 第八节 46。
 	a.SetPaintFrequency(10)
 
-	w := window.New(0, 0, 1200, 820, "xui · shadcn 风格自绘组件", 0,
+	w := window.New(0, 0, 1200, 860, "xui · shadcn 风格自绘组件", 0,
 		xcc.Window_Style_Center|xcc.Window_Style_Border|xcc.Window_Style_Drag_Border|xcc.Window_Style_Drag_Window|xcc.Window_Style_Allow_MaxWindow)
 	w.SetTransparentType(xcc.Window_Transparent_Shadow)
 	w.SetShadowInfo(shadowSize, 128, 8, false, xc.RGBA(0, 0, 0, 128))
