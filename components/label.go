@@ -10,10 +10,11 @@ import (
 // 原生 ShapeText 无事件且换肤不便, 用 Button 载体统一管理。
 type Label struct {
 	*widget.Button
-	muted  bool  // 弱化文字(说明性文本)
-	bold   bool  // 粗体(标题, 字号 +1)
-	medium bool  // 中等字重(粗体字形但不加字号)
-	size   int32 // 字号覆盖(逻辑像素; 0 = 主题默认)
+	muted  bool   // 弱化文字(说明性文本)
+	bold   bool   // 粗体(标题, 字号 +1)
+	medium bool   // 中等字重(粗体字形但不加字号)
+	size   int32  // 字号覆盖(逻辑像素; 0 = 主题默认)
+	textC  uint32 // 上次下发给原生的字色(避免在 paint 里反复设置)
 }
 
 // NewLabel 创建文本标签。h 为行高(逻辑像素), 可传 0 使用默认 24。
@@ -98,15 +99,32 @@ func (l *Label) applyTheme(t *xui.Theme) {
 	if h := xui.FontHandle(spec); h != 0 {
 		l.SetFont(h)
 	}
-	if l.muted {
-		l.Button.SetTextColor(uint32(t.MutedForeground))
-	} else {
-		l.Button.SetTextColor(uint32(t.Foreground))
-	}
+	l.syncTextColor()
 	l.Redraw(false)
 }
 
+// syncTextColor 把当前应有的字色下发给原生 Button(字色只能通过 SetTextColor 同步)。
+// 禁用态 = disabled:opacity-50 的组级透明, 原生文字不吃 alpha, 与 Input 禁用文字
+// 同口径: 当前字色与卡片底色对半混。弱化文本禁用时在 MutedForeground 上混。
+// 值没变就不重复调用 —— 它可能在 paint 回调里被调用, 要避免自激重绘。
+func (l *Label) syncTextColor() {
+	t := xui.Current()
+	c := t.Foreground
+	if l.muted {
+		c = t.MutedForeground
+	}
+	if !l.IsEnable() {
+		c = c.Mix(t.Card, 0.5)
+	}
+	if u := uint32(c); u != l.textC {
+		l.textC = u
+		l.Button.SetTextColor(u)
+	}
+}
+
 func (l *Label) onPaint(hEle int, hDraw int, pbHandled *bool) int {
-	// 颜色与字体已在 applyTheme 中同步给原生; 绘制回调中改元素属性会干扰当前帧渲染
+	// 字体在 applyTheme 同步; 字色在这里补同步 —— Enable(false) 不触发主题回调,
+	// 禁用/恢复后的首帧靠 paint 回调发现状态变化(同 Input.syncTextColor 的口径)。
+	l.syncTextColor()
 	return 0
 }

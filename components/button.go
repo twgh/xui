@@ -257,11 +257,39 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// hover 过渡: 悬停/按下共用一个色(按下时鼠标必然在按钮上, 观感与 shadcn 一致)
 	hv := xui.Hover(hEle, (st.Hover || st.Pressed) && !st.Disabled)
 	bg, border := b.resolve(t, st, hv)
-	// focus-visible: 鼠标点击不显示焦点框, Tab 切换才显示
 	p.Rc = shell
 	radius := b.Spec().radius(t)
+	// focus-visible: 鼠标点击不显示焦点框, Tab 切换才显示。
+	// shadcn 语义 = 边框换色 + 3px ring 光环(focus-visible:border-ring +
+	// ring-3 ring-ring/50); destructive 变体覆写为 border-destructive/40 +
+	// ring-destructive/20(见 button.tsx 第 7/19 行)。
+	// 光环画在元素矩形内(xcgui 裁剪到自身客户区, 画不出边界, 口径同 FocusFrame):
+	// 整块 halo 带 → 带内先铺宿主底色 t.Card 再叠 bg → 内缘描 1px 实色边框。
+	// 铺底色不能省: bg 可能是半透明色(destructive = destructive/10), 直接叠在
+	// halo 上会变成 10%+20% ≈ 30% 红, 内芯比光环还深; 浏览器里 bg 与 ring 是
+	// 各自独立合成在页面底色上的, 内芯(10%)要比光环(20%)浅。幽灵/链接没有壳体
+	// (bg = None), 铺 Card 后即"透明底透出面板色"(见 DESIGN 第八节 61);
+	// 若什么都不铺, 整个按钮会被 halo 色填满(实测踩坑)。
 	if st.Focused && !st.Disabled && xui.FocusedByKeyboard() {
-		p.FocusFrame(t.Ring, bg, radius)
+		halo, borderColor := t.Ring.WithAlpha(128), t.Ring
+		if b.variant == ButtonDestructive {
+			halo, borderColor = t.Destructive.WithAlpha(51), t.Destructive.WithAlpha(102)
+		}
+		p.FillRound(&shell, halo, radius)
+		const inset = int32(3)
+		inner := xc.RECT{
+			Left:   shell.Left + inset,
+			Top:    shell.Top + inset,
+			Right:  shell.Right - inset,
+			Bottom: shell.Bottom - inset,
+		}
+		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
+			p.FillRound(&inner, t.Card, radius-inset)
+			if !bg.IsNone() {
+				p.FillRound(&inner, bg, radius-inset)
+			}
+			p.StrokeRound(&inner, borderColor, radius-inset, 1)
+		}
 	} else {
 		p.FillRound(&shell, bg, radius)
 		p.StrokeRound(&shell, border, radius, 1)

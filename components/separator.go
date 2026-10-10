@@ -178,6 +178,10 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	hv := xui.Hover(hEle, b.hover)
 	bg, border, fore := b.resolve(t, hv)
 	radius := t.Pill(p.H())
+	// 先铺宿主底色: link / ghost 变体静止态 bg = None(FillRound 对 None 跳过),
+	// 透明元素重绘不擦底(见 DESIGN 第八节 28), 不铺的话上一帧的悬停痕迹会残留。
+	// 组件按"放在 Card 上"设计(同 Checkbox/Slider/Pagination)。
+	p.FillRound(&p.Rc, t.Card, 0)
 	p.FillRound(&p.Rc, bg, radius)
 	p.StrokeRound(&p.Rc, border, radius, 1)
 
@@ -189,13 +193,15 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	p.TextCenter(b.text, fore)
 
-	// link 变体: hover:underline + underline-offset-4(手绘, 写法同 Button link)
+	// link 变体: hover:underline + underline-offset-4(手绘, 写法同 Button link)。
+	// 透明度随过渡值缩放 —— 过渡最后一帧(值恰好到位)不再触发重绘, 若按全色画,
+	// 淡出倒数第二帧(v≈0.02)的全色下划线会永久留在画布上(实测残留)。
 	if b.variant == BadgeLink && hv > 0 {
 		if w := xui.TextWidth(b.text, f); w > 0 {
 			cy := (p.Rc.Top + p.Rc.Bottom) / 2
 			y := cy + int32(float32(fontSize)*0.3) + 4
 			x0 := (p.Rc.Left+p.Rc.Right)/2 - w/2
-			p.Line(x0, y, x0+w, y, fore, 1)
+			p.Line(x0, y, x0+w, y, fore.ScaleAlpha(hv), 1)
 		}
 	}
 	return 0

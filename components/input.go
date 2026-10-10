@@ -133,8 +133,20 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 
 	if st.Focused && !st.Disabled {
-		// focus-visible:border-ring + ring-3 ring-ring/50
+		// focus-visible:border-ring + ring-3 ring-ring/50: FocusFrame 画 3px 半透明
+		// ring 带(填充式, 会盖掉原来的 border-input), 实色的 border-ring 边框
+		// 再描在 ring 带内缘 —— 与浏览器一致: 聚焦后边框从 input 色换成 ring 色。
 		p.FocusFrame(t.Ring, bg, t.RadiusLg())
+		const inset = int32(3)
+		inner := xc.RECT{
+			Left:   p.Rc.Left + inset,
+			Top:    p.Rc.Top + inset,
+			Right:  p.Rc.Right - inset,
+			Bottom: p.Rc.Bottom - inset,
+		}
+		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
+			p.StrokeRound(&inner, t.Ring, t.RadiusLg()-inset, 1)
+		}
 	} else {
 		p.FillRound(&p.Rc, bg, t.RadiusLg())
 		p.StrokeRound(&p.Rc, border, t.RadiusLg(), 1)

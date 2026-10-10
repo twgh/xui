@@ -250,7 +250,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 |---|---|
 | **hover 过渡 = 150ms cubic-bezier(0.4,0,0.2,1)**(tailwind `transition-*` 默认值); 组件侧 `xui.Hover(ele, 悬停中)` / `xui.HoverItem(hOwner, idx, 悬停中)` + `xui.Fade(静止色, 悬停色, hv)`, 叠加层用 `ScaleAlpha(hv)` | button/tabs/switch/badge 的 `transition-all`; table/select/checkbox 的 `transition-colors`; 见第八节 45 |
 | hover:bg-primary/80(实心)/80 透明度 | button.tsx variant.default |
-| focus-visible 键盘才显示焦点框,ring-3 ring-ring/50,边框变 Ring 色 | button/input/checkbox 的 focus-visible:* |
+| focus-visible 键盘才显示焦点框,ring-3 ring-ring/50,边框变 Ring 色;destructive 变体**覆写**为 border-destructive/40 + ring-destructive/20;焦点内芯**先铺宿主底色再叠 bg** —— bg 可能是半透明色(destructive/10), 直接叠在 halo 上会变成 30% 红、内芯比光环还深, 浏览器里两者是各自独立合成在页面底色上的;幽灵/链接(bg=None)铺 Card 即"透明底透出面板色"(halo 画在元素矩形内, 口径同 FocusFrame) | button/input/checkbox 的 focus-visible:* |
 | 文本输入框点击聚焦也显示环(浏览器对文本控件恒匹配 focus-visible);禁用 = `bg-input/50`(暗色另有 `dark:bg-input/80`)再按组级乘 50%, 字色预混变淡 | input.tsx + 第八节 61 |
 | disabled:opacity-50 原色半透明 | 各组件 disabled:* |
 | **禁用/未选态的半透明令牌要"乘"不要"覆盖", 且先铺宿主底色**(暗色 input/border 令牌自带 alpha) | checkbox/radio/switch/input.tsx + 第八节 61 |
@@ -963,6 +963,11 @@ registry.json 条目(shadcn 同构格式):
       3. **禁用 = 每个图层各乘 50%**(`ScaleAlpha(0.5)`, 不是 `WithAlpha`): 不透明色乘完再叠到宿主上就等价于"整组半透明合成", 半透明令牌乘完也不会被拉亮。**形状**全部跟随(框/勾/轨道/滑块/圆点);**原生文字**不吃 alpha, 保持原色(见第四节末汇总表), 输入框禁用文字则改成"前景色 × 卡片色对半混"预混后下发(`Input.syncTextColor`)。
     - **实测(暗色, 与 shadcn 逐像素核对; 基底 `card=#171717`)**: 未选框底 `#212121`(白 4.5% 叠卡)/框线 `#424242`(白 15% 叠在框底上);禁用未选底 `#1c1c1c`/线 `#2d2d2d`(各再乘 50%);禁用已勾框 `#7e7e7e`(白 90% 实色乘 50%)+ 勾 `#4a4a4a`;开关禁用滑块 `#8f8f8f`(白 98% 乘 50% 叠轨道)。全部与"整组 50% 合成"的理论值一致。
     - **回归验收手段(重要)**: 程序化改状态**不会自动重绘**(原生 `SetCheck` 不失效重绘, 所以要 `Checkbox.SetChecked` 显式 `Redraw`); 环境里的合成点击对原生 Button 不可靠, 因此"切换前 vs 切换后"用**探针**验证 —— `.verify/statecheck`: `XUI_STATE=before|after|target` 三态(`after` = 建好 before 后 1.5s 用元素定时器切成 target), 抓图后与 `target` **逐像素比对必须 0 差异**(底盘内部区域), 差异为 0 即无残留。亮/暗两轮都跑过。
+
+62. **hover 过渡的"最后一帧"不再触发重绘 —— 二值可见物(下划线)淡出会永久残留**(2026-10-10, `components/separator.go` Badge Link):
+    - **现象(用户报)**: Link 徽章鼠标悬浮后移开, 下划线留在画布上不消失; Button Link 无此问题。
+    - **根因(两条叠加)**: ①徽章 link/ghost 变体静止态 `bg=None`,`FillRound` 跳过 —— 透明元素重绘不擦底(见 28), 上一帧像素留在画布; ②过渡内核 `hoverTick` 里当某一帧的值**恰好到达目标**时该帧不重绘(`v == target` 时 `active=false`), 颜色类过渡无所谓(倒数第二帧 v≈0.02 与静止色视觉相同), 但"下划线"是 `hv>0` 就全色画的**二值可见物** —— 倒数第二帧(v≈0.02)的全色下划线被画上去后再也没人擦。
+    - **修法**: ①`onPaint` 开头铺宿主底色 `t.Card`(同 61);②下划线透明度随过渡值缩放 `fore.ScaleAlpha(hv)` —— 倒数第二帧 alpha≈2, 肉眼不可见; 顺带淡入淡出也更平滑(shadcn 的 underline 本身不参与 transition, 但 GUI 侧缩放更接近"整体过渡"的观感)。**推论: 凡以过渡值为开关条件的可见物, 透明度一律跟 `hv` 走, 不要只判 `hv>0`。**
 
 ---
 
