@@ -39,6 +39,7 @@
 - ✅ **Tooltip 跟随主题切换**(2026-10-09):气泡挂在屏幕上时点"切换主题", 它过去会保持旧配色 —— 自建的独立置顶小窗不在 `RegisterWindow` 重绘清单里, 得自己 `OnThemeChangeFor` 订阅并重算+重绘(见 58); 顺带把窗口扩展样式改成 `window.NewEx` 一次传入。验收=光标停在主题按钮上直接点它, 气泡当场从深色块变浅色块(`.verify/hovercheck.ps1`)
 
 - ✅ **表格"首屏自适应列宽塌成最小值"修复**(2026-10-10):数据页刚进来时最后一列只有 20px(表头裁成"日"、单元格全显示 `...`), 拉一下窗口才正常 —— 根因是"列宽按元素宽度算, 而 `Show()` 之前元素宽度是 0"; 现在组件自己订阅 `List.AddEvent_Size` 自愈(`lastW` 防震荡), 调用方不必再记得调 `FitColumns`(见 60)
+- ✅ **Menu 弹层阴影 + p-1 边距 + 进场淡入**(2026-10-10):弹窗转 `Window_Transparent_Shadow`(官方 DrawMenu 同款, 圆角+投影+整窗 alpha 一次解决); `SetBorderSize(4)` 落实 shadcn p-1(高亮距弹层左右边缘 4 逻辑像素对称, 修掉"与参考差 1px"); 分隔栏改全宽(-mx-1); 进场 fade-in 100ms(Presence 挂宿主窗驱动)。三处深坑: 过渡闭包捕获 `Menu_PopupWnd_` **指针**会读到 0/垃圾(0=淡入冻结, 垃圾=崩进程), 必须拷贝句柄值 + `XC_IsHXCGUI` 守卫; 对菜单弹窗 `SetWindowPos` 位移直接崩进程 → slide-in 不可实现, 只做淡入; `XMenu_SetItemWidth` 实测无效, trigger 宽对齐不可达(见 64)
 - ✅ **暗色禁用/未选态配色按 shadcn 逐像素对齐**(2026-10-10):复选框未选态(暗色 `bg-input/30`)、复选框/单选框/开关的禁用态、禁用输入框过去都错用 `WithAlpha` 覆盖半透明令牌(暗色下画出发亮灰块 / 亮白框线 / 全亮白滑块)。现在统一为"**先铺宿主底色(Card) + 每个图层各乘 50%**":形状全部跟随, 原生文字保持原色, 输入框禁用文字预混变淡(见 61); 顺带修掉透明元素重绘**不擦底**留下的旧像素(焦点环 / 上一个状态)。验收=探针 `.verify/statecheck` 让"切换后的渲染"与"直接建成目标状态"逐像素比, 亮/暗各一轮都是 **0 像素差**(色值与 shadcn 的整组 50% 合成理论值逐条吻合)
 - ✅ **本地 shadcn 参照页(界面展示)与新 demo 同构**(2026-10-10):`shadcn/src/App.tsx` 重整为与 demo 一致的六页(**基础 / 表单 / 导航 / 反馈 / 数据 / 图标**), 内容逐条对应(6 变体 × 4 档尺寸 + 4 方形图标档、徽章 6 变体、CardFooter、多行与禁用输入、滑动条两档、开关 default/sm、Tabs default/line/纵向、恒 7 槽分页、表格 12 行 + 树); 新增 `?tab=form` 这类初始页签参数(对应 demo 的 `XUI_HOME_PAGE`), 便于分页截图对照; `pnpm build` 通过
 
@@ -46,9 +47,9 @@
 
 - **页面滚动容器**: 页面内容比窗口高时, 现在被页面自身的 `EnableOverflowHide` 裁掉(表单页在默认窗口下底部约裁掉一行)。要么给页面套滚动容器(`widget.ScrollView` 一类的自绘滚动条 + 内容高度撑开), 要么让内容自适应(见 DESIGN 8.59)
 
-- ⬜ **P3 剩余**:CLI 远程 registry;menu/combobox 弹层的进场动画(native 弹窗淡入不可行, 只能做位置滑动, 待定)
+- ⬜ **P3 剩余**:CLI 远程 registry;combobox 弹层进场动画(menu 已做淡入, 见 64; combobox 的下拉窗是 ListBox 载体, 转 Shadow 路线待验证)
 - ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
-- ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 的 `inset`、`--chart-1..5`/`--sidebar-*` 令牌未建模
+- ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 弹层宽度=触发区宽(SetItemWidth 无效, 见 64)、`--chart-1..5`/`--sidebar-*` 令牌未建模
 - ⬜ text 手绘后 Input 仍是原生文字
 - ⬜ CLI `update / --all` 未实现(见上)
 

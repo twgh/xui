@@ -269,7 +269,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见第八节 30) |
-| menu 弹层 = bg-popover rounded-lg p-1 ring-1 ring-foreground/10(内缩 1px); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border(原生槽高仅 4px); 快捷键右对齐 text-xs muted | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见第八节 36) |
+| menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场 fade-in 100ms(整窗 alpha, 无位移 —— 位移会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; 宽度按内容自适应(shadcn 的 trigger 宽/min-w-32 不可达 —— XMenu_SetItemWidth 实测无效, 已知差异) | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见第八节 36/64) |
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx(已落盘) + table.go(原生 List 接管路线见第八节 40) |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本项目令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
@@ -472,15 +472,27 @@ registry.json 条目(shadcn 同构格式):
     - 修法: 新增 `Color.ScaleAlpha(frac)`(在现有 alpha 上乘), 全库凡是"半透明令牌再叠透明度"的地方都用它, 不要用 `WithAlpha`;
     - 相关规则(逐条对源码): tabs 暗色选中 = `bg-input/30` + `border-input`(**不是** `bg-background`, 否则暗色下比列表更黑); radio 未选 = `border-input` + 暗色额外 `bg-input/30` 淡填充, 禁用 = 指示器整体半透明(标签文字不跟随) —— 原先禁用画成 `Background@50%`, 暗色下就是一块黑盘; switch 未选轨道 `bg-input`/暗色 `bg-input/80`, 选中滑块 `primary-foreground`、未选 `foreground`。
 
-36. **原生菜单皮肤的一批实测结论**(2026-10-05, components/menu.go):
-    - 弹窗圆角: 与 ComboBox 弹层同路线 —— `Menu_PopupWnd` 事件里 `window.NewByHandle` + `wnd.SetWindowRound`(Win32 区域裁剪, 物理像素 = RadiusLg×DPI/96); shaped 透明对菜单弹窗同样无效;
-    - 项几何(探针实测): `Menu_DrawItem` 的 `RcItem` 左右原生各留 3px 边距(贴着画条目高亮即可, 与 shadcn 的 p-1 4px 差 1px 不可感知), 高度 = `SetItemHeight`(28); **分隔栏槽高固定 4px**, 1px 线画在 `Top+2`;
+36. **原生菜单皮肤的一批实测结论**(2026-10-05, components/menu.go; 2026-10-10 按第八节 64 升级为阴影弹窗):
+    - 弹窗圆角+阴影: **已改走 `Window_Transparent_Shadow` 路线**(官方 DrawMenu 示例同款, 详见 64) —— `Menu_PopupWnd` 事件里 `SetTransparentType(Shadow)` + `SetShadowInfo(nSize, depth, RadiusLg, false, 黑/128)` + `SetRect` 四周外扩 nSize; 圆角由阴影窗按逐像素 alpha 画出, 不再用 `wnd.SetWindowRound` 区域裁剪; shaped 透明对菜单弹窗无效, **Shadow 有效**(整窗 alpha 也可用);
+    - 项几何(`SetBorderSize(4,4,4,4)` 后探针实测): `Menu_DrawItem` 的 `RcItem` 四周各留 **4px**(= shadcn p-1; 默认边距是 3, 差的那 1px 就是"高亮距弹层左右边缘与参考不一致"的根因), 高度 = `SetItemHeight`(28); **分隔栏槽高固定 4px**, 1px 线画在 `Top+2`、左右越过边距铺满弹层(shadcn `-mx-1`);
     - `"	"` 快捷键: 原生把 `	` 后的文本算进自适应宽度并预留 `NShortcutKeyWidth`(实测 "Ctrl+C"=37) → 把 "名字	快捷键" 整串传给 AddItem, 自绘时拆开分别渲染就得到右对齐快捷键, 不用自己量宽;
     - `SetLeftWidth(0)` 去掉左侧图标条; Label 项借 `Menu_Item_Flag_Disable` 实现"不可高亮不可点"(自绘时对 kind==label 单独配色);
-    - 事件拓扑: 窗口级 `XWM_MENU_DRAW_BACKGROUND/DRAWITEM` 对该窗口弹出的**所有**菜单生效(每次新建的菜单对象、各自的子菜单窗口都触发) → 皮肤每窗口只注册一次(map 守卫), 绘制实时取令牌, 换肤零成本; `Menu_PopupWnd` 对每个弹出窗口(含子菜单)各触发一次且顶级先于子菜单 → 圆角处理放这里全命中, 位置校正用 `HMenu == 自己的句柄` 只认顶级;
+    - **`XMenu_SetItemWidth` 实测不改变布局**(条目/窗口宽度纹丝不动, 探针复现两次, 官方示例注释"设置菜单宽度"无法复现) → shadcn 的"弹层宽 = 触发区宽 / min-w-32"对齐不可达, 宽度维持内容自适应(已知差异);
+    - 事件拓扑: 窗口级 `XWM_MENU_DRAW_BACKGROUND/DRAWITEM` 对该窗口弹出的**所有**菜单生效(每次新建的菜单对象、各自的子菜单窗口都触发) → 皮肤每窗口只注册一次(map 守卫), 绘制实时取令牌, 换肤零成本; `Menu_PopupWnd` 对每个弹出窗口(含子菜单)各触发一次且顶级先于子菜单 → 阴影处理放这里全命中;
     - 弹窗定位: `Popup` 收**物理像素**; 元素锚点 = `XEle_GetWndClientRect`(逻辑, 原点=窗口矩形含阴影边距) + `wapi.GetWindowRect`(物理) 换算; **翻转/夹紧/子菜单定位全部原生自带, 任何手动位置校正都不做** —— 详见下一条;
     - ⚠️ **验收坑: 全屏缩略截图里暗色弹层窗口会显示成亮底**(截图管线对弹层窗口的合成/缩放问题), 区域放大看才是真实效果 —— 弹层类组件的暗色验收一律以 zoom/像素测量为准, 不要凭全屏缩略图下结论。
-    - ⚠️ **别给弹出菜单手动校正位置**(2026-10-05 探针实测, 踩了两轮): `XMenu_Popup` 是**阻塞**的(菜单关闭后才返回), 且 `Menu_PopupWnd` 事件对每个弹窗触发一次。两条死路: ① 在 PopupWnd 回调里 `SetWindowPos` 移动顶级弹窗 → 子菜单锚点失效, 二级菜单弹到父菜单**原点**盖住父菜单; ② 等 `Popup()` 返回后再校正 → 弹窗已销毁, `XWnd_GetHWND` 报「输入句柄可能无效」。结论: 初始锚点给对(元素矩形换算), 其余(顶部放不下翻到上方、左右夹紧、子菜单贴父菜单右侧行对齐)原生全包, **不要动**。
+    - ⚠️ **别给弹出菜单手动校正位置**(2026-10-05 探针实测, 踩了两轮): `XMenu_Popup` 是**阻塞**的(菜单关闭后才返回), 且 `Menu_PopupWnd` 事件对每个弹窗触发一次。两条死路: ① 在 PopupWnd 回调里 `SetWindowPos` 移动顶级弹窗 → 子菜单锚点失效, 二级菜单弹到父菜单**原点**盖住父菜单; ② 等 `Popup()` 返回后再校正 → 弹窗已销毁, `XWnd_GetHWND` 报「输入句柄可能无效」。结论: 初始锚点给对(元素矩形换算), 其余(顶部放不下翻到上方、左右夹紧、子菜单贴父菜单右侧行对齐)原生全包, **不要动**。(2026-10-10 补充: PopupWnd 里的 `SetRect` 四周对称外扩**不影响**子菜单锚点, 阴影路线依赖它; 但单独的 `SetWindowPos` 位移会直接崩进程, 见 64。)
+
+64. **菜单弹窗转阴影窗 + 进场淡入的一批实测结论**(2026-10-10, components/menu.go, demo+探针双向验证):
+    - **阴影弹窗 = 官方 DrawMenu 示例同款三步**: `SetTransparentType(Window_Transparent_Shadow)` → `SetShadowInfo(nSize, nDepth, nAngeleSize=RadiusLg, false, 黑/128)` → `SetRect` 窗口矩形四周外扩 nSize(逻辑像素, 客户区会收缩出同尺寸阴影带, 必须外扩补偿, Body 才回到原生给定的菜单位置)。nAngeleSize 一次把圆角(逐像素 alpha, 无区域裁剪锯齿)和投影都做了。**参数对齐 shadcn shadow-md**(0 4px 6px -1px black/10%): nSize=5(官方示例的 8 比shadow-md 大一圈)、nDepth=50(阴影引擎边缘浓度≈depth/1000, 50 时白底上边缘约 5%, 与 shadow-md 侧缘观感一致; DLL 阴影是均匀环带, 做不出 shadow-md 上 2px/下 10px 的不对称);
+    - **子菜单锚点不受外扩影响**(探针实测: 子菜单仍贴父条目右侧、行对齐); 子菜单窗口走同样的 PopupWnd 事件, 阴影自动全命中;
+    - **整窗 alpha 淡入可用**: 阴影窗是透明类型, `XWnd_SetTransparentAlpha` 有效 —— 第八节 47 条 5 "native 弹层做不了淡入"的结论只适用于**非透明类型**弹窗(menu/combobox 的下拉窗默认不是 WS_EX_LAYERED, `GetLayeredWindowAttributes` 直接失败), **转 Shadow 后可淡入**; 依然遵守"alpha 永远不能精确 = 0"(47), 进场前压到 `xui.AlphaFloor()`;
+    - ⚠️ **过渡闭包绝对不能捕获事件结构体指针**: `Menu_PopupWnd_` 是原生栈对象, 回调返回后被复用/清空 —— Presence 的 apply 帧里再解引用, 读到 0(淡入永远不动, 弹窗 alpha 卡在下限"隐形")或垃圾值(拿无效句柄调 X API → **整个进程静默崩溃**, demo 实测崩了两轮)。必须先把 `hw := pInfo.HWindow` **拷贝值**再进闭包;
+    - ⚠️ **apply 每帧要 `XC_IsHXCGUI(hw, XC_WINDOW)` 守卫**: 菜单可能在过渡途中被关闭(弹窗随之销毁), 官方 DrawMenu 示例在 KillFocus 里同款用法;
+    - ⚠️ **对菜单弹窗做 `SetWindowPos` 位移会直接崩进程**(`SWP_NOSIZE|NOZORDER|NOACTIVATE` 也不行, 进场那一瞬移 8px 就崩, demo+探针双向验证; `SetRect` 对称外扩没事) → radix 的 slide-in-from-top-2 **不可实现**, 进场只做 fade-in(100ms, 与 radix fade-in-0 观感一致);
+    - 像素验收(144 DPI): 条目高亮距弹层左右边缘各 6 物理像素 = 4 逻辑(= p-1, 左右对称); 分隔栏全宽;体色暗色 (23,23,23); 阴影带梯度柔和无黑边;
+    - **菜单弹窗的绘制坐标系**(色块标定实验实测): `Menu_DrawBackground/DrawItem` 的绘制上下文**原点 = 弹窗窗口左上角(逻辑像素)**; `XWnd_GetClientRect` 返回的 {8,8,168,276} 就是阴影窗 Body(可见白区)在窗口内的矩形(= 窗口矩形 ± 阴影带) —— fill/ring 都画在它上面即可; **画进 Body 之外(阴影带里)的任何像素都会被阴影 alpha 蒙版压暗至不可见**( opaque 色块画进带里直接"消失"); ring 画在 Body 矩形边界上(线宽外半被蒙版裁掉), 肉眼就是一条贴着窗口边缘的线, 圆角用 RadiusLg 与 Body 一致, 四角才不脱开 —— ring 若内缩或半径不匹配, 视觉上就是"矩形线条浮在弹层里不贴边"。
+    - **子菜单悬停延迟 ~330ms 是 xcgui DLL 固化的**(纯净菜单探针实测同值 324ms): 与系统 MenuShowDelay 无关(SPI 置 0 复测仍 343ms), 无配置 API, VK_RIGHT / SendInput 真实点击 / PostMessage 鼠标消息都无法提前触发。xui 侧唯一能省的是自己的 100ms 进场淡入 —— 子菜单(NParentID != 0)直接全 alpha 出现, 不做动画。要达到 shadcn 的即时展开只能改 DLL 或等作者提供 API。
 
 37. **页面容器 Show(false)→Show(true) 后内容空白**(2026-10-05, demo 顶层 Tabs 分页):
     - 现象: 隐藏期间创建好的布局子树(LayoutEle 流式布局)在页面恢复显示后只有壳在渲染, 内部控件全空白;
@@ -715,9 +727,11 @@ registry.json 条目(shadcn 同构格式):
       4. 异型置顶小窗(`Window_Style_Nothing` + `Shaped` + NOACTIVATE)自己的窗口定时器
          不可靠(约 100ms/帧), 别把过渡挂它身上(同 2, 挂宿主窗口)。
       5. **普通窗口(非透明类型)的 `XWnd_SetTransparentAlpha` 完全无效**(exstyle 里没有
-         WS_EX_LAYERED, xcgui 也不会自动加) → native 弹层(menu / combobox 的下拉窗)做不了
+         WS_EX_LAYERED, xcgui 也不会自动加) → native 弹层(menu / combobox 的下拉窗)默认做不了
          淡入; 要淡入只能自己给 HWND 加 WS_EX_LAYERED + SetLayeredWindowAttributes
-         (代价: ClearType 变灰度 AA + 合成开销), 未做。这类弹层目前只能拿**位置**做动画。
+         (代价: ClearType 变灰度 AA + 合成开销), 未做。**但把弹窗转成
+         `Window_Transparent_Shadow`(官方 DrawMenu 菜单阴影同款)后就是透明类型, 整窗 alpha
+         可用 —— menu 弹层的进场淡入已按此实现(见 64); 位移滑动不可行(会崩, 见 64)。**
       6. 首帧闪现: `SWP_SHOWWINDOW` 后的首次绘制带着上一次的 alpha(255) → 进场前先
          `SetWindowAlpha(1/255)`(见 3, 不能是 0)。
     - **验证**(探针 + `SetAnimationScale(12)` 放慢 + 外部逐帧像素实测):气泡淡入

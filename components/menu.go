@@ -6,7 +6,6 @@ import (
 	"github.com/twgh/xcgui/common"
 	"github.com/twgh/xcgui/drawx"
 	"github.com/twgh/xcgui/wapi"
-	"github.com/twgh/xcgui/wapi/wnd"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xc"
@@ -20,14 +19,22 @@ import (
 // 绘制时实时取令牌, 换主题零成本(同一窗口弹出的所有菜单共用这套皮肤)。
 //
 // 与 shadcn dropdown-menu.tsx(radix-nova) 对齐:
-//   - 弹层: bg-popover rounded-lg p-1 ring-1 ring-foreground/10(无阴影, xcgui
-//     菜单弹窗没有阴影入口, 与本项目 Tooltip/Select 弹层口径一致);
+//   - 弹层: bg-popover rounded-lg p-1 ring-1 ring-foreground/10 shadow-md。
+//     载体是阴影弹窗(Window_Transparent_Shadow, 官方 DrawMenu 示例同款路线):
+//     圆角(ShadowInfo 的 nAngeleSize)、投影、整窗 alpha(进场淡入)一次解决,
+//     不再用 Win32 区域裁剪; p-1 用菜单 SetBorderSize(4) 落实(默认 3);
+//   - 进场动画: data-open:fade-in-0(duration-100), 整窗 alpha 由 xui.Presence
+//     挂宿主窗口驱动; 无位移(slide-in 会让 demo 崩溃, 见 menuOnPopupWnd 注释);
+//     退场原生即关即销毁, 无退场动画;
 //   - 条目: h-7(28) rounded-md px-1.5, hover/focus 高亮 bg-accent + 文字变
 //     accent-foreground; destructive 文字红、高亮 bg-destructive/10(dark /20);
 //   - 禁用: opacity-50(组级透明 → 文字用 50% alpha 合成, 且不响应);
 //   - 勾选/单选条目: 选中项右侧 Check 图标(right-2 size-4), 单选组内互斥;
-//   - 分组标签: text-xs muted; 分隔栏: 1px bg-border(原生槽高仅 4px);
+//   - 分组标签: text-xs muted; 分隔栏: 1px bg-border 全宽(-mx-1; 原生槽高仅
+//     4px, shadcn my-1 的 9px 不可达, 已知差异);
 //   - 快捷键: 右对齐 text-xs muted(借助原生 "\t" 解析预留宽度);
+//   - 宽度: 原生按内容自适应(shadcn 是 trigger 宽 / min-w-32; XMenu_SetItemWidth
+//     实测不改变布局, 触发区对齐宽度不可达, 已知差异);
 //   - 定位: 触发元素下方左对齐 sideOffset=4(radix Content 默认), 下方放不下
 //     翻到上方, 屏幕边缘夹紧。
 //
@@ -189,10 +196,12 @@ func (m *Menu) PopupAtCursor(hWindow int) {
 func (m *Menu) popup(hWindow int) {
 	m.m = m.build(hWindow)
 	// 初始位置即锚点(元素矩形是精确的)。
-	// ⚠️ 不要在这里或 Menu_PopupWnd 回调里做任何位置校正: XMenu_Popup 是阻塞的
-	// (菜单关闭后才返回), 校正要么拿到已销毁的弹窗句柄(报「输入句柄可能无效」),
-	// 要么在事件内 SetWindowPos 让子菜单锚点失效(二级菜单弹到父菜单原点盖住它,
-	// 探针实测)。翻转/夹紧/子菜单定位原生自带, 锚点给对即可。
+	// ⚠️ 不要在这里做任何位置校正: XMenu_Popup 是阻塞的(菜单关闭后才返回),
+	// 校正会拿到已销毁的弹窗句柄(报「输入句柄可能无效」)。
+	// Menu_PopupWnd 回调里的窗口矩形外扩/进场动画位移是官方 DrawMenu 示例
+	// 同款模式, 探针实测不影响子菜单锚点; 但"把弹窗挪去别的位置"这类校正
+	// 仍然不要做(历史踩坑: 二级菜单弹到父菜单原点盖住它)。
+	// 翻转/夹紧/子菜单定位原生自带, 锚点给对即可。
 	m.m.Popup(xc.XWnd_GetHWND(hWindow), m.ax, m.yBelow, 0, xcc.Menu_Popup_Position_Left_Top)
 }
 
@@ -204,6 +213,9 @@ func (m *Menu) build(hWindow int) *widget.Menu {
 	menu.SetAutoDestroy(true)
 	menu.SetItemHeight(28) // 条目 = text-sm(20) + py-1(4×2)
 	menu.SetLeftWidth(0)   // shadcn 条目没有左侧图标条, 图标(勾)画在右侧
+	// p-1(4px): 默认边距是 3, 条目高亮距弹层左右边缘原差 1px; 设 4 后条目盒
+	// 与 shadcn 完全一致(内容内缩 4, 文字再 px-1.5)。
+	menu.SetBorderSize(4, 4, 4, 4)
 	menu.EnableDrawBackground(true)
 	menu.EnableDrawItem(true)
 	for _, it := range m.items {
@@ -294,11 +306,32 @@ func ensureMenuSkin(hWindow int) {
 	})
 }
 
-// menuOnPopupWnd 弹窗出现: 圆角裁剪(Win32 区域, 同 ComboBox 弹层 —— shaped
-// 透明对原生弹层无效)。只做圆角, 不动位置 —— 本回调里 SetWindowPos 会让子菜单
-// 锚点失效(二级菜单弹到父菜单原点盖住它, 探针实测); 位置翻转/夹紧由原生菜单
-// 自己处理。
-func menuOnPopupWnd(_ int, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *bool) int {
+// menuShadowSize 是顶级菜单弹窗阴影带的宽度(逻辑像素) —— Window_Transparent_Shadow
+// 会把客户区四周各收缩这么多, 窗口矩形要同步外扩让 Body(菜单内容区)回到原位。
+// 取 5 对齐 shadcn shadow-md(0 4px 6px -1px black/10%: 侧向可见约 5px)。
+const menuShadowSize int32 = 5
+
+// menuShadowSizeSub 是子菜单弹窗阴影带宽: shadcn 子菜单用 shadow-lg
+// (0 10px 15px -3px black/10%, 侧向可见约 12px), 均匀环带引擎下取 8 折中。
+const menuShadowSizeSub int32 = 8
+
+// menuShadowDepth 是阴影深度(0-255), 与 shadow-md/lg 的 10% 峰值黑度对齐
+// (阴影引擎在白底上的边缘浓度约 depth/1000)。
+const menuShadowDepth int32 = 50
+
+// menuPresenceKey 进场过渡的递增键。必须每个弹窗窗口一个新键: Presence 对
+// "目标不变"的调用是幂等的, 撞上上一场已完成的过渡(键复用)就不会再播。
+var menuPresenceKey int32
+
+// menuOnPopupWnd 弹窗出现: 转阴影弹窗(圆角+投影+可整窗 alpha), 顶级弹窗播
+// 进场淡入, 子菜单即时出现(见下方说明)。
+// 窗口矩形外扩在本回调里做(官方 DrawMenu 示例同款), 探针实测子菜单锚点不受影响。
+//
+// ⚠️ 只有淡入, 没有 radix 的 slide-in 位移: 对菜单弹窗做 SetWindowPos 移动
+// (哪怕只在进场那一瞬、SWP_NOSIZE|NOZORDER|NOACTIVATE)会让 demo 直接崩溃
+// (DLL 内部访问违例, 静默退出; 官方示例的 SetRect 外扩没事, 单独的"移动"不行,
+// 探针+demo 双向验证)。100ms 的纯淡入与 radix fade-in-0 观感一致, 位移省略。
+func menuOnPopupWnd(hWindow, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *bool) int {
 	if pInfo == nil || pInfo.HWindow <= 0 {
 		return 0
 	}
@@ -307,19 +340,67 @@ func menuOnPopupWnd(_ int, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *bool)
 		return 0
 	}
 	t := xui.Current()
-	dpi := xc.XWnd_GetDPI(pInfo.HWindow)
-	if dpi <= 0 {
-		dpi = 96
+
+	// 阴影弹窗: nAngeleSize = rounded-lg, 圆角由阴影窗口自身按逐像素 alpha 画出
+	// (背景/条目照常填充, 框架自动裁到圆角 Body), 不再需要 SetWindowRound 区域裁剪。
+	// 阴影带宽: 顶级 = shadow-md(5), 子菜单 = shadow-lg(8), 对齐 shadcn。
+	band := menuShadowSize
+	if pInfo.NParentID != 0 {
+		band = menuShadowSizeSub
 	}
-	wnd.SetWindowRound(mw.GetHWND(), int32(float64(t.RadiusLg())*float64(dpi)/96))
-	// 子菜单锚点由原生管理, 顶级弹窗的位置/翻转原生自己处理(屏幕边缘会自动
-	// 夹紧/翻转), 这里不需要也不应该动位置 —— 探针实测对顶级弹窗做任何
-	// SetWindowPos 都会让子菜单锚点失效(盖到父菜单上)。
+	mw.SetTransparentType(xcc.Window_Transparent_Shadow)
+	mw.SetShadowInfo(band, menuShadowDepth, t.RadiusLg(), false, xc.RGBA(0, 0, 0, 128))
+	mw.SetTransparentAlpha(255)
+	// 客户区已收缩出阴影带: 窗口矩形四周外扩同尺寸, Body 对齐原生给定的菜单位置。
+	rc := mw.GetRectEx()
+	mw.SetRect(&xc.RECT{
+		Left:   rc.Left - band,
+		Top:    rc.Top - band,
+		Right:  rc.Right + band,
+		Bottom: rc.Bottom + band,
+	})
+
+	// 进场淡入(fade-in, 100ms):
+	//   - 整窗 alpha 只在透明类型窗口上有效(阴影窗是), 且永远不能精确 = 0
+	//     (0 会让 xcgui 停止合成该窗口), 先压到下限防首帧闪现;
+	//   - 过渡挂宿主窗口驱动 —— 弹层小窗自己做重绘目标时定时器掉帧(DESIGN 47);
+	//   - ⚠️ apply 每帧必须先验证弹窗还活着: 菜单可能在过渡途中被关闭(弹窗
+	//     随之销毁), 拿失效句柄调 X API 会让整个进程静默崩溃(demo 实测)。
+	//     官方 DrawMenu 示例在 KillFocus 里同样用 XC_IsHXCGUI 做守卫。
+	//
+	// 子菜单(NParentID != 0)不做淡入: 悬停到展开本身有 xcgui 固化的 ~330ms
+	// 内部延迟(纯净菜单探针实测同值, 无配置 API, 输入注入也无法提前触发),
+	// 再叠 100ms 动画会明显比 shadcn 慢一截 —— 子菜单直接全 alpha 出现。
+	if pInfo.NParentID == 0 {
+		xui.SetWindowAlpha(pInfo.HWindow, xui.AlphaFloor())
+		// ⚠️ 必须拷贝句柄值而不是捕获 pInfo 指针: 该结构体是原生栈对象, 回调返回后
+		// 会被复用/清空, 过渡帧里再解引用拿到的是 0 或垃圾(0 → 淡入永远不动,
+		// 垃圾 → 拿无效句柄调 X API 直接崩进程, demo 实测)。
+		hw := pInfo.HWindow
+		menuPresenceKey++
+		key := menuPresenceKey
+		xui.Presence(hWindow, key, true, xui.PopupDuration, func(v float64) {
+			// 菜单可能在过渡途中被关闭(弹窗销毁): 剩余帧必须跳过。
+			// 官方 DrawMenu 示例在 KillFocus 里同样用 XC_IsHXCGUI 做守卫。
+			if !xc.XC_IsHXCGUI(hw, xcc.XC_WINDOW) {
+				return
+			}
+			xui.SetWindowAlpha(hw, v)
+			xc.XWnd_Redraw(hw, true)
+		}, nil)
+	}
 	return 0
 }
 
-// menuDrawBackground 弹层底色 + ring-1 ring-foreground/10(内缩 1px, 四边完整,
-// 同 ComboBox 弹层的结论)。
+// menuDrawBackground 弹层底色 + ring-1 ring-foreground/10。
+//
+// 坐标系(标定实验实测): 绘制上下文原点 = 弹窗窗口左上角(逻辑像素),
+// XWnd_GetClientRect 返回的 {8,8,168,276} 就是阴影窗的 Body(可见白区)
+// 在窗口内的矩形 —— 它与窗口矩形差一圈阴影带, 但 fill/ring 都画在它上面
+// 就是正确的(探针色块标定验证)。ring 直接画在 Body 边界上: 线宽的一半
+// 落在体外被阴影 alpha 蒙版裁掉, 肉眼是一条贴着窗口边缘的线(shadcn 边框
+// 贴边), 圆角与 Body 的 nAngeleSize(RadiusLg) 一致, 四角不脱开。
+// ⚠️ 画在 Body 矩形之外(阴影带里)的任何像素都会被蒙版压暗至不可见。
 func menuDrawBackground(_ int, hDraw int, pInfo *xc.Menu_DrawBackground_, pbHandled *bool) int {
 	*pbHandled = true
 	d := drawx.NewByHandle(hDraw)
@@ -332,19 +413,15 @@ func menuDrawBackground(_ int, hDraw int, pInfo *xc.Menu_DrawBackground_, pbHand
 	xc.XWnd_GetClientRect(pInfo.HWindow, &rc)
 	d.SetBrushColor(uint32(t.Popover))
 	d.FillRect(&rc)
-	rc.Left++
-	rc.Top++
-	rc.Right--
-	rc.Bottom--
 	d.SetLineWidth(1)
 	d.SetBrushColor(uint32(t.Foreground.WithAlpha(26)))
-	d.DrawRoundRect(&rc, t.RadiusLg()-1, t.RadiusLg()-1)
+	d.DrawRoundRect(&rc, t.RadiusLg(), t.RadiusLg())
 	return 0
 }
 
 // menuDrawItem 自绘菜单项。
-// 项矩形几何(探针实测): 左右各留原生 3px 边距, 高度即 SetItemHeight(28),
-// 分隔栏槽高固定 4px。
+// 项矩形几何(SetBorderSize(4) 后探针实测): 四周各 4px 边距(= shadcn p-1),
+// 高度即 SetItemHeight(28), 分隔栏槽高固定 4px。
 func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) int {
 	*pbHandled = true
 	d := drawx.NewByHandle(hDraw)
@@ -362,11 +439,12 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 		it = am.byID[pInfo.NID]
 	}
 
-	// 分隔栏: 1px bg-border, 居中画在 4px 槽内
+	// 分隔栏: 1px bg-border 全宽(shadcn -mx-1: 越过 p-1 边距铺满弹层),
+	// 居中画在原生固定的 4px 槽内
 	if st&xcc.MenuItem_State_Flag_Separator > 0 {
 		d.SetLineWidth(1)
 		d.SetBrushColor(uint32(t.Border))
-		d.DrawLine(rc.Left+6, rc.Top+2, rc.Right-6, rc.Top+2)
+		d.DrawLine(rc.Left-4, rc.Top+2, rc.Right+4, rc.Top+2)
 		return 0
 	}
 
