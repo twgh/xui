@@ -103,6 +103,11 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	st := xui.StateOf(hEle)
 	checked := s.IsCheck()
 
+	// 先铺宿主底色(整元素): 透明元素重绘**不擦底**(见 DESIGN 第八节 28) —— 暗色下
+	// 未选轨道是半透明令牌(dark:data-unchecked:bg-input/80), 不铺底会透出上一帧的实心
+	// 轨道/滑块, 键盘焦点环消失后也会把灰环留在画布上。组件按"放在 Card 上"设计。
+	p.FillRound(&p.Rc, t.Card, 0)
+
 	// 轨道在元素内居中(四周留出 switchRingPad 给焦点环)
 	spec := switchSpecs[s.size]
 	track := xc.RECT{
@@ -130,8 +135,11 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.FillRound(&halo, t.Ring.WithAlpha(128), radius+switchRingPad)
 	}
 
-	// 轨道: data-checked:bg-primary / data-unchecked:bg-input
+	// 轨道: data-checked:bg-primary / data-unchecked:bg-input(dark 下 input/80)
 	trackColor := t.Input
+	if t.IsDark() {
+		trackColor = t.Input.ScaleAlpha(0.8)
+	}
 	if checked {
 		trackColor = t.Primary
 	}
@@ -152,8 +160,13 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	y := track.Top + (spec.h-thumb)/2
 	trc := xc.RECT{Left: x, Top: y, Right: x + thumb, Bottom: y + thumb}
-	// 滑块是"内容", 同禁用文字: 组级透明下核心保持原色, 只有轨道变淡
-	p.Draw.SetBrushColor(uint32(s.thumbColor(t, checked)))
+	// 滑块跟随组级透明: disabled:opacity-50 是作用在整个开关上的, 滑块同样要变淡
+	// (只淡轨道的话, 暗色下禁用开关会剩一颗扎眼的全亮白圆)
+	thumbColor := s.thumbColor(t, checked)
+	if st.Disabled {
+		thumbColor = thumbColor.ScaleAlpha(alpha)
+	}
+	p.Draw.SetBrushColor(uint32(thumbColor))
 	p.Draw.FillEllipse(&trc)
 	return 0
 }

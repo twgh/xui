@@ -251,15 +251,16 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **hover 过渡 = 150ms cubic-bezier(0.4,0,0.2,1)**(tailwind `transition-*` 默认值); 组件侧 `xui.Hover(ele, 悬停中)` / `xui.HoverItem(hOwner, idx, 悬停中)` + `xui.Fade(静止色, 悬停色, hv)`, 叠加层用 `ScaleAlpha(hv)` | button/tabs/switch/badge 的 `transition-all`; table/select/checkbox 的 `transition-colors`; 见第八节 45 |
 | hover:bg-primary/80(实心)/80 透明度 | button.tsx variant.default |
 | focus-visible 键盘才显示焦点框,ring-3 ring-ring/50,边框变 Ring 色 | button/input/checkbox 的 focus-visible:* |
-| 文本输入框点击聚焦也显示环(浏览器对文本控件恒匹配 focus-visible) | input.tsx |
+| 文本输入框点击聚焦也显示环(浏览器对文本控件恒匹配 focus-visible);禁用 = `bg-input/50`(暗色另有 `dark:bg-input/80`)再按组级乘 50%, 字色预混变淡 | input.tsx + 第八节 61 |
 | disabled:opacity-50 原色半透明 | 各组件 disabled:* |
+| **禁用/未选态的半透明令牌要"乘"不要"覆盖", 且先铺宿主底色**(暗色 input/border 令牌自带 alpha) | checkbox/radio/switch/input.tsx + 第八节 61 |
 | active:translate-y-px 按下整体下沉 1px(含文字→文字手动绘制) | button.tsx 基类 |
 | destructive 软色调(bg-destructive/10 + 红字) | button.tsx / badge.tsx |
 | radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground) | radio-group.tsx |
-| checkbox size-4 rounded-[4px],选中 bg-primary 白勾 | checkbox.tsx |
+| checkbox size-4 rounded-[4px] border-input;未选**亮色无底色 / 暗色 dark:bg-input/30**;选中 bg-primary + 白勾;禁用 = 上面每个图层各乘 50% | checkbox.tsx + 第八节 61 |
 | card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl | card.tsx |
 | badge h-5 胶囊(rounded-4xl) | badge.tsx |
-| switch 轨道 32x18(选中 bg-primary/未选 bg-input),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground | switch.tsx(radix-nova) |
+| switch 轨道 32x18(选中 bg-primary/未选 bg-input, **暗色未选是 dark:bg-input/80**),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground;**禁用时轨道与滑块一起乘 50%**(滑块不跟班会剩一颗全亮白圆) | switch.tsx(radix-nova) + 第八节 61 |
 | switch 元素比轨道每边大 3px:给 focus-visible 的 ring-3 留绘制空间,同时外扩点击热区(≈ after:-inset-*) | switch.tsx |
 | progress = h-1 rounded-full bg-muted 轨道 + bg-primary 指示器(宽度按百分比) | progress.tsx |
 | slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),hover/拖动中/focus-visible 显示 ring-3 | slider.tsx |
@@ -269,11 +270,11 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见第八节 30) |
 | menu 弹层 = bg-popover rounded-lg p-1 ring-1 ring-foreground/10(内缩 1px); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border(原生槽高仅 4px); 快捷键右对齐 text-xs muted | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见第八节 36) |
-| table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm` | table.tsx(已落盘) + table.go(原生 List 接管路线见第八节 40) |
+| table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx(已落盘) + table.go(原生 List 接管路线见第八节 40) |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本项目令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
-| **disabled:opacity-50 是组级透明**:文字/勾/滑块等"内容"先按原色合成再整体压暗,核心像素保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194);只有壳体/轨道变淡。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider.tsx |
+| **disabled:opacity-50 是组级透明**:组件自绘的**形状**(壳体/轨道/勾/滑块/圆点)**逐层各乘 50%**(`ScaleAlpha`, 见第八节 61);**原生文字**不吃 alpha —— 按钮文字/复选框与单选框的标签保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194),输入框禁用文字用"前景色×卡片色对半混"预混后发给原生 Edit。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider/input.tsx |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10(ring 画在面板矩形**外侧** 1px, 直接描面板矩形会被遮罩灰吞掉, 见第八节 33);标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
 | dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
 | dialog 遮罩 bg-black/10(固定黑色,不随主题;**只铺 Body 区, 不铺阴影窗口的阴影带**——铺上去会把窗口自身投影再压暗 10%, 四角最明显;**backdrop-blur-xs 已实现**——物理像素抓窗快照(PrintWindow 不缩放, DIB 必须给物理尺寸)+融合降采样+半分辨率盒式模糊+成对平均放大+BkM 图片填充,见第八节 47) | dialog.tsx(语义权威) + 第八节 47 条 6/10 |
@@ -946,6 +947,22 @@ registry.json 条目(shadcn 同构格式):
     - **修法(本仓库现在采用的骨架)**: 每个"栅格"用 **一行**(行高 Weight) + **`Weight` 宽的列, 列高声明 `Auto`**(`demo` 的 `col()` 已改成 Auto), 卡片按内容顺序**竖着排在列里**; 整宽卡片直接挂 `body`(实测正确)。竖排还顺带修掉现象②: 同一列里两张卡是"先后关系", 不再有行与行之间的重叠。
     - **验收**(真实截图像素, 1600% 缩放阈值): 输入框右端 x=863 = 卡片内容区右缘(863), 卡片边框在 887; 反馈页进度条 x 78..1721 = 内容区 78..1721; 基础页分隔线 x 1103..1721 = 内容区 1103..1721。探针矩阵见 `.verify/probe_layout`(A/B/C/D/E/P1/P2 候选)。
     - **代价**: 页面内容比窗口高时会被页面自身的 `EnableOverflowHide` 裁掉(不再重叠, 但也看不到)。要"看得到"得给页面加滚动容器 —— 记在 HANDOFF 待办。
+
+60. **"自适应列宽"依赖元素宽度, 而宽度是布局算出来的 —— 必须订阅元素尺寸事件自愈**(2026-10-10, `components/table.go`):
+    - **现象(用户报)**: 刚进入数据页时表格**最后一列(自适应列)被挤成 20px**, 表头文字裁成"日"、单元格文字全是"..."(`...` 是形状文本放不下时的截断标记); 拉一下窗口尺寸(或换页回来)就正常。
+    - **根因**: `NewTable(x,y,0,...)` 的 `cx=0`(尺寸交给布局), 于是建表时 `GetWidth()==0`, `colWidth` 算出 `0 - 表头内缩*2 - 固定列之和` → 负数 → 兜底 20。修复前的策略是"调用方自己在窗口尺寸事件/换页时调 `FitColumns`", 但**首次显示**这条路上没人调: `w.Show()` 之前元素尺寸全是 0, `show(home)` 里的 `fitTable()` 也量到 0(见 55), 之后窗口尺寸事件又不一定发。
+    - **修法**: 组件自己订阅 `List.AddEvent_Size`(元素尺寸变化事件) → 回调里 `relayout(true)`; `relayout` 增加 `lastW` 记录"上次算列宽时的元素宽度", 宽度与滚动条需求都没变就直接返回, 因此不会因 `SetColumnWidth` 引发的重复尺寸事件而震荡。组件自愈后, `FitColumns` 退化成"特殊时序下的强制重算", 调用方不必记得调。
+    - **验收**: 修复前首屏"日期"列 = 20px(文本全 "..."), 修复后首屏列宽 = 剩余宽度(表头"日期"与 `2026-10-01` 完整); 拉窗/换页/切主题三种路径像素一致。
+
+61. **自绘组件的"宿主底色 + 组级半透明"合成规则(暗色禁用/未选态踩过的坑)**(2026-10-10, checkbox/radio/switch/input):
+    - **现象(用户报)**: 暗色下 ①未勾选的复选框是**一块比卡片更黑**的方块(亮色下看不出来); ②复选框**禁用态**的框线比参考实现亮一档; ③开关**禁用态**的滑块还是一颗扎眼的全亮白圆; ④禁用输入框是一整块**发亮的灰饼**。
+    - **根因**: ①未选态在 shadcn 是"亮色无底色 / 暗色 `dark:bg-input/30`", 我们却铺了 `Background`(#0a0a0a), 比卡片(#171717)还深; ②③④ 禁用态错用 `WithAlpha(128)` **覆盖**透明度 —— 暗色 `input`/`border` 令牌本身就是"白 15% 半透明", 覆盖成 50% 等于画了一条亮白线/一坨亮白饼; 滑块/勾号则干脆没跟着淡。
+    - **修法(三条一起立规矩)**:
+      1. **先铺宿主底色**: 组件按"放在 `Card` 上"设计, `onPaint` 第一步 `p.FillRound(&p.Rc, t.Card, 0)` —— 既擦掉上一帧(透明元素重绘不擦底, 见 28:焦点环消失后的灰环、上一个状态的实心形状都会留在画布上), 又给半透明令牌一个正确的底。
+      2. **未选/未勾的底**: 亮色不铺(露卡片), 暗色才叠 `t.Input.ScaleAlpha(0.30)`(= `dark:bg-input/30`);开关轨道暗色未选是 `t.Input.ScaleAlpha(0.8)`(= `dark:data-unchecked:bg-input/80`)。
+      3. **禁用 = 每个图层各乘 50%**(`ScaleAlpha(0.5)`, 不是 `WithAlpha`): 不透明色乘完再叠到宿主上就等价于"整组半透明合成", 半透明令牌乘完也不会被拉亮。**形状**全部跟随(框/勾/轨道/滑块/圆点);**原生文字**不吃 alpha, 保持原色(见第四节末汇总表), 输入框禁用文字则改成"前景色 × 卡片色对半混"预混后下发(`Input.syncTextColor`)。
+    - **实测(暗色, 与 shadcn 逐像素核对; 基底 `card=#171717`)**: 未选框底 `#212121`(白 4.5% 叠卡)/框线 `#424242`(白 15% 叠在框底上);禁用未选底 `#1c1c1c`/线 `#2d2d2d`(各再乘 50%);禁用已勾框 `#7e7e7e`(白 90% 实色乘 50%)+ 勾 `#4a4a4a`;开关禁用滑块 `#8f8f8f`(白 98% 乘 50% 叠轨道)。全部与"整组 50% 合成"的理论值一致。
+    - **回归验收手段(重要)**: 程序化改状态**不会自动重绘**(原生 `SetCheck` 不失效重绘, 所以要 `Checkbox.SetChecked` 显式 `Redraw`); 环境里的合成点击对原生 Button 不可靠, 因此"切换前 vs 切换后"用**探针**验证 —— `.verify/statecheck`: `XUI_STATE=before|after|target` 三态(`after` = 建好 before 后 1.5s 用元素定时器切成 target), 抓图后与 `target` **逐像素比对必须 0 差异**(底盘内部区域), 差异为 0 即无残留。亮/暗两轮都跑过。
 
 ---
 

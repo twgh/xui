@@ -54,7 +54,8 @@ type Table struct {
 	rowH    int32
 	onBg    bool
 	onSel   func(row int32)
-	sbWide  bool // 当前列宽是否已为滚动条让位
+	sbWide  bool  // 当前列宽是否已为滚动条让位
+	lastW   int32 // 上次算自适应列宽时元素的宽度, 用于判断"宽度真的变了"(见 relayout)
 }
 
 // TableOption 组件配置项。
@@ -86,6 +87,7 @@ func NewTable(x, y, cx, cy int32, hParent int, cols []TableColumn, opts ...Table
 		cols:    cols,
 		autoCol: -1,
 		rowH:    tableRowH,
+		lastW:   -1,
 	}
 	if t.List == nil {
 		return nil
@@ -151,6 +153,15 @@ func NewTable(x, y, cx, cy int32, hParent int, cols []TableColumn, opts ...Table
 
 	t.applyTheme(xui.Current())
 	xui.OnThemeChangeFor(t.Handle, func(th *xui.Theme) { t.applyTheme(th) })
+
+	// 自适应列宽依赖"元素当前宽度", 而宽度是布局算出来的: 创建时(窗口 Show 之前)拿到的是 0,
+	// 算出的列宽会退化成最小值(表头与单元格文本被裁成 "...")。订阅元素自身的尺寸事件,
+	// 一旦拿到真实宽度就重算 —— 组件自愈, 调用方不必记着手动调 FitColumns。
+	t.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		t.relayout(true)
+		return 0
+	})
+
 	xui.AttachWindow(t.Handle)
 	return t
 }
@@ -265,23 +276,26 @@ func (t *Table) needScroll() bool {
 	return t.Rows() > vis
 }
 
-// relayout 在"是否需要滚动条"翻转时重新分配自适应列宽 —— 滚动条出现后不让出宽度的话
-// 最后一列会被盖住, 没滚动条时白留空隙同样难看。force 为 true 时(元素宽度变了)强制重算。
+// relayout 在"是否需要滚动条"翻转、或元素宽度真的变了时重新分配自适应列宽 —— 滚动条出现后
+// 不让出宽度的话最后一列会被盖住, 没滚动条时白留空隙同样难看。force 为 true 时跳过"不变就返回"
+// 的短路。宽度没变的重复调用会被 lastW 挡掉, 因此元素尺寸事件里调用不会来回震荡。
 func (t *Table) relayout(force bool) {
 	if t.autoCol < 0 {
 		return
 	}
+	w := t.GetWidth()
 	need := t.needScroll()
-	if !force && t.sbWide == need {
+	if !force && t.sbWide == need && t.lastW == w {
 		return
 	}
-	t.sbWide = need
-	t.SetColumnWidth(t.autoCol, t.colWidth(t.autoCol, t.GetWidth(), need))
+	t.sbWide, t.lastW = need, w
+	t.SetColumnWidth(t.autoCol, t.colWidth(t.autoCol, w, need))
 	t.Redraw(false)
 }
 
 // FitColumns 按元素**当前**宽度重算自适应列宽。
-// 表格被布局元素拉伸(或所在窗口尺寸变化)后调用, 列宽才会跟上新的宽度。
+// 元素尺寸变化已由组件内部(尺寸事件)自动处理, 一般不需要手动调用; 保留它是为了在
+// 特殊时序下(例如批量改完数据后立刻量宽度)能强制重算一次。
 func (t *Table) FitColumns() *Table {
 	t.relayout(true)
 	return t

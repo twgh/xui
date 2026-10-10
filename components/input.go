@@ -17,6 +17,7 @@ type Input struct {
 
 	placeholder string
 	multiline   bool
+	textColor   uint32 // 上次下发给原生 Edit 的字色(避免在 paint 里反复设置)
 }
 
 // InputOption 组件配置项。
@@ -65,13 +66,29 @@ func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
 }
 
 func (i *Input) applyTheme(t *xui.Theme) {
-	i.SetTextColor(uint32(t.Foreground))
+	i.syncTextColor()
 	if i.placeholder != "" {
 		i.SetDefaultText(i.placeholder)
 		i.SetDefaultTextColor(uint32(t.MutedForeground))
 	}
 	i.SetCaretColor(uint32(t.Primary))
 	i.Redraw(false)
+}
+
+// syncTextColor 把当前应有的字色下发给原生 Edit(字色只能通过 SetTextColor 同步)。
+// 禁用态整体 opacity-50: 文字色 = 前景色与卡片底色对半混(原生文本不吃 alpha, 只能预混)。
+// 值没变就不重复调用 —— 它可能在 paint 回调里被调用, 要避免自激重绘。
+func (i *Input) syncTextColor() {
+	t := xui.Current()
+	c := uint32(t.Foreground)
+	if !i.IsEnable() {
+		c = uint32(t.Foreground.Mix(t.Card, 0.5))
+	}
+	if c == i.textColor {
+		return
+	}
+	i.textColor = c
+	i.SetTextColor(c)
 }
 
 // Value 返回输入内容。
@@ -99,13 +116,20 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	t := xui.Current()
 	st := xui.StateOf(hEle)
+	i.syncTextColor() // 禁用态在 paint 里发现时补一次(Enable(false) 不会走主题回调)
 
 	bg := t.Background
 	border := t.Input
 	if st.Disabled {
-		// disabled:bg-input/50
-		bg = t.Input.WithAlpha(128)
-		border = xui.None
+		// shadcn: disabled:bg-input/50(暗色另有 dark:disabled:bg-input/80) + 组级 opacity-50;
+		// 用 ScaleAlpha 逐层乘, 不要用 WithAlpha 覆盖(暗色 input 自带 15% alpha, 覆盖成 50%
+		// 会画出一块发亮的灰饼)
+		a := 0.5
+		if t.IsDark() {
+			a = 0.8
+		}
+		bg = t.Input.ScaleAlpha(a).ScaleAlpha(0.5)
+		border = t.Input.ScaleAlpha(0.5)
 	}
 
 	if st.Focused && !st.Disabled {

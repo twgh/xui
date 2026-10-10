@@ -60,6 +60,11 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	st := xui.StateOf(hEle)
 	checked := r.IsCheck()
 
+	// 先铺宿主底色(整元素): 透明元素重绘**不擦底**(见 DESIGN 第八节 28) —— 未选态在暗色
+	// 下是半透明令牌(dark:bg-input/30), 不铺底会透出上一帧的实心圆盘; 单调焦点环也会残留。
+	// 组件按"放在 Card 上"设计(同 Table/Checkbox/Switch)。
+	p.FillRound(&p.Rc, t.Card, 0)
+
 	// 圆形指示器(逻辑像素, 框架按 DPI 变换渲染)
 	size := r.BoxSize
 	gap := int32(8)
@@ -85,7 +90,7 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 指示器为 size-2 的 bg-primary-foreground 白色圆点(直径 50%)。
 	// 未选: border-input 描边 + 暗色额外 dark:bg-input/30 的淡填充(radio-group.tsx);
 	// 禁用是 disabled:opacity-50 —— 指示器整体半透明(标签文字不跟随)
-	idleFill := t.Background
+	var idleFill xui.Color // 亮色未选态没有自己的底色, 露出宿主(Card)即可
 	if t.IsDark() {
 		idleFill = t.Input.ScaleAlpha(0.30)
 	}

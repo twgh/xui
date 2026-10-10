@@ -44,11 +44,8 @@ var pageTitles = [...]string{"基础", "表单", "导航", "反馈", "数据", "
 
 var (
 	tip         *ui.Tooltip
-	demoTable   *ui.Table
 	demoTree    *ui.Tree
 	demoTreeSel int32
-	// inResize 防重入: 尺寸事件里要主动重排布局, 重排又可能再发尺寸消息。
-	inResize bool
 )
 
 // 标题栏行高度与窗口阴影边带宽度(逻辑像素)。
@@ -211,19 +208,6 @@ func main() {
 
 	buildPages(w.Handle, content.Handle)
 
-	// 窗口尺寸变化: 布局会自己重排, 但表格的"自适应列宽"是按元素**当前**宽度算的,
-	// 必须显式重算一次(Table.FitColumns 就是为这种场合准备的)。
-	w.AddEvent_Size(func(hWindow int, nFlags uint, pPt *xc.SIZE, pbHandled *bool) int {
-		if inResize {
-			return 0
-		}
-		inResize = true
-		w.AdjustLayout()
-		fitTable()
-		inResize = false
-		return 0
-	})
-
 	// 双击标题栏行最大化/还原。
 	// y 判定必须按窗口**实际**坐标系算: 非最大化时整窗矩形四周含 shadowSize 宽的阴影带,
 	// 而事件坐标原点是整窗左上角, 标题栏行落在 [shadowSize, shadowSize+captionH]; 最大化时
@@ -341,13 +325,6 @@ func desc(parent int, text string) *ui.Label {
 	return ui.NewLabel(0, 0, 0, 36, text, parent).SetMuted().SetWrap()
 }
 
-// fitTable 按表格元素的当前宽度重算自适应列宽(页面/窗口尺寸变了之后调用)。
-func fitTable() {
-	if demoTable != nil {
-		demoTable.FitColumns()
-	}
-}
-
 // envHomePage 读启动页环境变量并夹取到合法范围。
 func envHomePage() int {
 	i, _ := strconv.Atoi(os.Getenv("XUI_HOME_PAGE"))
@@ -403,7 +380,6 @@ func buildPages(hWindow, host int) {
 		pageHost.AdjustLayout()
 		pages[i].AdjustLayout()
 		pages[i].Redraw(false)
-		fitTable()
 	}
 
 	// 首页在**所有页面建完之后**才显示: 树的启动选中态在隐藏页上会丢(见 DESIGN 第八节 42)。
@@ -747,14 +723,14 @@ func buildDataPage(body *widget.LayoutEle) {
 	xui.ItemFill(desc(v.Handle, "原生 List 载体 + 全自绘皮肤: 表头 / 行底 / 行边框 / 滚动条。"+
 		"行悬浮 hover:bg-muted/50, 选中的行 bg-muted, 最后一行不画底边。"))
 	xui.ItemFillHeight(v) // 内容区占满卡片剩余高度
-	demoTable = ui.NewTable(0, 0, 0, 0, v.Handle, []ui.TableColumn{
+	table := ui.NewTable(0, 0, 0, 0, v.Handle, []ui.TableColumn{
 		{Title: "客户", Width: 200},
 		{Title: "状态", Width: 120},
 		{Title: "金额", Width: 120},
 		{Title: "日期"}, // Width<=0: 占满剩余宽度
 	})
-	xui.ItemFill(demoTable)
-	xui.ItemFillHeight(demoTable) // 表格占满内容区里"标题/说明之外"的剩余高度
+	xui.ItemFill(table)
+	xui.ItemFillHeight(table) // 表格占满内容区里"标题/说明之外"的剩余高度
 	for _, cells := range [][4]string{
 		{"张三", "已支付", "¥1,250.00", "2026-10-01"},
 		{"李四", "待支付", "¥300.00", "2026-10-02"},
@@ -769,10 +745,10 @@ func buildDataPage(body *widget.LayoutEle) {
 		{"冯三", "处理中", "¥640.00", "2026-10-11"},
 		{"陈四", "已支付", "¥1,990.00", "2026-10-12"},
 	} {
-		demoTable.AddRow(cells[0], cells[1], cells[2], cells[3])
+		table.AddRow(cells[0], cells[1], cells[2], cells[3])
 	}
-	demoTable.Select(1)
-	demoTable.OnSelect(func(row int32) {
+	table.Select(1)
+	table.OnSelect(func(row int32) {
 		fmt.Printf("选中行: %d\n", row)
 	})
 
