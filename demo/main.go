@@ -123,6 +123,7 @@ func main() {
 	})
 	logo.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, 18)
 	logo.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 18)
+	xui.ItemMarginLeft(logo, 6)
 
 	// 标题文字: Weight 宽度占满剩余空间把按钮组顶到行尾
 	// (横向行里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight)
