@@ -81,7 +81,7 @@ xui add --all           # = init 的组件部分(全量 add)
 
 - [x] `XUI_REGISTRY=<本仓库根> go run ./cmd/xui list` → 列表来自本地 registry.json,并打印数据源行
 - [x] `XUI_REGISTRY=http://127.0.0.1:8123 xui add dialog`(临时目录)→ 拷出 dialog.go + button.go + label.go(dialog 的 deps)
-- [x] 默认源不可达且未设 XUI_REGISTRY → 打印一行原因后**降级内嵌源**,命令仍成功
+- [x] 默认源(未设 XUI_REGISTRY)→ 按 直连 → Gitee 镜像 → `ghfast` → `gh-proxy` 依次尝试(每个失败打一行 stderr),全不通才**降级内嵌源**,命令仍成功
 - [x] `XUI_REGISTRY=http://127.0.0.1:9999`(不可达)与 `…/notexist`(HTTP 404)→ 均报错退出(显式指定不降级)
 - [x] `update`:改过 ui/button.go → 警告跳过;删掉 ui/label.go → 重新创建;`--force` → 覆盖;指定组件只更新该闭包;空目录 → 提示"没有已安装的组件"
 - [x] `add --all` → 18 个文件(19 个组件条目, separator/badge 共享 separator.go)
@@ -97,6 +97,22 @@ xui add --all           # = init 的组件部分(全量 add)
 
 ## 六、已知坑(前人踩过,别再踩)
 
+- **默认源自动选路 = 直连 → Gitee 镜像 → 加速代理**(2026-10-11 定稿; 起初按"先代理后直连"实现过
+  一版, 按用户要求改为"直连优先 + Gitee 镜像"):候选依次为
+  `https://raw.githubusercontent.com/twgh/xui/main` → `https://gitee.com/twgh/xui/raw/main` →
+  `ghfast` → `gh-proxy`; 探测 = 拉一次 `registry.json`(6s 超时, 不额外发可达性请求), 第一个通的
+  跑完本次命令, 失败逐行打 stderr 便于定位卡点; 显式 `XUI_REGISTRY` **一律原样使用, 不套镜像/代理**
+  (想只走直连就把默认地址显式写上)。实测(本机, 2026-10-11):
+  - Gitee raw 布局与 GitHub raw **同构**, 直接可用:`https://gitee.com/twgh/xcgui/raw/main/README.md`
+    = **200**(gitee API 查得 xcgui 镜像默认分支是 `main`, 不是 `master`); UA 用 `xui-cli` 也放行,
+    无需伪装浏览器。
+  - **`gitee.com/twgh/xui` 尚不存在(404)**、GitHub 的 `twgh/xui` 也**未公开**(直连被 reset/超时,
+    gh-proxy 回源 404)—— 四条候选现在都拿不到真内容, 靠降级内嵌源跑。**仓库公开 + Gitee 建镜像后
+    才能真验收**(链路本身已按序跑通)。注意 gitee 镜像需手动同步(或在 Gitee 建仓库并同步 main)。
+  - `ghfast` 时通时断(先 TCP refused, 后 HTTP 404), 仅作兜底。
+  - 直连挂起时会吃满 6s 探测超时(实测总耗时 3.5s ~ 8.7s 取决于直连是 RST 还是挂起), 这是"直连优先"
+    的固有代价; 想避免就显式 `XUI_REGISTRY` 指向 Gitee 镜像。
+  - 同形态的第三方实现可参考会话交接文件 `utils/proxy.go`。
 - **`go run @latest` 的 CLI 本体有 proxy 缓存延迟**:组件跟 main 不受影响(走 raw.githubusercontent),但 CLI 代码本身的更新要等 proxy 抓取或打 tag —— 组件更新频繁而 CLI 很少变,这是选择"registry 跟 main、CLI 走版本"的根据。
 - `moduleRoot()` 依赖 `runtime.Caller`:**v2 改造时不要动它**,内嵌回退还靠它;注意 `go run pkg@version` 时该路径在模块缓存里同样有效(已验证)。
 - 用户 ui 目录名可以不是 `ui`(`init` 的参数),`add` 里 uiDir 一直在传参链上,别写成硬编码。

@@ -161,13 +161,25 @@ xui list               # 列出可用组件
 
 组件源码拷进项目后归你所有;`add` / `update` 都不会覆盖你本地改过的文件,确认要丢弃本地改动时加 `--force`。
 
-**数据源**:默认从 GitHub 仓库的 `main` 分支现拉组件(组件永远最新,CLI 本体锁版本用
-`go run github.com/twgh/xui/cmd/xui@v1.2.3`);拉不到时自动降级到 CLI 内嵌源码。环境变量
-`XUI_REGISTRY` 可覆盖:
+**数据源**:默认从仓库 `main` 分支现拉组件(组件永远最新,CLI 本体锁版本用
+`go run github.com/twgh/xui/cmd/xui@v1.2.3`)。默认源**自动选路**:
+
+```
+直连 https://raw.githubusercontent.com/twgh/xui/main
+  → Gitee 镜像 https://gitee.com/twgh/xui/raw/main     (国内稳定)
+  → 加速代理 ghfast / gh-proxy                          (兜底)
+```
+
+每个候选的探测就是拉一次 `registry.json`(6s 超时),第一个通的用它跑完本次命令;全都不通才降级到
+CLI 内嵌源码。选路过程逐行打在 stderr 上, 想看清卡在哪一环直接看输出。
+
+环境变量 `XUI_REGISTRY` 覆盖数据源(**写什么就用什么,不再套代理**):
 
 ```bash
 XUI_REGISTRY=D:\path\to\xui xui add dialog                    # 本地目录(离线)
 XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v1.2.3 xui add dialog   # 锁组件版本
+XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/main xui add dialog     # 只走直连(跳过镜像与代理)
+XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                # 只走 Gitee 镜像
 ```
 
 显式指定 `XUI_REGISTRY` 时拉取失败会直接报错(便于排查),不静默降级。

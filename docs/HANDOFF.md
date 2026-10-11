@@ -43,15 +43,18 @@
 - ✅ **暗色禁用/未选态配色按 shadcn 逐像素对齐**(2026-10-10):复选框未选态(暗色 `bg-input/30`)、复选框/单选框/开关的禁用态、禁用输入框过去都错用 `WithAlpha` 覆盖半透明令牌(暗色下画出发亮灰块 / 亮白框线 / 全亮白滑块)。现在统一为"**先铺宿主底色(Card) + 每个图层各乘 50%**":形状全部跟随, 原生文字保持原色, 输入框禁用文字预混变淡(见 61); 顺带修掉透明元素重绘**不擦底**留下的旧像素(焦点环 / 上一个状态)。验收=探针 `.verify/statecheck` 让"切换后的渲染"与"直接建成目标状态"逐像素比, 亮/暗各一轮都是 **0 像素差**(色值与 shadcn 的整组 50% 合成理论值逐条吻合)
 - ✅ **本地 shadcn 参照页(界面展示)与新 demo 同构**(2026-10-10):`shadcn/src/App.tsx` 重整为与 demo 一致的六页(**基础 / 表单 / 导航 / 反馈 / 数据 / 图标**), 内容逐条对应(6 变体 × 4 档尺寸 + 4 方形图标档、徽章 6 变体、CardFooter、多行与禁用输入、滑动条两档、开关 default/sm、Tabs default/line/纵向、恒 7 槽分页、表格 12 行 + 树); 新增 `?tab=form` 这类初始页签参数(对应 demo 的 `XUI_HOME_PAGE`), 便于分页截图对照; `pnpm build` 通过
 
-- ✅ **CLI 远程 registry(v2)+ `update` / `add --all`**(2026-10-11):数据源三态 —— 默认
-  `raw.githubusercontent.com/twgh/xui/main`(组件跟 main 永远最新)、`XUI_REGISTRY` 指向本地目录或
-  任意 `http(s)://` 基址(离线 / 锁组件版本)、远程不可用时降级 `moduleRoot()` 内嵌源码树(显式设了
-  `XUI_REGISTRY` 则报错不降级);`update` 无 manifest 语义 = 缺则建 / 一致跳过 / 用户改过警告跳过
-  (`--force` 覆盖),省略组件名 = 更新 `ui/` 里已装的全部;新增 `--force` / `--all` 两个旗标。
-  方案与验收清单见 [REGISTRY_V2.md](REGISTRY_V2.md);离线验收全绿(本地路径 / 本地 HTTP / 404 /
-  不可达 / 降级 / update 四态 / 逐组件单独安装后编译 / init 后编译)。**顺带修掉 registry.json 的
-  依赖缺陷**:`dialog` 漏 `backdrop.go`、`combobox`/`menu` 漏 `tooltip` 依赖 —— 过去 `xui add dialog`
-  拷出来的组件根本编译不过。
+- ✅ **CLI 远程 registry(v2)+ `update` / `add --all`**(2026-10-11):数据源四态 —— 默认源
+  `raw.githubusercontent.com/twgh/xui/main`(**自动选路:直连 → Gitee 镜像 `gitee.com/twgh/xui/raw/main`
+  → 加速代理 ghfast / gh-proxy**, 探测 = 拉一次 registry.json, 6s 超时, 第一个通的跑完本次命令, 选路
+  过程逐行打 stderr; 组件跟 main 永远最新)、`XUI_REGISTRY` 指向本地目录或任意 `http(s)://` 基址
+  (离线 / 锁组件版本; **写什么用什么, 不套镜像/代理**)、全不通时降级 `moduleRoot()` 内嵌源码树
+  (显式设了 `XUI_REGISTRY` 则报错不降级);`update` 无 manifest
+  语义 = 缺则建 / 一致跳过 / 用户改过警告跳过(`--force` 覆盖),省略组件名 = 更新 `ui/` 里已装的全部;
+  新增 `--force` / `--all` 两个旗标。方案与验收清单见 [REGISTRY_V2.md](REGISTRY_V2.md);离线验收全绿
+  (本地路径 / 本地 HTTP / 404 / 不可达 / 降级 / update 四态 / 逐组件单独安装后编译 / init 后编译),
+  行为已固化为 `cmd/xui/main_test.go`(候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出)。
+  **顺带修掉 registry.json 的依赖缺陷**:`dialog` 漏 `backdrop.go`、`combobox`/`menu` 漏 `tooltip` 依赖
+  —— 过去 `xui add dialog` 拷出来的组件根本编译不过。
 
 ## 待办
 
@@ -104,8 +107,9 @@ go build -ldflags="-s -w -H windowsgui" -trimpath -o demo/demo.exe ./demo && dem
 # shadcn 参考实现 dev server(可能已在运行: netstat -ano | findstr 5173)
 cd D:\GOProject\src\ui\shadcn && pnpm dev    # http://localhost:5173
 
-# CLI 本地测试(仓库未发布, 默认远程源拉不到会自动降级内嵌源码)
+# CLI 本地测试(仓库未发布, 默认源直连→Gitee 镜像→代理, 全不通才降级内嵌源码)
 go run ./cmd/xui list / init <目录> / add <组件...> / add --all / update [组件...]
+go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出
 # 想验远程链路(无需 GitHub): 仓库根起 python -m http.server 8123,
 # 再 XUI_REGISTRY=http://127.0.0.1:8123 go run ./cmd/xui add dialog
 # 数据源也可指本地目录(完全离线): XUI_REGISTRY=D:\GOProject\src\ui\xui
@@ -116,7 +120,7 @@ go run ./cmd/xui list / init <目录> / add <组件...> / add --all / update [�
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
 # 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..5 = 基础/表单/导航/反馈/数据/图标
 
-# 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线)
+# 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
 go test ./...
 ```
 

@@ -327,10 +327,13 @@ registry.json 条目(shadcn 同构格式):
 
 组件源码放在仓库 `components/` 目录,demo 应用直接 import 它们编译——**demo 编译通过 = 全部组件可用**,CI 即测试。
 
-> **实现现状(v2 已完成)**:`init / add / add --all / update / list` 全部实现。数据源三态:
-> 默认远程 `https://raw.githubusercontent.com/twgh/xui/main`(组件跟 main 永远最新,CLI 本体走
-> Go 模块版本)、`XUI_REGISTRY` 指向本地目录或任意 `http(s)://` 基址(离线开发 / 锁组件版本)、
-> 远程不可用时降级到 `moduleRoot()` 定位的内嵌源码树(显式设了 `XUI_REGISTRY` 则直接报错不降级)。
+> **实现现状(v2 已完成)**:`init / add / add --all / update / list` 全部实现。数据源四态:
+> 默认远程 `https://raw.githubusercontent.com/twgh/xui/main`(**自动选路:直连 → Gitee 镜像
+> `https://gitee.com/twgh/xui/raw/main` → 加速代理 ghfast / gh-proxy**, 逐个拉 registry.json
+> 做探测, 6s 超时, 第一个通的跑完本次命令; 组件跟 main 永远最新, CLI 本体走 Go 模块版本)、
+> `XUI_REGISTRY` 指向本地目录或任意 `http(s)://` 基址(离线开发 / 锁组件版本; **写什么用什么,
+> 不套镜像/代理**, 显式写默认地址 = 只走直连)、全不通时降级到 `moduleRoot()` 定位的内嵌源码树
+> (显式设了 `XUI_REGISTRY` 则直接报错不降级)。
 > `update` 不存 manifest,语义 = "本地没有则创建 / 内容一致则跳过 / 不一致(用户改过)则警告跳过,
 > `--force` 覆盖";省略组件名时更新 `ui/` 里已装的全部。**registry 只拷 `files` 列的文件**
 > (icons 子包、theme.go 不进清单)。仓库公开后仅剩两步真实验收(`go run …@latest init` 走

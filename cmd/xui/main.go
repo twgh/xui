@@ -8,13 +8,15 @@
 //	go run github.com/twgh/xui/cmd/xui@latest update [组件...]
 //	go run github.com/twgh/xui/cmd/xui@latest list
 //
-// 数据源默认是仓库 main 分支(组件永远最新); 环境变量 XUI_REGISTRY 可指向
-// 本地目录或任意 URL(离线开发 / 锁版本); 远程不可用时降级到内嵌源码树。
+// 数据源默认是仓库 main 分支(组件永远最新), 并按"直连 → Gitee 镜像 → 加速代理"的顺序
+// 自动选路(直连最快但有墙, Gitee 镜像国内稳定, 代理兜底); 环境变量 XUI_REGISTRY 可指向
+// 本地目录或任意 URL(离线开发 / 锁版本); 远程全不通时降级到 CLI 内嵌源码树。
 // init 在用户项目创建 ui/ 目录并写入 theme.go 模板; add 按 registry.json
 // 把组件源码(及其依赖组件)拷入 ui/, 已存在且被用户改过的文件会提示跳过。
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,6 +33,16 @@ import (
 // 把 XUI_REGISTRY 指到某个 tag 的 raw 基址即可(GitHub raw 对 tag 同样有效)。
 const defaultRegistryBase = "https://raw.githubusercontent.com/twgh/xui/main"
 
+// giteeRegistryBase Gitee 镜像(与 GitHub raw 布局同构: <base>/registry.json,
+// <base>/components/xxx.go), 国内访问稳定。前提是仓库也同步到 Gitee 的 twgh/xui。
+const giteeRegistryBase = "https://gitee.com/twgh/xui/raw/main"
+
+// proxyPrefixes GitHub 加速前缀, 仅作兜底(排在直连与 Gitee 镜像之后)。
+var proxyPrefixes = []struct{ name, prefix string }{
+	{"ghfast", "https://ghfast.top/"},
+	{"gh-proxy", "https://gh-proxy.org/"},
+}
+
 type entry struct {
 	Files []string `json:"files"`
 	Deps  []string `json:"deps"`
@@ -42,10 +54,20 @@ type registry struct {
 
 // ---------------------------------------------------------------- 数据源
 
-var httpClient = &http.Client{Timeout: 10 * time.Second}
+const (
+	// fetchTimeout 组件文件(几十 KB)的常规超时
+	fetchTimeout = 10 * time.Second
+	// probeTimeout 候选源探测超时: registry.json 只有几 KB, 正常远小于 1s;
+	// 直连被墙时表现为"连接建立后无响应", 短超时保证降级/换源不用白等
+	probeTimeout = 6 * time.Second
+)
 
-func fetch(url string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+var httpClient = &http.Client{Timeout: fetchTimeout}
+
+func fetchWithTimeout(url string, timeout time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -61,11 +83,36 @@ func fetch(url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// source 统一数据源: 本地目录与远程基址二选一。
+func fetch(url string) ([]byte, error) {
+	return fetchWithTimeout(url, fetchTimeout)
+}
+
+// candidate 一个远程候选基址。直连失败也会打日志(便于看清卡在哪一环), 但直连成功
+// 与默认路径无异, 不打日志。
+type candidate struct {
+	label  string // 日志名: "直连" / "Gitee 镜像" / "ghfast 代理"
+	direct bool   // 直连(GitHub 原址)
+	base   string // 基址; 组件文件 = <base>/components/<file>
+}
+
+// candidates 生成候选序列: 直连 → Gitee 镜像 → 加速代理。
+func candidates(base string) []candidate {
+	out := []candidate{{label: "直连", direct: true, base: base}} // 直连优先
+	if base == defaultRegistryBase {
+		out = append(out, candidate{label: "Gitee 镜像", base: giteeRegistryBase})
+	}
+	for _, p := range proxyPrefixes {
+		out = append(out, candidate{label: p.name + " 代理", base: p.prefix + base})
+	}
+	return out
+}
+
+// source 统一数据源: 本地目录与远程候选二选一。
 type source struct {
-	local string // 非空 = 本地目录(须含 registry.json 与 components/)
-	base  string // 非空 = 远程基址
-	env   string // XUI_REGISTRY 原值; 非空 = 用户显式指定, 失败时直接报错不降级
+	local string      // 非空 = 本地目录(须含 registry.json 与 components/)
+	cands []candidate // 远程候选, 按顺序尝试, 第一个拉通 registry 的胜出
+	base  string      // 已选定的远程基址(loadRegistry 之后才有效)
+	env   string      // XUI_REGISTRY 原值; 非空 = 用户显式指定, 失败时直接报错不降级
 }
 
 func (s *source) desc() string {
@@ -83,14 +130,15 @@ func (s *source) read(rel string) ([]byte, error) {
 	return fetch(s.base + "/" + rel)
 }
 
-// registrySource 按 XUI_REGISTRY 解析数据源(空 = 默认远程源)。
+// registrySource 按 XUI_REGISTRY 解析数据源(空 = 默认远程源, 自动先代理后直连)。
 func registrySource() *source {
 	env := strings.TrimSpace(os.Getenv("XUI_REGISTRY"))
 	switch {
 	case env == "":
-		return &source{base: defaultRegistryBase}
+		return &source{cands: candidates(defaultRegistryBase)}
 	case strings.HasPrefix(env, "http://"), strings.HasPrefix(env, "https://"):
-		return &source{base: strings.TrimRight(env, "/"), env: env}
+		// 显式指定的基址原样使用: 想强制直连就把默认地址显式写上, 想用别的代理就写代理地址
+		return &source{cands: []candidate{{base: strings.TrimRight(env, "/")}}, env: env}
 	default:
 		abs, err := filepath.Abs(env)
 		if err != nil {
@@ -101,25 +149,67 @@ func registrySource() *source {
 }
 
 // loadRegistry 读 registry.json, 并返回实际生效的数据源。
-// 默认远程源不可用时降级到内嵌源码树; 用户显式指定 XUI_REGISTRY 时直接报错。
+// 默认远程源: 逐个候选(先代理后直连)拉 registry.json, 第一个拉通且解析成功的胜出;
+// 全都不通才降级内嵌源码树。用户显式指定 XUI_REGISTRY 时直接报错, 不降级。
 func loadRegistry() (*source, *registry) {
 	src := registrySource()
+	if src.local != "" {
+		data, err := src.read("registry.json")
+		if err != nil {
+			fatal("读取 registry.json 失败 (%s): %v", src.desc(), err)
+		}
+		return src, mustParseRegistry(src.desc(), data)
+	}
+	var lastErr error
+	for _, c := range src.cands {
+		data, err := fetchWithTimeout(c.base+"/registry.json", probeTimeout)
+		if err == nil {
+			reg, perr := parseRegistry(c.base, data)
+			if perr == nil {
+				src.base = c.base
+				if !c.direct {
+					fmt.Fprintf(os.Stderr, "xui: 数据源 %s (%s)\n", c.base, c.label)
+				}
+				return src, reg
+			}
+			err = perr
+		}
+		lastErr = err
+		if len(src.cands) > 1 { // 显式源只有一个候选, 不必打"换下一个"
+			fmt.Fprintf(os.Stderr, "xui: %s不可用(%v), 换下一个\n", c.label, err)
+		}
+	}
+	if src.env != "" {
+		fatal("拉取 registry 失败 (%s): %v", src.env, lastErr)
+	}
+	fmt.Fprintf(os.Stderr, "xui: 所有远程数据源都不可用(最后错误: %v), 降级使用内嵌源码\n", lastErr)
+	src = &source{local: moduleRoot()}
 	data, err := src.read("registry.json")
 	if err != nil {
-		if src.env != "" {
-			fatal("读取 registry 失败 (%s): %v", src.desc(), err)
-		}
-		fmt.Fprintf(os.Stderr, "xui: 远程数据源不可用(%v), 降级使用内嵌源码\n", err)
-		src = &source{local: moduleRoot()}
-		if data, err = src.read("registry.json"); err != nil {
-			fatal("读取 registry.json 失败: %v", err)
-		}
+		fatal("读取内嵌 registry.json 失败: %v", err)
 	}
+	return src, mustParseRegistry(src.desc(), data)
+}
+
+// parseRegistry 解析 registry.json。内容不合法(空表 / 代理返回劫持页等)时返回错误,
+// 调用方据此换下一个候选。
+func parseRegistry(desc string, data []byte) (*registry, error) {
 	var r registry
 	if err := json.Unmarshal(data, &r); err != nil {
-		fatal("解析 registry.json 失败 (%s): %v", src.desc(), err)
+		return nil, fmt.Errorf("解析 registry.json 失败 (%s): %w", desc, err)
 	}
-	return src, &r
+	if len(r.Components) == 0 {
+		return nil, fmt.Errorf("registry.json 没有组件条目 (%s)", desc)
+	}
+	return &r, nil
+}
+
+func mustParseRegistry(desc string, data []byte) *registry {
+	r, err := parseRegistry(desc, data)
+	if err != nil {
+		fatal("%v", err)
+	}
+	return r
 }
 
 func readComponent(src *source, file string) []byte {
@@ -190,8 +280,10 @@ func usage() {
   --force               覆盖本地已修改的文件(默认: 警告并跳过)
 
 数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
+  不设                  自动选路: 直连 → Gitee 镜像 → 加速代理(ghfast / gh-proxy);
+                        全不通则用 CLI 内嵌源码
   本地路径              直接读该目录(须含 registry.json 与 components/), 完全离线
-  http(s):// 基址        以该地址为前缀拉取(拉取失败直接报错, 不降级)
+  http(s):// 基址        以该地址为前缀原样拉取, 不套镜像/代理(失败直接报错, 不降级)
 
 组件源码拷贝进你的项目后归你所有, 可随意修改。`)
 	os.Exit(0)
