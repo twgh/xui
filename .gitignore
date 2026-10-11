@@ -24,3 +24,5 @@
 # File
 .zcodeignore
 scripts/archive.bat
+go.work
+go.work.sum
