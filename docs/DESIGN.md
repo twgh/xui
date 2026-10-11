@@ -236,7 +236,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Table | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做 | Basic/List 示例 + 本仓库探针 |
 | Tree | 原生 Tree + 项模板 | `XE_TREE_DRAWITEM` 自绘行底/参考线/chevron, 模板子元素保留(第八节 42) | 库文档 + 探针 |
 | Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53) | — |
-| Icon | 直通 D2D 几何填充 | lucide path → 描边展开 → `FillGeometry`(第八节 43); 回落折线描边 / `svg.Svg` | svg 包 + D2D 探针 |
+| Icon | 直通 D2D 几何绘制 | lucide path → 描边几何 + `DrawGeometry`(圆角样式), 色点走 `FillGeometry`(第八节 43); 回落折线描边 / `svg.Svg` | svg 包 + D2D 探针 |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
@@ -559,7 +559,7 @@ registry.json 条目(shadcn 同构格式):
       **正解: 用官方提供的 `XDraw_ConvRect(hDraw, *RECT)` / `XDraw_ConvXY`** —— "从当前 UI 对象客户区坐标转换到画布对齐坐标, 自动适应 DPI", 本来就是给第三方绘图接口用的。换算结果就是**物理像素**(实测 150% DPI:元素在窗口 (60,60), 客户端 (50,50,150,150) → (165,165,315,315)), 直接喂给 D2D 即可, 尺寸与线宽随之自动变成物理像素, 不要再乘一次 DPI。
     - **WINDING 填充模式下所有子路径必须同向**:描边展开是"每段一个四边形 + 每个顶点一个圆帽", 而段四边形与圆帽的天然绕向相反, 重叠处 winding 归零被挖空 → 描边变成一排"梳齿"。修法:鞋带公式定号, 负号就反转点序(`sameOrientation`)。
     - **几何合法性自检**:索引错位/未 Close 的几何喂给 `FillGeometry` 会让 xcgui 整帧不呈现 —— **窗口彻底隐形(连边框都没有)、进程不崩、日志正常**, 只信截图;因此每次出图前用 `ID2D1Geometry::GetBounds`(idx 4;未 Close 的几何返回 `D2DERR_WRONG_STATE` 0x88990001)确认 hr=0 且 bounds 有限。
-    - **为什么不用 `RT::DrawGeometry` 真描边**:它的线宽是 float 形参, 撞 ABI 规则①; 于是改在 CPU 侧把描边展开成填充多边形(段四边形 + 圆帽正多边形, 圆帽 12 边在 r=2px 时与真圆偏差 < 0.07px), 一次 `FillGeometry` 出图。展开是"内接近似"(每个形状都落在真·圆角描边内部), 不会比真描边胖。
+    - **当时为什么没用 `RT::DrawGeometry` 真描边**:它的线宽是 float 形参, 撞 ABI 规则① —— 于是改在 CPU 侧把描边展开成填充多边形(段四边形 + 圆帽正多边形, 圆帽 12 边在 r=2px 时与真圆偏差 < 0.07px), 一次 `FillGeometry` 出图。展开是"内接近似"(每个形状都落在真·圆角描边内部), 不会比真描边胖。**这条限制在 2026-10-11 被 `wapi/com` 的汇编转发器解开, 已改用真描边, 见本节末尾。**
     - **实测对比**(200px 图标同屏对照):新管线墨迹面积 10972 物理像素² vs 理论 10575(误差 4%), 旧折线 16064(胖 50%, 因为线宽被 `ceil` 取整、重叠段在 AA 下互相加深);X 图标边缘灰度层数 5 → 16。旧实现真正难看的原因是**折线点 `round32` 取整到逻辑像素**(18px 图标上 ±1.5 物理像素)+ 8 段离散的多边形棱角, 而不是"XDraw 没有 AA"——实测 XDraw 线条在 D2D 模式下也有 AA(两者像素统计几乎相同), 但几何是精确的。
     - **缓存**:几何是**设备无关**资源(归属 D2D 工厂而非渲染目标), 因此缓存按**工厂指针**作废(工厂变了=设备重建, 整体 Release 重建), 多个窗口(主窗/菜单/弹层各有各的 RT)共用一份几何;画刷是**设备相关**资源(必须由该 RT 创建、只能给该 RT 用), 所以每帧建一个、画完立刻 Release。绘制回调每帧都会新建 Painter(帧内对象), 缓存必须放**包级**。缓存 key = **(path 原文, size, strokeW)** —— **位置(ox/oy)不进 key**: 几何以自身原点构造, 绘制时用 `SetTransform(平移矩阵)` 移过去(见下一条)。
     - **位置外置: 用 RT 变换代替"把 ox/oy 烘进几何"(2026-10-11)**: 早先 key 含位置, 于是窗口一 resize(位置全变、尺寸不变)时每个图标都是新 key → 45 个图标几何**全部重建**(CPU 描边展开 + CreatePathGeometry), 缓存还会随位置无上限累积; 现在几何只按 (path, size, strokeW) 缓存, 绘制前后成对 `GetTransform` → `SetTransform(平移)` → 恢复。
@@ -572,7 +572,13 @@ registry.json 条目(shadcn 同构格式):
       ① **`vtbl()` 必须取 `i.Vtbl`(对象首字段里存的虚表指针), 绝不能把对象地址当虚表**: 写成 `(*ID2D1FactoryVtbl)(unsafe.Pointer(i))` 时会从"对象 + 80 字节"处读垃圾当函数指针 → **跳到非法地址**(实测 PC=0x989680, demo 启动即 panic、退出码 2; `-H windowsgui` 构建看不到任何堆栈, 必须用带控制台的构建 `go build -o dbg.exe ./demo` + 重定向 stderr 才抓到)。`TestVtblResolution` 用"假虚表 + 假对象"把这条钉死。
       ② **虚表字段顺序就是 ABI**: `TestVtblIndexLayout` 用 `unsafe.Offsetof` 断言 `CreateSolidColorBrush=8`、`FillGeometry=23`、`IsSupported=50`、`CreatePathGeometry=10`、`Open=17`、`SetFillMode=3`、`Close=9`、`SetColor=8` 等槽位; `TestStructLayout` + 包内编译期断言保证每个接口结构体**只有一个指针大小**(否则与 COM 对象布局错位)。
       ③ **nil 语义**: 构造函数在句柄为 0(未开启 D2D)时返回 nil, 调用方必须判空; nil 上只有 `Release`(每个接口都覆盖了判空版)与"自有方法"安全 —— 值嵌入下**被提升的基类方法**在 nil 外层指针上会先解引用嵌入字段而 panic(基类里判空也救不了), 这是 Go 的语义而非实现缺陷。
-      `XDraw_GetD2dRenderTarget` / `XDraw_ConvRect` / `XC_GetD2dFactory` 的注释也补齐了"直通拿的是父级坐标系, 必须先 ConvRect"这条坑。本仓库的 `d2dicon.go` 因此只剩图标语义(描边展开 + 盒计算 + 缓存 + 元素 alpha), 少了约 200 行重复底座。
+      `XDraw_GetD2dRenderTarget` / `XDraw_ConvRect` / `XC_GetD2dFactory` 的注释也补齐了"直通拿的是父级坐标系, 必须先 ConvRect"这条坑。本仓库的 `d2dicon.go` 因此只剩图标语义(几何构造 + 盒计算 + 缓存 + 元素 alpha), 少了约 200 行重复底座。
+
+    - **换用 `RT::DrawGeometry` 真描边(2026-10-11, 取代 CPU 展开)**: `wapi/com` 的汇编转发器把"浮点形参"这条 ABI 限制解开之后(见 §65 的 `CallWithFloat32Stack1`), 描边不再需要在 CPU 侧展开 —— 折线保持**开口**直接交给 D2D(`DrawGeometry` + `RoundStrokeStyleProperties` 的圆角连接/圆头), 少数 fill 色点仍走 `FillGeometry`。
+      实测(探针 `.verify/probedrawgeom`, 同几何同线宽各画 2 万次): **DrawGeometry 约 20ms, 填充"已展开的环"约 80ms(4 倍)**。但**真实场景看不出差异**: 图标页 45 图标/帧, 省下约 0.14ms/帧(相对 ~4ms/帧), 鼠标扫动的 CPU 两轮 828ms(旧) vs 836ms(新)、resize 来回切 62ms vs 78ms —— 全在噪声带里。**所以这次换路线的主要收益是"质量 + 代码", 不是帧率**:
+      ① 圆角连接/圆帽由 D2D 精确保证, 与 lucide 的 `stroke-linejoin/linecap="round"` 语义一致(旧版是斜接近似; 放大对比里三角形、八边形图标的"角变圆"); ② `d2dicon.go` 删掉 `strokeOutline/addArc/miterPoint` 约 300 行; ③ 几何既不含位置也不含线宽, 缓存 key 只剩 `(path, size)`。
+      像素对照(改动前后各编一份 demo): 图标页 light **6958/2322000(0.30%)**、dark **7644(0.33%)**、基础页 **1051(0.045%)**, 差异全部集中在图标边缘(形状差异而非渲染错误); 图标墨迹量 142960 → 143083(+0.09%, 圆角比斜接略多一点面积)。
+      **探针里的两个坑**: ① `ID2D1RenderTarget::Flush` 不能在有炫彩绘制回调里调 —— 会让进程静默退出(预热那步就没了下文), 所以性能只能按"提交路径耗时/大批量反压"来测; ② 想拿真实吞吐就得把次数堆到 2 万级, 60 次时四组全是 0.00ms。
       **验收**(改动前后各编一份 demo 二进制同机对照): 图标页 + 基础页 × 亮/暗共三组 PrintWindow 抓图**逐像素 0 差**(1800×1290 = 2322000 像素全等, 2798 色); 图标页真实鼠标扫动 3.62s 的 CPU 时间交替多轮无可辨差异(±10% 噪声); d2d 包 8 个单测覆盖颜色换算 / 点打包 / 虚表槽位 / **虚表解析** / 结构体布局 / 继承复用 / nil 安全 / 空句柄。
 
     **填充几何的 figure 数必须少(2026-10-06 图标总览页卡顿的根因, 重要)**:
@@ -1018,6 +1024,7 @@ registry.json 条目(shadcn 同构格式):
       ① **必须由 `syscall.SyscallN` 调用转发器** —— 借它的 `runtime.cgocall` 切到**系统栈**: Windows 的栈探测看 TEB 里的栈范围, 而 Go 的 goroutine 栈不在其中。直接在 goroutine 栈上 CALL: `GetTickCount` 能过, `user32.GetSystemMetrics` 崩(栈探测落到非法地址)。
       ② **转发器要自己摆正栈**: 调用点 RSP 16 字节对齐 + 32 字节 shadow space。实测这条路径入口 RSP ≡ 0 (mod 16) —— `SUBQ $32` 过、`SUBQ $40` 崩(用到 SSE 对齐存取的 API 立刻暴露)。
       ③ **浮点槽号要按接口实测**: 教科书说"整数/浮点各自独立计数"(`SetOpacity(FLOAT)` 的浮点应在 XMM0、this 走 RCX), 实测 `ID2D1SolidColorBrush::SetOpacity` 读的是 **XMM1** —— 逐个槽单独填 0.5, **只有 XMM1 生效**; 这类接口按"参数位置"编号(this 占位置 0)。
+      ④ **第 5 个及以后的参数要压栈**(x64 约定: 超出 RCX/RDX/R8/R9 的放 `[RSP+32]` 起, 前 32 字节是 shadow space): `wapi/com.CallWithFloat32Stack1` 覆盖"4 个整数/指针 + 浮点 + 1 个栈参数"这个形态, 单测拿 `ReadProcessMemory` 的第 5 个参数(实际读到的字节数)验证它真的落在了栈上。实测用例 `ID2D1RenderTarget::DrawGeometry(geometry, brush, FLOAT strokeWidth, ID2D1StrokeStyle *style)`: 按位置计数落位是 this→RCX / geometry→RDX / brush→R8 / **strokeWidth→XMM3** / **style→栈**; 若按"独立计数"喂(XMM0 + R9), 调用本身不崩(void 方法)但**整帧渲染被搞坏**(窗口全黑)。这条打通后, 图标描边从"CPU 展开 + 填充"换成了真描边(见 §43 末尾)。
     - **验证数据**(探针): 回声桩(原样返回 XMM0)0.5/0.125 精确往返 ✓; 画刷 `SetColor/GetColor` 往返 0.25 ✓(对象正确); `SetOpacity`: 只填 XMM1=0.5 → **读回 0.500** ✓(填 XMM0/2/3 均无效); 反例 —— 该 RT 的 DPI 是 0/0(非法状态), 在它上面 `SetDpi` 怎么传都崩, **与传参无关**(验证浮点要用纯属性 setter, 别拿有状态的 RT 方法试)。
     - **两处认知纠正**: ①"COM 直通只支持 x64"是错的 —— 386 同样能跑, 只是参数传递写法不同(edge 两个架构各一套); ②`ID2D1Brush::GetOpacity` 是**按值返回 FLOAT**(在 XMM0), 不是 `(float *out)` 出参 —— 要读它得用 `CallWithFloat32RetFloat`。
     - **别把"按值 float"与"浮点结构指针"搞混**(本条最初就写错过): 受限的只有**按值传的** float64/float32 形参; 指向浮点结构的**指针**不受限, 照常 syscall 调用即可 —— `ID2D1RenderTarget::SetTransform` 的矩阵、`CreateSolidColorBrush` 的颜色都是这种, `d2d` 已封装 `SetTransform`/`GetTransform`(探针 `.verify/probexform` 往返一致: 单位矩阵 → 平移 12,34 → 设回单位矩阵)。

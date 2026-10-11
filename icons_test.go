@@ -119,108 +119,58 @@ func TestGeneratedIcons(t *testing.T) {
 	}
 }
 
-// TestIconGeometryFigureCount 守住"每條子路径一条轮廓"这条性能红线:
+// TestIconGeometryFigureCount 守住"几何规模"这条性能红线:
 // D2D 填充自重叠路径是 stencil-and-cover, 代价随 figure 数近似平方增长 ——
-// 一旦退回"每段一个四边形 + 每个顶点一个圆帽"的图元汤写法, 45 个图标同框的
+// 一旦把手写的图元汤(每段一个四边形 + 每个顶点一个圆帽)塞回来, 45 个图标同框的
 // 总览页会从 4ms/帧 掉到 700ms/帧(见 DESIGN 第八节 43)。
+//
+// 现在描边不再展开(交给 D2D 的 DrawGeometry), 所以"子路径数"就等于 path 自己的子路径数;
+// 这条红线照样要守。
 func TestIconGeometryFigureCount(t *testing.T) {
 	names := icons.Names()
 	worst, maxFig, sum := "", 0, 0
 	for _, n := range names {
-		figs := iconStrokeFigures(parseIconPath(icons.Path(n)), 1, 2)
-		if len(figs) > maxFig {
-			maxFig, worst = len(figs), n
+		stroke, fill := iconFigures(parseIconPath(icons.Path(n)), 1)
+		figs := len(stroke) + len(fill)
+		if figs > maxFig {
+			maxFig, worst = figs, n
 		}
-		sum += len(figs)
+		sum += figs
 	}
-	t.Logf("%d 个图标: 平均 %.2f 条轮廓/图标, 最多 %d 条(%s)",
+	t.Logf("%d 个图标: 平均 %.2f 条子路径/图标, 最多 %d 条(%s)",
 		len(names), float64(sum)/float64(len(names)), maxFig, worst)
 	// 实测: 平均 4.11 条/图标, 最多 20 条(virus, 尖刺多)。图元汤写法是几百条。
 	if maxFig > 32 {
-		t.Errorf("%s 有 %d 条轮廓, 太多了(D2D 填充代价随轮廓数平方增长)", worst, maxFig)
+		t.Errorf("%s 有 %d 条子路径, 太多了(D2D 的代价随 figure 数增长)", worst, maxFig)
 	}
 }
 
-// TestIconGeomFilled 确认填充子路径是"原样入几何", 而不是被描边展开成胖环;
-// 描边子路径则是"一条子路径 = 一条轮廓"(不是每段/每顶点各来一个 figure —— 那会让
-// D2D 的填充退化成 stencil-and-cover 的平方级代价, 见 DESIGN 第八节 43)。
-func TestIconGeomFilled(t *testing.T) {
+// TestIconFigures 确认两组几何的硬语义:
+//   - 描边子路径**保持开口**(Closed=false)—— 闭合会多画一段收尾线(三角形描边变回形针);
+//   - 填充子路径闭合, 且点数不被展开(描边展开已交给 D2D);
+//   - 描边/填充分开成两组, 各自进自己的几何(描边交给 DrawGeometry, 填充交给 FillGeometry)。
+func TestIconFigures(t *testing.T) {
 	subs := []iconSub{
 		{pts: []iconPt{{x: 2, y: 2}, {x: 4, y: 2}, {x: 4, y: 4}, {x: 2, y: 4}}, filled: true},
-		{pts: []iconPt{{x: 10, y: 10}, {x: 12, y: 10}}, filled: false},
+		{pts: []iconPt{{x: 10, y: 10}, {x: 12, y: 10}, {x: 12, y: 12}}, filled: false},
 	}
-	figs := iconStrokeFigures(subs, 1, 2)
-	if len(figs) != 2 { // 填充 1 条 + 描边 1 条轮廓
-		t.Fatalf("figure 数 = %d, 想要 2", len(figs))
+	stroke, fill := iconFigures(subs, 1)
+	if len(fill) != 1 {
+		t.Fatalf("填充子路径数 = %d, 想要 1", len(fill))
 	}
-	if len(figs[0]) != 8 { // 4 个点 = 8 个 float, 未被展开
-		t.Errorf("填充 figure 点数 = %d, 想要 4", len(figs[0])/2)
+	if !fill[0].Closed {
+		t.Error("填充子路径必须闭合")
 	}
-	// 一条线段的描边轮廓: 两端半圆帽 + 两侧直边, 点数为 2 + 2*半圆采样
-	if n := len(figs[1]) / 2; n < 8 || n > 40 {
-		t.Errorf("描边轮廓点数 = %d, 不在合理范围", n)
+	if len(fill[0].Points) != 8 {
+		t.Errorf("填充点数 = %d, 想要 4 个点(不展开)", len(fill[0].Points)/2)
 	}
-}
-
-// TestStrokeOutline 校验描边轮廓的两条硬性质:
-//  1. 外扩量正确(纸宽 r): 直线段的轮廓包围盒 = 折线包围盒各向外 r;
-//  2. **所有轮廓绕向一致** —— WINDING 填充下这是"并集而不是挖洞"的前提
-//     (绕向不一致会让重叠区 winding 归零, 描边裂成一片片)。
-func TestStrokeOutline(t *testing.T) {
-	// 一条水平线, r=2: 期望包围盒 (-2, -2) - (12, 2)
-	out := strokeOutline([]float32{0, 0, 10, 0}, 2)
-	minX, minY, maxX, maxY := float32(1e9), float32(1e9), float32(-1e9), float32(-1e9)
-	for i := 0; i < len(out); i += 2 {
-		minX, maxX = minf(minX, out[i]), maxf(maxX, out[i])
-		minY, maxY = minf(minY, out[i+1]), maxf(maxY, out[i+1])
+	if len(stroke) != 1 {
+		t.Fatalf("描边子路径数 = %d, 想要 1", len(stroke))
 	}
-	if minX < -2.01 || maxX > 12.01 || minY < -2.01 || maxY > 2.01 {
-		t.Errorf("直线轮廓包围盒 = (%.2f,%.2f)-(%.2f,%.2f), 想要 (-2,-2)-(12,2)", minX, minY, maxX, maxY)
+	if stroke[0].Closed {
+		t.Error("描边子路径必须开口(闭合会多画一段收尾线)")
 	}
-	if maxX-minX < 13.7 || maxY-minY < 3.9 { // 线长 10 + 两端圆帽(采样后略内缩)
-		t.Errorf("轮廓尺寸 = %.2fx%.2f, 圆帽没画出来?", maxX-minX, maxY-minY)
+	if len(stroke[0].Points) != 6 {
+		t.Errorf("描边点数 = %d, 想要 3 个点(不展开)", len(stroke[0].Points)/2)
 	}
-
-	// X 图标: 两笔(两条折线)的轮廓绕向必须一致
-	var signs []int
-	for _, fig := range iconStrokeFigures(parseIconPath(icons.IconX), 10.0/24, 2*10.0/24) {
-		area := signedArea(fig)
-		if area > 0 {
-			signs = append(signs, 1)
-		} else {
-			signs = append(signs, -1)
-		}
-	}
-	if len(signs) < 2 {
-		t.Fatalf("X 的轮廓数 = %d, 想要 2", len(signs))
-	}
-	for _, s := range signs {
-		if s != signs[0] {
-			t.Fatalf("轮廓绕向不一致: %v", signs)
-		}
-	}
-}
-
-func signedArea(pts []float32) float64 {
-	n := len(pts) / 2
-	var sum float64
-	for i := 0; i < n; i++ {
-		j := (i + 1) % n
-		sum += float64(pts[i*2])*float64(pts[j*2+1]) - float64(pts[j*2])*float64(pts[i*2+1])
-	}
-	return sum / 2
-}
-
-func minf(a, b float32) float32 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func maxf(a, b float32) float32 {
-	if a > b {
-		return a
-	}
-	return b
 }
