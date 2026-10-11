@@ -574,7 +574,7 @@ registry.json 条目(shadcn 同构格式):
       ③ **nil 语义**: 构造函数在句柄为 0(未开启 D2D)时返回 nil, 调用方必须判空; nil 上只有 `Release`(每个接口都覆盖了判空版)与"自有方法"安全 —— 值嵌入下**被提升的基类方法**在 nil 外层指针上会先解引用嵌入字段而 panic(基类里判空也救不了), 这是 Go 的语义而非实现缺陷。
       `XDraw_GetD2dRenderTarget` / `XDraw_ConvRect` / `XC_GetD2dFactory` 的注释也补齐了"直通拿的是父级坐标系, 必须先 ConvRect"这条坑。本仓库的 `d2dicon.go` 因此只剩图标语义(几何构造 + 盒计算 + 缓存 + 元素 alpha), 少了约 200 行重复底座。
 
-    - **换用 `RT::DrawGeometry` 真描边(2026-10-11, 取代 CPU 展开)**: `wapi/com` 的汇编转发器把"浮点形参"这条 ABI 限制解开之后(见 §65 的 `CallWithFloat32Stack1`), 描边不再需要在 CPU 侧展开 —— 折线保持**开口**直接交给 D2D(`DrawGeometry` + `RoundStrokeStyleProperties` 的圆角连接/圆头), 少数 fill 色点仍走 `FillGeometry`。
+    - **换用 `RT::DrawGeometry` 真描边(2026-10-11, 取代 CPU 展开)**: `wapi/com` 的汇编转发器把"浮点形参"这条 ABI 限制解开之后(见 §65 的 `CallWithFloat32Stack`), 描边不再需要在 CPU 侧展开 —— 折线保持**开口**直接交给 D2D(`DrawGeometry` + `RoundStrokeStyleProperties` 的圆角连接/圆头), 少数 fill 色点仍走 `FillGeometry`。
       实测(探针 `.verify/probedrawgeom`, 同几何同线宽各画 2 万次): **DrawGeometry 约 20ms, 填充"已展开的环"约 80ms(4 倍)**。但**真实场景看不出差异**: 图标页 45 图标/帧, 省下约 0.14ms/帧(相对 ~4ms/帧), 鼠标扫动的 CPU 两轮 828ms(旧) vs 836ms(新)、resize 来回切 62ms vs 78ms —— 全在噪声带里。**所以这次换路线的主要收益是"质量 + 代码", 不是帧率**:
       ① 圆角连接/圆帽由 D2D 精确保证, 与 lucide 的 `stroke-linejoin/linecap="round"` 语义一致(旧版是斜接近似; 放大对比里三角形、八边形图标的"角变圆"); ② `d2dicon.go` 删掉 `strokeOutline/addArc/miterPoint` 约 300 行; ③ 几何既不含位置也不含线宽, 缓存 key 只剩 `(path, size)`。
       像素对照(改动前后各编一份 demo): 图标页 light **6958/2322000(0.30%)**、dark **7644(0.33%)**、基础页 **1051(0.045%)**, 差异全部集中在图标边缘(形状差异而非渲染错误); 图标墨迹量 142960 → 143083(+0.09%, 圆角比斜接略多一点面积)。
