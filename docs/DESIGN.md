@@ -563,6 +563,14 @@ registry.json 条目(shadcn 同构格式):
     - **实测对比**(200px 图标同屏对照):新管线墨迹面积 10972 物理像素² vs 理论 10575(误差 4%), 旧折线 16064(胖 50%, 因为线宽被 `ceil` 取整、重叠段在 AA 下互相加深);X 图标边缘灰度层数 5 → 16。旧实现真正难看的原因是**折线点 `round32` 取整到逻辑像素**(18px 图标上 ±1.5 物理像素)+ 8 段离散的多边形棱角, 而不是"XDraw 没有 AA"——实测 XDraw 线条在 D2D 模式下也有 AA(两者像素统计几乎相同), 但几何是精确的。
     - **缓存**:几何是**设备无关**资源(归属 D2D 工厂而非渲染目标), 因此缓存按**工厂指针**作废(工厂变了=设备重建, 整体 Release 重建), 多个窗口(主窗/菜单/弹层各有各的 RT)共用一份几何;画刷是**设备相关**资源(必须由该 RT 创建、只能给该 RT 用), 所以每帧建一个、画完立刻 Release。绘制回调每帧都会新建 Painter(帧内对象), 缓存必须放**包级**。缓存 key 必须含 (path 原文, ox, oy, size, strokeW) —— 换算后的坐标是物理像素且随元素位置变化, 漏掉位置就会把图标画到别处。
     - **回落路径**:`app.New(false)`(GDI 渲染)时 `XDraw_GetD2dRenderTarget` 返回 0 → 自动回落到旧的折线描边(图标仍可见, 只是没有新管线干净);GDI 模式实测不崩、布局正常。
+    - **COM 直通底座已上移到上游 `github.com/twgh/xcgui/d2d`(2026-10-11)**: 上面这些"通用但必须有"的东西 —— ABI 三条硬规则、vtable 索引、几何/画刷的创建与释放、几何合法性自检(`GetBounds`)、一步到位的 `NewGeometry`/`FillGeometryColor` —— 正是 xcgui "交了裸 D2D 指针却没给封装"留下的空白, 现在收进 xcgui 的 `d2d` 子包; **COM 基础件(`ComProc`/`IUnknown`/`IUnknownVtbl`/`InterfacePtr`)另抽到 `wapi/com` 子包共用**(d2d 用类型别名引用, 虚表字段仍写 `ComProc`; edge 包自带一份同源实现, 迁移面较大暂未动)。封装形式照 **edge 包(WebView2)** 那套(每接口一文件、虚表按 Windows SDK 声明顺序**完整列出**、调用一律 `ComProc.Call` 带 `//go:uintptrescapes`、中文注释 + MSDN 链接), 接口结构体再按 COM 继承链**值嵌入**串起来:
+      `IUnknown{ Vtbl }` → `ID2D1Resource` → { `ID2D1RenderTarget`, `ID2D1Geometry`→`ID2D1PathGeometry`, `ID2D1Brush`→`ID2D1SolidColorBrush` }、`ID2D1SimplifiedGeometrySink`→`ID2D1GeometrySink`、`ID2D1Factory`。于是 `AddRef/Release/QueryInterface` 只在 `IUnknown` 上实现一次、`GetFactory` 只在 `ID2D1Resource` 上实现一次; 各接口自己的方法用未导出的 `vtbl()` 把同一个对象指针按**自己的**虚表类型重解释。
+      三个必须记住的点(都有测试守着):
+      ① **`vtbl()` 必须取 `i.Vtbl`(对象首字段里存的虚表指针), 绝不能把对象地址当虚表**: 写成 `(*ID2D1FactoryVtbl)(unsafe.Pointer(i))` 时会从"对象 + 80 字节"处读垃圾当函数指针 → **跳到非法地址**(实测 PC=0x989680, demo 启动即 panic、退出码 2; `-H windowsgui` 构建看不到任何堆栈, 必须用带控制台的构建 `go build -o dbg.exe ./demo` + 重定向 stderr 才抓到)。`TestVtblResolution` 用"假虚表 + 假对象"把这条钉死。
+      ② **虚表字段顺序就是 ABI**: `TestVtblIndexLayout` 用 `unsafe.Offsetof` 断言 `CreateSolidColorBrush=8`、`FillGeometry=23`、`IsSupported=50`、`CreatePathGeometry=10`、`Open=17`、`SetFillMode=3`、`Close=9`、`SetColor=8` 等槽位; `TestStructLayout` + 包内编译期断言保证每个接口结构体**只有一个指针大小**(否则与 COM 对象布局错位)。
+      ③ **nil 语义**: 构造函数在句柄为 0(未开启 D2D)时返回 nil, 调用方必须判空; nil 上只有 `Release`(每个接口都覆盖了判空版)与"自有方法"安全 —— 值嵌入下**被提升的基类方法**在 nil 外层指针上会先解引用嵌入字段而 panic(基类里判空也救不了), 这是 Go 的语义而非实现缺陷。
+      `XDraw_GetD2dRenderTarget` / `XDraw_ConvRect` / `XC_GetD2dFactory` 的注释也补齐了"直通拿的是父级坐标系, 必须先 ConvRect"这条坑。本仓库的 `d2dicon.go` 因此只剩图标语义(描边展开 + 盒计算 + 缓存 + 元素 alpha), 少了约 200 行重复底座。
+      **验收**(改动前后各编一份 demo 二进制同机对照): 图标页 + 基础页 × 亮/暗共三组 PrintWindow 抓图**逐像素 0 差**(1800×1290 = 2322000 像素全等, 2798 色); 图标页真实鼠标扫动 3.62s 的 CPU 时间交替多轮无可辨差异(±10% 噪声); d2d 包 8 个单测覆盖颜色换算 / 点打包 / 虚表槽位 / **虚表解析** / 结构体布局 / 继承复用 / nil 安全 / 空句柄。
 
     **填充几何的 figure 数必须少(2026-10-06 图标总览页卡顿的根因, 重要)**:
 
@@ -999,6 +1007,18 @@ registry.json 条目(shadcn 同构格式):
     - **修法 = 挂起/恢复**(对话框状态保留, 不触发 onClose): `AddEvent_WindProc` 拦 `WM_SIZE` —— `wParam==SIZE_MINIMIZED(1)` 时**同步**隐藏整组(清焦点 + `showEleTree(false)` + backdrop 隐藏; 不能走 Hide, 其淡出完成回调是异步的)置 suspended; `wParam==SIZE_RESTORED(0)/SIZE_MAXIMIZED(2)` 且 suspended 时用 `app.AfterFunc(0, ...)`(= `time.AfterFunc` + `XC_CallUT`, 回调被投递到 UI 线程执行)做 `materialize()` + `SetSubtreeAlpha(1)` 无动画直接显示。引擎全程只见"隐藏状态的还原", 与已验证可靠的路径一致。
     - **三个时序/机制坑**: ①`XE_SIZE` 在还原时不保证触发, 程序化最小化**不发 WM_ACTIVATE(WA_INACTIVE)** —— 抓"最小化"只能拦 `WM_SIZE/SIZE_MINIMIZED`; ②WM_ACTIVATE/WM_SIZE 里直接操作元素会把还原流程的合成打断(实测全窗白屏), 恢复动作必须延迟出消息处理(用 `XC_CallUT` 类机制投递到消息循环); ③**炫彩定时器是独立命名空间**(排查过程中踩到): `AddEvent_XC_Timer` 只接收 `XWnd_SetXCTimer` 启动的定时器, 用 Win32 的 `XWnd_SetTimer` 启动的话回调**永远不会被派发**(与 anim.go 的 animTimerID 机制同源, 自用 ID 避开 0x7875) —— 最终修法用 AfterFunc 避开了这套机制; ④**还原后立即启动的 Presence 过渡帧不会被驱动**(整组 alpha 卡 0, SetSubtreeAlpha(0) 之后全组隐身) —— 恢复显示必须无动画, 之后用户再打开仍走正常淡入。
 
+65. **COM 直通的参数传递(386 / amd64) + "浮点形参"的完整解法**(2026-10-11, `wapi/com` 与 `d2d`, 探针 `.verify/probefloat`):
+
+    - **386**(stdcall, 参数全部走栈): 结构体按值传要**拆成 32 位槽**逐个压栈; float64 用 `common.Float64ToUint32Pair` 拆 low/high 两个槽 —— **符合 ABI** 的写法(edge 的 `edge_386.go` 正是如此)。
+    - **amd64**(Microsoft x64): 8 字节以上的结构体**按引用传**(要传指针); 浮点走 XMM0~XMM3, 与通用寄存器是**两套独立**的 —— **SyscallN 直接传(哪怕位打包)无效**: `ID2D1RenderTarget::SetDpi(float,float)` 位打包**直接崩**(`Exception 0xc0000005`, 现场 `rax=r9=0x42C00000` 正是 96.0f 的位模式)。
+    - **解法 = `wapi/com` 的汇编转发器**: `CallWithFloat32` / `CallWithFloat64` / `CallWithFloat32RetFloat`(读"按值返回 float"的方法)。三个坑都实测定死:
+      ① **必须由 `syscall.SyscallN` 调用转发器** —— 借它的 `runtime.cgocall` 切到**系统栈**: Windows 的栈探测看 TEB 里的栈范围, 而 Go 的 goroutine 栈不在其中。直接在 goroutine 栈上 CALL: `GetTickCount` 能过, `user32.GetSystemMetrics` 崩(栈探测落到非法地址)。
+      ② **转发器要自己摆正栈**: 调用点 RSP 16 字节对齐 + 32 字节 shadow space。实测这条路径入口 RSP ≡ 0 (mod 16) —— `SUBQ $32` 过、`SUBQ $40` 崩(用到 SSE 对齐存取的 API 立刻暴露)。
+      ③ **浮点槽号要按接口实测**: 教科书说"整数/浮点各自独立计数"(`SetOpacity(FLOAT)` 的浮点应在 XMM0、this 走 RCX), 实测 `ID2D1SolidColorBrush::SetOpacity` 读的是 **XMM1** —— 逐个槽单独填 0.5, **只有 XMM1 生效**; 这类接口按"参数位置"编号(this 占位置 0)。
+    - **验证数据**(探针): 回声桩(原样返回 XMM0)0.5/0.125 精确往返 ✓; 画刷 `SetColor/GetColor` 往返 0.25 ✓(对象正确); `SetOpacity`: 只填 XMM1=0.5 → **读回 0.500** ✓(填 XMM0/2/3 均无效); 反例 —— 该 RT 的 DPI 是 0/0(非法状态), 在它上面 `SetDpi` 怎么传都崩, **与传参无关**(验证浮点要用纯属性 setter, 别拿有状态的 RT 方法试)。
+    - **两处认知纠正**: ①"COM 直通只支持 x64"是错的 —— 386 同样能跑, 只是参数传递写法不同(edge 两个架构各一套); ②`ID2D1Brush::GetOpacity` 是**按值返回 FLOAT**(在 XMM0), 不是 `(float *out)` 出参 —— 要读它得用 `CallWithFloat32RetFloat`。
+    - 与 43(直通拿不到元素变换/裁剪)、47(整窗 alpha 与生命周期)同源: 都是 **SyscallN 这条通道的能力边界**, 而不是 xcgui 的缺陷。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -1015,6 +1035,7 @@ registry.json 条目(shadcn 同构格式):
 - 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距), 本项目暂用子项外边距替代, 未实测
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
 - `XWnd_SetWindowPos(物理像素)`、`XC_hWindowFromHWnd`、`XEle_GetWndClientRect`、`XWnd_GetClientRect`、`wapi.ShowWindow/SetForegroundWindow/GetSystemMetrics/GetWindowLongPtrW`
+- D2D 直通:`xc.XDraw_GetD2dRenderTarget / XDraw_ConvRect / XC_GetD2dFactory`(裸指针;直通绘制必须先用 `ConvRect` 换到画布对齐坐标,见第八节 43)+ **`github.com/twgh/xcgui/d2d`**(2026-10-11 起:按 edge 的 COM 接口虚表风格封装,`NewRenderTargetByHandle`/`NewFactoryByHandle` + `ID2D1PathGeometry.Open/Usable` + `ID2D1GeometrySink.SetFillMode/BeginFigure/AddLines/EndFigure/Close` + `NewGeometry`/`FillGeometryColor`;ABI 三条硬规则写在包注释里)
 - backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验收)
 - 排查"窗口可见但屏幕上看不见"(见 57):`user32!EnumWindows` + `GetWindowThreadProcessId` 枚举进程窗口(⚠️ 别用 `Process.MainWindowHandle`, 弹层小窗存在时它会返回小窗)、`IsWindowVisible`、`user32!GetLayeredWindowAttributes`(读 layered alpha/颜色键)、`PrintWindow` 与 `CopyFromScreen` 对照(画了 vs 屏幕上没有)
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽)

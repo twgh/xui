@@ -56,6 +56,26 @@
   **顺带修掉 registry.json 的依赖缺陷**:`dialog` 漏 `backdrop.go`、`combobox`/`menu` 漏 `tooltip` 依赖
   —— 过去 `xui add dialog` 拷出来的组件根本编译不过。
 
+- ✅ **D2D COM 直通底座上游化到 xcgui**(2026-10-11):xcgui "交给 Go 侧裸 `ID2D1Factory` /
+  `ID2D1RenderTarget` 指针却不给封装"留下的空白, 现在收进 xcgui 新子包 **`github.com/twgh/xcgui/d2d`**,
+  COM 基础件(`ComProc`/`IUnknown`/`IUnknownVtbl`/`InterfacePtr`)抽到 **`wapi/com`** 子包共用, d2d 以
+  类型别名引用(edge 自带一份同源实现, 迁移面大暂未动)。该包还提供 **amd64 的汇编转发器**(`CallWithFloat32`/
+  `CallWithFloat64`/`CallWithFloat32RetFloat`)—— 让"形参含浮点"的 COM 方法也能调(SyscallN 设不了 XMM);
+  三个实测坑(必须经 SyscallN 借 cgocall 切系统栈、调用点 16 字节对齐 + 32 字节 shadow、浮点槽号要按接口
+  实测)与 386/amd64 的参数规则都写在包的注释里, 见 DESIGN 第八节 65。封装形式照 **`edge` 包(WebView2)**那套:每个 COM 接口一个文件、**按 SDK 声明顺序完整列出**的虚表结构体
+  (索引由字段顺序决定, 不写魔数) + `ComProc.Call`(带 `//go:uintptrescapes`) + 中文注释与 MSDN 链接;
+  接口结构体按 COM 继承链**值嵌入**(`IUnknown` → `ID2D1Resource` → …), 三件套与 `GetFactory` 各只实现
+  一次, 自己的方法用 `vtbl()` 取 `i.Vtbl` 重解释虚表。含 ABI 三条硬规则、几何/画刷的创建释放、几何自检
+  (`Usable`)、`NewGeometry`/`FillGeometryColor`。8 个单测:颜色换算 / 点打包 / **虚表槽位**
+  (`TestVtblIndexLayout`, `unsafe.Offsetof` 钉住 FillGeometry=23、IsSupported=50 等) / **虚表解析**
+  (`TestVtblResolution` —— 曾把"对象地址"当虚表, demo 启动即 panic PC=0x989680) / 结构体布局 / 继承复用 /
+  nil 安全 / 空句柄。
+  顺手把 `XDraw_GetD2dRenderTarget` / `XDraw_ConvRect` / `XC_GetD2dFactory` 的注释补齐了"直通调用拿的是
+  父级坐标系, 必须先 `ConvRect`"这条坑。本仓库 `d2dicon.go` 只剩图标语义(描边展开 + 盒计算 + 缓存 +
+  元素 alpha), 少约 200 行重复底座。**验收**:图标页/基础页 × 亮/暗三组 PrintWindow 抓图逐像素 **0 差**;
+  图标页鼠标扫动 CPU 交替多轮无可辨差异(±10% 噪声); 细节见 DESIGN 第八节 43。⚠️ xui 的 `go.mod`
+  目前有一行 **临时 `replace github.com/twgh/xcgui => ../../github.com/twgh/xcgui`**(见待办)。
+
 ## 待办
 
 - **页面滚动容器**: 页面内容比窗口高时, 现在被页面自身的 `EnableOverflowHide` 裁掉(表单页在默认窗口下底部约裁掉一行)。要么给页面套滚动容器(`widget.ScrollView` 一类的自绘滚动条 + 内容高度撑开), 要么让内容自适应(见 DESIGN 8.59)
@@ -65,6 +85,8 @@
 - ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 弹层宽度=触发区宽(SetItemWidth 无效, 见 64)、`--chart-1..5`/`--sidebar-*` 令牌未建模
 - ⬜ text 手绘后 Input 仍是原生文字
 - ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;本轮已因此修掉 3 处依赖漏登记)
+- ⬜ **xcgui 发布含 `d2d` 包的版本后, 去掉 `go.mod` 的临时 `replace`**(改为正式 require 版本号), 否则 xui 侧"改用 d2d 包"的改动无法提交
+- ⬜ D2D 直通能力的后续上游化(优先级低, 见 DESIGN 第八节 43 末):描边展开算法(round cap/join → 填充轮廓)、几何缓存策略、`ID2D1RenderTarget::SetTransform` 这类带浮点形参的能力(ABI 不允许 `syscall.SyscallN`, 需要别的机制)
 
 ## 仓库结构
 
