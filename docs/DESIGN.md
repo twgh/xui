@@ -637,6 +637,17 @@ registry.json 条目(shadcn 同构格式):
       `EnableBkTransparent(true)` —— 否则暗色主题下容器是一整块白底、图标(浅色)直接看不见。
       45 个图标同框是**性能压力测试**: 它的卡顿逼出了第八节 43 那条"填充 figure 数必须少"
       (719ms/帧 → 4.14ms/帧); 另注意 hover 只在状态变化时重绘。
+    - **任意图标集可直接导入(2026-10-11)**: 用户手里的数据通常是一整段 SVG(从 heroicons/feather/iconfont
+      复制来的 `<svg viewBox="…"><path d="…"/></svg>`), 现在 `Painter.IconSVG(svg, rc, color, 0)` 一步到位:
+      提取所有 `<path>`(支持 `<g>` 继承 fill/stroke/stroke-width)、按 **viewBox 归一到 24 网格**(任意网格:
+      按较长边缩放 + 平掉 min-x/min-y)、按 fill/stroke 判定填充子路径(输出 `!` 前缀走 `FillGeometry`)、
+      建议线宽取 `stroke-width` 并折算到 24 网格(调用方传 >0 时以调用方为准)。解析结果**按 SVG 原文缓存**
+      (最多 512 条), 每帧只多一次 map 查找, 几何照旧走图标几何缓存; 想自己缓存或先校验就用 `ParseIconSVG(svg)`。
+      **验收**(探针 `.verify/probeiconsets`): heroicons 官方 SVG 全文画出的星形与 lucide 内置形状一致;
+      手写 16 网格 SVG(`<g fill="none" stroke="currentColor">` 两条线 + 一个 `fill="currentColor"` 色块)的
+      "十字 + 实心方块"正确 —— 缩放与填充判定都对。**不支持**: `<circle>/<rect>` 等形状元素、transform
+      属性、CSS class 里的样式(这些元素/属性被忽略, 不报错)。顺带修了 `parseIconPathEx` 对**尾部空白**的误判
+      (会被当成"重复上一指令"从而判数据不完整; 生成资源都以 `Z` 结尾, 一直没暴露)。
 
 45. **hover 过渡动画(2026-10-06, 运行时 `anim.go`)**:
 

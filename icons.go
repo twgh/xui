@@ -43,6 +43,9 @@ import (
 // (项目内部约定, 见 parseIconPath); 手写 path 不含它 = 纯描边。
 // strokeWidth 用 24 网格单位, lucide 默认为 2。
 //
+// **手里是整段 SVG**`<svg viewBox="…"><path d="…"/></svg>`(从图标站复制来的那种)时用 IconSVG ——
+// 它会提取 path、按 viewBox 归一化到 24 网格、按 fill/stroke 判定填充, 并缓存解析结果。
+//
 // 出图优先走 D2D 几何管线(有抗锯齿, 见 d2dicon.go); 只有 GDI 渲染模式(app.New(false))或
 // D2D 资源建不出来时才回落到折线描边。
 func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float32) {
@@ -238,7 +241,10 @@ func parseIconPathEx(d string) ([]iconSub, bool) {
 	for sc.pos < len(sc.s) {
 		// `!` = 接下来的子路径是填充(生成资源内部约定, 不是 SVG 语法)
 		sc.skipSep()
-		if sc.pos < len(sc.s) && sc.s[sc.pos] == '!' {
+		if sc.pos >= len(sc.s) {
+			break // 尾部空白: 正常结束(否则会掉进"重复上一指令"分支, 把干净数据误判成不完整)
+		}
+		if sc.s[sc.pos] == '!' {
 			flush()
 			curFilled = true
 			sc.pos++

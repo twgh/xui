@@ -43,6 +43,12 @@
 - ✅ **暗色禁用/未选态配色按 shadcn 逐像素对齐**(2026-10-10):复选框未选态(暗色 `bg-input/30`)、复选框/单选框/开关的禁用态、禁用输入框过去都错用 `WithAlpha` 覆盖半透明令牌(暗色下画出发亮灰块 / 亮白框线 / 全亮白滑块)。现在统一为"**先铺宿主底色(Card) + 每个图层各乘 50%**":形状全部跟随, 原生文字保持原色, 输入框禁用文字预混变淡(见 61); 顺带修掉透明元素重绘**不擦底**留下的旧像素(焦点环 / 上一个状态)。验收=探针 `.verify/statecheck` 让"切换后的渲染"与"直接建成目标状态"逐像素比, 亮/暗各一轮都是 **0 像素差**(色值与 shadcn 的整组 50% 合成理论值逐条吻合)
 - ✅ **本地 shadcn 参照页(界面展示)与新 demo 同构**(2026-10-10):`shadcn/src/App.tsx` 重整为与 demo 一致的六页(**基础 / 表单 / 导航 / 反馈 / 数据 / 图标**), 内容逐条对应(6 变体 × 4 档尺寸 + 4 方形图标档、徽章 6 变体、CardFooter、多行与禁用输入、滑动条两档、开关 default/sm、Tabs default/line/纵向、恒 7 槽分页、表格 12 行 + 树); 新增 `?tab=form` 这类初始页签参数(对应 demo 的 `XUI_HOME_PAGE`), 便于分页截图对照; `pnpm build` 通过
 
+- ✅ **图标支持整段 SVG 字符串**(2026-10-11):`Painter.IconSVG(svg, rc, color, sw)` + `ParseIconSVG(svg)` ——
+  提取 `<path>`(多个, 支持 `<g>` 继承 fill/stroke/stroke-width)、按 viewBox 归一到 24 网格(任意网格)、
+  按 fill/stroke 判定填充子路径、建议线宽取 stroke-width; 解析结果按 SVG 原文缓存, 几何照旧走图标几何缓存。
+  于是 heroicons / feather / iconfont 的 SVG 可以直接贴, "只吃 24 网格 path"这条限制解除。
+  验收见 DESIGN 第八节 44 末尾; 顺带修了 `parseIconPathEx` 对尾部空白的误判。
+
 - ✅ **CLI 远程 registry(v2)+ `update` / `add --all`**(2026-10-11):数据源四态 —— 默认源
   `raw.githubusercontent.com/twgh/xui/main`(**自动选路:直连 → Gitee 镜像 `gitee.com/twgh/xui/raw/main`
   → 加速代理 ghfast / gh-proxy**, 探测 = 拉一次 registry.json, 6s 超时, 第一个通的跑完本次命令, 选路
