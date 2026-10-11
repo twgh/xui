@@ -22,8 +22,8 @@ import (
 //  3. 图标需要逐绘制换色(SetUserStrokeColor 的活)与精确几何, 所以自己解析 path 几何。
 //
 // 出图有两条路(见 Painter.Icon):
-//  1. D2D 直通填充(d2dicon.go): 解析出的折线 → CPU 描边展开 → FillGeometry, 抗锯齿、
-//     几何精确, 是当前的主路径;
+//  1. D2D 直通绘制(d2dicon.go): 解析出的折线 → D2D 几何(描边子路径走 DrawGeometry + 圆角样式,
+//     填充色点走 FillGeometry), 抗锯齿、几何精确, 是当前的主路径;
 //  2. 折线描边(DrawLine)回落: 只在 GDI 渲染(app.New(false))或 D2D 资源创建失败时使用。
 //
 // 图标从哪来 —— 全在子包 github.com/twgh/xui/icons(数据由 scripts/gen_icons.py 生成):
@@ -36,11 +36,15 @@ import (
 // 准备的, 代价是整张表(2130 个图标约 350KB)跟着进二进制。也可以直接贴 lucide 的
 // path 数据(见 https://lucide.dev)。
 
-// Icon 在 rc 内按 lucide 几何绘制一枚描边图标(等比铺满)。
+// Icon 在 rc 内绘制一枚**描边图标**(等比铺满)。
+//
+// paths 是 SVG path 数据, 要求: **24x24 网格**(内部按 24 换算尺寸; 别的网格请先把坐标缩放到 24)、
+// 描边型(lucide / heroicons outline / feather 这类都是)。子路径想按**填充**画时, 在它前面加 `!`
+// (项目内部约定, 见 parseIconPath); 手写 path 不含它 = 纯描边。
 // strokeWidth 用 24 网格单位, lucide 默认为 2。
 //
-// 出图优先走 D2D 填充管线(CPU 描边展开 + FillGeometry, 有抗锯齿, 见 d2dicon.go);
-// 只有 GDI 渲染模式(app.New(false))或 D2D 资源建不出来时才回落到折线描边。
+// 出图优先走 D2D 几何管线(有抗锯齿, 见 d2dicon.go); 只有 GDI 渲染模式(app.New(false))或
+// D2D 资源建不出来时才回落到折线描边。
 func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float32) {
 	if p.d2dIcon(paths, rc, color, strokeWidth, func() []iconSub {
 		return parseIconPath(paths)
