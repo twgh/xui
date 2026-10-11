@@ -96,7 +96,12 @@
 - ⬜ text 手绘后 Input 仍是原生文字
 - ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;本轮已因此修掉 3 处依赖漏登记)
 - ⬜ **xcgui 发布含 `d2d` 包的版本后, 把 `go.mod` 的 require 升到该版本**(现在靠 `go.work` 联调; 没有 go.work 的环境编译不过, 因为已提交的 `d2dicon.go` 依赖 `xcgui/d2d`)
-- ⬜ D2D 直通能力的后续上游化(优先级低, 见 DESIGN 第八节 43 末):描边展开算法(round cap/join → 填充轮廓)、几何缓存策略、**"按值浮点形参"的更多封装**(转发器已就绪, 见 DESIGN 65 —— 例如 `DrawGeometry` 的线宽; 注意"指向浮点结构的指针"不受此限, 如已封装的 `SetTransform`)
+- ✅ **D2D 直通能力的上游化, 一次做齐(2026-10-11)**(趁上游发版窗口把原待办三项做完, 细节见 DESIGN 第八节 43 末 / 65):
+  ① **"按值浮点形参"的封装扩到基本图元**: `DrawLine`(线宽在**栈[0]** —— 5 个参数, 位置 4 已超出前 4 个 XMM 槽)/ `DrawRectangle` / `DrawEllipse` / `FillRectangle` / `FillEllipse`(各带 `*Color` 便利版); 转发器升级为"最多 4 个栈参数"的 `wapi/com.CallWithFloat32Stack`(栈上的 float 占 8 字节槽、值放低 4 字节)。
+  ② **形状几何与参数上移**: `ID2D1Factory` 补 `Create{Rectangle,RoundedRectangle,Ellipse}Geometry`(配 `D2D1_ELLIPSE`/`D2D1_ROUNDED_RECT`); 绘制/填充口参数从 `*ID2D1PathGeometry` 上移到 `*ID2D1Geometry`(各几何加 `Base()`, `Usable()` 随之上移), 于是"任意几何"都能画。
+  ③ **几何缓存策略**做成通用的 `d2d.GeometryCache[K comparable]`(按工厂作废 + 失败也记 + 统一 Release), 本仓库的图标几何改用它 —— 重构后墨迹量逐像素不变(143083), 鼠标扫动 734/765ms(此前 828/836ms)。
+  ④ 原来的"描边展开算法上游化"**作废**: 描边走 D2D 真描边(见上一条), CPU 展开代码已从本仓库删除。
+  探针 `.verify/probeprimitives`(8 种图元/几何一次抓图全对)+ `wapi/com`/`d2d` 单测(槽位/布局/nil 安全)在 CI 与离线均可跑。
 
 ## 仓库结构
 

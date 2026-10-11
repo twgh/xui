@@ -44,50 +44,31 @@ type d2dGeomKey struct {
 	size  int32  // 图标边长(物理像素)
 }
 
-// d2dGeomPair 一个图标的两条几何: 描边折线(开口, DrawGeometry 用)与填充形状(闭合, FillGeometry 用)。
-// 任一可为 nil —— 大多数图标只有描边, 少数(如 X 中心的点)还有填充。
-type d2dGeomPair struct {
-	stroke *d2d.ID2D1PathGeometry
-	fill   *d2d.ID2D1PathGeometry
-}
-
-func (g *d2dGeomPair) release() {
-	if g == nil {
-		return
-	}
-	if g.stroke != nil {
-		g.stroke.Release()
-	}
-	if g.fill != nil {
-		g.fill.Release()
-	}
-}
-
-// 几何缓存。绘制回调每帧都会新建 Painter(Painter 是帧内对象), 所以缓存必须放包级。
-// 几何与描边样式都是**设备无关**资源, 归属 D2D 工厂而非渲染目标, 因此按工厂作废:
-// 工厂变了(D2D 设备重建)整体 Release 重建。这样多个窗口(主窗/菜单/弹层各有各的 RT)
-// 共用一份, 不会互相把缓存顶掉。
+// 几何缓存与描边样式。绘制回调每帧都会新建 Painter(Painter 是帧内对象), 所以缓存必须放包级。
+//
+// 几何与样式都是**设备无关**资源(归属 D2D 工厂), 缓存与作废交给上游的 d2d.GeometryCache:
+// 工厂变了(D2D 设备重建)整体 Release 重建; 建失败也记一笔(免得每帧重试)。这样多个窗口
+// (主窗/菜单/弹层各有各的 RT)共用一份, 不会互相把缓存顶掉。
+//
+// 两类几何分开放: 描边折线(开口, DrawGeometry 用)与填充形状(闭合, FillGeometry 用) ——
+// 大多数图标只有描边, 少数(如 X 中心的点)还有填充。
 var (
-	d2dGeomFactory *d2d.ID2D1Factory
-	d2dGeoms       map[d2dGeomKey]*d2dGeomPair
+	d2dGeomFactory *d2d.ID2D1Factory // 样式缓存共用的"工厂是否变了"标记(几何缓存各自判)
+	d2dStrokeGeoms d2d.GeometryCache[d2dGeomKey]
+	d2dFillGeoms   d2d.GeometryCache[d2dGeomKey]
 	d2dStrokeStyle *d2d.ID2D1StrokeStyle
 )
 
-// d2dGeomCache 取几何缓存与描边样式, 工厂变了就先整体作废重建。
-func d2dGeomCache(factory *d2d.ID2D1Factory) (map[d2dGeomKey]*d2dGeomPair, *d2d.ID2D1StrokeStyle) {
+// d2dResources 取描边样式(必要时按工厂重建), 并让几何缓存跟着作废。
+func d2dResources(factory *d2d.ID2D1Factory) *d2d.ID2D1StrokeStyle {
 	if factory != d2dGeomFactory {
-		for _, g := range d2dGeoms {
-			g.release()
-		}
-		d2dGeoms = make(map[d2dGeomKey]*d2dGeomPair)
+		d2dStrokeGeoms.Clear()
+		d2dFillGeoms.Clear()
 		if d2dStrokeStyle != nil {
 			d2dStrokeStyle.Release()
 			d2dStrokeStyle = nil
 		}
 		d2dGeomFactory = factory
-	}
-	if d2dGeoms == nil {
-		d2dGeoms = make(map[d2dGeomKey]*d2dGeomPair)
 	}
 	if d2dStrokeStyle == nil {
 		// SVG 语义: stroke-linecap/linejoin = round(lucide 图标全带这两个属性)
@@ -97,7 +78,7 @@ func d2dGeomCache(factory *d2d.ID2D1Factory) (map[d2dGeomKey]*d2dGeomPair, *d2d.
 		}
 		// 建失败也不致命: DrawGeometry 传 nil 样式 = 默认(平头 + 斜接), 只是角不圆。
 	}
-	return d2dGeoms, d2dStrokeStyle
+	return d2dStrokeStyle
 }
 
 // ---------------- 几何构造 ----------------
@@ -208,21 +189,40 @@ func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, str
 		return false
 	}
 
-	geoms, style := d2dGeomCache(factory)
-	pair, hit := geoms[key]
-	if !hit {
-		s := float32(size) / 24
-		strokeFigs, fillFigs := iconFigures(build(), s)
-		pair = &d2dGeomPair{}
-		if len(strokeFigs) > 0 {
-			pair.stroke, _ = factory.NewGeometryFigures(strokeFigs)
+	style := d2dResources(factory)
+	s := float32(size) / 24
+
+	// build 只在几何缓存未命中时调用, 且两个几何共用同一份解析结果(惰性)。
+	var subs []iconSub
+	parse := func() []iconSub {
+		if subs == nil {
+			subs = build()
 		}
-		if len(fillFigs) > 0 {
-			pair.fill, _ = factory.NewGeometryFigures(fillFigs)
-		}
-		geoms[key] = pair // 失败(nil)也记下, 免得每帧重试
+		return subs
 	}
-	if pair.stroke == nil && pair.fill == nil {
+	strokeGeom := d2dStrokeGeoms.Get(factory, key, func() (*d2d.ID2D1Geometry, error) {
+		strokeFigs, _ := iconFigures(parse(), s)
+		if len(strokeFigs) == 0 {
+			return nil, nil // 该图标没有描边子路径(少见)
+		}
+		pg, err := factory.NewGeometryFigures(strokeFigs)
+		if pg == nil {
+			return nil, err
+		}
+		return pg.Base(), nil
+	})
+	fillGeom := d2dFillGeoms.Get(factory, key, func() (*d2d.ID2D1Geometry, error) {
+		_, fillFigs := iconFigures(parse(), s)
+		if len(fillFigs) == 0 {
+			return nil, nil // 多数图标没有填充形状
+		}
+		pg, err := factory.NewGeometryFigures(fillFigs)
+		if pg == nil {
+			return nil, err
+		}
+		return pg.Base(), nil
+	})
+	if strokeGeom == nil && fillGeom == nil {
 		return false
 	}
 
@@ -251,14 +251,14 @@ func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, str
 	col := d2d.NewColorF(r, g, b, a)
 
 	ok := true
-	if pair.stroke != nil {
+	if strokeGeom != nil {
 		// 线宽: lucide 网格单位(24 见方) → 物理像素
-		if err := rt.DrawGeometryColor(pair.stroke, col, strokeWidth*float32(size)/24, style); err != nil {
+		if err := rt.DrawGeometryColor(strokeGeom, col, strokeWidth*float32(size)/24, style); err != nil {
 			ok = false
 		}
 	}
-	if pair.fill != nil {
-		if err := rt.FillGeometryColor(pair.fill, col); err != nil {
+	if fillGeom != nil {
+		if err := rt.FillGeometryColor(fillGeom, col); err != nil {
 			ok = false
 		}
 	}
