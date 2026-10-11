@@ -137,11 +137,18 @@ p.Icon(icons.Path("eye"), &rc, color, 2)
 icons.Has("star"); icons.Names(); icons.Count()           // 查询
 ```
 
-也可以直接把任意 lucide path 数据贴进 `Painter.Icon`(24 网格,`strokeWidth` 用 24 网格单位,
-lucide 默认 2)。组件内部用到的图标同样取 `icons.IconXxx`:实测"只用常量"的程序体积增量
-**0 字节**(2130 条数据里只进用到的那条),所以组件、业务代码都推荐用常量。资源与常量由
-`scripts/gen_icons.py` 一起生成(默认取最新版, `--version` 可钉版),转换规则与踩坑见
-docs/DESIGN.md 第八节 44。
+也可以直接把 path 数据贴进 `Painter.Icon`(24 网格,`strokeWidth` 用 24 网格单位,lucide 默认 2);
+**手里是整段 SVG**(从 heroicons / feather / iconfont 复制来的 `<svg viewBox="…"><path d="…"/></svg>`)
+就用 `Painter.IconSVG` —— 自动提取 path、按 viewBox 归一到 24 网格、按 fill/stroke 判定填充:
+
+```go
+p.IconSVG(svgText, &rc, color, 0)             // 0 = 用 SVG 自己的 stroke-width(heroicons 是 1.5)
+paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存解析结果
+```
+
+组件内部用到的图标同样取 `icons.IconXxx`:实测"只用常量"的程序体积增量 **0 字节**(2130 条数据里
+只进用到的那条),所以组件、业务代码都推荐用常量。资源与常量由 `scripts/gen_icons.py` 一起生成
+(默认取最新版, `--version` 可钉版),转换规则与踩坑见 docs/DESIGN.md 第八节 44。
 
 demo 的第 6 个页签「图标」可以搜索/翻页浏览整份资源:格子里只画图标(不显示名字),
 **悬浮出提示气泡显示图标名, 点击把图标名复制到剪贴板**。
@@ -197,6 +204,15 @@ XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                #
 - 仅 Windows;渲染模式固定按 Direct2D(`app.New(true)`)设计。
 - 组件坐标使用逻辑像素,自绘内容按窗口 DPI 缩放(`EnableAutoDPI` + `xui.Painter.Scale`)。
 - 主题切换须在 UI 线程调用 `xui.SetTheme`。
+- **本模块的 `go` 指令是 1.18**:即使你用 Go 1.22+ 的工具链,`for range` 的循环变量也按**旧语义共享** ——
+  在循环里给控件注册回调(或起 goroutine)时,循环变量必须先拷一份,否则所有回调都取到最后一次的值:
+
+  ```go
+  for _, item := range items {
+      item := item // ← 必须有(本模块 go 指令 < 1.22)
+      btn.AddEvent_MouseStay(func(hEle int, pbHandled *bool) int { use(item); return 0 })
+  }
+  ```
 
 详见 [DESIGN.md](docs/DESIGN.md)。
 

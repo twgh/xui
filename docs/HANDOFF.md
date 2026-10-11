@@ -83,6 +83,9 @@
   **`go.work`** 把本地 xcgui 工作副本接进来(该文件已在 `.gitignore`), `go.mod` 保持干净的 `require v1.4.2`。
   ⚠️ 在 xcgui 工作副本里**只跑 `go test ./d2d/ ./wapi/com/`**, 别跑 `go test ./...` —— 那是 GUI 库,
   全仓测试会不停弹真窗口(实测弹到没法干活); `go build ./...` / `go vet ./d2d/ ./wapi/com/` 是安全的。
+  ⚠️ **本仓库 `go.mod` 的 go 指令是 1.18(用户明确不升级)**: 即使工具链是 Go 1.22+, `for range` 的循环
+  变量也按**旧语义共享** —— 在循环里注册回调/起 goroutine 必须 `v := v` 拷一份(探针踩过: 三个元素全画成
+  最后一个)。xui 自身的循环注册点已扫过(vet + 人工, 只有两处"for opts"是误报), 新代码保持这个习惯。
   后来又补了 `SetTransform` / `GetTransform`(矩阵按**指针**传, 不受"按值浮点走 XMM"的限制)——
   探针 `.verify/probexform` 往返一致(单位矩阵 → 平移 12,34 → 设回单位矩阵)。
   借它把图标**位置从几何缓存里外置**了: 几何只按 (path, size, strokeW) 缓存、绘制时用平移矩阵移过去 ——
