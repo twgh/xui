@@ -73,8 +73,10 @@
   顺手把 `XDraw_GetD2dRenderTarget` / `XDraw_ConvRect` / `XC_GetD2dFactory` 的注释补齐了"直通调用拿的是
   父级坐标系, 必须先 `ConvRect`"这条坑。本仓库 `d2dicon.go` 只剩图标语义(描边展开 + 盒计算 + 缓存 +
   元素 alpha), 少约 200 行重复底座。**验收**:图标页/基础页 × 亮/暗三组 PrintWindow 抓图逐像素 **0 差**;
-  图标页鼠标扫动 CPU 交替多轮无可辨差异(±10% 噪声); 细节见 DESIGN 第八节 43。⚠️ xui 的 `go.mod`
-  目前有一行 **临时 `replace github.com/twgh/xcgui => ../../github.com/twgh/xcgui`**(见待办)。
+  图标页鼠标扫动 CPU 交替多轮无可辨差异(±10% 噪声); 细节见 DESIGN 第八节 43。**联调方式**: 本仓库用
+  **`go.work`** 把本地 xcgui 工作副本接进来(该文件已在 `.gitignore`), `go.mod` 保持干净的 `require v1.4.2`。
+  后来又补了 `SetTransform` / `GetTransform`(矩阵按**指针**传, 不受"按值浮点走 XMM"的限制)——
+  探针 `.verify/probexform` 往返一致(单位矩阵 → 平移 12,34 → 设回单位矩阵)。
 
 ## 待办
 
@@ -85,8 +87,8 @@
 - ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 弹层宽度=触发区宽(SetItemWidth 无效, 见 64)、`--chart-1..5`/`--sidebar-*` 令牌未建模
 - ⬜ text 手绘后 Input 仍是原生文字
 - ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;本轮已因此修掉 3 处依赖漏登记)
-- ⬜ **xcgui 发布含 `d2d` 包的版本后, 去掉 `go.mod` 的临时 `replace`**(改为正式 require 版本号), 否则 xui 侧"改用 d2d 包"的改动无法提交
-- ⬜ D2D 直通能力的后续上游化(优先级低, 见 DESIGN 第八节 43 末):描边展开算法(round cap/join → 填充轮廓)、几何缓存策略、`ID2D1RenderTarget::SetTransform` 这类带浮点形参的能力(ABI 不允许 `syscall.SyscallN`, 需要别的机制)
+- ⬜ **xcgui 发布含 `d2d` 包的版本后, 把 `go.mod` 的 require 升到该版本**(现在靠 `go.work` 联调; 没有 go.work 的环境编译不过, 因为已提交的 `d2dicon.go` 依赖 `xcgui/d2d`)
+- ⬜ D2D 直通能力的后续上游化(优先级低, 见 DESIGN 第八节 43 末):描边展开算法(round cap/join → 填充轮廓)、几何缓存策略、**"按值浮点形参"的更多封装**(转发器已就绪, 见 DESIGN 65 —— 例如 `DrawGeometry` 的线宽; 注意"指向浮点结构的指针"不受此限, 如已封装的 `SetTransform`)
 
 ## 仓库结构
 

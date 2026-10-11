@@ -1017,6 +1017,7 @@ registry.json 条目(shadcn 同构格式):
       ③ **浮点槽号要按接口实测**: 教科书说"整数/浮点各自独立计数"(`SetOpacity(FLOAT)` 的浮点应在 XMM0、this 走 RCX), 实测 `ID2D1SolidColorBrush::SetOpacity` 读的是 **XMM1** —— 逐个槽单独填 0.5, **只有 XMM1 生效**; 这类接口按"参数位置"编号(this 占位置 0)。
     - **验证数据**(探针): 回声桩(原样返回 XMM0)0.5/0.125 精确往返 ✓; 画刷 `SetColor/GetColor` 往返 0.25 ✓(对象正确); `SetOpacity`: 只填 XMM1=0.5 → **读回 0.500** ✓(填 XMM0/2/3 均无效); 反例 —— 该 RT 的 DPI 是 0/0(非法状态), 在它上面 `SetDpi` 怎么传都崩, **与传参无关**(验证浮点要用纯属性 setter, 别拿有状态的 RT 方法试)。
     - **两处认知纠正**: ①"COM 直通只支持 x64"是错的 —— 386 同样能跑, 只是参数传递写法不同(edge 两个架构各一套); ②`ID2D1Brush::GetOpacity` 是**按值返回 FLOAT**(在 XMM0), 不是 `(float *out)` 出参 —— 要读它得用 `CallWithFloat32RetFloat`。
+    - **别把"按值 float"与"浮点结构指针"搞混**(本条最初就写错过): 受限的只有**按值传的** float64/float32 形参; 指向浮点结构的**指针**不受限, 照常 syscall 调用即可 —— `ID2D1RenderTarget::SetTransform` 的矩阵、`CreateSolidColorBrush` 的颜色都是这种, `d2d` 已封装 `SetTransform`/`GetTransform`(探针 `.verify/probexform` 往返一致: 单位矩阵 → 平移 12,34 → 设回单位矩阵)。
     - 与 43(直通拿不到元素变换/裁剪)、47(整窗 alpha 与生命周期)同源: 都是 **SyscallN 这条通道的能力边界**, 而不是 xcgui 的缺陷。
 
 ---
@@ -1035,7 +1036,7 @@ registry.json 条目(shadcn 同构格式):
 - 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距), 本项目暂用子项外边距替代, 未实测
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
 - `XWnd_SetWindowPos(物理像素)`、`XC_hWindowFromHWnd`、`XEle_GetWndClientRect`、`XWnd_GetClientRect`、`wapi.ShowWindow/SetForegroundWindow/GetSystemMetrics/GetWindowLongPtrW`
-- D2D 直通:`xc.XDraw_GetD2dRenderTarget / XDraw_ConvRect / XC_GetD2dFactory`(裸指针;直通绘制必须先用 `ConvRect` 换到画布对齐坐标,见第八节 43)+ **`github.com/twgh/xcgui/d2d`**(2026-10-11 起:按 edge 的 COM 接口虚表风格封装,`NewRenderTargetByHandle`/`NewFactoryByHandle` + `ID2D1PathGeometry.Open/Usable` + `ID2D1GeometrySink.SetFillMode/BeginFigure/AddLines/EndFigure/Close` + `NewGeometry`/`FillGeometryColor`;ABI 三条硬规则写在包注释里)
+- D2D 直通:`xc.XDraw_GetD2dRenderTarget / XDraw_ConvRect / XC_GetD2dFactory`(裸指针;直通绘制必须先用 `ConvRect` 换到画布对齐坐标,见第八节 43)+ **`github.com/twgh/xcgui/d2d`**(2026-10-11 起:按 edge 的 COM 接口虚表风格封装,`NewRenderTargetByHandle`/`NewFactoryByHandle` + `ID2D1PathGeometry.Open/Usable` + `ID2D1GeometrySink.SetFillMode/BeginFigure/AddLines/EndFigure/Close` + `NewGeometry`/`FillGeometryColor`/`SetTransform`/`GetTransform`;ABI 三条硬规则写在包注释里)
 - backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验收)
 - 排查"窗口可见但屏幕上看不见"(见 57):`user32!EnumWindows` + `GetWindowThreadProcessId` 枚举进程窗口(⚠️ 别用 `Process.MainWindowHandle`, 弹层小窗存在时它会返回小窗)、`IsWindowVisible`、`user32!GetLayeredWindowAttributes`(读 layered alpha/颜色键)、`PrintWindow` 与 `CopyFromScreen` 对照(画了 vs 屏幕上没有)
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽)
