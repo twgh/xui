@@ -7,9 +7,9 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-10)
+## 当前状态(截至 2026-10-11)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(P3 仅剩"CLI 远程 registry"与"native 弹层进场动画"两项未定);P4(文档站、主题画廊)未开始。路线图见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(P3 仅剩"combobox 弹层进场动画"未做;CLI 远程 registry 已完成);P4(文档站、主题画廊)未开始。路线图见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
@@ -43,15 +43,25 @@
 - ✅ **暗色禁用/未选态配色按 shadcn 逐像素对齐**(2026-10-10):复选框未选态(暗色 `bg-input/30`)、复选框/单选框/开关的禁用态、禁用输入框过去都错用 `WithAlpha` 覆盖半透明令牌(暗色下画出发亮灰块 / 亮白框线 / 全亮白滑块)。现在统一为"**先铺宿主底色(Card) + 每个图层各乘 50%**":形状全部跟随, 原生文字保持原色, 输入框禁用文字预混变淡(见 61); 顺带修掉透明元素重绘**不擦底**留下的旧像素(焦点环 / 上一个状态)。验收=探针 `.verify/statecheck` 让"切换后的渲染"与"直接建成目标状态"逐像素比, 亮/暗各一轮都是 **0 像素差**(色值与 shadcn 的整组 50% 合成理论值逐条吻合)
 - ✅ **本地 shadcn 参照页(界面展示)与新 demo 同构**(2026-10-10):`shadcn/src/App.tsx` 重整为与 demo 一致的六页(**基础 / 表单 / 导航 / 反馈 / 数据 / 图标**), 内容逐条对应(6 变体 × 4 档尺寸 + 4 方形图标档、徽章 6 变体、CardFooter、多行与禁用输入、滑动条两档、开关 default/sm、Tabs default/line/纵向、恒 7 槽分页、表格 12 行 + 树); 新增 `?tab=form` 这类初始页签参数(对应 demo 的 `XUI_HOME_PAGE`), 便于分页截图对照; `pnpm build` 通过
 
+- ✅ **CLI 远程 registry(v2)+ `update` / `add --all`**(2026-10-11):数据源三态 —— 默认
+  `raw.githubusercontent.com/twgh/xui/main`(组件跟 main 永远最新)、`XUI_REGISTRY` 指向本地目录或
+  任意 `http(s)://` 基址(离线 / 锁组件版本)、远程不可用时降级 `moduleRoot()` 内嵌源码树(显式设了
+  `XUI_REGISTRY` 则报错不降级);`update` 无 manifest 语义 = 缺则建 / 一致跳过 / 用户改过警告跳过
+  (`--force` 覆盖),省略组件名 = 更新 `ui/` 里已装的全部;新增 `--force` / `--all` 两个旗标。
+  方案与验收清单见 [REGISTRY_V2.md](REGISTRY_V2.md);离线验收全绿(本地路径 / 本地 HTTP / 404 /
+  不可达 / 降级 / update 四态 / 逐组件单独安装后编译 / init 后编译)。**顺带修掉 registry.json 的
+  依赖缺陷**:`dialog` 漏 `backdrop.go`、`combobox`/`menu` 漏 `tooltip` 依赖 —— 过去 `xui add dialog`
+  拷出来的组件根本编译不过。
+
 ## 待办
 
 - **页面滚动容器**: 页面内容比窗口高时, 现在被页面自身的 `EnableOverflowHide` 裁掉(表单页在默认窗口下底部约裁掉一行)。要么给页面套滚动容器(`widget.ScrollView` 一类的自绘滚动条 + 内容高度撑开), 要么让内容自适应(见 DESIGN 8.59)
 
-- ⬜ **P3 剩余**:CLI 远程 registry;combobox 弹层进场动画(menu 已做淡入, 见 64; combobox 的下拉窗是 ListBox 载体, 转 Shadow 路线待验证)
-- ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计)
+- ⬜ **P3 剩余**:combobox 弹层进场动画(menu 已做淡入, 见 64; combobox 的下拉窗是 ListBox 载体, 转 Shadow 路线待验证)
+- ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计,**只剩 REGISTRY_V2.md 五 的两步真实验收依赖仓库公开**)
 - ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 弹层宽度=触发区宽(SetItemWidth 无效, 见 64)、`--chart-1..5`/`--sidebar-*` 令牌未建模
 - ⬜ text 手绘后 Input 仍是原生文字
-- ⬜ CLI `update / --all` 未实现(见上)
+- ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;本轮已因此修掉 3 处依赖漏登记)
 
 ## 仓库结构
 
@@ -68,7 +78,8 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
 │                                 + icons\lucide_icons_*.go(图标常量, 每 400 个一个文件)
-├── cmd\xui\                      CLI(init/add/list)
+├── cmd\xui\                      CLI(init / add / add --all / update / list; 数据源默认
+│                                 远程 main 分支, XUI_REGISTRY 可覆盖, 失败降级内嵌)
 ├── icons_test.go                 解析器语法 + 资源完整性测试(go test ./...)
 ├── demo\                         演示应用(也是全组件编译测试目标)
 ├── registry.json                 组件清单(files + deps)
@@ -81,11 +92,6 @@ D:\GOProject\src\ui\shadcn\       ← 本地部署的 shadcn-ui 参考实现(语
 ├── src\components\ui\*.tsx       组件语义的唯一来源(hover/focus-visible/disabled 等)
 ├── src\index.css                 主题令牌(:root/.dark, nova 预设 neutral 色板)
 └── src\App.tsx                   与 demo 同构的对照页
-
-D:\GOProject\src\tools\llama-launcher\  ← 同技术栈的成品项目(可参考)
-├── internal\ui\caption.go        菜单美化, 标题上自定义按钮
-└── internal\ui\builder.go        List 美化, LayoutEle 布局盒子的成熟用法
-                                  其布局语义结论与本项目 DESIGN.md 第八节 29 一致
 ```
 
 ## 常用命令
@@ -98,8 +104,12 @@ go build -ldflags="-s -w -H windowsgui" -trimpath -o demo/demo.exe ./demo && dem
 # shadcn 参考实现 dev server(可能已在运行: netstat -ano | findstr 5173)
 cd D:\GOProject\src\ui\shadcn && pnpm dev    # http://localhost:5173
 
-# CLI 本地测试(仓库未发布, 远程 go run 会失败)
-go run ./cmd/xui list / init <目录> / add <组件...>
+# CLI 本地测试(仓库未发布, 默认远程源拉不到会自动降级内嵌源码)
+go run ./cmd/xui list / init <目录> / add <组件...> / add --all / update [组件...]
+# 想验远程链路(无需 GitHub): 仓库根起 python -m http.server 8123,
+# 再 XUI_REGISTRY=http://127.0.0.1:8123 go run ./cmd/xui add dialog
+# 数据源也可指本地目录(完全离线): XUI_REGISTRY=D:\GOProject\src\ui\xui
+# 依赖回归: 逐组件单独装到临时项目再 go build ./ui(方法见 REGISTRY_V2.md 五)
 
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)

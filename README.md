@@ -149,13 +149,28 @@ demo 的第 6 个页签「图标」可以搜索/翻页浏览整份资源:格子�
 ## CLI
 
 ```bash
-xui init [ui目录]     # 初始化(默认目录 ui)
-xui add button card   # 追加拷贝指定组件(自动带上依赖)
-xui list              # 列出可用组件
+xui init [ui目录]      # 初始化(默认目录 ui; 已有 theme.go 则跳过)
+xui add button card    # 追加拷贝指定组件(自动带上依赖)
+xui add --all          # 拷贝全部组件
+xui update             # 更新已装组件(省略组件名 = ui/ 里已装的全部)
+xui update button      # 只更新指定组件(含依赖)
+xui list               # 列出可用组件
 ```
 
-组件源码拷进项目后归你所有;`add` 不会覆盖你本地改过的文件。
-升级组件:删除对应文件后重新 `add`。
+选项:`--force` 覆盖本地已修改的文件(默认会警告并跳过)。
+
+组件源码拷进项目后归你所有;`add` / `update` 都不会覆盖你本地改过的文件,确认要丢弃本地改动时加 `--force`。
+
+**数据源**:默认从 GitHub 仓库的 `main` 分支现拉组件(组件永远最新,CLI 本体锁版本用
+`go run github.com/twgh/xui/cmd/xui@v1.2.3`);拉不到时自动降级到 CLI 内嵌源码。环境变量
+`XUI_REGISTRY` 可覆盖:
+
+```bash
+XUI_REGISTRY=D:\path\to\xui xui add dialog                    # 本地目录(离线)
+XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v1.2.3 xui add dialog   # 锁组件版本
+```
+
+显式指定 `XUI_REGISTRY` 时拉取失败会直接报错(便于排查),不静默降级。
 
 ## 设计要点(为什么这样做)
 

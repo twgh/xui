@@ -55,15 +55,15 @@
     },
     "combobox": {
       "files": ["combobox.go"],
-      "deps": []
+      "deps": ["tooltip"]
     },
     "dialog": {
-      "files": ["dialog.go"],
+      "files": ["dialog.go", "backdrop.go"],
       "deps": ["button", "label"]
     },
     "menu": {
       "files": ["menu.go"],
-      "deps": []
+      "deps": ["tooltip"]
     },
     "table": {
       "files": ["table.go"],

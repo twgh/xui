@@ -4,8 +4,12 @@
 //
 //	go run github.com/twgh/xui/cmd/xui@latest init [ui目录]   # 默认 ui
 //	go run github.com/twgh/xui/cmd/xui@latest add button card ...
+//	go run github.com/twgh/xui/cmd/xui@latest add --all
+//	go run github.com/twgh/xui/cmd/xui@latest update [组件...]
 //	go run github.com/twgh/xui/cmd/xui@latest list
 //
+// 数据源默认是仓库 main 分支(组件永远最新); 环境变量 XUI_REGISTRY 可指向
+// 本地目录或任意 URL(离线开发 / 锁版本); 远程不可用时降级到内嵌源码树。
 // init 在用户项目创建 ui/ 目录并写入 theme.go 模板; add 按 registry.json
 // 把组件源码(及其依赖组件)拷入 ui/, 已存在且被用户改过的文件会提示跳过。
 package main
@@ -13,11 +17,19 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"time"
 )
+
+// defaultRegistryBase 默认远程数据源。跟 main 分支 = 组件永远最新; 要锁组件版本
+// 把 XUI_REGISTRY 指到某个 tag 的 raw 基址即可(GitHub raw 对 tag 同样有效)。
+const defaultRegistryBase = "https://raw.githubusercontent.com/twgh/xui/main"
 
 type entry struct {
 	Files []string `json:"files"`
@@ -28,23 +40,121 @@ type registry struct {
 	Components map[string]entry `json:"components"`
 }
 
+// ---------------------------------------------------------------- 数据源
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+func fetch(url string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "xui-cli")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s: HTTP %d", url, resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// source 统一数据源: 本地目录与远程基址二选一。
+type source struct {
+	local string // 非空 = 本地目录(须含 registry.json 与 components/)
+	base  string // 非空 = 远程基址
+	env   string // XUI_REGISTRY 原值; 非空 = 用户显式指定, 失败时直接报错不降级
+}
+
+func (s *source) desc() string {
+	if s.local != "" {
+		return s.local
+	}
+	return s.base
+}
+
+// read 读相对路径(registry.json / components/xxx.go)。本地与远程布局一致。
+func (s *source) read(rel string) ([]byte, error) {
+	if s.local != "" {
+		return os.ReadFile(filepath.Join(s.local, filepath.FromSlash(rel)))
+	}
+	return fetch(s.base + "/" + rel)
+}
+
+// registrySource 按 XUI_REGISTRY 解析数据源(空 = 默认远程源)。
+func registrySource() *source {
+	env := strings.TrimSpace(os.Getenv("XUI_REGISTRY"))
+	switch {
+	case env == "":
+		return &source{base: defaultRegistryBase}
+	case strings.HasPrefix(env, "http://"), strings.HasPrefix(env, "https://"):
+		return &source{base: strings.TrimRight(env, "/"), env: env}
+	default:
+		abs, err := filepath.Abs(env)
+		if err != nil {
+			abs = env
+		}
+		return &source{local: abs, env: env}
+	}
+}
+
+// loadRegistry 读 registry.json, 并返回实际生效的数据源。
+// 默认远程源不可用时降级到内嵌源码树; 用户显式指定 XUI_REGISTRY 时直接报错。
+func loadRegistry() (*source, *registry) {
+	src := registrySource()
+	data, err := src.read("registry.json")
+	if err != nil {
+		if src.env != "" {
+			fatal("读取 registry 失败 (%s): %v", src.desc(), err)
+		}
+		fmt.Fprintf(os.Stderr, "xui: 远程数据源不可用(%v), 降级使用内嵌源码\n", err)
+		src = &source{local: moduleRoot()}
+		if data, err = src.read("registry.json"); err != nil {
+			fatal("读取 registry.json 失败: %v", err)
+		}
+	}
+	var r registry
+	if err := json.Unmarshal(data, &r); err != nil {
+		fatal("解析 registry.json 失败 (%s): %v", src.desc(), err)
+	}
+	return src, &r
+}
+
+func readComponent(src *source, file string) []byte {
+	data, err := src.read("components/" + file)
+	if err != nil {
+		fatal("读取组件源码 %s 失败 (%s): %v", file, src.desc(), err)
+	}
+	return data
+}
+
+// ---------------------------------------------------------------- 命令入口
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
 	}
-	cmd := os.Args[1]
+	cmd, args := os.Args[1], os.Args[2:]
+	names, force, all := parseArgs(args)
 	switch cmd {
 	case "init":
 		dir := "ui"
-		if len(os.Args) > 2 {
-			dir = os.Args[2]
+		if len(names) > 0 {
+			dir = names[0]
 		}
-		initProject(dir)
+		if len(names) > 1 {
+			fatal("用法: xui init [ui目录]")
+		}
+		initProject(dir, force)
 	case "add":
-		if len(os.Args) < 3 {
-			fatal("用法: xui add <组件名...>  (组件见 xui list)")
+		if !all && len(names) == 0 {
+			fatal("用法: xui add <组件名...> | xui add --all  (组件见 xui list)")
 		}
-		add(os.Args[2:], "ui")
+		add(names, "ui", force)
+	case "update":
+		update(names, "ui", force, all)
 	case "list":
 		list()
 	default:
@@ -52,12 +162,36 @@ func main() {
 	}
 }
 
+// parseArgs 抽出 --force / --all, 其余按位置参数返回(CLI 不做通用旗标解析)。
+func parseArgs(args []string) (names []string, force, all bool) {
+	for _, a := range args {
+		switch a {
+		case "--force", "-f":
+			force = true
+		case "--all", "-a":
+			all = true
+		default:
+			names = append(names, a)
+		}
+	}
+	return
+}
+
 func usage() {
 	fmt.Println(`xui — shadcn 风格的 xcgui 自绘组件
 
-  xui init [ui目录]    初始化用户项目(默认目录 ui)
-  xui add <组件...>    拷贝组件源码到 ui 目录
-  xui list             列出可用组件
+  xui init [ui目录]     初始化用户项目(默认目录 ui; 已有 theme.go 则跳过)
+  xui add <组件...>     拷贝组件源码到 ui 目录(自动带上依赖组件)
+  xui add --all         拷贝全部组件
+  xui update [组件...]  更新已装组件(省略组件名 = ui 目录里已装的全部)
+  xui list              列出可用组件
+
+选项:
+  --force               覆盖本地已修改的文件(默认: 警告并跳过)
+
+数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
+  本地路径              直接读该目录(须含 registry.json 与 components/), 完全离线
+  http(s):// 基址        以该地址为前缀拉取(拉取失败直接报错, 不降级)
 
 组件源码拷贝进你的项目后归你所有, 可随意修改。`)
 	os.Exit(0)
@@ -71,6 +205,7 @@ func fatal(format string, a ...any) {
 // moduleRoot 返回 xui 模块源码根目录(go run / go install 均可用):
 // runtime.Caller 取本文件路径, 上溯两级(cmd/xui -> 模块根)。
 // go run pkg@version 时该路径位于模块缓存中, 源码同样可用。
+// 它同时是"远程源不可用"时的离线回退(内嵌源)。
 func moduleRoot() string {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -79,19 +214,9 @@ func moduleRoot() string {
 	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
 }
 
-func loadRegistry() *registry {
-	data, err := os.ReadFile(filepath.Join(moduleRoot(), "registry.json"))
-	if err != nil {
-		fatal("读取 registry.json 失败: %v", err)
-	}
-	var r registry
-	if err := json.Unmarshal(data, &r); err != nil {
-		fatal("解析 registry.json 失败: %v", err)
-	}
-	return &r
-}
+// ---------------------------------------------------------------- 各命令实现
 
-func initProject(dir string) {
+func initProject(dir string, force bool) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		fatal("创建目录失败: %v", err)
 	}
@@ -105,15 +230,49 @@ func initProject(dir string) {
 	}
 
 	// 拷入全部基础组件, 开箱即用
-	add([]string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card"}, dir)
+	add([]string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card"}, dir, force)
 	fmt.Println("\n完成。接下来:")
 	fmt.Println("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
 	fmt.Printf("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)\n", dir)
 	fmt.Println("  3. 主题在 " + themePath + " 中, 随意修改")
 }
 
-func add(names []string, uiDir string) {
-	reg := loadRegistry()
+// add 拷贝组件(含依赖闭包)到 uiDir; 空清单 = 全部组件(--all)。
+func add(names []string, uiDir string, force bool) {
+	src, reg := loadRegistry()
+	if len(names) == 0 {
+		names = allComponents(reg)
+	}
+	install(src, reg, resolveNames(reg, names), uiDir, force)
+}
+
+// update 更新已装组件: 省略组件名时 = uiDir 里已装的全部(按 registry 依赖闭包)。
+func update(names []string, uiDir string, force, all bool) {
+	src, reg := loadRegistry()
+	switch {
+	case all:
+		names = allComponents(reg)
+	case len(names) == 0:
+		if names = installedComponents(reg, uiDir); len(names) == 0 {
+			fmt.Printf("%s 下没有已安装的组件 (先用 xui add 装)\n", uiDir)
+			return
+		}
+	}
+	install(src, reg, resolveNames(reg, names), uiDir, force)
+}
+
+// allComponents 返回全部组件名(排序保证输出稳定)。
+func allComponents(reg *registry) []string {
+	names := make([]string, 0, len(reg.Components))
+	for name := range reg.Components {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// resolveNames 依赖闭包展开(去重, 依赖先于被依赖者), 未知组件直接报错。
+func resolveNames(reg *registry, names []string) []string {
 	seen := map[string]bool{}
 	var order []string
 	var resolve func(name string)
@@ -134,36 +293,65 @@ func add(names []string, uiDir string) {
 	for _, n := range names {
 		resolve(n)
 	}
+	return order
+}
 
-	root := moduleRoot()
+// installedComponents 扫描 uiDir, 返回"至少有一个文件在本地"的组件名(排序)。
+func installedComponents(reg *registry, uiDir string) []string {
+	var names []string
+	for name, e := range reg.Components {
+		for _, f := range e.Files {
+			if _, err := os.Stat(filepath.Join(uiDir, f)); err == nil {
+				names = append(names, name)
+				break
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// install 逐文件写入: 本地没有则创建, 内容一致则跳过, 用户改过则警告跳过(--force 覆盖)。
+// 多个组件共享同一文件(separator/badge)时只处理一次。
+func install(src *source, reg *registry, order []string, uiDir string, force bool) {
+	if err := os.MkdirAll(uiDir, 0o755); err != nil {
+		fatal("创建目录失败: %v", err)
+	}
+	done := map[string]bool{}
 	for _, name := range order {
 		for _, f := range reg.Components[name].Files {
-			src := filepath.Join(root, "components", f)
 			dst := filepath.Join(uiDir, f)
-			data, err := os.ReadFile(src)
-			if err != nil {
-				fatal("读取组件源码失败: %v", err)
-			}
-			if old, err := os.ReadFile(dst); err == nil {
-				if string(old) == string(data) {
-					fmt.Printf("已存在 %s (内容一致)\n", dst)
-					continue
-				}
-				fmt.Printf("跳过 %s (本地已修改; 删除后重跑可覆盖)\n", dst)
+			if done[dst] {
 				continue
 			}
-			if err := os.WriteFile(dst, data, 0o644); err != nil {
-				fatal("写入失败: %v", err)
+			done[dst] = true
+			data := readComponent(src, f)
+			old, err := os.ReadFile(dst)
+			switch {
+			case err != nil:
+				if err := os.WriteFile(dst, data, 0o644); err != nil {
+					fatal("写入失败: %v", err)
+				}
+				fmt.Printf("创建 %s (%s)\n", dst, name)
+			case string(old) == string(data):
+				fmt.Printf("已一致 %s\n", dst)
+			case force:
+				if err := os.WriteFile(dst, data, 0o644); err != nil {
+					fatal("写入失败: %v", err)
+				}
+				fmt.Printf("覆盖 %s (本地修改已丢弃)\n", dst)
+			default:
+				fmt.Printf("警告 %s 本地已修改, 跳过 (确认后加 --force 覆盖)\n", dst)
 			}
-			fmt.Printf("创建 %s (%s)\n", dst, name)
 		}
 	}
 }
 
 func list() {
-	reg := loadRegistry()
-	fmt.Println("可用组件:")
-	for name, e := range reg.Components {
+	src, reg := loadRegistry()
+	fmt.Printf("可用组件 (数据源: %s):\n", src.desc())
+	for _, name := range allComponents(reg) {
+		e := reg.Components[name]
 		extra := ""
 		if len(e.Deps) > 0 {
 			extra = "  (依赖: " + strings.Join(e.Deps, ", ") + ")"
@@ -200,4 +388,3 @@ var dark = *xui.Dark()
 //		light.Radius = 8
 //	}
 `
-
