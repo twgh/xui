@@ -3,6 +3,8 @@ package xui
 import (
 	"strings"
 	"testing"
+
+	"github.com/twgh/xcgui/svgp"
 )
 
 // 一段"标准图标站导出"的 SVG: viewBox 24、fill=none、stroke=currentColor、stroke-width=2。
@@ -32,13 +34,16 @@ func TestParseIconSVG24(t *testing.T) {
 	}
 	t.Logf("归一化输出(前 120 字符): %.120q", paths)
 	// 输出必须能被现有解析器完整吃下(闭环)
-	subs, complete := parseIconPathEx(paths)
-	if !complete || len(subs) != 1 {
-		t.Fatalf("归一化结果解析不完整: complete=%v 子路径=%d", complete, len(subs))
+	subs, perr := svgp.ParsePath(paths) // 归一化输出必须能被解析器完整吃下(闭环)
+	if perr != nil || len(subs) != 1 {
+		t.Fatalf("归一化结果解析不完整: err=%v 子路径=%d", perr, len(subs))
+	}
+	if !subs[0].Closed {
+		t.Error("源数据以 Z 收尾, 归一化输出应保留闭合语义")
 	}
 	// 坐标应原样(24 网格不缩放), 首点 (12,3)
-	if got := subs[0].pts[0]; got.x < 11.99 || got.x > 12.01 || got.y < 2.99 || got.y > 3.01 {
-		t.Errorf("首点 = (%v,%v), 想要 (12,3)", got.x, got.y)
+	if got := subs[0].Points[0]; got.X < 11.99 || got.X > 12.01 || got.Y < 2.99 || got.Y > 3.01 {
+		t.Errorf("首点 = (%v,%v), 想要 (12,3)", got.X, got.Y)
 	}
 }
 
@@ -55,19 +60,19 @@ func TestParseIconSVGScaleAndFill(t *testing.T) {
 	if n := strings.Count(paths, "!"); n != 1 {
 		t.Errorf("填充前缀数 = %d, 想要 1: %s", n, paths)
 	}
-	subs, complete := parseIconPathEx(paths)
-	if !complete || len(subs) != 3 {
-		t.Fatalf("归一化结果解析不完整: complete=%v 子路径=%d", complete, len(subs))
+	subs, perr := svgp.ParsePath(paths)
+	if perr != nil || len(subs) != 3 {
+		t.Fatalf("归一化结果解析不完整: err=%v 子路径=%d", perr, len(subs))
 	}
-	if !subs[2].filled {
+	if !subs[2].Filled {
 		t.Error("第三条子路径应是填充")
 	}
-	if subs[0].filled || subs[1].filled {
+	if subs[0].Filled || subs[1].Filled {
 		t.Error("<g fill=none> 里的两条应是描边")
 	}
 	// 缩放: 源 (2,2) → (3,3)
-	if got := subs[0].pts[0]; got.x < 2.99 || got.x > 3.01 {
-		t.Errorf("首点 x = %v, 想要 3(源 2 × 1.5)", got.x)
+	if got := subs[0].Points[0]; got.X < 2.99 || got.X > 3.01 {
+		t.Errorf("首点 x = %v, 想要 3(源 2 × 1.5)", got.X)
 	}
 }
 
@@ -77,12 +82,12 @@ func TestParseIconSVGViewBoxOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subs, _ := parseIconPathEx(paths)
-	if len(subs) != 1 || len(subs[0].pts) != 2 {
+	subs, _ := svgp.ParsePath(paths)
+	if len(subs) != 1 || len(subs[0].Points) != 2 {
 		t.Fatalf("解析结果不对: %s", paths)
 	}
-	if p := subs[0].pts[0]; p.x != 0 || p.y != 0 {
-		t.Errorf("viewBox 偏移没平掉: 首点 = (%v,%v), 想要 (0,0)", p.x, p.y)
+	if p := subs[0].Points[0]; p.X != 0 || p.Y != 0 {
+		t.Errorf("viewBox 偏移没平掉: 首点 = (%v,%v), 想要 (0,0)", p.X, p.Y)
 	}
 }
 
@@ -107,12 +112,12 @@ func TestParseIconSVGHeroicons(t *testing.T) {
 	if sw != 1.5 {
 		t.Errorf("建议线宽 = %v, 想要 1.5", sw)
 	}
-	subs, complete := parseIconPathEx(paths)
-	if !complete || len(subs) != 1 {
-		t.Fatalf("heroicons 归一化后解析不完整: complete=%v", complete)
+	subs, perr := svgp.ParsePath(paths)
+	if perr != nil || len(subs) != 1 {
+		t.Fatalf("heroicons 归一化后解析不完整: err=%v", perr)
 	}
-	if len(subs[0].pts) < 50 {
-		t.Errorf("点数 = %d, 太少了(弧线没展开?)", len(subs[0].pts))
+	if len(subs[0].Points) < 50 {
+		t.Errorf("点数 = %d, 太少了(弧线没展开?)", len(subs[0].Points))
 	}
 }
 
