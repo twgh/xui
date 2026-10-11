@@ -75,12 +75,14 @@
   元素 alpha), 少约 200 行重复底座。**验收**:图标页/基础页 × 亮/暗三组 PrintWindow 抓图逐像素 **0 差**;
   图标页鼠标扫动 CPU 交替多轮无可辨差异(±10% 噪声); 细节见 DESIGN 第八节 43。**联调方式**: 本仓库用
   **`go.work`** 把本地 xcgui 工作副本接进来(该文件已在 `.gitignore`), `go.mod` 保持干净的 `require v1.4.2`。
+  ⚠️ 在 xcgui 工作副本里**只跑 `go test ./d2d/ ./wapi/com/`**, 别跑 `go test ./...` —— 那是 GUI 库,
+  全仓测试会不停弹真窗口(实测弹到没法干活); `go build ./...` / `go vet ./d2d/ ./wapi/com/` 是安全的。
   后来又补了 `SetTransform` / `GetTransform`(矩阵按**指针**传, 不受"按值浮点走 XMM"的限制)——
   探针 `.verify/probexform` 往返一致(单位矩阵 → 平移 12,34 → 设回单位矩阵)。
   借它把图标**位置从几何缓存里外置**了: 几何只按 (path, size, strokeW) 缓存、绘制时用平移矩阵移过去 ——
   窗口 resize 不再重建几何(实测尺寸来回切 10 次的 CPU 78/93ms → 62/62ms), 像素验收两组 0 差、图标页
   6/2322000 像素(AA 边缘); 前提是**成对恢复变换**(实测 XDraw 用的是绘制当时的 RT 变换, 见 DESIGN 43/65)。
-  **再进一步(2026-10-11): 描边也交给 D2D 了** —— `wapi/com` 新增 `CallWithFloat32Stack1`(带 1 个栈参数)
+  **再进一步(2026-10-11): 描边也交给 D2D 了** —— `wapi/com` 新增 `CallWithFloat32Stack`(最多 4 个栈参数)
   后, `ID2D1RenderTarget::DrawGeometry`(线宽在 XMM3、style 压栈)可用, 图标折线不再在 CPU 侧展开:
   `d2dicon.go` 删掉 `strokeOutline/addArc/miterPoint` 约 300 行, 缓存 key 精简成 (path, size), 角/端点由
   D2D 按 SVG 的 round 语义画(实测"角变圆"、墨迹量 +0.09%)。**性能: 微观 4 倍(2 万次 20ms vs 80ms)、
