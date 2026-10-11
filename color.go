@@ -5,7 +5,7 @@
 // 组件在绘制时通过 Current() 实时解析主题令牌, 因此切换主题只需 SetTheme + 重绘。
 //
 // 图标: 内置 lucide 资源在 github.com/twgh/xui/icons 子包(每图标一个 IconXxx 常量, 另有 Path(name));
-// 手里的整段 SVG 用 Painter.IconSVG(或先 ParseIconSVG)直接导入。
+// 图标数据统一交给 Painter.Icon —— path 数据与整段 SVG 都吃(自动识别); 想先校验 SVG 用 ParseIconSVG。
 //
 // 注意: 本模块的 go 指令是 1.18 —— 即使在 Go 1.22+ 工具链下, for range 的循环变量也按旧语义**共享**:
 // 在循环里注册回调 / 起 goroutine 时必须先 `v := v` 拷一份, 否则所有回调都取到最后一个值。

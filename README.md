@@ -139,11 +139,12 @@ icons.Has("star"); icons.Names(); icons.Count()           // 查询
 
 也可以直接把 path 数据贴进 `Painter.Icon`(24 网格,`strokeWidth` 用 24 网格单位,lucide 默认 2);
 **手里是整段 SVG**(从 heroicons / feather / iconfont 复制来的 `<svg viewBox="…"><path d="…"/></svg>`)
-就用 `Painter.IconSVG` —— 自动提取 path、按 viewBox 归一到 24 网格、按 fill/stroke 判定填充:
+也交给**同一个 `Painter.Icon`** —— 它会自动识别(看首字符是不是 `<`),提取 path、按 viewBox 归一到
+24 网格、按 fill/stroke 判定填充:
 
 ```go
-p.IconSVG(svgText, &rc, color, 0)             // 0 = 用 SVG 自己的 stroke-width(heroicons 是 1.5)
-paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存解析结果
+p.Icon(svgText, &rc, color, 0)                // 整段 SVG: 0 = 用 SVG 自己的 stroke-width(heroicons 1.5)
+paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存归一化结果
 ```
 
 组件内部用到的图标同样取 `icons.IconXxx`:实测"只用常量"的程序体积增量 **0 字节**(2130 条数据里

@@ -38,17 +38,35 @@ import (
 
 // Icon 在 rc 内绘制一枚**描边图标**(等比铺满)。
 //
-// paths 是 SVG path 数据, 要求: **24x24 网格**(内部按 24 换算尺寸; 别的网格请先把坐标缩放到 24)、
-// 描边型(lucide / heroicons outline / feather 这类都是)。子路径想按**填充**画时, 在它前面加 `!`
-// (项目内部约定, 见 parseIconPath); 手写 path 不含它 = 纯描边。
-// strokeWidth 用 24 网格单位, lucide 默认为 2。
+// data 两种形态, **自动识别**(跳过前导空白看首字符是不是 `<`):
 //
-// **手里是整段 SVG**`<svg viewBox="…"><path d="…"/></svg>`(从图标站复制来的那种)时用 IconSVG ——
-// 它会提取 path、按 viewBox 归一化到 24 网格、按 fill/stroke 判定填充, 并缓存解析结果。
+//   - **path 数据**: **24x24 网格**的描边型 path, 例如 icons.IconXxx / icons.Path("eye") / 自己拼的
+//     path。子路径想按**填充**画时在它前面加 `!`(项目内部约定, 见 parseIconPath); 手写 path 不含它 = 纯描边。
+//     非 24 网格的请先把坐标缩放过去(整段 SVG 则不用, 见下)。
+//   - **整段 SVG**: 从图标站复制来的 `<svg viewBox="…"><path d="…"/></svg>`(heroicons / feather /
+//     iconfont…)—— 自动提取 `<path>`、按 viewBox **归一到 24 网格**(任意网格)、按 fill/stroke 判定
+//     填充子路径。归一化结果**按 SVG 原文缓存**(最多 512 条), 每帧只多一次首字符判断。
+//
+// strokeWidth 用 24 网格单位; 传 <= 0 时: SVG 用它自己的 stroke-width(里面也没有则 2),
+// path 数据按 2(lucide 惯例)。想先校验 SVG 或自己缓存归一化结果, 用 ParseIconSVG。
 //
 // 出图优先走 D2D 几何管线(有抗锯齿, 见 d2dicon.go); 只有 GDI 渲染模式(app.New(false))或
 // D2D 资源建不出来时才回落到折线描边。
-func (p *Painter) Icon(paths string, rc *xc.RECT, color Color, strokeWidth float32) {
+func (p *Painter) Icon(data string, rc *xc.RECT, color Color, strokeWidth float32) {
+	paths := data
+	if isIconSVG(data) {
+		v := parseIconSVGCached(data)
+		if !v.ok || v.paths == "" {
+			return // 解析失败什么都不画(想先校验用 ParseIconSVG)
+		}
+		paths = v.paths
+		if strokeWidth <= 0 {
+			strokeWidth = v.sw
+		}
+	}
+	if strokeWidth <= 0 {
+		strokeWidth = 2
+	}
 	if p.d2dIcon(paths, rc, color, strokeWidth, func() []iconSub {
 		return parseIconPath(paths)
 	}) {

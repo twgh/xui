@@ -116,10 +116,19 @@ func TestParseIconSVGHeroicons(t *testing.T) {
 	}
 }
 
-// 画在 Painter 上的入口: 解析失败要安静地什么都不画(不 panic)。
-func TestIconSVGNilSafety(t *testing.T) {
-	var p *Painter
-	p.IconSVG(testSVG24, nil, RGBA(0, 0, 0, 255), 2) // nil Painter + 坏参数不该 panic
+// 格式识别: Painter.Icon 靠它决定"直接当 path 用"还是"先走 SVG 归一化"。
+func TestIsIconSVG(t *testing.T) {
+	for _, s := range []string{testSVG24, `  <path d="M0 0"/>`, "\n\t<svg/>"} {
+		if !isIconSVG(s) {
+			t.Errorf("应识别为 SVG: %.20q", s)
+		}
+	}
+	for _, s := range []string{"M12 3 L21 21", "!M6 6 L10 6 Z", "  M0 0", "", "12 3 L1 1", `M0 0 <svg/>`} {
+		if isIconSVG(s) {
+			t.Errorf("不该识别为 SVG: %.20q", s)
+		}
+	}
+	// 坏 SVG 要记成失败(免得每帧重试)
 	if v := parseIconSVGCached("不是 svg"); v.ok {
 		t.Error("坏 SVG 不该被标记为 ok")
 	}

@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/twgh/xcgui/xc"
 )
 
 // ==================== SVG 文本 → 图标 path ====================
@@ -277,23 +275,19 @@ func parseIconSVGCached(svg string) svgParsed {
 	return v
 }
 
-// IconSVG 用一整段 SVG 文本在 rc 内画图标(等价于 Icon(ParseIconSVG(svg)) + 缓存)。
+// isIconSVG 判断 data 是"整段 SVG"还是"path 数据": 跳过前导空白后看首字符是不是 `<`。
 //
-//   - svg 可以是从图标站复制的完整 `<svg viewBox="…">…</svg>`, 也可以是裸的 `<path d="…"/>` 片段;
-//   - strokeWidth <= 0 时用 SVG 里的 stroke-width(已折算到 24 网格), 都没有则 2;
-//   - 解析失败就什么都不画(想先校验用 ParseIconSVG)。
-//
-// 性能: 归一化结果按 svg 原文缓存(最多 512 条), 每帧只多一次 map 查找; 几何本身照旧走图标几何缓存。
-func (p *Painter) IconSVG(svg string, rc *xc.RECT, color Color, strokeWidth float32) {
-	if p == nil {
-		return
+// path 数据以 M/m/L/!/数字开头, 不会与它冲突; 绘制回调每帧都会调一次, 成本可忽略
+// (Painter.Icon 用它决定要不要走 SVG 归一化)。
+func isIconSVG(data string) bool {
+	for i := 0; i < len(data); i++ {
+		switch data[i] {
+		case ' ', '\t', '\n', '\r':
+			continue
+		case '<':
+			return true
+		}
+		return false
 	}
-	v := parseIconSVGCached(svg)
-	if !v.ok || v.paths == "" {
-		return
-	}
-	if strokeWidth <= 0 {
-		strokeWidth = v.sw
-	}
-	p.Icon(v.paths, rc, color, strokeWidth)
+	return false
 }

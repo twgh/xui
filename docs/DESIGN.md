@@ -638,7 +638,8 @@ registry.json 条目(shadcn 同构格式):
       45 个图标同框是**性能压力测试**: 它的卡顿逼出了第八节 43 那条"填充 figure 数必须少"
       (719ms/帧 → 4.14ms/帧); 另注意 hover 只在状态变化时重绘。
     - **任意图标集可直接导入(2026-10-11)**: 用户手里的数据通常是一整段 SVG(从 heroicons/feather/iconfont
-      复制来的 `<svg viewBox="…"><path d="…"/></svg>`), 现在 `Painter.IconSVG(svg, rc, color, 0)` 一步到位:
+      复制来的 `<svg viewBox="…"><path d="…"/></svg>`), 与 path 数据**共用 `Painter.Icon` 一个入口**
+      (跳过前导空白看首字符是不是 `<`, 是就走下面这套归一化, 每帧一次判断成本可忽略):
       提取所有 `<path>`(支持 `<g>` 继承 fill/stroke/stroke-width)、按 **viewBox 归一到 24 网格**(任意网格:
       按较长边缩放 + 平掉 min-x/min-y)、按 fill/stroke 判定填充子路径(输出 `!` 前缀走 `FillGeometry`)、
       建议线宽取 `stroke-width` 并折算到 24 网格(调用方传 >0 时以调用方为准)。解析结果**按 SVG 原文缓存**
