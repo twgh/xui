@@ -127,7 +127,7 @@ func TestIconGeometryFigureCount(t *testing.T) {
 	names := icons.Names()
 	worst, maxFig, sum := "", 0, 0
 	for _, n := range names {
-		figs := iconStrokeFigures(parseIconPath(icons.Path(n)), 0, 0, 1, 2)
+		figs := iconStrokeFigures(parseIconPath(icons.Path(n)), 1, 2)
 		if len(figs) > maxFig {
 			maxFig, worst = len(figs), n
 		}
@@ -149,7 +149,7 @@ func TestIconGeomFilled(t *testing.T) {
 		{pts: []iconPt{{x: 2, y: 2}, {x: 4, y: 2}, {x: 4, y: 4}, {x: 2, y: 4}}, filled: true},
 		{pts: []iconPt{{x: 10, y: 10}, {x: 12, y: 10}}, filled: false},
 	}
-	figs := iconStrokeFigures(subs, 0, 0, 1, 2)
+	figs := iconStrokeFigures(subs, 1, 2)
 	if len(figs) != 2 { // 填充 1 条 + 描边 1 条轮廓
 		t.Fatalf("figure 数 = %d, 想要 2", len(figs))
 	}
@@ -183,7 +183,7 @@ func TestStrokeOutline(t *testing.T) {
 
 	// X 图标: 两笔(两条折线)的轮廓绕向必须一致
 	var signs []int
-	for _, fig := range iconStrokeFigures(parseIconPath(icons.IconX), 0, 0, 10.0/24, 2*10.0/24) {
+	for _, fig := range iconStrokeFigures(parseIconPath(icons.IconX), 10.0/24, 2*10.0/24) {
 		area := signedArea(fig)
 		if area > 0 {
 			signs = append(signs, 1)

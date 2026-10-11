@@ -77,6 +77,9 @@
   **`go.work`** 把本地 xcgui 工作副本接进来(该文件已在 `.gitignore`), `go.mod` 保持干净的 `require v1.4.2`。
   后来又补了 `SetTransform` / `GetTransform`(矩阵按**指针**传, 不受"按值浮点走 XMM"的限制)——
   探针 `.verify/probexform` 往返一致(单位矩阵 → 平移 12,34 → 设回单位矩阵)。
+  借它把图标**位置从几何缓存里外置**了: 几何只按 (path, size, strokeW) 缓存、绘制时用平移矩阵移过去 ——
+  窗口 resize 不再重建几何(实测尺寸来回切 10 次的 CPU 78/93ms → 62/62ms), 像素验收两组 0 差、图标页
+  6/2322000 像素(AA 边缘); 前提是**成对恢复变换**(实测 XDraw 用的是绘制当时的 RT 变换, 见 DESIGN 43/65)。
 
 ## 待办
 

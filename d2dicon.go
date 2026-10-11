@@ -31,14 +31,16 @@ import (
 
 // ---------------- 几何构造与缓存 ----------------
 
-// d2dGeomKey 标识一条图标几何。坐标已"一次成型"烘焙成最终绘制坐标,
-// 所以原点(ox/oy)必须进 key, 否则同一图标换个位置会画错地方。
+// d2dGeomKey 标识一条图标几何。
+//
+// **位置(ox/oy)不在 key 里**: 几何以自身原点为基准构造, 绘制时用渲染目标的变换矩阵平移过去
+// (见 d2dStroke)。这样窗口 resize(位置全变、尺寸不变)时几何**照常复用** —— 早先把位置烘进几何,
+// resize 后每个图标都是新 key, 于是全部重建(CPU 描边展开 + CreatePathGeometry)。
+// size 与线宽仍在 key 里: 它们改变的是几何本身的形状。
 type d2dGeomKey struct {
-	paths string // 图标 path 原文(资源里的一条数据, 或调用方自备的 lucide path)
-	ox    int32
-	oy    int32
-	size  int32
-	sw    float32
+	paths string  // 图标 path 原文(资源里的一条数据, 或调用方自备的 lucide path)
+	size  int32   // 图标边长(物理像素)
+	sw    float32 // lucide 网格单位下的线宽(24 网格)
 }
 
 // 几何缓存。绘制回调每帧都会新建 Painter(Painter 是帧内对象), 所以缓存必须放包级。
@@ -82,8 +84,9 @@ func d2dGeomCache(factory *d2d.ID2D1Factory) map[d2dGeomKey]*d2d.ID2D1PathGeomet
 // 所有轮廓的绕向天然一致(与折线自身绕向无关), 因此在 WINDING 模式下并集即笔画形状;
 // 跨子路径的重叠(比如 X 的两笔)也会正确并起来。
 //
-// 坐标一次性成型: 先按 s=size/24 缩放到最终绘制坐标(含 ox/oy 偏移), 再按 w(=strokeWidth*s)展开。
-func iconStrokeFigures(subs []iconSub, ox, oy int32, s, w float32) [][]float32 {
+// 坐标一次性成型: 先按 s=size/24 缩放到"自身原点"的最终绘制坐标(位置由绘制时的变换矩阵施加),
+// 再按 w(=strokeWidth*s)展开。
+func iconStrokeFigures(subs []iconSub, s, w float32) [][]float32 {
 	r := w / 2
 	if r <= 0 {
 		return nil
@@ -95,8 +98,8 @@ func iconStrokeFigures(subs []iconSub, ox, oy int32, s, w float32) [][]float32 {
 		}
 		pts := make([]float32, len(sub.pts)*2)
 		for i, p := range sub.pts {
-			pts[i*2] = float32(ox) + p.x*s
-			pts[i*2+1] = float32(oy) + p.y*s
+			pts[i*2] = p.x * s
+			pts[i*2+1] = p.y * s
 		}
 		if sub.filled { // 填充形状: 原样入几何(闭合由 EndFigure 负责)
 			figs = append(figs, sameOrientation(pts))
@@ -265,7 +268,7 @@ func (p *Painter) d2dIcon(paths string, rc *xc.RECT, color Color, strokeWidth fl
 	if !ok {
 		return false
 	}
-	return p.d2dStroke(d2dGeomKey{paths: paths, ox: ox, oy: oy, size: size, sw: strokeWidth},
+	return p.d2dStroke(d2dGeomKey{paths: paths, size: size, sw: strokeWidth},
 		color, ox, oy, size, strokeWidth, build)
 }
 
@@ -289,11 +292,24 @@ func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, str
 	geom, hit := geoms[key]
 	if !hit {
 		s := float32(size) / 24
-		geom, _ = factory.NewGeometry(iconStrokeFigures(build(), ox, oy, s, strokeWidth*s))
+		geom, _ = factory.NewGeometry(iconStrokeFigures(build(), s, strokeWidth*s))
 		geoms[key] = geom // 失败(nil)也记下, 免得每帧重试
 	}
 	if geom == nil {
 		return false
+	}
+
+	// 位置不烘进几何(见 d2dGeomKey): 用渲染目标的变换矩阵把几何平移到目标位置。
+	// **必须成对恢复** —— 实测(探针 .verify/probexform2)炫彩自己的绘制(XDraw_*)在绘制时用的是
+	// 当前变换, 残留的矩阵会把页面内容一起平移; 成对设置/恢复后不受影响。
+	if ox != 0 || oy != 0 {
+		prev, err := rt.GetTransform()
+		if err != nil {
+			return false
+		}
+		tm := d2d.TranslationMatrix(float32(ox), float32(oy))
+		rt.SetTransform(&tm)
+		defer rt.SetTransform(&prev)
 	}
 
 	// 直通绘制绕过了炫彩的元素 alpha 合成(实测: Dialog 淡入时关闭图标不跟着淡),
