@@ -7,7 +7,7 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-11)
+## 当前状态(截至 2026-10-14)
 
 **阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(P3 仅剩"combobox 弹层进场动画"未做;CLI 远程 registry 已完成);P4(文档站、主题画廊)未开始。路线图见 DESIGN 第七节。
 
@@ -21,6 +21,7 @@
 - ✅ **demo + 用户项目 E2E**:拷贝出的组件在独立用户模块编译/运行/渲染全部正常
 - ✅ **demo 布局化 + 布局 API 收口**(2026-10-04~08):改用 `widget.NewLayoutEle` 流式布局;布局项统一到 `xui.Item*`(只声明要改变的那条轴, 哨兵 `xui.ItemKeep=-1`), 容器骨架统一到 `xui.HStack` / `xui.VStackWeight` / `ui.Card.ContentStack`;语义与"纵向溢出换列"坑见 29/41
 - ✅ **参考实现补齐**(本地 shadcn 对照页):switch/progress/slider/tabs/tooltip/select/table/dropdown-menu 源码落盘 + `App.tsx` 对照卡(含新第 6 页「图标」);`pnpm build` 通过
+  - 2026-10-14 再补:`scroll-area.tsx`(`npx shadcn add scroll-area`, 交互语义权威)+ 基础页"滚动容器"对照卡(与 demo 同构)。
 - ✅ **ComboBox 弹层对齐 shadcn**:ring 四边完整(画在 `XE_PAINT_END` 内缩 1px)、item-aligned 定位 + 屏幕边界截断滚动(30)
 - ✅ **Dialog**(2026-10-04):路线 = 窗口内覆盖元素(全窗遮罩 + 居中面板 + 页脚 + 幽灵图标关闭钮), ESC / 点遮罩 / 关闭钮关闭 + Tab 焦点陷阱;backdrop-blur-xs(33/34/47)
 - ✅ **Menu**(2026-10-05):原生菜单承载行为 + 窗口级 `XWM_MENU_DRAW_*` 自绘皮肤(36)
@@ -70,6 +71,8 @@
   **顺带修掉 registry.json 的依赖缺陷**:`dialog` 漏 `backdrop.go`、`combobox`/`menu` 漏 `tooltip` 依赖
   —— 过去 `xui add dialog` 拷出来的组件根本编译不过。
 
+- ✅ **页面滚动容器 `ui.ScrollArea`**(2026-10-14):载体是原生 **`LayoutFrame`(布局框架 = 布局盒子 + 滚动视图)**, 内容总大小**按子项自动撑开**、溢出自动出纵向滚动条(不需要手动 `SetTotalSize`)。探针实测定死一批语义(子项 `Fill` = 视口高且内层溢出**不算**滚动范围、`Weight` 恒为 0、`EnableOverflowHide` 是"布局时把子项高度裁掉"**不是**裁剪显示、首帧内容宽少一个滚动条宽要补排一次、`ScrollPosYV` 才是像素)与滚动条皮肤(轨道透明 + `bg-Border` 圆头滑块 + `OnThemeChangeFor` 换肤跟随)—— 全部记进 **DESIGN 第八节 66** + API 清单。demo 六个页全部换成滚动容器(不再被 `EnableOverflowHide` 裁掉): **自撑型**(基础/表单/导航/反馈/图标, 内容区 Auto 高, 窗口小于内容时滚)与**铺满型**(数据页 `SetContentFill`, 表格/树仍跟随窗口长高、整页不滚);demo 的 `row` 骨架同步改成行高 Auto(`rowStretch` 给数据页)。验收: 980×700 下表单页出滚动条 + 真实滚轮滚动(先点一下页内空白让窗口拿到焦点)+ 滚动条滑块随主题亮(#e5e5e5)→暗(#232323)现场切换;大窗(1500×880)无滚动条且卡片右缘 = 视口右缘 − 24 页边距(无"12px 空白"回归);六页 + 对话框浮层在两种尺寸/两种主题下逐页抓图核对;基础页加了一张"滚动容器"卡片(组件形态, 嵌套滚动)。⚠️ 滚动条**滑块拖动**在合成输入下未复现(裸 LayoutFrame 同样拖不动、表格 List 的能拖 —— 非组件引入的差异, 见 DESIGN 66 末尾)。
+
 - ✅ **D2D COM 直通底座上游化到 xcgui**(2026-10-11):xcgui "交给 Go 侧裸 `ID2D1Factory` /
   `ID2D1RenderTarget` 指针却不给封装"留下的空白, 现在收进 xcgui 新子包 **`github.com/twgh/xcgui/wapi/d2d`**,
   COM 基础件(`ComProc`/`IUnknown`/`IUnknownVtbl`/`InterfacePtr`)抽到 **`wapi/com`** 子包共用, d2d 以
@@ -107,8 +110,6 @@
 
 ## 待办
 
-- **页面滚动容器**: 页面内容比窗口高时, 现在被页面自身的 `EnableOverflowHide` 裁掉。要么给页面套滚动容器(`widget.ScrollView` 一类的自绘滚动条 + 内容高度撑开), 要么让内容自适应(见 DESIGN 8.59)
-
 - ⬜ **P3 剩余**:combobox 弹层进场动画(menu 已做淡入, 见 64; combobox 的下拉窗是 ListBox 载体, 转 Shadow 路线待验证)
 - ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计,**只剩 REGISTRY_V2.md 五 的两步真实验收依赖仓库公开**)
 - ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 弹层宽度=触发区宽(SetItemWidth 无效, 见 64)、`--chart-1..5`/`--sidebar-*` 令牌未建模
@@ -132,7 +133,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │                                 button checkbox radio input label separator(含 Badge) card
 │                                 switch progress slider tabs tooltip combobox dialog
-│                                 menu table tree pagination
+│                                 menu table tree pagination scrollarea
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
@@ -187,7 +188,7 @@ go test ./...
 3. **行为/视觉分层**:xcgui 原生控件 = 无头行为层,`AddEvent_Paint` + `drawx` 只管视觉
 4. **交互语义逐条对齐 shadcn 源码**:改交互前先在 DESIGN 第四节末的语义汇总表确认,再读 `shadcn/src/components/ui/*.tsx`
 5. **组件文件写薄**:绘制细节下沉运行时助手,降低拷贝模式下的升级冲突面
-6. **界面用流式布局表达,不写绝对坐标**:窗口是唯一"天然确定尺寸"的父级,竖向主链从窗口开始一路 `Weight`(每级确定尺寸,下一级的 `Weight` 才算得出剩余空间);卡片高度用 `Auto` 自撑,要长高的面板整条链全 `Weight`。**别在中间垫 `Fill` 容器,也别用 `Fill` 当"剩余空间"**(尺寸语义见 DESIGN 第八节 55,样板在 `demo/main.go` 的 `row`/`colStretch`/`autoCard`)
+6. **界面用流式布局表达,不写绝对坐标**:窗口是唯一"天然确定尺寸"的父级,竖向主链从窗口开始一路 `Weight`(每级确定尺寸,下一级的 `Weight` 才算得出剩余空间);卡片高度用 `Auto` 自撑,要长高的面板整条链全 `Weight`。**别在中间垫 `Fill` 容器,也别用 `Fill` 当"剩余空间"**(尺寸语义见 DESIGN 第八节 55,样板在 `demo/main.go` 的 `row`/`colStretch`/`autoCard`)。页面本身是 `ui.ScrollArea` 滚动容器: 自撑型页面(内容 Auto 高,行高也必须 Auto)窗口小了就滚, 铺满型页面(数据页 `SetContentFill`)整链 Weight、面板跟随窗口长高(见第八节 66)
 
 ## 文档导航(去哪查什么)
 
@@ -197,8 +198,8 @@ go test ./...
 | 架构原理、分层边界、主题令牌、组件解剖 | DESIGN.md 一~四节 |
 | **交互语义(改交互前必看)** | DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」+ 本地 shadcn 源码 |
 | **我们与 shadcn 的差异 / 变体尺寸映射** | DESIGN.md 第四节末「变体/尺寸与上游的映射、已知差异」 |
-| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~58) |
-| 界面布局怎么写(容器/尺寸/随窗口自适应) | DESIGN.md 第八节 55(尺寸语义) + 56(Card), 样板在 `demo/main.go` |
+| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~66) |
+| 界面布局怎么写(容器/尺寸/随窗口自适应/滚动) | DESIGN.md 第八节 55(尺寸语义) + 56(Card) + 66(滚动容器), 样板在 `demo/main.go` |
 | 用到的 xcgui API 清单 | DESIGN.md 第九节 |
 | agent 会话硬规则 | AGENTS.md |
 | 面向用户的安装与用法 | README.md |
@@ -221,6 +222,7 @@ go test ./...
 **通用**:
 
 - 疑难渲染问题写探针程序(`.verify/probeN` 独立 main 包, `go build -o .verify/probeN/probeN.exe ./.verify/probeN` 后运行;`.verify/` 已被 go 工具链忽略),完事删掉
+- **本机 MCP 截图/鼠标注入不可用时的替代**(2026-10-14 留在 `.verify/`, 目录被 git 忽略): `cap.exe "<窗口标题子串>" <out.png>`(枚举可见窗口取面积最大者, 按窗口矩形 BitBlt 抓**物理像素**; 自建工具都已设 per-monitor DPI-aware)、`winpos.exe "<标题>" <x> <y> <w> <h>`(按**逻辑**像素移动/缩放窗口)、`click.exe <x> <y> [drag <x2> <y2>]`、`wheel.exe <x> <y> <delta> [n]`(均为**物理屏幕坐标**; 编译 `go build -o .verify/<tool>/<tool>.exe ./.verify/<tool>`)。⚠️ **注入滚轮前先 click 一下目标区域**: 窗口没有焦点时滚轮消息会被系统送给前台窗口(实测踩过 —— 同样坐标点一下页内空白再滚就正常)
 - 布局类问题**用 `xc.XEle_GetRectLogic` 打印各元素矩形**判定, 比截图量像素快且准(探针里 `AdjustLayout()` 之后读;注意窗口必须 `Show` 过才有非零尺寸, 见 DESIGN 8.55)
 - 要按**物理/逻辑像素精确量测**时, 自己用 Win32 抓窗口(GetWindowRect + CopyFromScreen)比 MCP 截图可靠: MCP 截图会被缩放到模型尺寸。**抓之前必须把抓图进程设为 per-monitor DPI-aware**(`SetProcessDpiAwarenessContext(-4)`), 否则 GetWindowRect 给虚拟化坐标、CopyFromScreen 抓物理像素, 两者差 150% —— 抓出来的图左边会多出一条桌面(踩过)
 - 需要"真实鼠标"验证 hover/点击时, 探针里用 `wapi.SetCursorPos` 比外部脚本可靠;从 PowerShell 移动鼠标要注意它是 DPI-unaware 进程, 坐标会被虚拟化/偏移, 别拿截图坐标直接当屏幕坐标用(踩过坑)。脚本里出现中文时**必须存成 UTF-8 **带 BOM**** —— PowerShell 5.1 按 ANSI 读 `.ps1`, 无 BOM 的中文串会把语法读坏(报一堆莫名其妙的 "Unexpected token")

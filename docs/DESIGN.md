@@ -274,6 +274,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本项目令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
+| scroll area: 页面/长内容滚动用 `ui.ScrollArea`(原生 LayoutFrame 载体, 见第八节 66): **只做纵向**(内容区恒铺满视口宽); 滚动条常驻(内容溢出时)、8px 细条 + 滑块 `bg-border` 圆头、轨道透明; 滑块悬停**不换色**; 滚轮悬停任意子元素都滚动(原生控件如 List 自吃 —— 嵌套滚动常态) | scroll-area.tsx(w-2.5 p-px `rounded-full bg-border`; radix `type` 默认 hover 淡入 —— 本实现的差异见"已知差异"表) |
 | **disabled:opacity-50 是组级透明**:组件自绘的**形状**(壳体/轨道/勾/滑块/圆点)**逐层各乘 50%**(`ScaleAlpha`, 见第八节 61);**原生文字**不吃 alpha —— 按钮文字/复选框与单选框的标签保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194),输入框禁用文字用"前景色×卡片色对半混"预混后发给原生 Edit。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider/input.tsx |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10(ring 画在面板矩形**外侧** 1px, 直接描面板矩形会被遮罩灰吞掉, 见第八节 33);标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
 | dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
@@ -298,6 +299,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Tabs | `WithTabsVertical()` 支持垂直(标签堆叠、左对齐、指示条在右侧) | 上游 `group-data-vertical/tabs:*` |
 | Slider | `WithSliderRange(min,max)` / `WithSliderStep(step)` | 对应 radix 的 min/max/step; 默认仍是 0~100 连续 |
 | ComboBox 触发区 | `WithComboSize(ComboSizeSm)` = h-7 + `rounded-[min(--radius-md,10px)]` | 对应 select.tsx 的 `data-[size=sm]` |
+| ScrollArea | **本项目形态**: 原生 LayoutFrame 载体 + 主题化细滚动条; 滑块 `bg-border` 圆头但**不做 radix 的悬停淡入**(常驻, 同 Table/Tree 的细条观感); 只做纵向(上游 ScrollBar 有 horizontal 档) | 页面滚动容器; 语义与踩坑见第八节 66 |
 | Menu | 缺上游的 `inset` prop(带图标条目的左缩进) | 未实现 |
 | Pagination | **本项目扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
@@ -1006,7 +1008,7 @@ registry.json 条目(shadcn 同构格式):
       另外: **行高 Auto 也不行** —— 横向行里 `Weight` 宽的子项会塌成 0 宽(实测: 四个列全 0 宽)。
     - **修法(本仓库现在采用的骨架)**: 每个"栅格"用 **一行**(行高 Weight) + **`Weight` 宽的列, 列高声明 `Auto`**(`demo` 的 `col()` 已改成 Auto), 卡片按内容顺序**竖着排在列里**; 整宽卡片直接挂 `body`(实测正确)。竖排还顺带修掉现象②: 同一列里两张卡是"先后关系", 不再有行与行之间的重叠。
     - **验收**(真实截图像素, 1600% 缩放阈值): 输入框右端 x=863 = 卡片内容区右缘(863), 卡片边框在 887; 反馈页进度条 x 78..1721 = 内容区 78..1721; 基础页分隔线 x 1103..1721 = 内容区 1103..1721。探针矩阵见 `.verify/probe_layout`(A/B/C/D/E/P1/P2 候选)。
-    - **代价**: 页面内容比窗口高时会被页面自身的 `EnableOverflowHide` 裁掉(不再重叠, 但也看不到)。要"看得到"得给页面加滚动容器 —— 记在 HANDOFF 待办。
+    - **代价**: 页面内容比窗口高时会被页面自身的 `EnableOverflowHide` 裁掉(不再重叠, 但也看不到)。要"看得到"得给页面加滚动容器 —— **已解**(2026-10-14): 页面换成 `ui.ScrollArea` 滚动容器, 见第八节 66。
 
 60. **"自适应列宽"依赖元素宽度, 而宽度是布局算出来的 —— 必须订阅元素尺寸事件自愈**(2026-10-10, `components/table.go`):
     - **现象(用户报)**: 刚进入数据页时表格**最后一列(自适应列)被挤成 20px**, 表头文字裁成"日"、单元格文字全是"..."(`...` 是形状文本放不下时的截断标记); 拉一下窗口尺寸(或换页回来)就正常。
@@ -1050,6 +1052,23 @@ registry.json 条目(shadcn 同构格式):
     - **`SetTransform` 与炫彩绘制的相互作用(实测, 用它的前提)**: 炫彩的 `XDraw_*` 走的是**绘制当时的 RT 变换** —— 设了平移不恢复的话, 紧随其后的 XDraw 内容会一起被平移(探针 `.verify/probexform2`: 变换下画的绿色矩形右移了 150 逻辑像素, 恢复单位矩阵后画的蓝色矩形位置正确)。所以它可以**用来做"直通绘制的局部平移"**(图标位置外置即靠它, 见 43), 但**必须成对设置/恢复**。
     - 与 43(直通拿不到元素变换/裁剪)、47(整窗 alpha 与生命周期)同源: 都是 **SyscallN 这条通道的能力边界**, 而不是 xcgui 的缺陷。
 
+66. **页面滚动容器 = 原生 `LayoutFrame`(布局框架)的实测语义**(2026-10-14, `components/scrollarea.go` + demo 六页; 探针 `.verify/probelayoutframe` / `.verify/probeautopage`):
+   - **布局框架 = 布局盒子 + 滚动视图**: 和其他容器一样流式排子项, 但**内容总大小按子项自动撑开**、溢出时自动出现纵向滚动条 —— 不需要 ScrollView 那套手动 `SetTotalSize`(示例 `Basic/ScrollView` 的用法), 页面滚动容器直接用它。
+   - **子项尺寸语义**(内容轴是"按内容自撑", 与 55 的通用语义不同):
+     - `Fixed` / `Auto` 拿到自然值(6×100 + Auto 高容器 866 对 视口 532 → 出滚动条, 内容不被压扁);
+     - **`Fill` = 视口高**, 且它**内部**子项的溢出**不算进滚动范围**(8×100 的 Fixed 卡片挂在一个 Fill 高子项里, 662 高的框架 total 仍是 662 —— 滚不动), 只适合"铺满视口 + 内层 Weight 吃剩余"的形态(Fill 子项自己的高度是确定值, 内层 `[Fixed100][Weight1][Fixed100]` 实测拿到 442 ✓);
+     - **`Weight` 直接挂在框架上恒为 0**(内容轴不确定); 内层再写 Weight 也是 0;
+     - **`EnableOverflowHide` 不是"裁剪显示"、是"布局时把超出视口的子项高度裁掉"**: 400 高的子项被压成 10(实测 400→10)。滚动页面要的是前者, 而**视口裁剪 ScrollView 自带**(滚出视口的子项本来就不画出来), 所以这个开关**不要开** —— 开了卡片会被切短。
+   - **首帧(以及滚动条显隐翻转的那一帧)内容宽度会少一个滚动条宽**: 视口 772 时 Fill 子项只有 760(右侧多 12px 空白), 原因疑似该趟排版先按"无滚动条"排子项、随后视口才被滚动条占去; **再排一次就正确**(`AdjustLayout`)。`ui.ScrollArea` 用元素尺寸事件 + (frame宽, 视口宽) 闸门自愈一次, 调用方不必管(窗口 resize 导致滚动条显隐翻转时会再自愈一次)。
+   - **滚轮**: 悬停在**子元素上**也会冒泡到框架并滚动(子元素的 `XE_MOUSEWHEEL` 默认禁用, "禁用则事件传给父元素"); 悬停原生控件(如 List)会被它自己吃掉 —— 嵌套滚动的正常行为。注入真实滚轮时**窗口必须在后台有焦点**(工具进程还要 per-monitor DPI-aware, 否则坐标虚拟化, 见 HANDOFF)。
+   - **滚动条滑块拖动: 合成输入下未复现**(`.verify/probedrag`: 裸 LayoutFrame 与 `ui.ScrollArea` 的滑块都拖不动, 而同一脚本拖**表格 List 的**(同款皮肤)能滚 —— 不是组件引入的差异, 疑与 ScrollView 自带滚动条的命中/拖拽实现有关, 未深究); 滚轮、代码滚动、点选/输入等常用路径都正常。真实鼠标下是否可拖未验证。
+   - **代码滚动**: `ScrollPosYV(像素)` 是像素语义(滚到 100 就是 100); **`ScrollPosV(pos)` 的参数是"行"单位**(默认 20px/行, `GetScrollBarVObj().GetRange()` 也按行算) —— 拿像素喂它会直接滚到底(实测 100 → range 17 全用掉)。
+   - **滚动条几何**: 元素占宽 = `SetScrollBarSize` 的值(8 就是 8), `SetSliderPadding(2)` 只把**滑块**在轨道里缩成 4px 宽(Table 的 `tableSBW=12` 是保守值); 轨道要真透明得 `ClearBkInfo` 后垫一层 alpha=0 的填充(否则回退系统默认内容, 同 30); 滑块 = `bg-Border` + `SetRectRoundAngle(4,4,4,4)` 圆头(bkmanager 的 id 版 AddFill + `GetObjectObj(id)`), 换肤走 `OnThemeChangeFor` 重刷(Clear 后重加, 实测亮 #e5e5e5 → 暗 #232323 现场切换跟随)。
+   - **容器被点一下会聚焦并画原生蓝框**(#58B1FC, 同 34) → `EnableFocus(false)` + `EnableDrawBorder(false)`。
+   - **内容区的外边距计入滚动范围**: 内容区四边各 24 外边距时 total = 24 + 内容高 + 24 —— 页面底部留白因此天然有效(滚到底正好留 24, 不必额外垫占位元素)。
+   - **Auto 内容里的栅格写法**(`.verify/probeautopage`): 行高必须 **Auto**(行高写 Weight/Fill 在 Auto 内容里塌成 0 —— demo 首次接入时两列卡片整段消失就是这个), 行里 **`Weight` 宽的列仍然算得出宽度**(352 宽的行 → 201/135 = 3:2 ✓), 列高 Auto、卡片 Auto —— 就是 CSS flex 的直觉写法。**铺满型页面(数据页)反过来**: 内容区 `SetContentFill`(Fill) + 行 `Weight` + 列/卡片 Weight 整链 Weight, 表格/树才会跟随窗口长高, 代价是页面不再滚动。
+   - 与 55/56/59(尺寸语义、Card、Auto 高的坑)同源; 该条同时解释了"页面内容比窗口高被 `EnableOverflowHide` 裁掉"那条旧待办的解法。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -1064,6 +1083,7 @@ registry.json 条目(shadcn 同构格式):
 - `XWnd_Redraw / XWnd_GetDPI`、`XC_EnableAutoDPI / XC_EnableDPI`
 - LayoutEle:`EnableLayout / IsEnableLayout / EnableHorizon / EnableAutoWrap / EnableOverflowHide / SetAlignH(V) / SetSpace / SetSpaceRow / ShowLayoutFrame / GetWidthIn(HeightIn)`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin/SetMinSize`、尺寸类型 `xcc.Layout_Size_{Fixed,Fill,Auto,Weight,Percent,Disable}` 与对齐 `xcc.Layout_Align_*`(语义与"Fill≠剩余空间 / Weight 需父级确定尺寸"见第八节 29/41/55;Go 包装无 AdjustLayout, 用 `XEle_AdjustLayout`);`EnableLayout/EnableHorizon/EnableAutoWrap` **只有 LayoutEle 与窗口有**(普通 Element 只能当布局项)
 - 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距), 本项目暂用子项外边距替代, 未实测
+- 滚动容器(`LayoutFrame`, 见第八节 66):`widget.NewLayoutFrame`(布局盒子 + 滚动视图, 内容总大小自动撑开) + `XLayoutBox_*`(与 LayoutEle 同一套 EnableHorizon/AutoWrap/OverflowHide/Align/Space) + `XSView_SetTotalSize/GetTotalSize/SetScrollBarSize/EnableAutoShowScrollBar/ShowSBarH(V)/GetViewWidth/GetViewHeight/GetViewRect/GetViewPosH(V)/ScrollPosYV(像素)/ScrollPosV(行)/ScrollTop(Bottom)/GetScrollBarH(V)Obj`、`ScrollBar.ShowButton/SetSliderPadding/GetButtonSliderObj` + `AddEvent_Size(xc.XE_SIZE1)`(自愈补排)
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
 - `XWnd_SetWindowPos(物理像素)`、`XC_hWindowFromHWnd`、`XEle_GetWndClientRect`、`XWnd_GetClientRect`、`wapi.ShowWindow/SetForegroundWindow/GetSystemMetrics/GetWindowLongPtrW`
 - D2D 直通:`xc.XDraw_GetD2dRenderTarget / XDraw_ConvRect / XC_GetD2dFactory`(裸指针;直通绘制必须先用 `ConvRect` 换到画布对齐坐标,见第八节 43)+ **`github.com/twgh/xcgui/wapi/d2d`**(按 edge 的 COM 接口虚表风格封装,ABI 三条硬规则写在包注释里):借用入口 `NewRenderTargetByHandle`/`NewFactoryByHandle`;几何 `NewGeometry`/`NewGeometryFigures`(逐条可指定开/闭)/`Create{Rectangle,RoundedRectangle,Ellipse}Geometry` + `ID2D1Geometry.Usable/GetBounds` + `ID2D1PathGeometry.Open/Base` + `ID2D1GeometrySink.{SetFillMode,BeginFigure,AddLines,EndFigure,Close}`;绘制 `FillGeometry(Color)`/`DrawGeometry(Color)`(任意几何) + 图元 `DrawLine`/`DrawRectangle`/`FillRectangle`/`DrawEllipse`/`FillEllipse`(各带 `*Color` 便利版) + `CreateStrokeStyle`/`RoundStrokeStyleProperties`;其余 `SetTransform`/`GetTransform`/`GeometryCache[K]`(按工厂作废的几何缓存)

@@ -244,8 +244,11 @@ func main() {
 // **只声明要改变的那条轴**, 元素自身尺寸由组件构造函数建好)。
 // 下面这几个是 demo 自己的组合(容器行 / 卡片 / 分组标题), 都用布局表达, 不出现绝对坐标。
 
-// row 建一行"放卡片的容器行": 宽度铺满, 高度 ht(传 0 = 占满剩余高度),
+// row 建一行"放卡片的容器行": 宽度铺满, 高度 ht(传 0 = 按内容自撑 Auto),
 // 子项间距 space, 交叉轴顶端对齐(卡片各自按内容自撑高度, 不要被拉成一样高)。
+//
+// 行高必须 Auto: 页面是滚动容器, 内容区高度按内容自撑(Auto), 里面再写 Weight/Fill 会塌成 0。
+// 行是 Auto 高时"Weight 宽的列"仍然算得出宽度(实测: 内容区 352 时两列 201/135 = 3:2)。
 func row(parent int, ht, space int32) *widget.LayoutEle {
 	r := widget.NewLayoutEle(0, 0, 0, ht, parent)
 	r.EnableHorizon(true)
@@ -258,10 +261,24 @@ func row(parent int, ht, space int32) *widget.LayoutEle {
 	if ht > 0 {
 		r.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ht)
 	} else {
-		// 高度用 Weight 而不是 Fill: 两者在"只有一个子项"时尺寸相同, 但 Weight 是**确定尺寸**,
-		// 列里的 Weight 子项才算得出剩余空间(见 DESIGN 第八节 55)。
-		xui.ItemFillHeight(r)
+		r.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
 	}
+	return r
+}
+
+// rowStretch 建一行"吃满父级剩余高度"的行 —— 只用在**铺满型页面**(SetContentFill 的数据页):
+// 那时内容区高度 = 视口高(确定尺寸), 行用 Weight 才拿得到剩余空间, 行列里的 stretchCard /
+// 表格 / 树才会跟着窗口长高。滚动型页面(内容区 Auto)里用它会塌成 0 高, 请用 row。
+func rowStretch(parent int, space int32) *widget.LayoutEle {
+	r := widget.NewLayoutEle(0, 0, 0, 0, parent)
+	r.EnableHorizon(true)
+	r.EnableLayout(true)
+	r.EnableBkTransparent(true)
+	r.EnableAutoWrap(false)
+	r.SetSpace(space)
+	r.SetAlignV(xcc.Layout_Align_Top)
+	r.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	xui.ItemFillHeight(r)
 	return r
 }
 
@@ -359,11 +376,14 @@ func buildPages(hWindow, host int) {
 	// 整个页面区就往下溢出、页面底部的留白被挤出窗口(实测)。
 	xui.ItemFillHeight(pageHost)
 
-	pages := make([]*widget.LayoutEle, pageCount)
+	pages := make([]*ui.ScrollArea, pageCount)
 	bodies := make([]*widget.LayoutEle, pageCount)
 	for i := range pages {
 		pages[i], bodies[i] = newPage(pageHost.Handle)
 	}
+	// 数据页是"铺满型": 表格/树吃窗口剩余高度(整页内容由 Weight 自适应、永远装得下,
+	// 不需要滚动)。其余页是自撑型: 内容比窗口高时滚动。
+	pages[pageData].SetContentFill()
 
 	buildBasePage(bodies[pageBase])
 	buildFormPage(bodies[pageForm])
@@ -396,25 +416,14 @@ func buildPages(hWindow, host int) {
 	tabs.SetActive(int32(home)) // 会同步触发一次 OnChange(实测)
 }
 
-// newPage 建一个页面: 铺满宿主的容器 + 其内带四周留白的内容区(竖向流式, 子项间距 gap)。
-func newPage(host int) (page, body *widget.LayoutEle) {
-	page = widget.NewLayoutEle(0, 0, 0, 0, host)
-	page.EnableHorizon(false)
-	page.EnableLayout(true)
-	page.EnableBkTransparent(true)
-	page.EnableAutoWrap(false)
-	page.EnableOverflowHide(true) // 窗口小于内容时裁掉, 不要画到页签行上去
+// newPage 建一个页面: 滚动容器(铺满宿主) + 其内带四周留白的内容区(竖向流式, 子项间距 gap)。
+// 内容比窗口高时滚动查看, 不再被裁掉(见 ui.ScrollArea)。
+func newPage(host int) (page *ui.ScrollArea, body *widget.LayoutEle) {
+	page = ui.NewScrollArea(0, 0, 0, 0, host)
 	page.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	xui.ItemFillHeight(page) // 高度 = 页面宿主的剩余空间(且是确定尺寸, 页内的 Weight 才算得出来)
+	xui.ItemFillHeight(page) // 高度 = 页面宿主的剩余空间(Weight)
 
-	body = widget.NewLayoutEle(0, 0, 0, 0, page.Handle)
-	body.EnableHorizon(false)
-	body.EnableLayout(true)
-	body.EnableBkTransparent(true)
-	body.EnableAutoWrap(false)
-	body.SetSpace(gap)
-	body.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	xui.ItemFillHeight(body)
+	body = page.ContentStack(gap)
 	body.LayoutItem_SetMargin(pagePad, pagePad, pagePad, pagePad)
 	return page, body
 }
@@ -499,6 +508,20 @@ func buildBasePage(body *widget.LayoutEle) {
 	footer := ui.NewCardFooter(0, 0, 0, 0, cardDemo.Handle)
 	xui.ItemFill(footer)
 	ui.NewLabel(16, 10, 0, 24, "CardFooter · border-t + bg-muted/50, 只随卡片下两角圆角", footer.Handle)
+
+	// ---- 第三行: 滚动容器(组件形态; 页面本身也是它, 见 newPage) ----
+	_, vs := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "滚动容器", vs.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"ui.ScrollArea: 原生 LayoutFrame 载体, 内容比容器高时纵向滚动、滚动条自动显隐,"+
+			"内容区高按内容自撑(Auto)", vs.Handle))
+	box := ui.NewScrollArea(0, 0, 0, 180, vs.Handle)
+	xui.ItemFill(box)
+	for i := 1; i <= 12; i++ {
+		l := ui.NewLabel(0, 0, 0, 0, fmt.Sprintf("第 %d 行 · 滚动容器里的普通内容", i), box.Content().Handle)
+		xui.ItemFill(l)
+	}
+	box.Content().SetSpace(6)
 }
 
 // ===== 页 2: 表单(输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框) =====
@@ -716,7 +739,7 @@ func buildFeedPage(body *widget.LayoutEle, hWindow int) {
 // ===== 页 5: 数据(表格 / 树) =====
 
 func buildDataPage(body *widget.LayoutEle) {
-	r := row(body.Handle, 0, gap)
+	r := rowStretch(body.Handle, gap) // 铺满型页面: 表格/树跟随窗口长高(内容区已 SetContentFill)
 
 	// ---- 表格(整行占满剩余高度, 表格跟随窗口长高) ----
 	_, v := stretchCard(colStretch(r.Handle, 3, gap).Handle, 10)

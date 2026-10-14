@@ -85,6 +85,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Table | 数据表格(原生 `List` 载体 + 全自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽支持"占满剩余宽度" |
 | Tree | 树形视图(原生 `Tree` 载体 + 全自绘皮肤):缩进参考线/旋转 chevron/行悬浮选中;叶节点留空槽位文字全树对齐,点击 chevron 展开收起 |
 | Pagination | 分页(纯自绘单元素,鼠标驱动):上一页/下一页 + 页码 + 省略号折叠(>7 页),内容居中、当前页为描边态;`SetTotal/SetPageSize/SetPage/OnChange` |
+| ScrollArea | 滚动容器(原生 `LayoutFrame` 载体):内容比容器高时纵向滚动,内容总大小按子项自动撑开、滚动条自动显隐;主题化细滚动条,内容区 `ContentStack()` 随便塞;`SetContentFill()` 切"铺满视口 + 面板吃剩余高度"形态 |
 | Label / Card / Badge / Separator | 静态展示组件:Badge 6 变体(含 ghost/link,悬停生效)、Card 支持 `sm` 尺寸与说明/页脚、Separator 支持垂直 |
 
 每个组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环。
