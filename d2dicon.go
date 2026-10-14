@@ -1,8 +1,8 @@
 package xui
 
 import (
-	"github.com/twgh/xcgui/d2d"
 	"github.com/twgh/xcgui/svgp"
+	"github.com/twgh/xcgui/wapi/d2d"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 )

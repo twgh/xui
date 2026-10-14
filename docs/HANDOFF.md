@@ -71,7 +71,7 @@
   —— 过去 `xui add dialog` 拷出来的组件根本编译不过。
 
 - ✅ **D2D COM 直通底座上游化到 xcgui**(2026-10-11):xcgui "交给 Go 侧裸 `ID2D1Factory` /
-  `ID2D1RenderTarget` 指针却不给封装"留下的空白, 现在收进 xcgui 新子包 **`github.com/twgh/xcgui/d2d`**,
+  `ID2D1RenderTarget` 指针却不给封装"留下的空白, 现在收进 xcgui 新子包 **`github.com/twgh/xcgui/wapi/d2d`**,
   COM 基础件(`ComProc`/`IUnknown`/`IUnknownVtbl`/`InterfacePtr`)抽到 **`wapi/com`** 子包共用, d2d 以
   类型别名引用(edge 自带一份同源实现, 迁移面大暂未动)。该包还提供 **amd64 的汇编转发器**(`CallWithFloat32`/
   `CallWithFloat64`/`CallWithFloat32RetFloat`)—— 让"形参含浮点"的 COM 方法也能调(SyscallN 设不了 XMM);
