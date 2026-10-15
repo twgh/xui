@@ -7,7 +7,7 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-14)
+## 当前状态(截至 2026-10-15)
 
 **阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(P3 仅剩"combobox 弹层进场动画"未做;CLI 远程 registry 已完成);P4(文档站、主题画廊)未开始。路线图见 DESIGN 第七节。
 
@@ -107,6 +107,24 @@
   `d2dicon.go` 删掉 `strokeOutline/addArc/miterPoint` 约 300 行, 缓存 key 精简成 (path, size), 角/端点由
   D2D 按 SVG 的 round 语义画(实测"角变圆"、墨迹量 +0.09%)。**性能: 微观 4 倍(2 万次 20ms vs 80ms)、
   真实场景在噪声内** —— 收益是质量与代码量, 不是帧率(详见 DESIGN 43 末尾)。
+
+- ✅ **滚动条统一: shadcn 几何 + 两套配色 + 悬停显隐**(2026-10-15, 两轮):五处原生滚动条载体(ScrollArea
+  页面与卡片内 / Table / Tree / ComboBox 弹层 / **多行 Input, 原先是系统滚动条**)的几何、配色、显隐
+  全部收敛到 `components/scrollbar.go` 的 `styleScrollBar` + `showScrollBarOnHover`。
+  **几何**: 轨道 10(`w-2.5`)、滑块内缩 1(`p-px`) → 8 逻辑像素宽、`rounded-full`(圆角 4);
+  **配色两套**(用户对照浏览器原版提出): 容器型 = `bg-border` 悬停不换色(radix 语义), 嵌入式
+  (Input/Table/Tree/弹层, 原版里是浏览器原生滚动条) = 前景色淡化 + 悬停加深(对齐 Win11 Fluent,
+  亮 #8b8b8b→#636363 的观感); 颜色一律 `flatOn` **展平成不透明**(暗色 Border 是半透明白, 不展平
+  会"同一滑块在页面 #232323、卡片 #2f2f2f"地不一致 —— 用户报的 bug);
+  **显隐**: 初始 `SetSubtreeAlpha(0)`, 窗口 MouseMove + `XWnd_GetStayEle` 判定(宿主子树 → `Presence`
+  淡入/淡出 150ms; 滚动条子树 → 滑块换悬停色), 不用 Show(false)(会改视口宽、内容跳变)。
+  三个踩坑(详见 DESIGN 第八节 21): ① 滑块三态的背景对象必须**各用各的 id** —— 共用一个 id 时只有
+  第一个生效, hover 会回退默认绘制(表现为"悬停时变宽且圆角消失"); ② 元素级 MouseStay/MouseLeave
+  不可靠(多行 Edit 收不到 leave、原生 List 不把悬停路由给滚动条) → 一律走窗口级 GetStayEle;
+  ③ 淡出到位那帧 anim 不重绘, 要 done 回调补 `XEle_Redraw`, 否则留淡残影。Table 的自适应列让宽
+  12→14; registry 的 5 个组件已登记 `scrollbar.go`(逐组件安装+编译复验过), demo 多行输入框加了
+  初值。**验收**: 五处载体 × 亮/暗, 隐藏/显示/悬停加深三态全部像素扫描通过(滑块物理 12px @150%;
+  亮色静止 #919191 / 悬停 #6a6a6a, 暗色两容器统一 #2f2f2f)。
 
 ## 待办
 
@@ -226,6 +244,7 @@ go test ./...
 - 布局类问题**用 `xc.XEle_GetRectLogic` 打印各元素矩形**判定, 比截图量像素快且准(探针里 `AdjustLayout()` 之后读;注意窗口必须 `Show` 过才有非零尺寸, 见 DESIGN 8.55)
 - 要按**物理/逻辑像素精确量测**时, 自己用 Win32 抓窗口(GetWindowRect + CopyFromScreen)比 MCP 截图可靠: MCP 截图会被缩放到模型尺寸。**抓之前必须把抓图进程设为 per-monitor DPI-aware**(`SetProcessDpiAwarenessContext(-4)`), 否则 GetWindowRect 给虚拟化坐标、CopyFromScreen 抓物理像素, 两者差 150% —— 抓出来的图左边会多出一条桌面(踩过)
 - 需要"真实鼠标"验证 hover/点击时, 探针里用 `wapi.SetCursorPos` 比外部脚本可靠;从 PowerShell 移动鼠标要注意它是 DPI-unaware 进程, 坐标会被虚拟化/偏移, 别拿截图坐标直接当屏幕坐标用(踩过坑)。脚本里出现中文时**必须存成 UTF-8 **带 BOM**** —— PowerShell 5.1 按 ANSI 读 `.ps1`, 无 BOM 的中文串会把语法读坏(报一堆莫名其妙的 "Unexpected token")
+- ⚠️ **cap 截图的坐标原点是"窗口左上角"**: 图内坐标 + winpos 设的窗口位置(×scale) = 屏幕物理坐标。拿图内坐标直接喂 `click/move` 会整体偏一个窗口位置 —— "鼠标悬停滚动条没反应"排查了很久, 最后发现是坐标算错(图内 798 对应屏幕 888)
 - ⚠️ **定位窗口一律用"枚举进程顶层窗口 + 取可见且面积最大"**, 不要用 `Process.MainWindowHandle`: 弹层/提示这类小窗(带 `WS_EX_TOOLWINDOW`)一旦创建, 它就会返回**小窗**, 之后用它算出来的坐标、抓出来的图全是错的(踩过: 整个复现流程因此偏了半天)。诊断脚本见 DESIGN 第九节的 Win32 诊断 API 一行
 - **"窗口可见 ≠ 屏幕上有东西"**: 判断弹层/提示这类异型透明窗有没有真的显示, 不能只看 `IsWindowVisible`/矩形 —— 用 `PrintWindow` 抓它自己的内容(证明"画了")与 `CopyFromScreen` 抓同一块屏幕(证明"屏幕上有没有")对照, 再读 `GetLayeredWindowAttributes` 的 alpha;`可见 + 矩形正确 + 像素为空` ⇒ 整窗 alpha/形状问题(见 57)
 - **验收探针必须跑 `a.Run()` 消息循环**(无泵时 Presence/定时器全不工作, 结论作废)

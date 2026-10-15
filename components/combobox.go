@@ -318,6 +318,8 @@ func styleComboPopup(hCombo, hWindow, hListBox int) {
 	}
 	// 弹层窗口/ListBox 每次弹出都是新建的(退出即销毁), 事件在这里注册即可, 不会重复。
 	lb.AddEvent_ListBox_DrawItem(comboPopupDrawItem)
+	// 滚动条同其它载体: 鼠标移入弹层(列表)才显示(见 scrollbar.go)
+	showScrollBarOnHover(hListBox, lb.GetScrollBarVObj())
 	// ring-1 ring-foreground/10: 描边画在 PAINT_END(该元素及子元素绘制完成事件)。
 	// 实测两个坑: ①ListBox 自身的 paint 事件在这个弹层窗口上不渲染输出(内缩 10px
 	// 的 6px 红色粗环都画不出来, 探针实证), 只有 BkM 与条目 DrawItem 能画; ②BkM
@@ -391,6 +393,7 @@ func applyComboPopupStyle() {
 	lb.SetItemHeightDefault(comboItemH, comboItemH)
 	lb.SetPadding(comboPad, comboPad, comboPad, comboPad) // p-1: 条目距弹层边缘 4px(加固有 3px 内缩 = 视觉 7px)
 	lb.SetDrawItemBkFlags(0)  // 原生项背景(方角灰块)全弃, 交给 DrawItem 自绘
+	lb.SetScrollBarSize(scrollBarW) // shadcn 规格的细滚动条(见 scrollbar.go)
 	lb.EnableAutoShowScrollBar(true)
 	// 滚动条显隐: 原生的显示判定在打开时用旧条目高算好, 我们把条目调矮后它不会
 	// 自己收起(实测残影), 用滚动视级开关显式控制。≤10 项内容必然装得下; 单列文本
@@ -453,21 +456,8 @@ func comboPopupDrawItem(hEle int, hDraw int, pItem *xc.ListBox_Item_, pbHandled 
 	return 0
 }
 
-// styleComboScrollBar 把弹层列表的滚动条改成细条 + 主题色。
+// styleComboScrollBar 把弹层列表的滚动条改成细条 + 主题色(几何/圆角/配色见 scrollbar.go:
+// 10px 轨道 + 8px 圆头滑块; 轨道用弹层底色, 滑块走嵌入式皮肤 = 前景色淡化 + 悬停加深)。
 func styleComboScrollBar(sb *widget.ScrollBar, t *xui.Theme) {
-	if sb == nil || sb.Handle <= 0 {
-		return
-	}
-	sb.ShowButton(false) // 隐藏上下箭头, 只留滑块
-	sb.SetSliderPadding(2)
-	sb.EnableBkTransparent(true)
-	sb.ClearBkInfo()
-	sb.AddBkFill(xcc.Element_State_Flag_Leave, uint32(t.Popover))
-	sb.AddBkFill(xcc.Element_State_Flag_Stay, uint32(t.Popover))
-	if sl := sb.GetButtonSliderObj(); sl != nil && sl.Handle > 0 {
-		sl.ClearBkInfo()
-		sl.AddBkFill(xcc.Element_State_Flag_Leave, uint32(t.Border))
-		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(t.MutedForeground))
-		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(t.MutedForeground))
-	}
+	styleScrollBar(sb, uint32(t.Popover), embedScrollBarSkin(t))
 }

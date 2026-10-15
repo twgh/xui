@@ -29,8 +29,9 @@ import (
 //	... 往 body 里塞卡片/控件
 //
 // 与 shadcn / radix ScrollArea 的差异(有意为之):
-//   - 滚动条常驻(内容溢出时), 不做 radix 那种"悬停才淡入"; 粗细/配色沿用本库 Table/Tree 的
-//     8px 细条 + 滑块 Border 色, 轨道透明(shadcn 的 thumb 就是 bg-border);
+//   - 滚动条"鼠标移入容器才显示, 离开淡出"(同 radix 的 type=hover); 隐藏用元素透明度
+//     而非 Show(false) —— 布局宽度始终保留, 内容不会跳变; 几何/配色统一到 scrollbar.go
+//     (轨道 10px + 滑块 8px 圆头 bg-border, 与 Table/Tree/ComboBox/多行 Input 同规格);
 //   - 只做纵向: 内容区永远铺满视口宽, 没有横向滚动条。
 type ScrollArea struct {
 	*widget.LayoutFrame
@@ -43,13 +44,6 @@ type ScrollArea struct {
 	lastFW, lastViewW int32
 	healing           bool
 }
-
-// 滚动条几何: 与 Table/Tree 一致 —— 元素占宽 = 8, 滑块在轨道里再内缩 2(实际 4px 宽, 观感同
-// shadcn 的细滚动条)。measure 过: 视口宽 = 框架宽 − 8;Table 里预留 12 是保守值(见 DESIGN 66)。
-const (
-	scrollAreaSBW     int32 = 8
-	scrollAreaSBInset int32 = 2
-)
 
 // NewScrollArea 创建滚动容器。尺寸/布局项语义与普通容器相同(默认不接管尺寸, 用 LayoutItem_* 声明)。
 func NewScrollArea(x, y, cx, cy int32, hParent int) *ScrollArea {
@@ -66,7 +60,7 @@ func NewScrollArea(x, y, cx, cy int32, hParent int) *ScrollArea {
 	lf.EnableFocus(false)
 	lf.EnableDrawBorder(false)
 
-	lf.SetScrollBarSize(scrollAreaSBW)
+	lf.SetScrollBarSize(scrollBarW)
 	lf.EnableAutoShowScrollBar(true)
 	lf.ShowSBarH(false) // 内容区永远铺满视口宽, 横向滚动条不需要
 
@@ -87,6 +81,7 @@ func NewScrollArea(x, y, cx, cy int32, hParent int) *ScrollArea {
 	xui.OnThemeChangeFor(lf.Handle, s.applyTheme)
 	s.applyTheme(xui.Current())
 	xui.AttachWindow(lf.Handle)
+	showScrollBarOnHover(lf.Handle, lf.GetScrollBarVObj())
 	return s
 }
 
@@ -136,37 +131,10 @@ func (s *ScrollArea) onSize(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32
 	return 0
 }
 
-// applyTheme 把滚动条收成主题细条。滚动条颜色只能经背景管理器下发给原生对象, 换肤要重刷一遍
-// (Clear 后重加, 不会累积到炫彩的 20 个背景对象上限)。
+// applyTheme 把滚动条收成主题细条(几何/圆角/配色见 scrollbar.go): 轨道透明(露出页面
+// 底色), 滑块 = 容器型皮肤(bg-border 圆头, 悬停不换色, 同 shadcn)。滚动条颜色只能经
+// 背景管理器下发给原生对象, 换肤要重刷一遍(Clear 后重加, 不会累积到炫彩的 20 个背景
+// 对象上限)。
 func (s *ScrollArea) applyTheme(th *xui.Theme) {
-	sb := s.GetScrollBarVObj()
-	if sb == nil || sb.Handle <= 0 {
-		return
-	}
-	sb.ShowButton(false) // 去掉上下箭头
-	sb.SetSliderPadding(scrollAreaSBInset)
-	sb.EnableBkTransparent(true)
-	// 轨道透明。⚠️ ClearBkInfo 后要**垫一层 alpha=0 的填充**: 清空后元素会回退"系统默认内容"
-	// (白底方角), 见 DESIGN 第八节 30 的同类坑。
-	sb.ClearBkInfo()
-	sb.AddBkFill(xcc.Element_State_Flag_Leave, 0)
-	sb.AddBkFill(xcc.Element_State_Flag_Stay, 0)
-
-	sl := sb.GetButtonSliderObj()
-	if sl == nil || sl.Handle <= 0 {
-		return
-	}
-	// 滑块: bg-border 的圆头细条(shadcn 的 thumb 悬停不换色, 这里也保持一致)。
-	sl.ClearBkInfo()
-	bkm := sl.GetBkManagerObj()
-	if bkm == nil {
-		return
-	}
-	const thumbID int32 = 1
-	bkm.AddFill(xcc.Element_State_Flag_Leave, uint32(th.Border), thumbID)
-	bkm.AddFill(xcc.Element_State_Flag_Stay, uint32(th.Border), thumbID)
-	bkm.AddFill(xcc.Element_State_Flag_Down, uint32(th.Border), thumbID)
-	if o := bkm.GetObjectObj(thumbID); o != nil && o.Handle > 0 {
-		o.SetRectRoundAngle(4, 4, 4, 4) // rounded-full 的观感
-	}
+	styleScrollBar(s.GetScrollBarVObj(), 0, containerScrollBarSkin(th))
 }

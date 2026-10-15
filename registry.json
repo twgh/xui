@@ -14,7 +14,7 @@
       "deps": []
     },
     "input": {
-      "files": ["input.go"],
+      "files": ["input.go", "scrollbar.go"],
       "deps": []
     },
     "label": {
@@ -54,7 +54,7 @@
       "deps": []
     },
     "combobox": {
-      "files": ["combobox.go"],
+      "files": ["combobox.go", "scrollbar.go"],
       "deps": ["tooltip"]
     },
     "dialog": {
@@ -66,11 +66,11 @@
       "deps": ["tooltip"]
     },
     "table": {
-      "files": ["table.go"],
+      "files": ["table.go", "scrollbar.go"],
       "deps": []
     },
     "tree": {
-      "files": ["tree.go"],
+      "files": ["tree.go", "scrollbar.go"],
       "deps": []
     },
     "pagination": {
@@ -78,7 +78,7 @@
       "deps": []
     },
     "scrollarea": {
-      "files": ["scrollarea.go"],
+      "files": ["scrollarea.go", "scrollbar.go"],
       "deps": []
     }
   }

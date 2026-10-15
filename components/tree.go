@@ -11,12 +11,12 @@ import (
 // 对齐本项目已验收组件: 行高 h-8(32) 同侧栏菜单项, 圆角 rounded-md(6) 同菜单条目,
 // 悬浮/选中 bg-accent 同 select/menu 条目, 每级缩进 16(size-4), chevron size-4。
 const (
-	treeRowH       int32 = 32 // h-8
-	treeIndent     int32 = 16 // 每级缩进 size-4
-	treeRowInset   int32 = 4  // 行视觉矩形左右内缩(mx-1), 命中区域仍是整行
-	treeChevronW   int32 = 6  // chevron 字形横向跨度(收起朝右为 W×H; lucide 比例的 1.25 倍)
-	treeChevronH   int32 = 10 // chevron 字形纵向跨度(展开朝下旋转 90°, 宽高互换为 H×W)
-	treeBtnInset   int32 = 1  // 原生展开按钮左缘相对 RcItem.Left 的偏移(布局边框实测 ≈1.3)
+	treeRowH     int32 = 32 // h-8
+	treeIndent   int32 = 16 // 每级缩进 size-4
+	treeRowInset int32 = 4  // 行视觉矩形左右内缩(mx-1), 命中区域仍是整行
+	treeChevronW int32 = 6  // chevron 字形横向跨度(收起朝右为 W×H; lucide 比例的 1.25 倍)
+	treeChevronH int32 = 10 // chevron 字形纵向跨度(展开朝下旋转 90°, 宽高互换为 H×W)
+	treeBtnInset int32 = 1  // 原生展开按钮左缘相对 RcItem.Left 的偏移(布局边框实测 ≈1.3)
 
 	// treeWakeTimerID 是"首次绘制后唤醒"占用的炫彩定时器 ID(与运行时动画定时器错开)。
 	// 用途: 原生 Tree 的项模板是在**布局排版**(元素处于 show 状态时)那一步实例化的 —— 树建在
@@ -102,10 +102,11 @@ func NewTree(x, y, cx, cy int32, hParent int, opts ...TreeOption) *Tree {
 	t.SetRowSpace(0)
 	t.SetIndentation(treeIndent)
 
-	// 滚动条: 细条 + 内容不溢出时隐藏
-	t.SetScrollBarSize(8)
+	// 滚动条: 细条(shadcn 规格, 见 scrollbar.go) + 内容不溢出时隐藏
+	t.SetScrollBarSize(scrollBarW)
 	t.EnableAutoShowScrollBar(true)
 	t.ShowSBarH(false)
+	showScrollBarOnHover(t.Handle, t.GetScrollBarVObj())
 
 	if font := xui.FontHandle(xui.Current().FontDefault); font != 0 {
 		t.SetFont(font)
@@ -321,22 +322,7 @@ func (t *Tree) HasChildren(id int32) bool {
 	return t.GetFirstChildItem(id) != xcc.XC_ID_ERROR
 }
 
-// styleScrollBars 把纵向滚动条收成细条 + 主题色(同 Table 做法)。
+// styleScrollBars 把纵向滚动条收成细条 + 主题色(同 Table 做法, 几何/圆角/配色见 scrollbar.go)。
 func (t *Tree) styleScrollBars(th *xui.Theme) {
-	sb := t.GetScrollBarVObj()
-	if sb == nil || sb.Handle <= 0 {
-		return
-	}
-	sb.ShowButton(false)
-	sb.SetSliderPadding(2)
-	sb.EnableBkTransparent(true)
-	sb.ClearBkInfo()
-	sb.AddBkFill(xcc.Element_State_Flag_Leave, uint32(t.surface(th)))
-	sb.AddBkFill(xcc.Element_State_Flag_Stay, uint32(t.surface(th)))
-	if sl := sb.GetButtonSliderObj(); sl != nil && sl.Handle > 0 {
-		sl.ClearBkInfo()
-		sl.AddBkFill(xcc.Element_State_Flag_Leave, uint32(th.Border))
-		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(th.MutedForeground))
-		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(th.MutedForeground))
-	}
+	styleScrollBar(t.GetScrollBarVObj(), uint32(t.surface(th)), embedScrollBarSkin(th))
 }

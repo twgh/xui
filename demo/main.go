@@ -75,6 +75,7 @@ func main() {
 	w.SetShadowInfo(shadowSize, 128, 8, false, xc.RGBA(0, 0, 0, 128))
 	w.SetTransparentAlpha(255)
 	w.SetBorderSize(0, 0, 0, 0)
+	w.SetDragBorderSize(1, 1, 1, 1) // 让可拖动区域变小, 不然鼠标移到窗口边缘滚动条时会触发拖动改变窗口大小
 	w.SetMinimumSize(960, 660)
 	w.SetFont(xui.FontHandle(xui.Current().FontDefault))
 
@@ -546,9 +547,11 @@ func buildFormPage(body *widget.LayoutEle) {
 	filled := ui.NewInput(0, 0, 0, 0, v.Handle)
 	xui.ItemFill(filled)
 	filled.SetValue("twgh")
-	xui.ItemFill(hint(v.Handle, "多行(高度写在创建参数里)"))
-	xui.ItemFill(ui.NewInput(0, 0, 0, 72, v.Handle,
-		ui.WithPlaceholder("介绍一下自己…"), ui.WithMultiline()))
+	xui.ItemFill(hint(v.Handle, "多行(高度写在创建参数里, 内容溢出会出现滚动条)"))
+	ml := ui.NewInput(0, 0, 0, 72, v.Handle,
+		ui.WithPlaceholder("介绍一下自己…"), ui.WithMultiline())
+	xui.ItemFill(ml)
+	ml.SetValue(strings.Repeat("测试多行输入, 滚动条样式。\n", 5))
 	xui.ItemFill(hint(v.Handle, "禁用"))
 	dis := ui.NewInput(0, 0, 0, 0, v.Handle)
 	xui.ItemFill(dis)

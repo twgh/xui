@@ -44,6 +44,9 @@ func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
 
 	if in.multiline {
 		in.EnableMultiLine(true).EnableAutoWrap(true).EnableAutoShowScrollBar(true)
+		// 多行内容溢出时出滚动条: 收敛成 shadcn 规格的细圆头条(见 scrollbar.go)
+		in.SetScrollBarSize(scrollBarW)
+		showScrollBarOnHover(in.Handle, in.GetScrollBarVObj())
 	}
 
 	// 灭掉原生外观
@@ -72,6 +75,10 @@ func (i *Input) applyTheme(t *xui.Theme) {
 		i.SetDefaultTextColor(uint32(t.MutedForeground))
 	}
 	i.SetCaretColor(uint32(t.Primary))
+	if i.multiline {
+		// 多行滚动条: 轨道透明(露出壳体底色), 滑块走嵌入式皮肤(前景色淡化 + 悬停加深)
+		styleScrollBar(i.GetScrollBarVObj(), 0, embedScrollBarSkin(t))
+	}
 	i.Redraw(false)
 }
 

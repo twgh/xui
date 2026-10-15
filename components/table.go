@@ -20,9 +20,9 @@ const (
 	// 原生 List 的内容区在左侧 / 顶部各留 2 逻辑像素内缩(探针实测): 列宽要减掉它,
 	// 表头文本缩进也要补偿它, 否则最后一条底边越过右缘、表头文字与单元格文字错位。
 	tableInset int32 = 2
-	// 原生纵向滚动条占用的宽度(SetScrollBarSize(8) + SetSliderPadding(2)): 内容溢出
-	// 时给自适应列让出来, 否则最后一列会被滚动条盖住。
-	tableSBW int32 = 12
+	// 原生纵向滚动条出现时给自适应列让出的宽度: 滚动条元素 scrollBarW(10) + 内容区
+	// 左右固有内缩(2×2)的保守值, 否则最后一列会被滚动条盖住(见 DESIGN 第八节 66)。
+	tableSBW int32 = 14
 )
 
 // TableColumn 表格列定义。
@@ -118,10 +118,11 @@ func NewTable(x, y, cx, cy int32, hParent int, cols []TableColumn, opts ...Table
 	t.EnableDrawBorder(false)
 	t.EnableDrawFocus(false)
 
-	// 滚动条: 细条 + 内容不溢出时隐藏; 横向不需要(列宽由本组件算好)
-	t.SetScrollBarSize(8)
+	// 滚动条: 细条(shadcn 规格, 见 scrollbar.go) + 内容不溢出时隐藏; 横向不需要(列宽由本组件算好)
+	t.SetScrollBarSize(scrollBarW)
 	t.EnableAutoShowScrollBar(true)
 	t.ShowSBarH(false)
+	showScrollBarOnHover(t.Handle, t.GetScrollBarVObj())
 
 	font := xui.FontHandle(xui.Current().FontDefault)
 	if font != 0 {
@@ -437,24 +438,9 @@ func (t *Table) onHeaderDrawItem(hEle, hDraw int, pItem *xc.List_Header_Item_, p
 	return 0
 }
 
-// styleScrollBars 把纵向滚动条收成细条 + 主题色。
-// 滚动条颜色只能通过背景管理器下发给原生对象, 因此换肤要重刷一遍(Clear 后重加,
-// 不会累积超过炫彩的 20 个背景对象上限)。
+// styleScrollBars 把纵向滚动条收成细条 + 主题色(几何/圆角/配色见 scrollbar.go: 10px 轨道 +
+// 8px 圆头滑块; 嵌入式皮肤 = 前景色淡化 + 悬停加深)。滚动条颜色只能通过背景管理器下发
+// 给原生对象, 因此换肤要重刷一遍(Clear 后重加, 不会累积超过炫彩的 20 个背景对象上限)。
 func (t *Table) styleScrollBars(th *xui.Theme) {
-	sb := t.GetScrollBarVObj()
-	if sb == nil || sb.Handle <= 0 {
-		return
-	}
-	sb.ShowButton(false) // 去掉上下箭头
-	sb.SetSliderPadding(2)
-	sb.EnableBkTransparent(true)
-	sb.ClearBkInfo()
-	sb.AddBkFill(xcc.Element_State_Flag_Leave, uint32(t.surface(th)))
-	sb.AddBkFill(xcc.Element_State_Flag_Stay, uint32(t.surface(th)))
-	if sl := sb.GetButtonSliderObj(); sl != nil && sl.Handle > 0 {
-		sl.ClearBkInfo()
-		sl.AddBkFill(xcc.Element_State_Flag_Leave, uint32(th.Border))
-		sl.AddBkFill(xcc.Element_State_Flag_Stay, uint32(th.MutedForeground))
-		sl.AddBkFill(xcc.Element_State_Flag_Down, uint32(th.MutedForeground))
-	}
+	styleScrollBar(t.GetScrollBarVObj(), uint32(t.surface(th)), embedScrollBarSkin(th))
 }

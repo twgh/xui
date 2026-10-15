@@ -274,7 +274,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本项目令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
-| scroll area: 页面/长内容滚动用 `ui.ScrollArea`(原生 LayoutFrame 载体, 见第八节 66): **只做纵向**(内容区恒铺满视口宽); 滚动条常驻(内容溢出时)、8px 细条 + 滑块 `bg-border` 圆头、轨道透明; 滑块悬停**不换色**; 滚轮悬停任意子元素都滚动(原生控件如 List 自吃 —— 嵌套滚动常态) | scroll-area.tsx(w-2.5 p-px `rounded-full bg-border`; radix `type` 默认 hover 淡入 —— 本实现的差异见"已知差异"表) |
+| scroll area: 页面/长内容滚动用 `ui.ScrollArea`(原生 LayoutFrame 载体, 见第八节 66): **只做纵向**(内容区恒铺满视口宽); 滚动条**鼠标移入容器才显示、离开淡出**(同 radix 的 `type=hover`, 150ms; 用元素透明度实现, 不改变布局宽度)、10px 轨道 + 8px 圆头滑块(`rounded-full bg-border`)、轨道透明; 滑块悬停**不换色**; 滚轮悬停任意子元素都滚动(原生控件如 List 自吃 —— 嵌套滚动常态); 该规格统一在 `components/scrollbar.go` 的 `styleScrollBar` + `showScrollBarOnHover`, Table / Tree / ComboBox 弹层 / 多行 Input 同用(**滑块配色与容器不同**: 这四个载体在原版里是浏览器原生滚动条, 用"前景色淡化 + 悬停加深", 见第八节 21) | scroll-area.tsx(w-2.5 p-px `rounded-full bg-border`; radix `type` 默认 hover 淡入 —— 本实现的差异见"已知差异"表) |
 | **disabled:opacity-50 是组级透明**:组件自绘的**形状**(壳体/轨道/勾/滑块/圆点)**逐层各乘 50%**(`ScaleAlpha`, 见第八节 61);**原生文字**不吃 alpha —— 按钮文字/复选框与单选框的标签保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194),输入框禁用文字用"前景色×卡片色对半混"预混后发给原生 Edit。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider/input.tsx |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10(ring 画在面板矩形**外侧** 1px, 直接描面板矩形会被遮罩灰吞掉, 见第八节 33);标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
 | dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
@@ -299,7 +299,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Tabs | `WithTabsVertical()` 支持垂直(标签堆叠、左对齐、指示条在右侧) | 上游 `group-data-vertical/tabs:*` |
 | Slider | `WithSliderRange(min,max)` / `WithSliderStep(step)` | 对应 radix 的 min/max/step; 默认仍是 0~100 连续 |
 | ComboBox 触发区 | `WithComboSize(ComboSizeSm)` = h-7 + `rounded-[min(--radius-md,10px)]` | 对应 select.tsx 的 `data-[size=sm]` |
-| ScrollArea | **本项目形态**: 原生 LayoutFrame 载体 + 主题化细滚动条; 滑块 `bg-border` 圆头但**不做 radix 的悬停淡入**(常驻, 同 Table/Tree 的细条观感); 只做纵向(上游 ScrollBar 有 horizontal 档) | 页面滚动容器; 语义与踩坑见第八节 66 |
+| ScrollArea | **本项目形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档) | 页面滚动容器; 语义与踩坑见第八节 66 |
 | Menu | 缺上游的 `inset` prop(带图标条目的左缩进) | 未实现 |
 | Pagination | **本项目扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
@@ -391,7 +391,11 @@ registry.json 条目(shadcn 同构格式):
 18. **`XWnd_SetWindowPos` 吃物理像素**:框架内部坐标是逻辑像素(窗口创建时自动按 DPI 缩放),但窗口定位/尺寸透传给 Win32 → 必须自己乘 `dpi/96`,否则窗口会跑到 1/scale 的位置(实测 144 DPI 下 449 变成 299)。自绘提示窗(Tooltip)踩过这个坑。
 19. **原生 ComboBox 必须先 `CreateAdapter`**:否则 `AddItemText` / `GetCount` 会让炫彩弹"XAdTable_GetCountRow 中,输入句柄可能无效[0x0]"的错误框,并阻塞后续调用。
 20. **SliderBar 的滑块几何**:pos→滑块按钮是 `[0, W - buttonW]` 线性映射(实测 pos=0/25/50/100 → 0/47/94/188, 宽 200 时)。自绘时直接读 `XEle_GetRect(thumb)` 拿滑块矩形,与拖动行为严格一致;滑块外扩 3px 的焦点环要画在**滑动条**的 paint 里(滑块自身客户区只有 12x12,画在自己回调里会被裁)。
-21. **原生滚动条要手动收敛**:弹层 ListBox 的滚动条默认是系统配色(与主题完全不搭)。做法:`lb.SetScrollBarSize(8)` + `lb.EnableAutoShowScrollBar(true)` + `sb.ShowButton(false)`(去掉上下箭头)+ `sb.SetSliderPadding(2)` + 轨道透明,滑块用 `AddBkFill(Leave/Stay, Border/MutedForeground)` 上色;这些背景对象在主题切换时要 `ClearBkInfo()` 后再重新添加(否则累积超过 20 个炫彩会报错)。
+21. **原生滚动条要手动收敛**:弹层 ListBox 的滚动条默认是系统配色(与主题完全不搭)。做法已统一成 `components/scrollbar.go` 的 `styleScrollBar` + `showScrollBarOnHover`(五个载体构造时 `SetScrollBarSize(10)`), 规格逐条对齐 shadcn scroll-area.tsx: 轨道 `w-2.5`(10) + `p-px`(滑块内缩 1) → 滑块 8 逻辑像素宽、`rounded-full` 圆角 4。四个必须知道的坑:
+    - **圆角只能设在背景对象上, 且每个状态要各自的 id**: bkmanager 的 id 版 `AddFill(nState, color, id)` + `GetObjectObj(id).SetRectRoundAngle(4,4,4,4)`。三个状态**共用一个 id 时只有第一次生效** —— hover(Stay) 找不到背景对象会回退默认绘制, 表现为"悬停时滑块变宽且圆角消失"(实测)。换色用 `BkObj.SetFillColor` 就地改, 不必重建背景对象。
+    - **配色分两套**(`containerScrollBarSkin` / `embedScrollBarSkin`): ScrollArea(容器型)= `bg-border`, 悬停不换色(radix 语义); 多行 Input / Table / Tree / ComboBox 弹层(嵌入式; 这几个在原版里就是浏览器原生滚动条)= 前景色淡化版, 悬停加深(对齐 Win11 Fluent 滚动条的观感)。颜色必须**展平成不透明**(`flatOn` 混到卡片色): 半透明的 Border(暗色是 10% 白)会与所在表面再合成一次 —— 同一个滑块在页面上是 #232323、卡片里是 #2f2f2f, 两个滚动条肉眼可见地不一致。
+    - **显隐用元素透明度, 不用 `Show(false)`**: 原生滚动条的显隐翻转会改变视口宽度(列宽/内容宽跳变)。`showScrollBarOnHover` 初始 `SetSubtreeAlpha(0)`, 在**窗口** MouseMove 里用 `XWnd_GetStayEle` 判定(返回鼠标停留元素): 落在宿主子树内 → 淡入; 落在滚动条子树内 → 滑块换悬停色; 用 `xui.Presence` 做 150ms 淡入淡出。⚠️ **元素级 `MouseStay/MouseLeave` 在这里不可靠**(实测: 鼠标移出多行 Edit 收不到 MouseLeave, 原生 List 不把悬停路由给滚动条), 窗口级 + GetStayEle 对五个载体一致。⚠️ 淡出到位那一帧 anim 不再重绘, 要用 Presence 的 done 回调补一次 `XEle_Redraw`, 否则屏幕上留一层淡残影。
+    - 主题切换/重入时先 `ClearBkInfo()` 再重加(否则累积超过炫彩 20 个背景对象上限); 滚动条销毁时(弹层每次弹出都新建)从 `thumbSkinReg` 里清掉句柄。
 22. **SliderBar 的滑块按钮在 hover 时会冒方块**:原生 Button 的四态会画边框/焦点矩形,`EnableBkTransparent(true)` + `EnableDrawBorder(false)` + `EnableDrawFocus(false)` 三件套只能压住一部分——Focus 态的方块三件套+`ClearBkInfo()`+空 paint 回调都压不住, 最终结论见第 25 条(弃用原生按钮, 纯自绘)。
 23. **原生绘制的文字不要自己再画一遍**:ComboBox 这类由原生绘制文本的控件,在 paint 里再画一次文字会出现重影(错位的一层) → 文本交给原生,只在 paint 里同步颜色(`SetTextColor` / `SetDefaultTextColor`),`*pbHandled = true` 只能拦住"绘制回调"本身,拦不住原生文本。
 24. **异型透明窗口可以做到真透明,且背景对象支持圆角**(旧结论"背景管理器没有圆角矩形对象,开了 Window_Transparent_Shaped 整窗什么都不画"是错的,已由探针推翻):
@@ -529,14 +533,14 @@ registry.json 条目(shadcn 同构格式):
     - `List_Item_.RcItem` 的文档注释写着"未使用", **实际有效**(就是该单元格的逻辑矩形); 表头项 `List_Header_Item_.RcItem` 同样有效(表头项的 `HLayout` 恒为 0, 只能用 `RcItem`);
     - `XE_LIST_DRAWITEM`(AddEvent_List_DrawItem)按**单元格**触发(不是按行), 同一行各列的 `NState` 相同, 且各单元格矩形**首尾相接** → 逐格填充拼出整行底色、逐格画线拼出整行底边, 不需要自己算行矩形;
     - `RcItem` 是列表客户区的**逻辑坐标**(与 `XEle_GetRect(HLayout)` 一致), 行 0 的上边 = 表头高 + 2;
-    - 原生 List 的内容区在**左上各内缩 2 逻辑像素**, 且**表头单元格从 x=0 起、数据单元格从 x=2 起**(表头整体比数据行靠左 2px); 行间距默认 **1px**。因此: 列宽按 `cx - 2*2 - (滚动条 12)` 分配, `SetRowSpace(0)` 去掉行间距, 表头形状文本缩进比单元格少 2 才能左对齐(实测列内文字与表头文字 x 完全一致);
+    - 原生 List 的内容区在**左上各内缩 2 逻辑像素**, 且**表头单元格从 x=0 起、数据单元格从 x=2 起**(表头整体比数据行靠左 2px); 行间距默认 **1px**。因此: 列宽按 `cx - 2*2 - (滚动条 14)` 分配, `SetRowSpace(0)` 去掉行间距, 表头形状文本缩进比单元格少 2 才能左对齐(实测列内文字与表头文字 x 完全一致);
     - `SetDrawRowBkFlags(Nothing)` 只关掉原生行背景/分割线**绘制**, **不影响**行悬浮 `List_Item_State_Stay` 的状态跟踪与重绘触发(实测鼠标移入行即触发重绘并上报 state=1);
     - 表体透明用 `EnableBkTransparent(true)`: 元素未绘制区域**真的透出宿主底色**(与 ComboBox 弹层的"白底回退"不同); 表头是独立子元素, 要另外 `GetHeaderHELE()` → `EnableBkTransparent` + `EnableDrawBorder/Focus(false)`, 否则表头保留默认灰底;
     - 行底色/行边框/表头底**全部在绘制回调里实时取令牌** → 换肤零成本(不需要 OnThemeChange); 只有"必须下发给原生对象"的东西才要重刷 —— 形状文本(单元格/表头)的字色字体、滚动条的背景对象 → 用一个 `applyTheme` 统一处理, 并挂 `xui.OnThemeChange`;
-    - 滚动条只能走背景管理器(同第 21 条): `GetScrollBarVObj()` + `ShowButton(false)` + `SetSliderPadding(2)` + `EnableBkTransparent(true)` + ClearBkInfo/AddBkFill(Leave/Stay 用表面色, 滑块用 Border/MutedForeground); 换肤时先 `ClearBkInfo` 再重加不会累积;
-    - 纵向滚动条会占掉内容宽度: 自适应列(占满剩余宽度)要让出 ~12px, 否则最后一列被滚动条盖住; 且滚动条显隐切换时要重算列宽 → 按"是否需要滚动"翻转时 `SetColumnWidth` 重排;
-    - 列宽: 原生没有权重/百分比列, 自适应列要自己算 `元素宽度 − 2×内缩 − (需要滚动条?12:0) − 固定列宽之和`;
-    - 滚动条尺寸 `SetScrollBarSize(8)` + `SetSliderPadding(2)` → 滑块实际只有 4 逻辑像素宽, 观感与 shadcn 的细滚动条一致;
+    - 滚动条只能走背景管理器(同第 21 条的 `styleScrollBar`): 轨道用表面色, 滑块三态同色 `bg-Border`(8px 圆头); 换肤时先 `ClearBkInfo` 再重加不会累积;
+    - 纵向滚动条会占掉内容宽度: 自适应列(占满剩余宽度)要让出 14px(`scrollBarW` 10 + 内容左右固有内缩 2×2), 否则最后一列被滚动条盖住; 且滚动条显隐切换时要重算列宽 → 按"是否需要滚动"翻转时 `SetColumnWidth` 重排;
+    - 列宽: 原生没有权重/百分比列, 自适应列要自己算 `元素宽度 − 2×内缩 − (需要滚动条?14:0) − 固定列宽之和`;
+    - 滚动条尺寸 `SetScrollBarSize(10)` + `SetSliderPadding(1)` → 滑块 8 逻辑像素宽、圆角 4(实测 @150% DPI 下物理 12px), 与 shadcn 的滚动条滑块尺寸/圆角一致;
     - **竖排表格不能用原生 `widget.Table`**: 那是 Shape 系的"单元格画布"(合并单元格、逐格画线、无滚动/无虚拟行), 与 shadcn 的可滚动行列表语义不符 → 本组件的 `Table` 一律以原生 `List` 为载体。
 
 41. **LayoutEle 纵向(列)布局也会"溢出换列"**(2026-10-05, demo 数据页踩坑): 列布局里主轴上剩余高度放不下下一个项时, 该项**不会被裁剪也不会重叠, 而是被甩到"下一列"** —— `x += 容器宽度, y = 0`, 用户看到的就是"控件整块消失"(与第八节 29 的"横向 Fill 独占整行把兄弟挤到下一行"是同一套换行机制的两个方向)。修法: 布局级 `EnableAutoWrap(false)`; 同时要保证容器高度够(本例 card 高 320 才能容下 24+14+24+14+180=256 的列)。`AdjustLayout()` 之前读到的 `XEle_GetRect` 是旧值(排版前), 排查这类问题要在排版之后取坐标。列容器现在都走 `xui.VStackWeight` / `card.ContentStack`(`EnableAutoWrap(false)` 已内置), 手搓 `NewLayoutEle` 时别忘了这一条。
@@ -1063,7 +1067,7 @@ registry.json 条目(shadcn 同构格式):
    - **滚轮**: 悬停在**子元素上**也会冒泡到框架并滚动(子元素的 `XE_MOUSEWHEEL` 默认禁用, "禁用则事件传给父元素"); 悬停原生控件(如 List)会被它自己吃掉 —— 嵌套滚动的正常行为。注入真实滚轮时**窗口必须在后台有焦点**(工具进程还要 per-monitor DPI-aware, 否则坐标虚拟化, 见 HANDOFF)。
    - **滚动条滑块拖动: 合成输入下未复现**(`.verify/probedrag`: 裸 LayoutFrame 与 `ui.ScrollArea` 的滑块都拖不动, 而同一脚本拖**表格 List 的**(同款皮肤)能滚 —— 不是组件引入的差异, 疑与 ScrollView 自带滚动条的命中/拖拽实现有关, 未深究); 滚轮、代码滚动、点选/输入等常用路径都正常。真实鼠标下是否可拖未验证。
    - **代码滚动**: `ScrollPosYV(像素)` 是像素语义(滚到 100 就是 100); **`ScrollPosV(pos)` 的参数是"行"单位**(默认 20px/行, `GetScrollBarVObj().GetRange()` 也按行算) —— 拿像素喂它会直接滚到底(实测 100 → range 17 全用掉)。
-   - **滚动条几何**: 元素占宽 = `SetScrollBarSize` 的值(8 就是 8), `SetSliderPadding(2)` 只把**滑块**在轨道里缩成 4px 宽(Table 的 `tableSBW=12` 是保守值); 轨道要真透明得 `ClearBkInfo` 后垫一层 alpha=0 的填充(否则回退系统默认内容, 同 30); 滑块 = `bg-Border` + `SetRectRoundAngle(4,4,4,4)` 圆头(bkmanager 的 id 版 AddFill + `GetObjectObj(id)`), 换肤走 `OnThemeChangeFor` 重刷(Clear 后重加, 实测亮 #e5e5e5 → 暗 #232323 现场切换跟随)。
+   - **滚动条几何/配色/显隐**(统一规格见 `components/scrollbar.go`): 元素占宽 = `SetScrollBarSize` 的值(10 就是 10), `SetSliderPadding(1)` 把**滑块**在轨道里缩成 8px 宽(`w-2.5` + `p-px` 的 shadcn 规格); 轨道要真透明得 `ClearBkInfo` 后垫一层 alpha=0 的填充(否则回退系统默认内容, 同 30); 圆角 / 两级配色 / 悬停显隐的完整机制见第 21 条。Table 的自适应列按 14 让宽(`tableSBW`), 多行 Input 在 `applyTheme` 里刷这条皮肤。⚠️ **"自动显隐"模式下滚动条的 `XEle_GetRect` 返回的是隐藏位置**(实测: 表格滚动条 raw x = -12..-2, 而渲染/命中在内容区右缘)—— 别拿它做命中或定位计算; 判定鼠标是否在滚动条上要用 `XWnd_GetStayEle`(渲染与命中的坐标系一致)。
    - **容器被点一下会聚焦并画原生蓝框**(#58B1FC, 同 34) → `EnableFocus(false)` + `EnableDrawBorder(false)`。
    - **内容区的外边距计入滚动范围**: 内容区四边各 24 外边距时 total = 24 + 内容高 + 24 —— 页面底部留白因此天然有效(滚到底正好留 24, 不必额外垫占位元素)。
    - **Auto 内容里的栅格写法**(`.verify/probeautopage`): 行高必须 **Auto**(行高写 Weight/Fill 在 Auto 内容里塌成 0 —— demo 首次接入时两列卡片整段消失就是这个), 行里 **`Weight` 宽的列仍然算得出宽度**(352 宽的行 → 201/135 = 3:2 ✓), 列高 Auto、卡片 Auto —— 就是 CSS flex 的直觉写法。**铺满型页面(数据页)反过来**: 内容区 `SetContentFill`(Fill) + 行 `Weight` + 列/卡片 Weight 整链 Weight, 表格/树才会跟随窗口长高, 代价是页面不再滚动。
