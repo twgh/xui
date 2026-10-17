@@ -38,3 +38,23 @@ func TestOnThemeChangeUnsubIdempotent(t *testing.T) {
 		t.Fatalf("已反注册的订阅仍被调用: n=%d", n)
 	}
 }
+
+// 内置主题必须把 --chart-1..5 / --sidebar-* 也填上: 这两组令牌组件库自己不用,
+// 但用户应用从主题里取用 —— 漏填会静默变成黑色(机械转译新主题时最容易漏)。
+func TestBuiltinThemeChartSidebarTokens(t *testing.T) {
+	for _, th := range []*Theme{Light(), Dark()} {
+		tokens := map[string]Color{
+			"Chart1": th.Chart1, "Chart2": th.Chart2, "Chart3": th.Chart3,
+			"Chart4": th.Chart4, "Chart5": th.Chart5,
+			"Sidebar": th.Sidebar, "SidebarForeground": th.SidebarForeground,
+			"SidebarPrimary": th.SidebarPrimary, "SidebarPrimaryForeground": th.SidebarPrimaryForeground,
+			"SidebarAccent": th.SidebarAccent, "SidebarAccentForeground": th.SidebarAccentForeground,
+			"SidebarBorder": th.SidebarBorder, "SidebarRing": th.SidebarRing,
+		}
+		for name, c := range tokens {
+			if c.IsNone() {
+				t.Fatalf("%s 主题的 %s 令牌为空", th.Name, name)
+			}
+		}
+	}
+}

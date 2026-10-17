@@ -17,6 +17,7 @@ type Input struct {
 
 	placeholder string
 	multiline   bool
+	invalid     bool
 	textColor   uint32 // 上次下发给原生 Edit 的字色(避免在 paint 里反复设置)
 }
 
@@ -28,6 +29,10 @@ func WithPlaceholder(s string) InputOption { return func(i *Input) { i.placehold
 
 // WithMultiline 启用多行(文本域)模式。
 func WithMultiline() InputOption { return func(i *Input) { i.multiline = true } }
+
+// WithInputInvalid 设置校验失败态(对应 shadcn 的 aria-invalid):
+// border-destructive + ring-3 destructive/20(暗色 /40)。与聚焦同时成立时红色优先。
+func WithInputInvalid() InputOption { return func(i *Input) { i.invalid = true } }
 
 // NewInput 创建输入框。cy 传 0 时使用默认高度 32。
 func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
@@ -98,6 +103,19 @@ func (i *Input) syncTextColor() {
 	i.SetTextColor(c)
 }
 
+// SetInvalid 设置/清除校验失败态(见 WithInputInvalid)。
+func (i *Input) SetInvalid(v bool) *Input {
+	if i.invalid == v {
+		return i
+	}
+	i.invalid = v
+	i.Redraw(false)
+	return i
+}
+
+// Invalid 返回当前是否处于校验失败态。
+func (i *Input) Invalid() bool { return i.invalid }
+
 // Value 返回输入内容。
 func (i *Input) Value() string { return i.GetText() }
 
@@ -139,12 +157,30 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		border = t.Input.ScaleAlpha(0.5)
 	}
 
-	if st.Focused && !st.Disabled {
+	// aria-invalid 与 focus-visible 共用"环带 + 内芯"画法, 红色优先(见 button.go 的说明)。
+	const inset = int32(3)
+	invalid := i.invalid && !st.Disabled
+	switch {
+	case invalid:
+		halo, borderColor := t.Destructive.WithAlpha(51), t.Destructive
+		if t.IsDark() {
+			halo, borderColor = t.Destructive.WithAlpha(102), t.Destructive.WithAlpha(128)
+		}
+		p.RingFrame(halo, bg, t.RadiusLg())
+		inner := xc.RECT{
+			Left:   p.Rc.Left + inset,
+			Top:    p.Rc.Top + inset,
+			Right:  p.Rc.Right - inset,
+			Bottom: p.Rc.Bottom - inset,
+		}
+		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
+			p.StrokeRound(&inner, borderColor, t.RadiusLg()-inset, 1)
+		}
+	case st.Focused && !st.Disabled:
 		// focus-visible:border-ring + ring-3 ring-ring/50: FocusFrame 画 3px 半透明
 		// ring 带(填充式, 会盖掉原来的 border-input), 实色的 border-ring 边框
 		// 再描在 ring 带内缘 —— 与浏览器一致: 聚焦后边框从 input 色换成 ring 色。
 		p.FocusFrame(t.Ring, bg, t.RadiusLg())
-		const inset = int32(3)
 		inner := xc.RECT{
 			Left:   p.Rc.Left + inset,
 			Top:    p.Rc.Top + inset,
@@ -154,7 +190,7 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
 			p.StrokeRound(&inner, t.Ring, t.RadiusLg()-inset, 1)
 		}
-	} else {
+	default:
 		p.FillRound(&p.Rc, bg, t.RadiusLg())
 		p.StrokeRound(&p.Rc, border, t.RadiusLg(), 1)
 	}

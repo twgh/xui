@@ -9,7 +9,7 @@
 
 ## 当前状态(截至 2026-10-15)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(P3 仅剩"combobox 弹层进场动画"未做;CLI 远程 registry 已完成);P4(文档站、主题画廊)未开始。路线图见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);P4(文档站、主题画廊)未开始。路线图见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
@@ -126,14 +126,40 @@
   初值。**验收**: 五处载体 × 亮/暗, 隐藏/显示/悬停加深三态全部像素扫描通过(滑块物理 12px @150%;
   亮色静止 #919191 / 悬停 #6a6a6a, 暗色两容器统一 #2f2f2f)。
 
+- ✅ **combobox 弹层进场动画(P3 收尾, 2026-10-17)**:下拉弹层是原生自建普通窗口, `SetTransparentAlpha` 对它无效;
+  在 `XE_COMBOBOX_POPUP_LIST`(此时窗口**还没显示**)里转 `Window_Transparent_Shaped` 后整窗 alpha 即可播放
+  100ms 淡入, 且**连续改 alpha 每帧生效**(与 57 的 tooltip 结论不同, 探针 `.verify/probefade` 三档抓图
+  #40A0FF/#A0D0FF/#FFFFFF), 区域裁剪的圆角与 ring/条目绘制全部照常。过渡挂宿主窗驱动 + `XC_IsHXCGUI` 守卫 +
+  每次弹出用 `xui.NextPresenceKey()` 取键(各组件自起计数器会撞车, 见下条修复); 真实组件逐帧抓图看到
+  5 帧淡入曲线。原理与坑见 DESIGN 第八节 30/69/70。
+
+- ✅ **与 shadcn 的边角补齐(2026-10-17)**:
+  - **aria-invalid**(Button / Input / ComboBox): `WithButtonInvalid()` / `WithInputInvalid()` / `WithComboInvalid()`
+    + 运行时 `SetInvalid(bool)`; 红边框 + ring-3 destructive/20(暗色 border /50、ring /40), 常驻不要求焦点,
+    与 focus-visible 同时成立时红色优先。demo 基础页加了三个按钮、表单页加了输入框, 亮/暗各验一轮。
+  - **CardHeader / CardAction**: `ui.NewCardHeader(parent, space)` + `TitleStack()` / `ActionStack()`, 左列标题+说明
+    占 `1fr`、右列动作 `auto` 且跨两行顶端对齐; demo 的「卡片」示例改成头 + 省略号动作钮。
+  - **`MenuInset()`**: 对应 shadcn dropdown-menu 的 `inset` prop(`data-inset:pl-7`), 条目文字左缘 = 28,
+    普通条目借此与带勾选/图标的条目对齐;demo 菜单加了一项。
+  - **`--chart-1..5` / `--sidebar-*` 令牌进 `xui.Theme`**(Chart1..5 / Sidebar*): 组件库不用, 供用户应用取用;
+    `manager_test.go` 有守卫防漏填。DESIGN 第四节末只剩"Menu 弹层宽度=触发区宽"这一条不可达差异。
+
+- ✅ **修复: 弹层键撞车导致"点击没反应"(2026-10-17, 用户报障)**: 选过 sm 下拉框后第一次点"打开菜单"无反应(第二次才开),
+  反过来先开菜单再点下拉框也无反应。事件日志证明 BN_CLICK 已触发 —— 菜单确实弹了, 但 alpha 停在 `AlphaFloor`(全透明)且处于模态,
+  把下一次点击吃掉。根因是 `xui.Presence` 的幂等语义 + menu/combobox **各自的计数器都从 1 开始**(键撞上已完成的过渡 →
+  动画不跑、apply 不调)。修法: 新增 `xui.NextPresenceKey()` 全局分配键(menu/combobox/dialog 全改用), `Presence` 立即
+  apply 一次兜底。详见 DESIGN 第八节 70。
+
+- ✅ **逐组件单独安装 + 编译回归(2026-10-17)**:20 个组件各建临时项目 `xui init` + `xui add <组件>` + `go build ./ui`
+  (本地 `XUI_REGISTRY` + 模块 replace), 另加 `add --all` 一项, 21/21 通过。
+
 ## 待办
 
-- ⬜ **P3 剩余**:combobox 弹层进场动画(menu 已做淡入, 见 64; combobox 的下拉窗是 ListBox 载体, 转 Shadow 路线待验证)
 - ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计,**只剩 REGISTRY_V2.md 五 的两步真实验收依赖仓库公开**)
-- ⬜ **与 shadcn 仍未对齐的边角**(完整清单见 DESIGN 第四节末):Button 的 `aria-invalid` 态、Card 的 `CardAction`、Menu 弹层宽度=触发区宽(SetItemWidth 无效, 见 64)、`--chart-1..5`/`--sidebar-*` 令牌未建模
-- ⬜ text 手绘后 Input 仍是原生文字
-- ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;本轮已因此修掉 3 处依赖漏登记)
-- ⬜ **xcgui 发布含 `d2d` 包的版本后, 把 `go.mod` 的 require 升到该版本**(现在靠 `go.work` 联调; 没有 go.work 的环境编译不过, 因为已提交的 `d2dicon.go` 依赖 `xcgui/d2d`)
+- ⬜ **与 shadcn 仅剩的已知差异**(完整清单见 DESIGN 第四节末):只剩 **Menu 弹层宽度=触发区宽**(`XMenu_SetItemWidth` 实测无效, 见 64, 不可达);其余 aria-invalid / CardAction / MenuInset / chart·sidebar 令牌已于 2026-10-17 补齐
+- ⬜ **Input 仍是原生文字**:原生 Edit 的文本/光标/选区/输入法全在 DLL 内绘制, 手绘要连光标与 IME 组合窗一起接管 —— 收益小、风险大, 暂不做;需要完全自绘文本时用 Label / 自绘 Element
+- ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;2026-10-17 全量 21 项通过)
+- ⬜ **xcgui 发布含 `d2d` 包的版本后, 把 `go.mod` 的 require 升到该版本**(现在靠 `go.work` 联调; 没有 go.work 的环境编译不过, 因为已提交的 `d2dicon.go` 依赖 `xcgui/d2d`。2026-10-17 查过模块代理, 最新仍是 v1.4.2, 未发版)
 - ✅ **D2D 直通能力的上游化, 一次做齐(2026-10-11)**(趁上游发版窗口把原待办三项做完, 细节见 DESIGN 第八节 43 末 / 65):
   ① **"按值浮点形参"的封装扩到基本图元**: `DrawLine`(线宽在**栈[0]** —— 5 个参数, 位置 4 已超出前 4 个 XMM 槽)/ `DrawRectangle` / `DrawEllipse` / `FillRectangle` / `FillEllipse`(各带 `*Color` 便利版); 转发器升级为"最多 4 个栈参数"的 `wapi/com.CallWithFloat32Stack`(栈上的 float 占 8 字节槽、值放低 4 字节)。
   ② **形状几何与参数上移**: `ID2D1Factory` 补 `Create{Rectangle,RoundedRectangle,Ellipse}Geometry`(配 `D2D1_ELLIPSE`/`D2D1_ROUNDED_RECT`); 绘制/填充口参数从 `*ID2D1PathGeometry` 上移到 `*ID2D1Geometry`(各几何加 `Base()`, `Usable()` 随之上移), 于是"任意几何"都能画。
@@ -216,7 +242,7 @@ go test ./...
 | 架构原理、分层边界、主题令牌、组件解剖 | DESIGN.md 一~四节 |
 | **交互语义(改交互前必看)** | DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」+ 本地 shadcn 源码 |
 | **我们与 shadcn 的差异 / 变体尺寸映射** | DESIGN.md 第四节末「变体/尺寸与上游的映射、已知差异」 |
-| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~66) |
+| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~70) |
 | 界面布局怎么写(容器/尺寸/随窗口自适应/滚动) | DESIGN.md 第八节 55(尺寸语义) + 56(Card) + 66(滚动容器), 样板在 `demo/main.go` |
 | 用到的 xcgui API 清单 | DESIGN.md 第九节 |
 | agent 会话硬规则 | AGENTS.md |

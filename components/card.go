@@ -122,6 +122,86 @@ func NewCardDescription(x, y, cx int32, text string, hParent int) *Label {
 	return NewLabel(x, y, cx, 20, text, hParent).SetMuted()
 }
 
+// CardHeader 卡片头: 一行两列 —— 左列放标题/说明(竖排), 右列放动作(贴右上)。
+//
+// 对齐 shadcn card.tsx:
+//   - CardHeader = grid auto-rows-min items-start gap-1, 有 CardAction 时
+//     grid-cols-[1fr_auto](左列占满剩余宽, 动作列按内容宽);
+//   - CardAction = col-start-2 row-span-2 row-start-1 self-start justify-self-end
+//     —— **跨越标题与说明两行、顶端对齐**贴在右上角。所以动作列是整行高的一块,
+//     不是"标题行里的一格": 标题再长(换行)动作也不会被挤下去。
+//
+// 用法(parent = 卡片内容区 ContentStack 的返回值, space = shadcn 的 gap-1 = 4):
+//
+//	h := ui.NewCardHeader(stack.Handle, 4)
+//	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "标题", h.TitleStack().Handle))
+//	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "说明", h.TitleStack().Handle))
+//	xui.ItemFill(ui.NewButton(0, 0, 0, 0, "", h.ActionStack().Handle,
+//		ui.WithIcon(icons.IconEllipsis), ui.WithSize(ui.ButtonSizeIconSm)))
+type CardHeader struct {
+	*widget.LayoutEle
+	title  *widget.LayoutEle
+	action *widget.LayoutEle
+	space  int32
+}
+
+// NewCardHeader 创建卡片头。parent 传卡片内容区(ContentStack 的返回值)。
+// 头的宽度已声明为 Fill(卡片内容区宽), 高度 Auto 自撑, 调用方不需要再声明尺寸。
+func NewCardHeader(x, y, cx int32, hParent int, space int32) *CardHeader {
+	row := widget.NewLayoutEle(x, y, cx, 0, hParent)
+	if row == nil {
+		return nil
+	}
+	h := &CardHeader{LayoutEle: row, space: space}
+	row.EnableHorizon(true)
+	row.EnableLayout(true)
+	row.EnableBkTransparent(true)
+	row.EnableAutoWrap(false) // 横向行放不下时别把动作列甩到下一行(见 DESIGN 41)
+	row.SetSpace(space)
+	row.SetAlignV(xcc.Layout_Align_Top) // items-start: 动作列顶端对齐
+	row.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	row.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	xui.AttachWindow(row.Handle)
+	// 左列先建出来(哪怕没人往里放标题): 它是 `1fr` 的占位列, 只有它存在,
+	// 只放动作、不写标题的卡片头才会把动作顶到右边(同 shadcn 的 grid-cols-[1fr_auto])。
+	h.TitleStack()
+	return h
+}
+
+// TitleStack 取左侧标题/说明的竖排容器(构造时已建, 同时充当 1fr 占位列)。
+// 标题与说明按 space 间距堆叠。
+func (h *CardHeader) TitleStack() *widget.LayoutEle {
+	if h.title == nil {
+		l := widget.NewLayoutEle(0, 0, 0, 0, h.Handle)
+		l.EnableHorizon(false)
+		l.EnableLayout(true)
+		l.EnableBkTransparent(true)
+		l.EnableAutoWrap(false)
+		l.SetSpace(h.space)
+		l.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1) // 1fr
+		l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+		h.title = l
+	}
+	return h.title
+}
+
+// ActionStack 取右侧动作区(随需创建), 横排、宽高都按内容自撑, 贴右上角。
+func (h *CardHeader) ActionStack() *widget.LayoutEle {
+	if h.action == nil {
+		l := widget.NewLayoutEle(0, 0, 0, 0, h.Handle)
+		l.EnableHorizon(true)
+		l.EnableLayout(true)
+		l.EnableBkTransparent(true)
+		l.EnableAutoWrap(false)
+		l.SetSpace(h.space)
+		l.SetAlignV(xcc.Layout_Align_Center)
+		l.LayoutItem_SetWidth(xcc.Layout_Size_Auto, 0)
+		l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+		h.action = l
+	}
+	return h.action
+}
+
 // CardFooter 卡片页脚容器: 顶边一条 border-t + bg-muted/50, 只有**下两角**随卡片圆角
 // (shadcn card.tsx 的 CardFooter)。
 //

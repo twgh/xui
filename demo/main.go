@@ -484,6 +484,13 @@ func buildBasePage(body *widget.LayoutEle) {
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "", ri.Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMoon)), 36)
 
+	// 校验失败态(aria-invalid: 红边框 + 3px 红环, 常驻不要求焦点)
+	xui.ItemFill(hint(v.Handle, "校验失败(aria-invalid)"))
+	rv := xui.HStack(v.Handle, 36, 8)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Invalid", rv.Handle, ui.WithButtonInvalid()), 104)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Outline", rv.Handle, ui.WithVariant(ui.ButtonOutline), ui.WithButtonInvalid()), 104)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Destructive", rv.Handle, ui.WithVariant(ui.ButtonDestructive), ui.WithButtonInvalid()), 120)
+
 	// ---- 列 2: 徽章 / 分隔线 / 标签 ----
 	_, v2 := autoCard(col(r.Handle, 2, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "徽章 · 分隔线 · 标签", v2.Handle))
@@ -513,8 +520,13 @@ func buildBasePage(body *widget.LayoutEle) {
 
 	// ---- 第二行: 卡片本身(直接以真卡片呈现, 不套外壳) ----
 	cardDemo, vd := autoCard(body.Handle, 10)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "卡片", vd.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "圆角面板 + ring 描边; 内容区随卡片尺寸自适应, 页脚贴底且只有下两角圆角", vd.Handle))
+	// 卡片头: 左列标题+说明, 右列动作区(CardAction) —— 动作贴右上、跨标题与说明两行。
+	ch := ui.NewCardHeader(0, 0, 0, vd.Handle, 4)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "卡片", ch.TitleStack().Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "圆角面板 + ring 描边; 内容区随卡片尺寸自适应, 页脚贴底且只有下两角圆角", ch.TitleStack().Handle))
+	cardAct := ui.NewButton(0, 0, 0, 0, "", ch.ActionStack().Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithSize(ui.ButtonSizeIconSm), ui.WithIcon(icons.IconEllipsis))
+	tip.Bind(cardAct.Handle, "CardAction")
 	rd := xui.HStack(vd.Handle, 36, 12)
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "了解详情", rd.Handle, ui.WithVariant(ui.ButtonOutline)), 104)
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "开始使用", rd.Handle), 104)
@@ -570,6 +582,10 @@ func buildFormPage(body *widget.LayoutEle) {
 	xui.ItemFill(dis)
 	dis.SetValue("不可编辑")
 	dis.Enable(false)
+	xui.ItemFill(hint(v.Handle, "校验失败(aria-invalid)"))
+	inv := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithInputInvalid())
+	xui.ItemFill(inv)
+	inv.SetValue("not-an-email")
 
 	// ---- 右列 1: 选择控件 ----
 	_, v2 := autoCard(colR.Handle, 10)
@@ -1067,6 +1083,7 @@ func showDemoMenu(hEle int) {
 	m.Separator()
 	m.Label("外观")
 	m.Check("显示行号", demoLineNo, ui.MenuOnCheck(func(on bool) { demoLineNo = on }))
+	m.Item("更多外观设置…", ui.MenuInset()) // 文字左缩进, 与勾选条目的文字对齐(shadcn inset)
 	m.Radio("浅色主题", demoThemeG1, ui.MenuGroup(1), ui.MenuOnCheck(func(on bool) {
 		if on {
 			demoThemeG1, demoThemeG2 = true, false

@@ -43,6 +43,27 @@ type Theme struct {
 	Input  Color // 输入控件边框, shadcn 中通常与 Border 相同
 	Ring   Color // 焦点环
 
+	// 图表色板(shadcn 的 --chart-1..5)。
+	// 组件库本身不画图表, 这两组令牌是给**用户应用**取用的: 主题从 shadcn 机械转译时
+	// 一并带过来, 才不会在"换个主题后自己的图表配色不跟着变"。
+	// 值与原版一样是灰阶(neutral 预设的 chart 色板无彩度), 顺序 = chart-1..5。
+	Chart1 Color
+	Chart2 Color
+	Chart3 Color
+	Chart4 Color
+	Chart5 Color
+
+	// 侧边栏(shadcn 的 --sidebar-*): 同样的理由, 供用户应用的自定义侧栏取用。
+	// 亮色 = 比页面略亮的中性面, 暗色 = 比页面略亮一档的面; Border 等语义与主色板平行。
+	Sidebar                   Color
+	SidebarForeground         Color
+	SidebarPrimary            Color
+	SidebarPrimaryForeground  Color
+	SidebarAccent             Color
+	SidebarAccentForeground   Color
+	SidebarBorder             Color
+	SidebarRing               Color
+
 	// 圆角(逻辑像素)。shadcn 用 --radius 派生 sm/md/lg/xl, 这里由助手函数计算。
 	Radius int32
 

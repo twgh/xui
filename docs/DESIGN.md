@@ -85,13 +85,18 @@ type Theme struct {
     Destructive, DestructiveForeground Color // 破坏性操作
 
     Border, Input, Ring Color // Input 通常与 Border 相同; Ring = 焦点环
+
+    Chart1, Chart2, Chart3, Chart4, Chart5 Color // --chart-1..5(组件库不画图表, 供用户应用取用)
+    Sidebar, SidebarForeground, SidebarPrimary, SidebarPrimaryForeground,
+    SidebarAccent, SidebarAccentForeground, SidebarBorder, SidebarRing Color
+
     Radius              int32 // 基准圆角 px
     FontDefault, FontMono FontSpec
 }
 ```
 
 > **字段命名约定(2026-10-09 定)**: 字段名 = shadcn CSS 变量的**直接 CamelCase, 不做缩写** —— `--accent-foreground` → `AccentForeground`。早前实现曾缩写成 `AccentFore`, 已统一(否则批量转译社区主题要带一张特例表)。
-> 两处与上游的差异要知道:① `DestructiveForeground` 是本项目的**扩展令牌** —— nova 预设已删除 `--destructive-foreground`(破坏性按钮直接写死白字), 我们保留它以便组件取"破坏色上的文字"; ② shadcn 的 `--chart-1..5` 与 `--sidebar-*` **本项目未建模**, 转译社区主题时忽略(将来做图表/侧栏组件再补)。
+> 两处与上游的差异要知道:① `DestructiveForeground` 是本项目的**扩展令牌** —— nova 预设已删除 `--destructive-foreground`(破坏性按钮直接写死白字), 我们保留它以便组件取"破坏色上的文字"; ② `--chart-1..5` 与 `--sidebar-*` 已于 2026-10-17 建模(`Chart1..5` / `Sidebar*`), **组件库自己不用、是给用户应用取用的** —— 机械转译社区主题时一并填上即可(内置主题的换算值与 `manager_test.go` 的漏填守卫都在)。
 > 基准圆角与 shadcn 一致: `--radius` 在 nova 预设下 = 0.625rem = 10px, 对应 `Theme.Radius = 10`。
 
 Color 封装 uint32,提供 `xui.Hex("#fafafa")`(底层 `xc.HexRGB2RGBA`)。主题文件长得和 CSS 一样,任何 shadcn 社区主题都能机械转译成 Go(`init` 生成的 `ui/theme.go` 默认取内置主题的**副本** —— `light = *xui.Light()`, 见 `cmd/xui/main.go` 的 `themeTemplate`):
@@ -260,7 +265,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | destructive 软色调(bg-destructive/10 + 红字) | button.tsx / badge.tsx |
 | radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground) | radio-group.tsx |
 | checkbox size-4 rounded-[4px] border-input;未选**亮色无底色 / 暗色 dark:bg-input/30**;选中 bg-primary + 白勾;禁用 = 上面每个图层各乘 50% | checkbox.tsx + 第八节 61 |
-| card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl | card.tsx |
+| card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl;卡片头 = 一行两列(左列标题+说明 `1fr`, 右列动作 `auto`), 动作区贴右上、跨标题与说明两行顶端对齐(gap-1 = 4) | card.tsx + `components/card.go` 的 `CardHeader` |
+| **aria-invalid**(表单校验失败): 边框变 destructive + ring-3 destructive/20(暗色 border /50、ring /40), **常驻不要求焦点**;与 focus-visible 同时成立时红色优先(变体顺序里 aria-invalid 在后) | button.tsx / input.tsx / select.tsx + 第八节 69 |
 | badge h-5 胶囊(rounded-4xl) | badge.tsx |
 | switch 轨道 32x18(选中 bg-primary/未选 bg-input, **暗色未选是 dark:bg-input/80**),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground;**禁用时轨道与滑块一起乘 50%**(滑块不跟班会剩一颗全亮白圆) | switch.tsx(radix-nova) + 第八节 61 |
 | switch 元素比轨道每边大 3px:给 focus-visible 的 ring-3 留绘制空间,同时外扩点击热区(≈ after:-inset-*) | switch.tsx |
@@ -270,8 +276,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | slider 交互全自实现:点击跳转 + LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ KeyDown 左右 ±5%/Home/End | — |
 | tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
-| select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条) | select.tsx(已落盘) + combobox.go(弹层接管路线见第八节 30) |
-| menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场 fade-in 100ms(整窗 alpha, 无位移 —— 位移会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; 宽度按内容自适应(shadcn 的 trigger 宽/min-w-32 不可达 —— XMenu_SetItemWidth 实测无效, 已知差异) | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见第八节 36/64) |
+| select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条);**弹层进场 fade-in 100ms**(整窗 alpha: 弹出回调里转 `Window_Transparent_Shaped`, 见第八节 30/69);**aria-invalid** = 红边框 + ring-3 destructive/20(暗色 /40), 见上表 | select.tsx(已落盘) + combobox.go(弹层接管路线见第八节 30) |
+| menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场 fade-in 100ms(整窗 alpha, 无位移 —— 位移会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; `MenuInset()` 条目文字左缩进到 28(pl-7); 宽度按内容自适应(shadcn 的 trigger 宽/min-w-32 不可达 —— XMenu_SetItemWidth 实测无效, 已知差异) | dropdown-menu.tsx(已落盘) + menu.go(原生菜单皮肤, 见第八节 36/64) |
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx(已落盘) + table.go(原生 List 接管路线见第八节 40) |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本项目令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
@@ -301,11 +307,14 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Tabs | `WithTabsVertical()` 支持垂直(标签堆叠、左对齐、指示条在右侧) | 上游 `group-data-vertical/tabs:*` |
 | Slider | `WithSliderRange(min,max)` / `WithSliderStep(step)` | 对应 radix 的 min/max/step; 默认仍是 0~100 连续 |
 | ComboBox 触发区 | `WithComboSize(ComboSizeSm)` = h-7 + `rounded-[min(--radius-md,10px)]` | 对应 select.tsx 的 `data-[size=sm]` |
+| 校验失败态(aria-invalid) | `WithButtonInvalid()` / `WithInputInvalid()` / `WithComboInvalid()` + 运行时 `SetInvalid(bool)` | 选项名带组件前缀, 因为组件同在 `package ui`(Button/Input/ComboBox 三处语义相同); 详见语义表 |
+| Card 头 | `ui.NewCardHeader(parent, space)` + `TitleStack()` / `ActionStack()` | 对应 `CardHeader` + `CardAction`(上游是 grid 1fr_auto); 动作区跨两行贴右上 |
 | ScrollArea | **本项目形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档) | 页面滚动容器; 语义与踩坑见第八节 66 |
-| Menu | 缺上游的 `inset` prop(带图标条目的左缩进) | 未实现 |
+| Menu 条目缩进 | `MenuInset()` = shadcn 的 `inset` prop(`data-inset:pl-7`, 文字左缘 28) | 用于让普通条目与带前置图标/勾选的条目文字对齐;高亮底仍是整行 |
 | Pagination | **本项目扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
-| 未实现 | Button 的 `aria-invalid` 态(表单校验场景)、`CardAction` | — |
+| 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | 组件库自己不用, 供用户应用取用; 机械转译新主题时一并填(manager_test 有守卫) |
+| 剩余差异 | Menu 弹层宽度 = 触发区宽(上游行为, 本实现不可达 —— `XMenu_SetItemWidth` 实测无效, 见第八节 64) | aria-invalid / CardAction / MenuInset / chart·sidebar 令牌已于 2026-10-17 补齐 |
 
 **下划线(Button link / Badge link)**: xcgui 没有下划线文本标志位(`TextFormatFlag_` 里没有), 只能手绘: 宽度用 `xui.TextWidth` 量, y = 行盒中心 + 0.3em + 4px(`underline-offset-4`), 1px 线(`button.go` / `separator.go`)。实测(150% DPI): "Link" 下方 1 条 43 物理像素宽的横线, 紧贴文字下沿。
 
@@ -448,7 +457,8 @@ registry.json 条目(shadcn 同构格式):
 30. **ComboBox 原生弹层的样式接管路线**(实测踩坑, combobox.go 依赖):弹层 = 独立弹出窗口 + ListBox(本质 ListView), 只能拿到句柄做"半接管"——
     - **窗口 BkM 对这个弹层无效**: `XWnd_GetBkManager` 拿到的管理器加填充/描边完全不绘制(绿色探针实证), 弹层白底另有来源;
     - **`ClearBkInfo` 后元素回退"系统默认内容"(白底方角)**: 想要透明必须显式垫一层 alpha=0 的填充(`AddFill(state, 0, 0)`), 算"有内容"才不会回退;
-    - **圆角用 Win32 区域裁剪**: `wapi/wnd.SetWindowRound(hwnd, 物理像素半径)`(SetWindowRgn)稳;xcgui 的 `SetTransparentType(Shaped)` 对原生弹层实测无效;元素背景对象 `SetRectRoundAngle` 写入成功但圆角外仍是窗口白底, 两者要配合用;
+    - **圆角用 Win32 区域裁剪**: `wapi/wnd.SetWindowRound(hwnd, 物理像素半径)`(SetWindowRgn)稳;xcgui 的 `SetTransparentType(Shaped)` **不会**让圆角外变透明(弹层内容本身不透明, 转角仍是白底)—— 但它把窗口变成 layered, 这是**整窗 alpha 淡入**的前提(见本节 69 与下方进场淡入条), 两者各管一件事, 可以同时用(区域裁剪后转 Shaped, 圆角仍然生效);元素背景对象 `SetRectRoundAngle` 写入成功但圆角外仍是窗口白底, 和区域裁剪要配合用;
+    - **进场淡入(2026-10-17)**: 弹层是**普通窗口**, `SetTransparentAlpha` 对它无效(探针 `.verify/probefade` 实测: 不换类型设 128, 抓图仍全白)。`XE_COMBOBOX_POPUP_LIST` 回调里 `XWnd_SetTransparentType(hWindow, Window_Transparent_Shaped)` + 把 alpha 压到下限即可 —— 该回调触发时窗口**还没显示**(`IsWindowVisible=false`), 首帧不会闪白。与 57 的 tooltip 异型窗不同, **这个弹层上连续改 alpha 是生效的**(`shaped-seq` 探针依次设 64/160/255, 三帧抓图 #40A0FF / #A0D0FF / #FFFFFF), 所以直接用整窗 alpha 播 100ms 淡入, 不需要(也无法)走元素 alpha —— 内容全是原生 ListBox。过渡挂**宿主窗口**驱动、apply 每帧 `XC_IsHXCGUI` 守卫(弹层可能被立刻关闭销毁), 细节见 69;
     - **描边不能画在 ListBox 的 paint 事件——该事件在这个弹层窗口上不渲染输出**(探针实证: 内缩 10px 的 6px 红色粗环都画不出来); 这个窗口上能出图的只有 BkM 背景对象、条目 `DrawItem` 回调和 `XE_PAINT_END`;
     - **BkM 的 border 对象贴边画, 会被 SetWindowRgn 的窗口区域裁得只剩左边一条**(上/右/底全消失, 只留左缘; 区域与内容为何错位未深究)。ring-1 描边的出路: 先 `XEle_EnableEvent_XE_PAINT_END` 再 `AddEvent_Paint_End`(该元素及子元素绘制完成事件, 在条目之后执行 = 边框盖内容边缘, 同 shadcn), 描边整体**内缩 1px** 落在窗口区域内, 四边完整, 圆角弹层上 1px 白边距不可感知;
     - **条目高亮/勾用 `AddEvent_ListBox_DrawItem`**(回调带 Index/NState/RcItem): 原生在弹层打开时**不给选中项置 Select 态**, 要自己拿 `XComboBox_GetSelItem` 比对求"选中项"(只用来决定右侧 check), 但**底色只画给"指针所在项"**(`NState == Stay || Select`)——shadcn 的 item 只有 `focus:bg-accent`, 选中态由右侧 check 表达, 不带常驻底色; **指针不在任何条目上时(弹层留白、弹层上下左右边缘外)没有任何底色**, 对齐 radix: 条目的 pointerleave 把焦点交回 content(`onItemLeave = content.focus()`), 高亮随之消失。两个被实测否掉的版本: ① "选中项永远高亮"(鼠标移到别项后选中项仍带灰底); ② "指针离开条目后高亮留在最后悬停项"(radix 的 `highlightedItem` 在 item 失焦后并不保留, 用 `XListBox_GetItemMouseStay` 闩住最后悬停索引会画出一个不该有的灰底)。灰底的像素验收: 指针在项上时该行背景均值 ≈ 241-246, 一离开条目(移到弹层外)同一批行(弹层 y 436..458)均值回到 249-255(= popover 白底 + 文字旁 JPEG 振铃), 即灰底消失;文字是项模板的 shapeText 子元素, 在项背景之后绘制不受影响;
@@ -1090,6 +1100,22 @@ registry.json 条目(shadcn 同构格式):
     - **`xc.XEdit_SetCharSpaceSize(comboHandle, 0, 0)` 对 ComboBox 句柄同样有效**(`EnableEdit(false)` 也生效): 触发区 91→**87**, 与条目/ShapeText 完全一致; 传 `-1,-1` 则收紧到 82(负间距)。
     - 修法写在 `NewComboBox` 里(设完字体之后调用一次); 修后同一弹层内"触发区文字"与每个条目的左缘、墨迹宽度三个数全部相同(1336..1422)。
 
+69. **ComboBox 弹层进场淡入: 原生弹层能转异型透明窗, 且 alpha 可以连续改**(2026-10-17, `components/combobox.go`, 探针 `.verify/probefade` + `.verify/probefadecomp`):
+    - **时机**: `XE_COMBOBOX_POPUP_LIST` 触发时弹层窗口**尚未显示**(探针实测 `IsWindowVisible=false`, 窗口矩形/客户区已就绪), 透明类型与 alpha 都能在首帧前设好 —— 不会闪白。
+    - **普通窗口上 alpha 无效**: 不换类型直接 `XWnd_SetTransparentAlpha(hWindow, 128)`, 抓图仍全白(纯白 popover 一点没透)。必须先 `XWnd_SetTransparentType(hWindow, Window_Transparent_Shaped)` —— 它在弹出后(未显示时)切换也生效。
+    - **与 57 的 tooltip 结论不同, 别一概而论**: 这个弹层转 Shaped 之后**连续改 alpha 每帧都生效**(`shaped-seq`: 设 64 → 抓图 #40A0FF、160 → #A0D0FF、255 → #FFFFFF, 背景是 #0080FF 的父窗)。57 的"整窗 alpha 只认第一次调用"是 tooltip 那个窗口的具体问题(它自己还要靠元素 alpha 做动画)。
+    - **转类型不影响区域裁剪的圆角**: `SetWindowRound` 先设、再转 Shaped, 圆角外仍是背景色(角落采样 = 父窗蓝); ListBox 的 BkM 底色、条目 DrawItem、`XE_PAINT_END` 的 ring 全部照常输出。
+    - **动画实测**(`probefadecomp` 每 16ms 抓弹层中心): `#0180FF`(下限) → `#8CC6FF` → `#C6E3FF` → `#F6FBFF` → `#FFFFFF`, 约 5 帧到全白, 即 100ms `ease` 的淡入曲线; 角落全程是背景蓝。
+    - **实现要点**: 过渡挂**宿主窗口**(`XWidget_GetHWINDOW`)而不是弹层小窗(见 47); `apply` 每帧先 `XC_IsHXCGUI(hw, xcc.XC_WINDOW)` 守卫 —— 弹层会在点外部/选中条目时立刻销毁, 用失效句柄调 X API 会静默崩进程(与 64 的菜单淡入同一个坑); 每次弹出用 **`xui.NextPresenceKey()`** 取键(Presence 对目标不变的调用幂等, 键复用会让过渡根本不启动, 见 70)。
+
+70. **Presence 的键必须全局唯一: 撞键 = 新弹层"全透明但仍在", 表现为点击没反应**(2026-10-17, `presence.go` + `menu.go` / `combobox.go` / `dialog.go`; 用户报障复现并修复):
+    - **现象**: 表单页选过一次 sm 下拉框 → 切到导航页点"打开菜单" → **第一次点击毫无反应**, 第二次才弹出; 反过来先开菜单、再点 sm 下拉框, 下拉框也"点了没反应"。点同页其它控件(分页)同样失效一次。
+    - **不是点击被吞**: 给按钮的 `AddEvent_BnClick` 加日志, 日志**照常触发** —— 菜单确实弹了, 只是窗口 alpha 停在 `AlphaFloor`(看不见), 而原生菜单一弹出就是模态的, 于是下一次点击被这个"透明的菜单"吃掉(选中/点外部才关闭)。
+    - **根因(键撞车)**: `Presence` 按 `(hOwner, key)` 记过渡值且**幂等** —— 目标值没变就不重启过渡、**也不再调 apply**; 而 `target=1` 的条目**不回收**(只有淡出到 0 才删除)。menu 与 combobox 之前各自维护 `menuPresenceKey++` / `comboPresenceKey++`, **都从 1 开始、都挂在宿主窗口上**: 先开下拉(key=1, 走到 1 后条目留在表里) → 再开菜单(key=1) → 撞上已完成的条目, 动画不启动、apply 不执行 → 菜单窗停在 popup 回调里刚设的 alpha 下限。反向同理。
+    - **修法**: ① 新增 `xui.NextPresenceKey()`(全局原子递增), menu / combobox 改用它, 对话框也从固定键 0 改成按实例分配(`Dialog.fadeKey`) —— **任何新调用方都不许自起计数器**; ② `Presence` 在返回前**立即用当前进度调一次 apply**: 键一旦撞上已完成的过渡, 最坏也只是"没有动画", 目标状态一定落地, 不会留下透明窗口(防呆)。
+    - **排查要点**: 这类"点了没反应"先确认事件到没到(BN_CLICK 日志); 到了就怀疑"弹窗存在但不可见"。`SetAnimationScale` 放慢也看不到 —— 过渡根本没启动, 不是太快。
+    - **同源**: 47(弹层透明度/整窗 alpha 的约束)、64(菜单淡入)、69(下拉弹层淡入)。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -1111,7 +1137,7 @@ registry.json 条目(shadcn 同构格式):
 - backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验收)
 - 排查"窗口可见但屏幕上看不见"(见 57):`user32!EnumWindows` + `GetWindowThreadProcessId` 枚举进程窗口(⚠️ 别用 `Process.MainWindowHandle`, 弹层小窗存在时它会返回小窗)、`IsWindowVisible`、`user32!GetLayeredWindowAttributes`(读 layered alpha/颜色键)、`PrintWindow` 与 `CopyFromScreen` 对照(画了 vs 屏幕上没有)
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽)
-- 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55)
+- 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55);**对原生自建弹窗**(ComboBox 下拉, 只有窗口句柄)同样可用: `xc.XWnd_SetTransparentType / XWnd_SetTransparentAlpha`, 在弹出回调里(显示前)设置, 见第八节 69
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)
 - Dialog:`XEle_SetZOrderEx(h, 0, xcc.Zorder_Top)`、`XEle_AdjustLayout`、`XEle_Redraw`、`XEle_GetChildCount/GetChildByIndex`、`XObj_GetType`(→ `xcc.XC_*`)、`XWidget_GetParentEle`、`XWnd_GetRect/Redraw`、`XWnd_SetFocusEle/GetFocusEle`、`xcc.AdjustLayout_No`、`wapi.GetAsyncKeyState`
 - Table(原生 List 载体):`CreateAdapterHeader/CreateAdapter/AddColumnText/SetHeaderHeight/SetRowHeightDefault/SetRowSpace/SetColumnWidth/SetSplitLineColor/SetDrawRowBkFlags/AddRowText/SetItemText/GetCount_AD/SetSelectRow/GetSelectRow/GetVisibleRowRange/RefreshRow/RefreshData/AddEvent_List_DrawItem/AddEvent_List_Header_DrawItem/AddEvent_List_Temp_Create_End/AddEvent_List_Header_Temp_Create_End/AddEvent_List_Select/GetTemplateObject/GetHeaderTemplateObject/GetHeaderHELE/GetScrollBarVObj`

@@ -87,6 +87,7 @@ type Button struct {
 	size     ButtonSize
 	icon     string // 非空时绘制图标替代文字
 	iconSize int32  // 图标绘制边长(逻辑像素); 0 = 默认 18
+	invalid  bool   // aria-invalid: 表单校验失败态(红色边框 + 红色 ring)
 }
 
 // ButtonOption 组件配置项, 构造时传入。
@@ -97,6 +98,11 @@ func WithVariant(v ButtonVariant) ButtonOption { return func(b *Button) { b.vari
 
 // WithSize 设置按钮尺寸预设。
 func WithSize(s ButtonSize) ButtonOption { return func(b *Button) { b.size = s } }
+
+// WithButtonInvalid 设置校验失败态(对应 shadcn 的 aria-invalid):
+// border-destructive + ring-3 destructive/20(暗色 /40)。与 focus-visible 同时成立时红色优先。
+// 名字带 Button 前缀: 组件都在 package ui 里, Input/ComboBox 也有同名语义的选项。
+func WithButtonInvalid() ButtonOption { return func(b *Button) { b.invalid = true } }
 
 // WithIcon 让按钮绘制图标, 替代文字(要通常直接用 github.com/twgh/xui/icons 子包里
 // 的常量, 如 icons.IconX / icons.IconCheck —— 常量按需链接, 不会把整张图标表带进二进制)。
@@ -164,6 +170,19 @@ func (b *Button) SetVariant(v ButtonVariant) *Button {
 	b.Redraw(false)
 	return b
 }
+
+// SetInvalid 设置/清除校验失败态(见 WithButtonInvalid)。
+func (b *Button) SetInvalid(v bool) *Button {
+	if b.invalid == v {
+		return b
+	}
+	b.invalid = v
+	b.Redraw(false)
+	return b
+}
+
+// Invalid 返回当前是否处于校验失败态。
+func (b *Button) Invalid() bool { return b.invalid }
 
 // Spec 返回当前尺寸规格。
 func (b *Button) Spec() buttonSpec { return buttonSpecs[b.size] }
@@ -285,9 +304,19 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 各自独立合成在页面底色上的, 内芯(10%)要比光环(20%)浅。幽灵/链接没有壳体
 	// (bg = None), 铺 Card 后即"透明底透出面板色"(见 DESIGN 第八节 61);
 	// 若什么都不铺, 整个按钮会被 halo 色填满(实测踩坑)。
-	if st.Focused && !st.Disabled && xui.FocusedByKeyboard() {
+	// aria-invalid(表单校验失败)与 focus-visible 共用同一套"环带 + 内芯"画法:
+	// 红环 **常驻**(不要求键盘焦点), 与 focus-visible 同时成立时红色优先 ——
+	// shadcn 里 aria-invalid:* 变体排在 focus-visible 之后, 后写的 ring 色胜出。
+	invalid := b.invalid && !st.Disabled
+	if invalid || st.Focused && !st.Disabled && xui.FocusedByKeyboard() {
 		halo, borderColor := t.Ring.WithAlpha(128), t.Ring
-		if b.variant == ButtonDestructive {
+		switch {
+		case invalid: // aria-invalid:border-destructive ring-destructive/20 (dark /40, border /50)
+			halo, borderColor = t.Destructive.WithAlpha(51), t.Destructive
+			if t.IsDark() {
+				halo, borderColor = t.Destructive.WithAlpha(102), t.Destructive.WithAlpha(128)
+			}
+		case b.variant == ButtonDestructive:
 			halo, borderColor = t.Destructive.WithAlpha(51), t.Destructive.WithAlpha(102)
 		}
 		p.FillRound(&shell, halo, radius)

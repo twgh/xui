@@ -31,7 +31,23 @@ func Light() *Theme {
 		Border: Hex("#e5e5e5"),
 		Input:  Hex("#e5e5e5"),
 		Ring:   Hex("#a3a3a3"),
-		Radius: 10,
+
+		// --chart-1..5 与 --sidebar-*(oklch, 无彩度灰阶)换算
+		Chart1: Hex("#d4d4d4"),
+		Chart2: Hex("#737373"),
+		Chart3: Hex("#525252"),
+		Chart4: Hex("#404040"),
+		Chart5: Hex("#262626"),
+
+		Sidebar:                  Hex("#fafafa"),
+		SidebarForeground:        Hex("#0a0a0a"),
+		SidebarPrimary:           Hex("#171717"),
+		SidebarPrimaryForeground: Hex("#fafafa"),
+		SidebarAccent:            Hex("#f5f5f5"),
+		SidebarAccentForeground:  Hex("#171717"),
+		SidebarBorder:            Hex("#e5e5e5"),
+		SidebarRing:              Hex("#a1a1a1"),
+		Radius:                   10,
 
 		FontDefault: FontSpec{Family: "微软雅黑", Size: 14},
 		FontMono:    FontSpec{Family: "Consolas", Size: 14},
@@ -65,7 +81,23 @@ func Dark() *Theme {
 		Border: Color(xc.RGBA(255, 255, 255, 26)),
 		Input:  Color(xc.RGBA(255, 255, 255, 38)),
 		Ring:   Hex("#737373"),
-		Radius: 10,
+
+		// chart 色板亮暗自带同一组值(shadcn dark 未覆写 --chart-*); sidebar 暗色自有一套
+		Chart1: Hex("#d4d4d4"),
+		Chart2: Hex("#737373"),
+		Chart3: Hex("#525252"),
+		Chart4: Hex("#404040"),
+		Chart5: Hex("#262626"),
+
+		Sidebar:                  Hex("#171717"),
+		SidebarForeground:        Hex("#fafafa"),
+		SidebarPrimary:           Hex("#1447e6"), // oklch(0.488 0.243 264.376) 唯一带彩度的 sidebar 令牌
+		SidebarPrimaryForeground: Hex("#fafafa"),
+		SidebarAccent:            Hex("#262626"),
+		SidebarAccentForeground:  Hex("#fafafa"),
+		SidebarBorder:            Color(xc.RGBA(255, 255, 255, 26)), // oklch(1 0 0 / 10%)
+		SidebarRing:              Hex("#737373"),
+		Radius:                   10,
 
 		FontDefault: FontSpec{Family: "微软雅黑", Size: 14},
 		FontMono:    FontSpec{Family: "Consolas", Size: 14},

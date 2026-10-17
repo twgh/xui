@@ -1,6 +1,7 @@
 package xui
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/twgh/xcgui/xc"
@@ -33,6 +34,20 @@ const (
 // presenceKeyBase 把 presence 的键移进负数空间, 与 hover 的键(0 与 行索引+base)隔离。
 const presenceKeyBase int32 = -100000
 
+// presenceKeySeq 是全局递增的 presence 键分配器(见 NextPresenceKey)。
+var presenceKeySeq int32
+
+// NextPresenceKey 分配一个全局唯一的 presence 键。
+//
+// 键在"同一个 hOwner"内必须互不相同: Presence 是幂等的 —— 目标值没变时它不会重启过渡,
+// 也不再调用 apply(过渡由定时器逐帧驱动, 到位后条目就静默了)。若两个不同的弹层复用同一个
+// 键, 第二个弹层的新窗口会**停留在初始状态**(例如 alpha 压在下限 = 完全看不见, 但窗口已经
+// 存在并吞掉点击), 表现为"点了没反应 / 第二次才生效"。用本函数取键即可避免手工计数器撞车
+// (2026-10-17 实测: menu 与 combobox 各自的计数器都从 1 开始, 先开下拉再开菜单 → 菜单全透明)。
+func NextPresenceKey() int32 {
+	return atomic.AddInt32(&presenceKeySeq, 1)
+}
+
 // easePopup 是弹层进出场的缓动(CSS `ease`)。
 func easePopup(x float64) float64 {
 	if x <= 0 {
@@ -52,6 +67,11 @@ var popupEase = newCubicBezier(0.25, 0.1, 0.25, 1.0)
 //   - apply 每帧被调用(UI 线程内、定时器回调里), 用它把进度落到元素透明度 / 窗口位置上;
 //   - done 到位时回调一次(退场到位后条目自动回收, 不需要自己清状态);
 //   - 幂等: 目标不变时只返回当前进度, 可以像 Hover 一样在事件里无脑调用;
+//   - **键在同一 hOwner 内必须唯一**(每个逻辑弹层一个键): 已完成的条目会一直留在表里
+//     (target=1 不回收), 复用键不会重启过渡、也不会再调 apply, 新窗口就停在自己设的初始
+//     状态上。键用 NextPresenceKey() 分配, 不要各组件自己起计数器(见该函数的说明);
+//   - apply 在调用时**立即以当前进度执行一次**, 之后每帧再由定时器驱动 —— 这样即使键撞上
+//     一条已到位的过渡(过渡不会跑), 目标状态也一定会落地(不会出现全透明窗口);
 //   - hOwner 既是过渡值的归属, 也是动画期间的重绘目标(元素或窗口句柄), 每次 tick
 //     都会立即重绘它 —— 改动落在**别的窗口**上时也一样(实测: 弹层窗口的透明度要靠
 //     宿主窗口的重绘带动合成, 见 DESIGN 第八节 47)。
@@ -66,7 +86,11 @@ func Presence(hOwner int, key int32, visible bool, dur time.Duration,
 	if visible {
 		target = 1.0
 	}
-	return transValue(hOwner, presenceKeyBase-key, target, dur, easePopup, apply, done)
+	v := transValue(hOwner, presenceKeyBase-key, target, dur, easePopup, apply, done)
+	if apply != nil {
+		apply(v)
+	}
+	return v
 }
 
 // SetElementsAlpha 按进度 v(0..1)设置一组元素的透明度, 供对话框 / 弹层做整组淡入淡出。

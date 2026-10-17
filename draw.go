@@ -88,10 +88,17 @@ func (p *Painter) StrokeRound(rc *xc.RECT, color Color, radius int32, lineWidth 
 // (环与边框重合的一侧显窄), 半透明环下还会透出边框黑线。
 // 填充式单层结构没有描边居中/裁剪问题, 四边宽度天然一致。
 func (p *Painter) FocusFrame(ring Color, fill Color, radius int32) {
+	p.RingFrame(ring.WithAlpha(128), fill, radius) // ring-ring/50
+}
+
+// RingFrame 与 FocusFrame 同构, 但环带色**按传入值原样**使用(不再统一乘 50%)。
+// shadcn 的 aria-invalid 环改成 destructive/20(暗色 /40), 与 focus-visible 的
+// ring-ring/50 不是同一个透明度, 所以需要一个能自定义环带色的入口。
+func (p *Painter) RingFrame(ring Color, fill Color, radius int32) {
 	if ring.IsNone() {
 		return
 	}
-	p.FillRound(&p.Rc, ring.WithAlpha(128), radius) // ring-ring/50
+	p.FillRound(&p.Rc, ring, radius)
 	if fill.IsNone() {
 		return
 	}

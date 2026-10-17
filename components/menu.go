@@ -76,6 +76,7 @@ type menuItem struct {
 	group       int32
 	disabled    bool
 	destructive bool
+	inset       bool // 文字左缩进到与勾选条目对齐(shadcn 的 data-inset:pl-8)
 	onSelect    func()
 	onCheck     func(checked bool)
 }
@@ -94,6 +95,11 @@ func MenuDestructive() MenuOpt { return func(it *menuItem) { it.destructive = tr
 
 // MenuGroup 单选组号: 同组 Radio 条目选中互斥(不设组号时单选条目独立切换)。
 func MenuGroup(group int32) MenuOpt { return func(it *menuItem) { it.group = group } }
+
+// MenuInset 让条目文字左缩进到与勾选/单选条目对齐(shadcn dropdown-menu 的 `inset`
+// prop = `data-inset:pl-8`): 勾选条目的文字要为右侧 Check 之外的左侧留位, 不勾选的
+// 普通条目用 inset 才不会看起来往左凸出去。绘制只挪文字, 高亮底仍是整行。
+func MenuInset() MenuOpt { return func(it *menuItem) { it.inset = true } }
 
 // MenuOnSelect 普通条目的点击回调。
 func MenuOnSelect(fn func()) MenuOpt { return func(it *menuItem) { it.onSelect = fn } }
@@ -319,10 +325,6 @@ const menuShadowSizeSub int32 = 8
 // (阴影引擎在白底上的边缘浓度约 depth/1000)。
 const menuShadowDepth int32 = 50
 
-// menuPresenceKey 进场过渡的递增键。必须每个弹窗窗口一个新键: Presence 对
-// "目标不变"的调用是幂等的, 撞上上一场已完成的过渡(键复用)就不会再播。
-var menuPresenceKey int32
-
 // menuOnPopupWnd 弹窗出现: 转阴影弹窗(圆角+投影+可整窗 alpha), 顶级弹窗播
 // 进场淡入, 子菜单即时出现(见下方说明)。
 // 窗口矩形外扩在本回调里做(官方 DrawMenu 示例同款), 探针实测子菜单锚点不受影响。
@@ -377,8 +379,9 @@ func menuOnPopupWnd(hWindow, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *boo
 		// 会被复用/清空, 过渡帧里再解引用拿到的是 0 或垃圾(0 → 淡入永远不动,
 		// 垃圾 → 拿无效句柄调 X API 直接崩进程, demo 实测)。
 		hw := pInfo.HWindow
-		menuPresenceKey++
-		key := menuPresenceKey
+		// 键取全局唯一(不要用本组件自己的计数器: 各组件都从 1 开始会撞车, 见
+		// xui.NextPresenceKey 的说明 —— 撞上已完成的过渡时新菜单窗会停在 alpha 下限)。
+		key := xui.NextPresenceKey()
 		xui.Presence(hWindow, key, true, xui.PopupDuration, func(v float64) {
 			// 菜单可能在过渡途中被关闭(弹窗销毁): 剩余帧必须跳过。
 			// 官方 DrawMenu 示例在 KillFocus 里同样用 XC_IsHXCGUI 做守卫。
@@ -485,9 +488,14 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 	hasIcon := it != nil && ((it.kind == menuKindCheck || it.kind == menuKindRadio) && it.checked ||
 		it.kind == menuKindSub)
 
-	// 文本: px-1.5; 右侧有图标(勾/子菜单箭头)时按 pr-8 让位
+	// 文本: px-1.5; 右侧有图标(勾/子菜单箭头)时按 pr-8 让位;
+	// inset 条目按 shadcn 的 `data-inset:pl-7` 左缘 = 条目矩形 + 28(shadcn 用它把
+	// 普通条目与"带前置图标/勾选"的条目文字对齐)。
 	textRc := rc
 	textRc.Left += 6
+	if it != nil && it.inset {
+		textRc.Left = rc.Left + 28
+	}
 	textRc.Right -= 6
 	if hasIcon {
 		textRc.Right -= 24

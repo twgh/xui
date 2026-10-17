@@ -37,9 +37,6 @@ const (
 	vkDlgShift  int32   = 0x10
 )
 
-// dlgFadeKey 是对话框淡入淡出用的 presence 键(见 presence.go, 与 hover 键空间隔离)。
-const dlgFadeKey int32 = 0
-
 // Dialog 模态对话框: 一个铺满 Body(内容区)的遮罩元素 + 居中面板, 面板内容全部自绘。
 //
 // 与 shadcn dialog.tsx(radix-nova) 对齐:
@@ -74,6 +71,9 @@ type Dialog struct {
 	descText  string
 	showClose bool
 
+	// fadeKey 是本实例的 presence 键(见 xui.NextPresenceKey): 所有对话框共用宿主窗口的
+	// 键空间, 固定键会撞上别的弹层或上一个对话框已完成的过渡(过渡不启动 → 对话框全透明)。
+	fadeKey   int32
 	width     int32
 	open      bool
 	suspended bool // 最小化挂起中: 子树已同步隐藏, 还原后重新 Show(见构造函数注释)
@@ -100,7 +100,7 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	if win == nil {
 		return nil
 	}
-	d := &Dialog{hWnd: hWnd, win: win, width: dlgDefaultW, showClose: true}
+	d := &Dialog{hWnd: hWnd, win: win, width: dlgDefaultW, showClose: true, fadeKey: xui.NextPresenceKey()}
 	for _, o := range opts {
 		o(d)
 	}
@@ -370,7 +370,7 @@ func (d *Dialog) Show() *Dialog {
 		d.setCaretWidthOf(fs[0], 0)
 		xc.XWnd_SetFocusEle(d.hWnd, fs[0])
 	}
-	xui.Presence(d.hWnd, dlgFadeKey, true, xui.PopupDuration, d.applyFade, func(float64) {
+	xui.Presence(d.hWnd, d.fadeKey, true, xui.PopupDuration, d.applyFade, func(float64) {
 		if len(fs) > 0 {
 			d.setCaretWidthOf(fs[0], 1)
 			if xc.XWnd_GetFocusEle(d.hWnd) == fs[0] {
@@ -393,7 +393,7 @@ func (d *Dialog) Hide() *Dialog {
 	// 也避免键盘输入继续打进正在消失的输入框
 	d.suspended = false // 挂起中被隐藏(如还原前按了 ESC): 清标记, 否则下次最小化不会挂起
 	xc.XWnd_SetFocusEle(d.hWnd, 0)
-	xui.Presence(d.hWnd, dlgFadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
+	xui.Presence(d.hWnd, d.fadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
 		showEleTree(d.overlay.Handle, false)
 		if d.backdrop != nil {
 			d.backdrop.Show(false)
