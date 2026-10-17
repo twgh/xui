@@ -171,16 +171,18 @@ const (
 
 type Button struct {
     *widget.Button
-    variant ButtonVariant
-    size    ButtonSize
-    icon    string // 非空时绘制图标替代文字(WithIcon)
+    variant  ButtonVariant
+    size     ButtonSize
+    icon     string // 非空时绘制图标替代文字(WithIcon)
+    iconSize int32  // 图标绘制边长(WithIconSize); 0 = 默认 18
 }
 
 type ButtonOption func(*Button) // 函数选项模式, 等价 cva 的 variants 参数
 
-func WithVariant(v ButtonVariant) ButtonOption { return func(b *Button) { b.variant = v } }
-func WithSize(s ButtonSize) ButtonOption       { return func(b *Button) { b.size = s } }
-func WithIcon(path string) ButtonOption        { return func(b *Button) { b.icon = path } }
+func WithVariant(v ButtonVariant) ButtonOption  { return func(b *Button) { b.variant = v } }
+func WithSize(s ButtonSize) ButtonOption        { return func(b *Button) { b.size = s } }
+func WithIcon(path string) ButtonOption         { return func(b *Button) { b.icon = path } }
+func WithIconSize(size int32) ButtonOption      { return func(b *Button) { b.iconSize = size } }
 
 func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOption) *Button {
     b := &Button{Button: widget.NewButton(x, y, cx, cy, text, hParent)}
@@ -1072,6 +1074,21 @@ registry.json 条目(shadcn 同构格式):
    - **内容区的外边距计入滚动范围**: 内容区四边各 24 外边距时 total = 24 + 内容高 + 24 —— 页面底部留白因此天然有效(滚到底正好留 24, 不必额外垫占位元素)。
    - **Auto 内容里的栅格写法**(`.verify/probeautopage`): 行高必须 **Auto**(行高写 Weight/Fill 在 Auto 内容里塌成 0 —— demo 首次接入时两列卡片整段消失就是这个), 行里 **`Weight` 宽的列仍然算得出宽度**(352 宽的行 → 201/135 = 3:2 ✓), 列高 Auto、卡片 Auto —— 就是 CSS flex 的直觉写法。**铺满型页面(数据页)反过来**: 内容区 `SetContentFill`(Fill) + 行 `Weight` + 列/卡片 Weight 整链 Weight, 表格/树才会跟随窗口长高, 代价是页面不再滚动。
    - 与 55/56/59(尺寸语义、Card、Auto 高的坑)同源; 该条同时解释了"页面内容比窗口高被 `EnableOverflowHide` 裁掉"那条旧待办的解法。
+
+67. **自绘标题栏的"最大化/还原"按钮:用 `Button_Type_Max`, 别自己调 `MaxWindow`**(2026-10-17, demo main):
+
+    - `SetTypeEx(xcc.Button_Type_Max)` 的按钮**会自己切换**最大化/还原(实测: 默认尺寸点一次 → `IsZoomed=true`; 最大化状态再点同位置 → `IsZoomed=false`, 窗口回到原矩形), 与 39 里 `MaxWindow()` API\"只管最大化、不切换\"不同 —— 双击/按钮两条路径各用各的, 不要互相替代。
+    - 按钮顺序仍按视觉排: 最小化 → 最大化 → 关闭, 尺寸与 Ghost 样式同其他控制按钮(`ButtonSizeIconSm` 那套)。
+    - **同一排图标要按"墨迹占比"配平, 而不是统一画布**: `IconEye`(2..22)、`IconMoon`/`IconMaximize2`/`IconMinimize2`(3..21)在 18px 画布下墨迹 23~25 物理像素; `IconMinus`(5..19)、`IconX`(6..18)同画布只有 17/15, 看起来"最小化/关闭小了一圈"。**保持最大化/主题图标默认 18, 把 minus/× 的画布放大到 22**(`WithIconSize(22)`): 实测 eye 25×17、moon 23×23、maximize2 23×23、minus 21×3、× 19×19, 一排视觉齐平。24 也齐(24×2/20×20)但描边同比偏粗, 取 22。反向"缩小 maximize 到 14"同样齐(17/17/15), 但最大化会比旁边的主题按钮小, 不取。
+    - **自绘 `WithIcon` 的按钮不会随窗口状态换图标**(组件每帧只画 `b.icon`), 最大化后仍是原图标, 需要自己换: 窗口没有 MAXIMIZE/RESTORE 事件, 拦 `AddEvent_WindProc` 的 `WM_SIZE`(`wParam==SIZE_MAXIMIZED/SIZE_RESTORED`), 用 `a.UI` 推迟到消息处理完之后按 `w.IsMaxWindow()` 调 `SetIcon(icons.IconMinimize2/icons.IconMaximize2)` —— 这条路径同时覆盖按钮、双击标题栏、Win+↑ 和系统菜单; `iconSize` 不随图标变, 两个图的墨迹比例相近, 不用再调。
+    - 最大化后标题栏按钮整体贴屏幕右上角(窗口矩形 = 屏幕), 元素坐标随布局重排 —— 用固定坐标做 UI 自动化时, 两种情况要分别取按钮中心。
+
+68. **原生 ComboBox 默认带中文字间距, 弹层 ShapeText 没有 → 打开下拉时文字会"变紧"**(2026-10-17, `components/combobox.go`):
+
+    - 实测(150% DPI, 14px 主题字体, 文本"测试环境"): 原生 ComboBox 墨迹宽 **91 物理像素**; 同一字体句柄下 ShapeText 只有 **87**。逐字对比单字墨迹(测 20/20、国 19/18)证明**不是字号/字形缩放, 而是每个字多出约 1px 的 advance** —— xcgui 给原生 ComboBox 的中文默认加了字间距。
+    - 触发区用 ShapeText 弹层、原生控件又带字间距, 结果就是"点开下拉瞬间文字突然变紧"(用户反馈的"下拉列表文字间距小")。调条目左边距无法解决, 只会让左缘对齐而宽度仍不一致。
+    - **`xc.XEdit_SetCharSpaceSize(comboHandle, 0, 0)` 对 ComboBox 句柄同样有效**(`EnableEdit(false)` 也生效): 触发区 91→**87**, 与条目/ShapeText 完全一致; 传 `-1,-1` 则收紧到 82(负间距)。
+    - 修法写在 `NewComboBox` 里(设完字体之后调用一次); 修后同一弹层内"触发区文字"与每个条目的左缘、墨迹宽度三个数全部相同(1336..1422)。
 
 ---
 

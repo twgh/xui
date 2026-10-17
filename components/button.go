@@ -83,9 +83,10 @@ func (s buttonSpec) radius(t *xui.Theme) int32 {
 // 隐藏原生外观后在绘制事件中按主题绘制壳体, 文字仍由原生绘制。
 type Button struct {
 	*widget.Button
-	variant ButtonVariant
-	size    ButtonSize
-	icon    string // 非空时绘制图标替代文字
+	variant  ButtonVariant
+	size     ButtonSize
+	icon     string // 非空时绘制图标替代文字
+	iconSize int32  // 图标绘制边长(逻辑像素); 0 = 默认 18
 }
 
 // ButtonOption 组件配置项, 构造时传入。
@@ -99,8 +100,14 @@ func WithSize(s ButtonSize) ButtonOption { return func(b *Button) { b.size = s }
 
 // WithIcon 让按钮绘制图标, 替代文字(要通常直接用 github.com/twgh/xui/icons 子包里
 // 的常量, 如 icons.IconX / icons.IconCheck —— 常量按需链接, 不会把整张图标表带进二进制)。
-// 图标按 size-4(16px)居中绘制, 配合 ButtonSizeSm 即 shadcn 的 icon-sm 图标按钮。
+// 图标默认按 18px 画布居中绘制(见 WithIconSize), 配合 ButtonSizeSm 即 shadcn 的 icon-sm 图标按钮。
 func WithIcon(path string) ButtonOption { return func(b *Button) { b.icon = path } }
+
+// WithIconSize 覆盖图标绘制边长(逻辑像素, 默认 18)。
+// 不同 lucide 图标的墨迹占 24 网格的比例不同(maximize/square 是 3..21, x 是 6..18,
+// minus 是 5..19), 同一画布下墨迹宽度能差 1.5 倍 —— 想让一排图标视觉齐平, 按墨迹
+// 比例挑尺寸, 例如 minus/x 用 22 才能与 18 画布下的 maximize(墨迹 23px)齐平。
+func WithIconSize(size int32) ButtonOption { return func(b *Button) { b.iconSize = size } }
 
 // pressShift 是按下位移量(逻辑像素), 对应 shadcn 的 active:translate-y-px。
 // 元素的创建高度比视觉高度多这么多, 多出的部分留作位移空间: 元素绘制被裁剪在
@@ -166,6 +173,14 @@ func (b *Button) Spec() buttonSpec { return buttonSpecs[b.size] }
 // icons.IconSun / icons.IconMoon)。
 func (b *Button) SetIcon(path string) *Button {
 	b.icon = path
+	b.Redraw(false)
+	return b
+}
+
+// SetIconSize 运行时修改图标绘制边长(0 = 默认 18)。
+// 换图标时若两个图标的墨迹比例不同(如 maximize ↔ minimize), 可一并改尺寸保持观感一致。
+func (b *Button) SetIconSize(size int32) *Button {
+	b.iconSize = size
 	b.Redraw(false)
 	return b
 }
@@ -297,9 +312,13 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 图标按钮: lucide 图标按 size-4(16px)居中绘制, 不画文字
 	if b.icon != "" {
-		// 18 而非 16: 我们的描边图标墨迹只覆盖路径范围(无 stroke 外扩), 16px 时
-		// 视觉上比浏览器 size-4(16px) 小一圈, 实测取 18 后墨迹与参考一致
-		const iconSize int32 = 18
+		// 默认 18 而非 16: 我们的描边图标墨迹只覆盖路径范围(无 stroke 外扩), 16px 时
+		// 视觉上比浏览器 size-4(16px) 小一圈, 实测取 18 后墨迹与参考一致。
+		// WithIconSize 可按图标墨迹比例覆盖(如 maximize 的 3..21 比 x 的 6..18 大 50%)。
+		iconSize := b.iconSize
+		if iconSize <= 0 {
+			iconSize = 18
+		}
 		midX := (textRc.Left + textRc.Right) / 2
 		midY := (textRc.Top + textRc.Bottom) / 2
 		iconRc := xc.RECT{

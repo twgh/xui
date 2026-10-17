@@ -18,6 +18,7 @@ import (
 
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/common"
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/wapi/wutil"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
@@ -111,15 +112,7 @@ func main() {
 		}
 		*pbHandled = true
 		t := xui.Current()
-		p.FillRound(&p.Rc, t.Primary, 5)
-		if f := xui.FontHandle(xui.FontSpec{
-			Family: t.FontDefault.Family,
-			Size:   t.FontDefault.Size,
-			Bold:   true,
-		}); f != 0 {
-			p.Draw.SetFont(f)
-		}
-		p.TextCenter("x", t.PrimaryForeground)
+		p.Icon(icons.IconAppWindow, &p.Rc, t.Foreground, 2)
 		return 0
 	})
 	logo.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, 18)
@@ -189,14 +182,34 @@ func main() {
 		return 0
 	})
 
-	// 控制按钮
+	// 控制按钮: 最小化 / 最大化(还原) / 关闭, 行为全部交给 xcgui 的按钮类型。
+	// 图标按"墨迹观感"配平: eye/moon/maximize2/minimize2 的路径都占 3..21, 18px 画布下
+	// 墨迹 23~25 物理像素; minus(5..19)与 ×(6..18)同画布只有 17/15, 看起来小一圈。这两个
+	// 的画布放到 22(24 偏大、描边显粗), 墨迹追到 21/19, 与左侧主题按钮齐平。
 	btnMin := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMinus))
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMinus), ui.WithIconSize(22))
 	btnMin.SetTypeEx(xcc.Button_Type_Min)
 
+	btnMax := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMaximize2))
+	btnMax.SetTypeEx(xcc.Button_Type_Max)
+
 	btnClose := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconX))
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconX), ui.WithIconSize(22))
 	btnClose.SetTypeEx(xcc.Button_Type_Close)
+
+	// 最大化/还原换图标: 按钮类型只管行为, 自绘图标不会跟窗口状态变。
+	// 挂 WM_SIZE 而不是只挂点击回调 —— 双击标题栏、Win+↑、系统菜单等改状态的路径
+	// 都会经过它; 用 a.UI 推迟到消息处理之后, IsMaxWindow 已是新状态。
+	syncMaxIcon := func() {
+		btnMax.SetIcon(common.Choose(w.IsMaxWindow(), icons.IconMinimize2, icons.IconMaximize2))
+	}
+	w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+		if message == wapi.WM_SIZE && (wParam == wapi.SIZE_MAXIMIZED || wParam == wapi.SIZE_RESTORED) {
+			a.UI(syncMaxIcon)
+		}
+		return 0
+	})
 
 	// 内容区: 竖向流式 [页签行][页面宿主 Weight 1]。它自己是窗口的 Weight 布局项;
 	// 打开布局后, 页签行与页面宿主就交给它排, 不再需要绝对定位。

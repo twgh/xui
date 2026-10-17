@@ -86,6 +86,11 @@ func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboB
 	if f := xui.FontHandle(xui.Current().FontDefault); f != 0 {
 		cb.SetFont(f)
 	}
+	// 原生 ComboBox 默认带一档中文字间距: 同字体下"测试环境"宽 91 物理像素(150% DPI),
+	// 而弹层条目是 ShapeText、按正常字距渲染只有 87 —— 点开弹层时文字会突然"变紧"
+	// (用户反馈的"下拉列表文字间距小")。XEdit_SetCharSpaceSize 对 ComboBox 句柄同样
+	// 生效(EnableEdit(false) 也可以), 置 0 后触发区与条目实测同为 87, 点开不再跳字。
+	xc.XEdit_SetCharSpaceSize(cb.Handle, 0, 0)
 	// 触发区不吃滚轮: 原生会滚动内部文本(实测滚轮使文字上移), shadcn 的触发区对
 	// 滚轮无响应; 禁用后事件交给父元素, 弹层 ListBox 是独立元素不受影响。
 	cb.EnableEvent_XE_MOUSEWHEEL(false)
