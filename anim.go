@@ -243,8 +243,31 @@ func newHoverOwner(hOwner int) *hoverOwner {
 // dropHoverOwner 忘掉某个句柄上的过渡状态。
 func dropHoverOwner(hOwner int) {
 	hovers.mu.Lock()
-	delete(hovers.owners, hOwner)
+	o, ok := hovers.owners[hOwner]
+	if ok {
+		delete(hovers.owners, hOwner)
+		if o.running {
+			o.running = false
+		}
+	}
 	hovers.mu.Unlock()
+	if ok {
+		// 定时器可能还挂着(条目被中途清掉时, hoverTick 不会走到关定时器的分支),
+		// 不关的话每 16ms 空转一次回调。
+		setHoverTimer(hOwner, false)
+	}
+}
+
+// DropTransitions 丢弃 hOwner 上**全部**过渡条目(元素级与窗口级都适用)。
+//
+// 供"宿主生命周期结束 / 弹层被隐藏"的调用方清场: 淡入中途隐藏时, 未到位条目会留在
+// 表里(未 settled), 它们的 apply 会随残留定时器继续执行, 与下一次进场的 apply 打架
+// (2026-10-18 时间框弹层概率性停在半透明: 淡入中途 hide 后快速重开, fast 路径的
+// 终态与旧条目的 apply 互相覆盖)。调用方负责把相关元素的 alpha 归位到期望的静止态。
+func DropTransitions(hOwner int) {
+	if hOwner != 0 {
+		dropHoverOwner(hOwner)
+	}
 }
 
 // hoverTick 推进一帧: 所有过渡值前进, 还差得远的继续重绘, 全部到位就关定时器。
@@ -265,7 +288,13 @@ func hoverTick(hOwner int) {
 	var applies, dones []callback
 	for k, it := range o.items {
 		v := it.value(now, dur)
-		if it.apply != nil {
+		// 到位条目(target=1 且已 settled)不再调 apply —— 它们虽然留在表里不回收
+		// (presence 的键空间设计, 见 presence.go), 但每帧继续执行旧 apply 会和新
+		// 过渡打架: 同一宿主窗口上第二次弹出弹层时, 旧条目的 apply(v=1.0) 把窗口
+		// alpha 拉回全亮, 新条目的 apply(v) 又拉低, 交替 = 弹层闪烁(2026-10-18
+		// 用户报障: 日期框第一次弹出不闪, 第二次起闪)。"到位后条目静默"本就是
+		// presence 的设计意图, 这里补上实现; 反向过渡(settled 被重置)不受影响。
+		if it.apply != nil && !it.settled {
 			applies = append(applies, callback{it.apply, v})
 		}
 		if v != it.target {

@@ -15,6 +15,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/common"
@@ -64,7 +65,6 @@ func main() {
 	app.InitOrExit()
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
-	a.EnableErrorMessageBox(false)
 	// 重绘节流默认 30ms(hover 过渡只有约 5 帧); 设 10ms 让过渡/动画跑到 ~60fps。
 	// 10 而不是 16: 节流按两次绘制的间隔算, 与运行时 16ms 的过渡定时器会周期性 beat 掉帧;
 	// 低于 16 也不再涨(实测 ~16.6ms 硬地板)。见 docs/DESIGN.md 第八节 46。
@@ -663,6 +663,39 @@ func buildFormPage(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewComboBox(0, 0, 0, 0, v4.Handle,
 		[]string{"开发环境", "测试环境", "生产环境"},
 		ui.WithComboSize(ui.ComboSizeSm), ui.WithComboPlaceholder("sm 尺寸")))
+
+	// ---- 左列 3: 日期与时间 ----
+	_, v5 := autoCard(colL.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "日期与时间", v5.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "触发区自绘(outline 按钮), 弹层是自建阴影窗: 月历全自绘, 时间框两列滚动列表", v5.Handle))
+
+	xui.ItemFill(hint(v5.Handle, "日期框(点击弹出月历卡片)"))
+	dp := ui.NewDatePicker(0, 0, 0, 0, v5.Handle, ui.WithDatePickerPlaceholder("选择日期"))
+	xui.ItemFill(dp)
+	dpVal := ui.NewLabel(0, 0, 0, 0, "", v5.Handle).SetMuted()
+	dpVal.SetText("未选择")
+	xui.ItemFill(dpVal)
+	dp.OnChange(func(t time.Time) {
+		dpVal.SetText("选择: " + t.Format("2006年1月2日")).Redraw()
+	})
+
+	xui.ItemFill(hint(v5.Handle, "时间框(两列列表: 时 / 分)"))
+	rowT := xui.HStack(v5.Handle, 32, 8)
+	tp := ui.NewTimePicker(0, 0, 0, 0, rowT.Handle, ui.WithTimePickerValue(9, 30))
+	xui.ItemWidth(tp, 160)
+	tpVal := ui.NewLabel(0, 0, 0, 0, "09:30", rowT.Handle).SetMuted()
+	xui.ItemWidth(tpVal, 80)
+	tp.OnChange(func(h, m int) {
+		tpVal.SetText(tp.Text()).Redraw()
+	})
+
+	// ---- 右列 3: 月历卡片 ----
+	_, v6 := autoCard(colR.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "月历卡片", v6.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "完全自绘: 6×7 固定网格(周一开头), 选中实心 / 今天浅底 / 悬停 150ms 过渡", v6.Handle))
+	// 不声明布局项尺寸 = 用元素自身尺寸(248×292), 让它保持方正的卡片比例
+	cal := ui.NewCalendar(0, 0, 0, 0, v6.Handle, ui.WithCalendarSelected(time.Now()))
+	cal.OnSelect(func(t time.Time) { tip.Bind(cal.Handle, t.Format("2006年1月2日")) })
 }
 
 // ===== 页 3: 导航(标签页 / 分页 / 菜单) =====

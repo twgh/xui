@@ -291,6 +291,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **中文 500 字重 ≈ 常规**: Label 默认常规、按钮文字常规(用粗体字形实现 500 会明显偏粗); 标签比描述"看着粗"是**颜色**差(foreground 近黑 vs muted 灰), 实测笔画同宽 | label.tsx 500 + 实测像素 |
 | 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |
 | **字体单位**: xcgui 字体 size 是 pt 不是 px, FontHandle 统一按 px×0.75 换算(14px→11pt); 之前全局文字放大 1.33× | font.go(见第八节 31) |
+| calendar 卡片 = bg-popover rounded-lg + ring-1 ring-foreground/10(popover 皮肤; 弹层里用 `WithCalendarFlat` 免双层边框); 格子 = `--cell-size` 2rem(32) 方格 + rounded-md(6); 标题行高 = 格高, 月份居中 font-medium, 左右各一个 ghost 翻页钮(size-8, hover bg-accent, chevron 16); 星期行 text-[0.8rem] muted; **固定 6 行**(月份切换卡片高度不跳, 弹层尺寸恒定); 选中 bg-primary + text-primary-foreground, 今天 bg-accent, 悬停 bg-accent(150ms 过渡), 非本月 text-muted-foreground; 周起始日默认周一(中文习惯), `WithCalendarWeekStart` 可调 | calendar.tsx(react-day-picker v9 的 classNames) + calendar.go |
+| date picker 触发区 = **Button variant="outline"**(不是 Input): h-8 rounded-lg border-input bg-background, 左侧 size-4 calendar 图标 + 文字, hover bg-accent / 文字 accent-foreground; 未选择显示占位符(muted); 弹层 = 自建阴影窗 + Calendar(sideOffset=4, 下方放不下翻上方, 夹在屏幕内); 进场 fade-in 100ms; 选中即回写+关闭+回调, 点外部(弹层失焦)/ESC 关闭; **点触发区关闭后 250ms 内不再重开**(弹层 KillFocus 先于触发区 LButtonUp, 否则表现为"点两次才关掉"); aria-invalid 同 Button | date-picker 文档示例(Button outline + Popover + Calendar) + datepicker.go / popup.go |
+| time picker = 触发区同 date picker(clock 图标 + "09:30") + 弹层两列滚动列表(时 0-23 / 分 0-59): 每列 64 宽、8 项可见(28×8), p-1 内边距; 载体是**原生 ListBox**(滚动/滚轮/点击都是原生), 条目背景与文字自绘 —— 选中 bg-primary + text-primary-foreground, 悬停 bg-accent(150ms 过渡); **选择即生效但弹层保持打开**(继续改另一列), 点外部/ESC 关闭; 打开时选中项滚到列表中间(行步进 = 项高+1, 见第八节 72) | shadcn 无官方 time-picker, 语义取社区通行形态(Popover + 滚动列表) + timepicker.go |
 
 ### 变体/尺寸与上游的映射、已知差异
 
@@ -307,6 +310,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Tabs | `WithTabsVertical()` 支持垂直(标签堆叠、左对齐、指示条在右侧) | 上游 `group-data-vertical/tabs:*` |
 | Slider | `WithSliderRange(min,max)` / `WithSliderStep(step)` | 对应 radix 的 min/max/step; 默认仍是 0~100 连续 |
 | ComboBox 触发区 | `WithComboSize(ComboSizeSm)` = h-7 + `rounded-[min(--radius-md,10px)]` | 对应 select.tsx 的 `data-[size=sm]` |
+| Calendar | `WithCalendarSelected/WeekStart/OnSelect` + `WithCalendarFlat()`(弹层内嵌不画卡片); 尺寸常量 `CalWidth/CalHeight`(248×292) | react-day-picker 的 props;固定 6 行是本实现决策(高度恒定) |
+| DatePicker / TimePicker | `WithDatePickerPlaceholder/Value/Invalid` / `WithTimePickerPlaceholder/Value/Invalid` + 运行时 `SetInvalid`; 程序化开关 `Open/Close/IsOpen`; DatePicker 另有 `Clear/SetValue` | 选项名带组件前缀(组件同在 package ui); 弹层骨架 `popup.go` 是两个组件的内部实现, 随组件一起拷贝 |
 | 校验失败态(aria-invalid) | `WithButtonInvalid()` / `WithInputInvalid()` / `WithComboInvalid()` + 运行时 `SetInvalid(bool)` | 选项名带组件前缀, 因为组件同在 `package ui`(Button/Input/ComboBox 三处语义相同); 详见语义表 |
 | Card 头 | `ui.NewCardHeader(parent, space)` + `TitleStack()` / `ActionStack()` | 对应 `CardHeader` + `CardAction`(上游是 grid 1fr_auto); 动作区跨两行贴右上 |
 | ScrollArea | **本项目形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档) | 页面滚动容器; 语义与踩坑见第八节 66 |
@@ -1116,6 +1121,34 @@ registry.json 条目(shadcn 同构格式):
     - **排查要点**: 这类"点了没反应"先确认事件到没到(BN_CLICK 日志); 到了就怀疑"弹窗存在但不可见"。`SetAnimationScale` 放慢也看不到 —— 过渡根本没启动, 不是太快。
     - **同源**: 47(弹层透明度/整窗 alpha 的约束)、64(菜单淡入)、69(下拉弹层淡入)。
 
+71. **异型/阴影弹窗里, 元素的布局坐标原点是窗口矩形原点(含阴影边距), 不是可见区(卡片)原点**(2026-10-18, `components/popup.go`, 探针 `.verify/probedate4`):
+    - `Window_Transparent_Shadow` 的窗口, `XWnd_GetClientRect` 返回的是含偏移的 Body(实测 menu: `{8,8,168,276}`, 即卡片在窗口坐标 (8,8) 起 —— 与 HANDOFF 里 `XEle_GetWndClientRect` 的注释"原点 = 所属窗口矩形原点(含阴影边距)"同口径)。但**元素布局不吃这个收缩**: 元素放 (0,0) 会贴在窗口矩形左上(阴影带内), 卡片右侧与底部露出 band 宽的窗口底色 —— **浅色主题下完全看不出来**(窗口默认白底、卡片也是白), 深色主题下是一条白边(实测截图)。
+    - 修法: 弹层内容元素建在 `(band, band)`(band = 阴影带宽), 尺寸 = 卡片尺寸; 窗口尺寸 = 卡片 + 2×band。定位同理: 窗口矩形左上 = 卡片目标位置 − band(物理像素要乘 DPI, 见 66 的坐标系说明)。
+    - 与 36(菜单阴影窗)/47/64 同一套窗口, 菜单自己画背景用的是窗口绘制事件(rc = GetClientRect, 原点在窗口原点), 所以它看起来"没问题" —— 两条绘制路径的坐标系**差一个 band**, 混用时最容易在这翻车。
+
+72. **手动创建原生 ListBox 做自绘列表(时间框弹层)的实测语义**(2026-10-18, `components/timepicker.go`, 探针 `.verify/probelb`):
+    - **必须先 `CreateAdapter()` 再 `AddItemText`**, 否则条目装不进去(同 ComboBox 的适配器语义)。
+    - **几何**: `SetPadding` 生效(内容区四边内缩); **行步进 = 项高 + 1**(项与项之间固定 1px 缝, 与 combobox 弹层实测一致); **首项 top = padding + 3**(固有内缩, ScrollPosYV 定位要把它算上, 少 7px 目标项会露不全)。`SetItemHeightDefault(h, h)` 设默认行高。
+    - **`ScrollPosYV` 是像素**(同 66); `SetSelectItem` 只改选中态**不滚动视口** —— 打开弹层时要手动滚到当前项。
+    - **项模板的文字是"绘制前静态"的**: 在 `XE_LISTBOX_DRAWITEM` 里对模板 ShapeText `SetTextColor` 改选中项文字色**来不及**(文字已在 DrawItem 之前画完, 实测黑底上黑字)。要按状态变文字色只能**自绘文字**: 把模板文字设成全透明(`XShapeText_SetTextColor(h, 0)`), DrawItem 里 `p.Text(GetItemText(i, 0), &pItem.RcItem, col, Center|Vcenter)` 自己画。
+    - **两套索引**: `GetItemText(i, col)` 的列从 **0**(适配器列)起; `GetTemplateObject(i, itemID)` 的参数是模板 XML 里的 **itemID**(默认模板 shapeText = 1)。混用会拿到空串/空句柄。
+    - **选中态在 `pItem.NState`**(`List_Item_State_Leave/Stay/Select`), 悬停过渡用 `xui.HoverItem(hEle, pItem.Index, hot)`; 项背景画在 `pItem.RcItem`(已扣 padding, 不含滚动条宽度)。
+    - `SetDrawItemBkFlags(0)` 关原生项背景 + `EnableBkTransparent(true)` 关容器背景; 滚动条走 `scrollbar.go` 的统一皮肤(`SetScrollBarSize` + `styleScrollBar`), `EnableAutoShowScrollBar(true)` 原生自动显隐。
+    - `XWidget_LayoutItem_SetWidth(模板文字, Layout_Size_Fill)` 会把项模板文字宽算成 0(实测文字整体消失) —— 项模板里的 `layout.width="auto"` 别动, 居中交给自绘。
+    - **元素鼠标事件的 pPt 是"元素客户区"坐标**(探针 `.verify/probehit`: 元素在 (100,100) 时点元素内 (99,47) 的 raw = 99,47; `XEle_PointWndClientToEleClient` 是窗口客户区 → 元素客户区的**再次**换算, 对事件坐标再用会多减一次)。自绘组件的命中测试直接用 pPt 即可。
+
+73. **复用的 Shadow 弹窗做淡入: 整窗 alpha 冻结 / 窗口白底 / apply 互搏 / 过渡挂错窗口 / 首帧残留 / DLL 无效句柄 —— 五个坑叠一起才是"闪烁、抖动、闪退"**(2026-10-18, `components/popup.go` + `anim.go` + `presence.go`, 用户报障四轮递进 + 60fps 录屏逐帧确认; 探针 `.verify/probealpha` / `.verify/flicker` / 弹窗内逐帧抓图):
+    - **现象演进**: ①"弹出动画闪烁" → ②"第一次不闪, 第二次起闪" → ③修复后仍闪 → ④"点击后弹窗直接显示, 然后消失, 然后开始淡入"(用户逐帧) + "时间框点击闪退"。帧级抓图(弹窗进程内每 8ms BitBlt 整个弹窗矩形存 PNG)实锤: 第二次显示的第 1-2 帧 mean=228(**白帧**)。
+    - **根因 C2(快速点击 UI 卡顿, "抖动")**: 过渡挂宿主主窗口 → hoverTick 每 tick 全量重绘整个表单页 ×100ms, 快速点击时重绘排队、UI 线程卡到出系统忙碌光标(用户 60fps 录屏可见蓝圈)。**修法**: 过渡挂**弹窗自己**(p.win) —— 元素 alpha 由弹窗自身重绘落地, 400×500 物理像素每 tick 无压力; 整窗 alpha 时代挂宿主窗是被迫的(DWM 合成要宿主带动, 见 47/73 根因 B), 元素 alpha 不需要。
+    - **根因 A(主因, 白闪)**: 弹窗窗口不设置背景时, xcgui 画**白色默认底**。淡入(元素 alpha)期间卡片半透明, 白底从卡片下面透出来 —— 深色主题下就是刺眼的白闪。**修法**: 弹窗创建时给窗口 BkM 垫一层 `alpha=0` 的填充(`XBkM_Clear + XBkM_AddFill(..., 0, 0)`) —— 留空会回退"系统默认内容", 透明必须显式表达, 同第八节 30 的轨道透明。
+    - **根因 B(淡入路线错误)**: 整窗 alpha(`XWnd_SetTransparentAlpha`)对透明窗**只认第一次调用**(57) —— 创建时的 255 就是那次, 之后全部冻结。menu/combobox 的弹窗淡入能用是因为**每次弹出都重建窗口**(每次都是"第一次调用"), 而组件弹层是复用的 → 整窗 alpha 路线整段失效(逐帧抓图证实两次显示都是瞬间全亮)。**修法**: 淡入改**元素 alpha**(`SetSubtreeAlpha(body)` + 每帧 `XWnd_Redraw(弹窗)`, tooltip 同款, 见 57); 显示前压 `SetSubtreeAlpha(0)`, 首帧只有阴影。附带修正: `SetWindowPos` 不带 `SWP_SHOWWINDOW`(提前显示会多一帧)。
+    - **根因 C(第二次起 apply 互搏)**: `hoverTick` 对 owner 上所有 presence 条目调 apply, 已到位旧条目(不回收)每帧 `apply(v=1.0)` 与新条目打架 —— 实测二次弹出时亮度 12↔85 逐帧交替。**修法**(anim.go): 到位条目(settled)不再调 apply("到位后条目静默"补上实现; 反向过渡 settled 会重置, 淡出不受影响)。menu/combobox/dialog 共用这张表, 同样受益。
+    - **排查方法论**: ①亮度采样在"浅色弹层弹在浅色页面/弹层内容与页面内容相同"时完全失效, 必须**帧级抓图看画面**; ②外部工具(BitBlt 轮询)有 10ms+ 延迟且可能错过首帧, 首帧问题要用**用户录屏逐帧**或进程内自抓(Show 里起协程); ③录屏分辨率是缩放的(2560→1728), 且 IDE 全屏会挡住采样区域 —— 坐标要先按视频实际内容校准; ④apply 日志显示 v 正常推进 ≠ 画面正常(白帧期间 v 也在走), 一定要把"值序列"与"帧序列"分开对齐; ⑤**DLL 错误弹窗 ≠ Go panic** —— 用户看到 DLL 报错弹窗(如"SetAlpha 输入句柄无效")时, 先定位是哪个 X API 收了无效句柄, 再查该句柄的生命周期(所属窗口显示前/销毁后); 被自动关闭的错误弹窗背后可能跟着 access violation 闪退。
+    - **根因 D(时间框点击闪退 + "SetAlpha 句柄无效"弹窗)**: `GetChildByIndex` 对原生 ListBox 会返回**非 0 但无效**的子句柄(实测 type=62 的延迟创建内部对象, 弹窗已显示后依然如此, 每个子 ListBox 约 8-16 个) —— 对它调 `XEle_SetAlpha` 触发 xcgui 的 **DLL 错误弹窗("SetAlpha 输入句柄无效")**。⚠️ DLL 内部错误**不产生 Go panic** —— 它走 xcgui 自己的错误处理(弹窗/日志/返回), demo 里被"自动关错误弹窗"逻辑吞掉后, 后续无效句柄调用可能直接 access violation 闪退(无堆栈)。**修法三层**: ①遍历组件(`popup.go` 的 `fadeSubtreeAlpha` 与 `presence.go` 的 `setAlphaTree`)对每个句柄加 `XC_IsHXCGUI(h, XC_ELE)` 守卫; ②`fadeSubtreeAlpha` 同时跳过滚动条子树(滚动条显隐由 showScrollBarOnHover 自理, 跟随淡入会被每帧拉亮); ③Show 时序改**屏幕外预显示**(见根因 E)。
+    - **根因 E(首帧残留, 用户逐帧确认"直接显示 → 消失 → 再淡入")**: 复用窗口再次 ShowWindow 时, 首帧合成的是**窗口表面残留的上一次内容**(关闭前 alpha=1 的全亮卡片); 元素 alpha=0 要等第一次重绘才落地, 于是先闪一帧全亮。**修法**: **屏幕外预显示** —— 先 `SetWindowPos(-30000,-30000, SWP_SHOWWINDOW)` + `Redraw(true)` 在不可见位置画好"透明首帧", 再 `SetWindowPos` 挪到目标位置(挪动只改 DWM 合成位置, 表面内容已是透明帧; Win32 窗口坐标范围 ±32768, -30000 安全)。60fps 录屏逐帧验证: 弹层出现 = 19→24→27→31 纯渐显, 无全亮相。
+    - **交互补充**: 关闭后 300ms 内重开(`popoverReopenFadeSkip`)**跳过淡入直接完成态** —— 快速连点时弹层反复从透明渐显会"眨眼", 对齐 CSS 过渡的中断语义(不重播动画)。
+    - **同源**: 57(tooltip: 异型窗整窗 alpha 只认第一次 → 元素 alpha)、64/69(menu/combobox 每次重建弹窗所以整窗 alpha 可用)、70(presence 键唯一 + 根因 C 的条目静默)、30(BkM 留空回退白底)、47(整窗 alpha 时代挂宿主窗的原因)。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -1132,6 +1165,7 @@ registry.json 条目(shadcn 同构格式):
 - 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距), 本项目暂用子项外边距替代, 未实测
 - 滚动容器(`LayoutFrame`, 见第八节 66):`widget.NewLayoutFrame`(布局盒子 + 滚动视图, 内容总大小自动撑开) + `XLayoutBox_*`(与 LayoutEle 同一套 EnableHorizon/AutoWrap/OverflowHide/Align/Space) + `XSView_SetTotalSize/GetTotalSize/SetScrollBarSize/EnableAutoShowScrollBar/ShowSBarH(V)/GetViewWidth/GetViewHeight/GetViewRect/GetViewPosH(V)/ScrollPosYV(像素)/ScrollPosV(行)/ScrollTop(Bottom)/GetScrollBarH(V)Obj`、`ScrollBar.ShowButton/SetSliderPadding/GetButtonSliderObj` + `AddEvent_Size(xc.XE_SIZE1)`(自愈补排)
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
+- 手动建列表(时间框弹层, 见第八节 72):`ListBox.CreateAdapter/AddItemText/SetItemHeightDefault/SetDrawItemBkFlags/GetItemText(i, 适配器列)/GetTemplateObject(i, 模板itemID)/SetSelectItem(不滚动)/GetCount_AD/AddEvent_ListBox_DrawItem/Temp_Create_End/Select/GetScrollBarVObj`;`XShapeText_SetTextColor(h, 0)` 让模板文字全透明、`XWidget_LayoutItem_SetMargin(h, l, t, r, b)`、`xc.XWidget_LayoutItem_SetWidth(…Fill)` 对项模板文字会算出 0 宽(勿用)
 - `XWnd_SetWindowPos(物理像素)`、`XC_hWindowFromHWnd`、`XEle_GetWndClientRect`、`XWnd_GetClientRect`、`wapi.ShowWindow/SetForegroundWindow/GetSystemMetrics/GetWindowLongPtrW`
 - D2D 直通:`xc.XDraw_GetD2dRenderTarget / XDraw_ConvRect / XC_GetD2dFactory`(裸指针;直通绘制必须先用 `ConvRect` 换到画布对齐坐标,见第八节 43)+ **`github.com/twgh/xcgui/wapi/d2d`**(按 edge 的 COM 接口虚表风格封装,ABI 三条硬规则写在包注释里):借用入口 `NewRenderTargetByHandle`/`NewFactoryByHandle`;几何 `NewGeometry`/`NewGeometryFigures`(逐条可指定开/闭)/`Create{Rectangle,RoundedRectangle,Ellipse}Geometry` + `ID2D1Geometry.Usable/GetBounds` + `ID2D1PathGeometry.Open/Base` + `ID2D1GeometrySink.{SetFillMode,BeginFigure,AddLines,EndFigure,Close}`;绘制 `FillGeometry(Color)`/`DrawGeometry(Color)`(任意几何) + 图元 `DrawLine`/`DrawRectangle`/`FillRectangle`/`DrawEllipse`/`FillEllipse`(各带 `*Color` 便利版) + `CreateStrokeStyle`/`RoundStrokeStyleProperties`;其余 `SetTransform`/`GetTransform`/`GeometryCache[K]`(按工厂作废的几何缓存)
 - backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验收)

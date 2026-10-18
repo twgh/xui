@@ -133,6 +133,14 @@ func SetSubtreeAlpha(v float64, hRoots ...int) {
 }
 
 func setAlphaTree(hEle int, a byte) {
+	// ⚠️ 句柄有效性守卫: 子元素(原生控件的滚动条/滑块按钮等)在所属窗口**显示之前**
+	// 可能尚未初始化, GetChildByIndex 会返回非 0 但无效的句柄; 对它调 XEle_SetAlpha
+	// 会触发 xcgui 的 DLL 错误弹窗("SetAlpha 输入句柄无效"), 该错误不产生 Go panic
+	// (DLL 内部处理), demo 里被"自动关错误弹窗"吞掉后, 后续无效句柄调用可能直接
+	// access violation 闪退(2026-10-18 时间框点击闪退, 用户报障)。
+	if !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
+		return
+	}
 	xc.XEle_SetAlpha(hEle, a)
 	n := xc.XEle_GetChildCount(hEle)
 	for i := int32(0); i < n; i++ {

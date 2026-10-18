@@ -153,12 +153,68 @@
 - ✅ **逐组件单独安装 + 编译回归(2026-10-17)**:20 个组件各建临时项目 `xui init` + `xui add <组件>` + `go build ./ui`
   (本地 `XUI_REGISTRY` + 模块 replace), 另加 `add --all` 一项, 21/21 通过。
 
+- ✅ **Calendar / DatePicker / TimePicker 三个新组件(2026-10-18, 参考 HUMUI HouTai017)**:
+  - **`ui.Calendar` 月历卡片**(`components/calendar.go`): 全自绘(不用原生 MonthCal —— 其格子/比例不可控), 248×292、
+    6×7 固定网格(高度不跳), 格 32 圆角 6; 选中实心/今天浅底/悬停过渡/非本月弱化; 周一开头可配(`WithCalendarWeekStart`);
+    可独立摆放, 弹层内 `WithCalendarFlat` 免双层边框。
+  - **`ui.DatePicker` 日期框**(`components/datepicker.go` + 弹层骨架 `popup.go`): 触发区 = outline 按钮(calendar 图标 +
+    "2006年1月2日"/占位符), 弹层 = 自建阴影窗(卡片由 body 画, 月历 flat) + item 左下对齐(sideOffset=4)、
+    下方放不下翻上方、夹屏幕内; 淡入 100ms(Presence 挂宿主窗 + `NextPresenceKey`); 选中即回写+关闭+回调;
+    点外部(KillFocus)/ESC 关闭; **点触发区关闭后 250ms 内不重开**(KillFocus 先于 LButtonUp, 否则"点两次才关掉");
+    Open/Close/IsOpen 程序化控制, 销毁时弹窗跟着销毁, `OnThemeChangeFor` 跟主题重绘。
+  - **`ui.TimePicker` 时间框**(`components/timepicker.go`): 触发区同款(clock 图标 + "09:30"); 弹层两列原生 ListBox
+    (时/分, 64 宽、8 项可见), 条目背景/文字自绘(选中 bg-primary 反色、悬停 bg-accent 过渡), 滚动条统一皮肤;
+    选择即生效、弹层保持打开; 打开时选中项滚到中间(行步进 = 项高+1 + 首项固有内缩, 见 DESIGN 72)。
+    ⚠️ ListBox 手动创建的一批语义(适配器先行/两套索引/模板文字静态色)记 DESIGN 第八节 72。
+  - **弹层骨架 `popup.go`**(阴影窗 + 自绘卡片 body + KillFocus/ESC 关闭 + 定位翻转 + 淡入): datepicker/timepicker 的
+    files 里各带一份, registry 已登记。
+  - **验收**: 探针 `.verify/probedate4`(亮/暗、打开/选中回写/外部关闭/重开/翻月)、demo 表单页两张新卡片(深色滚动截图);
+    逐组件安装编译 calendar/datepicker/timepicker + `add --all` 全部通过; registry.json 已登记 3 个组件。
+  - 新坑记 DESIGN 第八节 **71**(阴影窗元素坐标原点 = 窗口矩形原点, 卡片要放 (band,band))、**72**(手动 ListBox 自绘列表语义)。
+
+- ✅ **修复: 日期框/时间框弹层"闪烁/抖动"(2026-10-18, 用户报障 + 60fps 录屏, 四个根因全修)**:
+  - **根因 A(白闪)**: 弹窗不设背景时 xcgui 画**白色默认底**, 淡入期间白底从半透明卡片下透出(帧级抓图: 第二次
+    显示 mean=228 白帧)。修法: 弹窗创建时 `XBkM_Clear + XBkM_AddFill(alpha=0)` 垫透明填充(同第八节 30)。
+  - **根因 B(淡入路线)**: 整窗 alpha 对透明窗只认第一次调用(57), 复用弹窗整段失效(两次显示都瞬间全亮)。
+    修法: 淡入改**元素 alpha**(SetSubtreeAlpha(body) + 每帧重绘, tooltip 同款), 显示前压 0。
+  - **根因 C**: `hoverTick` 对已到位的旧 presence 条目仍每帧调 apply, 二次弹出时互相打架(实测 12↔85 交替)。
+    修法(anim.go): settled 条目不再调 apply; menu/combobox/dialog 同表受益。
+  - **根因 D(用户 60fps 录屏"抖动", 快速点击更明显)**: 过渡挂**宿主主窗口** → 淡入 100ms 里每帧全量重绘
+    整个表单页, 快速点击时重绘排队、UI 线程卡到出系统忙碌光标(用户录屏可见蓝圈)。修法: 整窗 alpha 时代挂宿主窗
+    是被迫的(DWM 合成要宿主带动), 改元素 alpha 后**过渡挂弹窗自己**(400×500 物理像素, 每 tick 重绘无压力)。
+  - **根因 E(用户逐帧"直接显示 → 消失 → 再淡入")**: 复用窗口再次 ShowWindow 首帧合成的是**表面残留的上一次
+    内容**(关闭前全亮卡片), 元素 alpha=0 要等首次重绘才落地。修法: **屏幕外预显示** —— SetWindowPos(-30000) +
+    Redraw 画好透明首帧再挪到目标位置。
+  - **根因 F(时间框点击闪退 + "SetAlpha 句柄无效"弹窗)**: `GetChildByIndex` 对原生 ListBox 返回**非 0 但无效**
+    的子句柄(type=62 延迟创建对象, 显示后依然存在, 每列约 8-16 个) → `XEle_SetAlpha(无效句柄)` 触发 DLL 错误
+    弹窗 —— DLL 错误不产生 Go panic, 被吞掉后可能 access violation 闪退。修法: `fadeSubtreeAlpha` 与
+    `setAlphaTree` 对每个句柄加 `XC_IsHXCGUI(h, XC_ELE)` 守卫 + fadeSubtreeAlpha 跳过滚动条子树(滚动条显隐自理)。
+  - **根因 G(概率性半透明透字 + 滚动条不隐藏)**: 淡入中途被 hide(快速点击/选日期/点外部)时 alpha 停在中间值、
+    条目未 settled —— ①300ms 内 fast 重开只设属性**没有重绘**, 屏幕上还是中间值的残留帧(弹层半透明透出页面文字,
+    且滚动条随子树一起可见); ②未 settled 的旧条目每帧 apply(v=1.0) 与新状态互相覆盖。修法: Hide 时
+    `xui.DropTransitions(弹窗)`(新 API, 清条目+关残留定时器) + `SetSubtreeAlpha(1)` 归位终态 + OnFaded 恢复
+    滚动条隐藏; fast 路径补 `Redraw(true)` 让属性落地。验证: 60fps 录屏半透明卡住段 0, 快速交互进程存活。
+  - **交互补充**: 关闭后 300ms 内重开(`popoverReopenFadeSkip`)**跳过淡入直接完成态** —— 快速连点时弹层反复从
+    透明渐显会"眨眼", 对齐 CSS 过渡的中断语义(不重播动画)。
+  - **滚动对齐(用户截图"两列选中项不在同一高度")**: 两个叠加原因 —— ①`SetSelectItem` 触发 xcgui 内建"选中项
+    滚入视口"的异步滚动, 布局完成后执行并**覆盖**紧跟的 ScrollPosYV; ②`ScrollPosYV` 的落点被吸附到**滚动单位
+    网格(默认 20px)**, 实测 170→160、779→760(都是 floor(p/20)×20), 两列请求值除 20 的余量不同 → 吸附后错位。
+    修法: `syncLists` 不再 SetSelectItem(选中态由 DrawItem 按组件值绘制, 不依赖原生 Select) + 滚动定位挪到
+    `OnFaded`(首帧绘制前) + **`SetLineSize(20, 行步进)`** 把滚动单位设为行步进(29), 两列 pos 相差整行数,
+    吸附后仍差整行 → 选中项必然同高。PrintWindow 抓弹窗验证: 两列选中块同一水平线、滚动条隐藏。
+  - 详见 DESIGN 第八节 73(含排查方法论: 帧级抓图 > 亮度采样; 弹窗进程内自抓 > 外部轮询; 录屏坐标要按实际
+    内容校准; DLL 错误弹窗 ≠ Go panic)。验证: 60fps 录屏逐帧分析 —— 白帧 0, 弹层出现为纯渐显(19→31 无全亮相),
+    快速连点段无爆闪、无忙碌圈; 时间框连点两次进程存活; `.verify/flicker` / `.verify/probealpha` /
+    `.verify/vidfinal.py` / `.verify/vidopen2.py` 等工具留存复用。
+
+## 待办
+
 ## 待办
 
 - ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计,**只剩 REGISTRY_V2.md 五 的两步真实验收依赖仓库公开**)
 - ⬜ **与 shadcn 仅剩的已知差异**(完整清单见 DESIGN 第四节末):只剩 **Menu 弹层宽度=触发区宽**(`XMenu_SetItemWidth` 实测无效, 见 64, 不可达);其余 aria-invalid / CardAction / MenuInset / chart·sidebar 令牌已于 2026-10-17 补齐
 - ⬜ **Input 仍是原生文字**:原生 Edit 的文本/光标/选区/输入法全在 DLL 内绘制, 手绘要连光标与 IME 组合窗一起接管 —— 收益小、风险大, 暂不做;需要完全自绘文本时用 Label / 自绘 Element
-- ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;2026-10-17 全量 21 项通过)
+- ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;2026-10-17 全量 21 项、2026-10-18 新增 calendar/datepicker/timepicker + add --all 通过; 注意 `xui init` 前临时项目必须已有 go.mod, 否则 `go run` 起不来)
 - ⬜ **xcgui 发布含 `d2d` 包的版本后, 把 `go.mod` 的 require 升到该版本**(现在靠 `go.work` 联调; 没有 go.work 的环境编译不过, 因为已提交的 `d2dicon.go` 依赖 `xcgui/d2d`。2026-10-17 查过模块代理, 最新仍是 v1.4.2, 未发版)
 - ✅ **D2D 直通能力的上游化, 一次做齐(2026-10-11)**(趁上游发版窗口把原待办三项做完, 细节见 DESIGN 第八节 43 末 / 65):
   ① **"按值浮点形参"的封装扩到基本图元**: `DrawLine`(线宽在**栈[0]** —— 5 个参数, 位置 4 已超出前 4 个 XMM 槽)/ `DrawRectangle` / `DrawEllipse` / `FillRectangle` / `FillEllipse`(各带 `*Color` 便利版); 转发器升级为"最多 4 个栈参数"的 `wapi/com.CallWithFloat32Stack`(栈上的 float 占 8 字节槽、值放低 4 字节)。
@@ -178,6 +234,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 button checkbox radio input label separator(含 Badge) card
 │                                 switch progress slider tabs tooltip combobox dialog
 │                                 menu table tree pagination scrollarea
+│                                 calendar datepicker timepicker(弹层骨架 popup.go)
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)

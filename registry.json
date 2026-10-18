@@ -57,6 +57,18 @@
       "files": ["combobox.go", "scrollbar.go"],
       "deps": ["tooltip"]
     },
+    "calendar": {
+      "files": ["calendar.go"],
+      "deps": []
+    },
+    "datepicker": {
+      "files": ["datepicker.go", "popup.go", "calendar.go"],
+      "deps": []
+    },
+    "timepicker": {
+      "files": ["timepicker.go", "popup.go", "scrollbar.go"],
+      "deps": []
+    },
     "dialog": {
       "files": ["dialog.go", "backdrop.go"],
       "deps": ["button", "label"]

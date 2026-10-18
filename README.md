@@ -79,6 +79,9 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块;滑块支持自定义值域与步进(`WithSliderRange` / `WithSliderStep`) |
 | Tabs | 标签页(下划线指示条随活动页滑动),支持纵向堆叠(`WithTabsVertical`) |
 | ComboBox | 下拉框(列表由独立透明弹出窗口承载, 打开时 100ms 淡入);触发区支持 sm 尺寸(`WithComboSize`)与校验失败态(`WithComboInvalid`) |
+| Calendar | 月历卡片(全自绘):6×7 固定网格、周起始日可调(`WithCalendarWeekStart`)、选中实心/今天浅底/悬停过渡;可独立摆放,弹层内用 `WithCalendarFlat` 免双层边框 |
+| DatePicker | 日期框:outline 触发区 + 自建阴影弹层(内含 Calendar),下方放不下自动翻到上方;点外部/ESC 关闭,`OnChange` 回调 |
+| TimePicker | 时间框:outline 触发区 + 弹层内"时/分"两列滚动列表(原生 ListBox 行为,条目自绘);选择即生效,弹层保持打开 |
 | Menu | 下拉菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 / 文字缩进(`MenuInset`) |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点) |
 | Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述 + 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环 |
