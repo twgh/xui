@@ -2,10 +2,10 @@ package ui
 
 import (
 	"image"
-	"syscall"
 	"unsafe"
 
 	"github.com/twgh/xcgui/wapi"
+	"github.com/twgh/xcgui/wapi/gdi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -17,9 +17,9 @@ import (
 // 打开对话框前先用 GDI 把窗口内容抓成位图 → Go 里做盒式模糊(≈高斯) → 缩放到
 // 逻辑尺寸 → 装进"底层元素的背景图片填充"(元素透明度能跟着遮罩一起淡入)。
 // 模态打开期间背景本来就不会变, 静态快照足够。
-// (历史注: 当年选 BkM 路线是因为误以为元素 paint 画不出位图, 2026-10-07 复核
-// paint 里 XDraw_Image/ImageEx 能画位图 —— 见 DESIGN 第八节 17 修正; BkM 路线
-// 已验证且淡入一致, 保留。)
+// (历史注: 当年选 BkM 路线是因为误以为元素 paint 画不出位图; 复核后确认 paint 里
+// XDraw_Image/ImageEx 能画位图 —— 见 DESIGN 第八节 17 修正; BkM 路线已验证且
+// 淡入一致, 保留。)
 
 // backdropBlurPx 盒式模糊半径(单位 = 半分辨率像素, 见 backdropBlurDown) = backdrop-blur-xs。
 // 双趟盒式(r=2)在半分辨率上的等效 σ≈2.0, 放大回逻辑尺寸后 ≈4.0 —— 与原先"整分辨率双趟
@@ -30,34 +30,6 @@ const backdropBlurPx = 2
 // 分辨率双趟实测 65ms, 降到 1/2 边长(面积 1/4)只要 16ms; 而降采样 + 放大对"再模糊 4px"
 // 的观感几乎没影响(总 σ 与原来同为 ~4 逻辑像素)。见 DESIGN 第八节 47。
 const backdropBlurDown = 2
-
-var (
-	modUser32              = syscall.NewLazyDLL("user32.dll")
-	modGdi32               = syscall.NewLazyDLL("gdi32.dll")
-	procGetWindowDC        = modUser32.NewProc("GetWindowDC")
-	procReleaseDC          = modUser32.NewProc("ReleaseDC")
-	procPrintWindow        = modUser32.NewProc("PrintWindow")
-	procCreateCompatibleDC = modGdi32.NewProc("CreateCompatibleDC")
-	procDeleteDC           = modGdi32.NewProc("DeleteDC")
-	procCreateDIBSection   = modGdi32.NewProc("CreateDIBSection")
-	procDeleteObject       = modGdi32.NewProc("DeleteObject")
-	procSelectObject       = modGdi32.NewProc("SelectObject")
-)
-
-// bitmapinfoheader 与 Win32 的 BITMAPINFOHEADER 对齐(只用到自上而下 32bit BI_RGB)。
-type bitmapinfoheader struct {
-	Size          uint32
-	Width         int32
-	Height        int32 // 负数 = 自上而下的行序
-	Planes        uint16
-	BitCount      uint16
-	Compression   uint32
-	SizeImage     uint32
-	XPelsPerMeter int32
-	YPelsPerMeter int32
-	ClrUsed       uint32
-	ClrImportant  uint32
-}
 
 // newBackdrop 创建承载模糊背景的元素(窗口子元素, 创建即隐藏, z 序在 Show 时抬到遮罩之下)。
 func newBackdrop(hWnd int) *widget.Element {
@@ -153,7 +125,7 @@ func (d *Dialog) refreshBackdrop() {
 func (d *Dialog) backdropPlacement() (x, y, w, h int32) {
 	var wr xc.RECT
 	xc.XWnd_GetRect(d.hWnd, &wr)
-	w, h = wr.Right - wr.Left, wr.Bottom - wr.Top
+	w, h = wr.Right-wr.Left, wr.Bottom-wr.Top
 	if w <= 0 || h <= 0 {
 		return 0, 0, 0, 0
 	}
@@ -162,7 +134,7 @@ func (d *Dialog) backdropPlacement() (x, y, w, h int32) {
 	if body.Right > body.Left && body.Bottom > body.Top &&
 		(body.Left > 0 || body.Top > 0 || body.Right < w || body.Bottom < h) {
 		x, y = body.Left, body.Top
-		w, h = body.Right - body.Left, body.Bottom - body.Top
+		w, h = body.Right-body.Left, body.Bottom-body.Top
 	}
 	return
 }
@@ -252,30 +224,34 @@ func captureWindowScaled(hwnd uintptr, physW, physH, dstW, dstH int) *image.RGBA
 	if hwnd == 0 || physW <= 0 || physH <= 0 || dstW <= 0 || dstH <= 0 {
 		return nil
 	}
-	hdcWnd, _, _ := procGetWindowDC.Call(hwnd)
+	hdcWnd := wapi.GetWindowDC(hwnd)
 	if hdcWnd == 0 {
 		return nil
 	}
-	defer procReleaseDC.Call(hwnd, hdcWnd)
+	defer wapi.ReleaseDC(hwnd, hdcWnd)
 
-	hdcMem, _, _ := procCreateCompatibleDC.Call(hdcWnd)
+	hdcMem := gdi.CreateCompatibleDC(hdcWnd)
 	if hdcMem == 0 {
 		return nil
 	}
-	defer procDeleteDC.Call(hdcMem)
+	defer gdi.DeleteDC(hdcMem)
 
-	bi := bitmapinfoheader{Size: 40, Width: int32(physW), Height: int32(-physH), Planes: 1, BitCount: 32}
-	var bits unsafe.Pointer
-	hbm, _, _ := procCreateDIBSection.Call(hdcMem, uintptr(unsafe.Pointer(&bi)), 0,
-		uintptr(unsafe.Pointer(&bits)), 0, 0)
+	bi := gdi.BITMAPINFOHEADER{
+		Size:     uint32(unsafe.Sizeof(gdi.BITMAPINFOHEADER{})),
+		Width:    int32(physW),
+		Height:   int32(-physH), // 负数 = 自上而下的行序
+		Planes:   1,
+		BitCount: 32,
+	}
+	hbm, bits := gdi.CreateDIBSection(hdcMem, &bi, gdi.DIB_RGB_COLORS)
 	if hbm == 0 || bits == nil {
 		return nil
 	}
-	defer procDeleteObject.Call(hbm)
-	old, _, _ := procSelectObject.Call(hdcMem, hbm)
-	defer procSelectObject.Call(hdcMem, old)
+	defer gdi.DeleteObject(hbm)
+	old := gdi.SelectObject(hdcMem, hbm)
+	defer gdi.SelectObject(hdcMem, old)
 
-	if r, _, _ := procPrintWindow.Call(hwnd, hdcMem, 2); r == 0 { // PW_RENDERFULLCONTENT
+	if !wapi.PrintWindow(hwnd, hdcMem, wapi.PW_RENDERFULLCONTENT) {
 		return nil
 	}
 

@@ -221,7 +221,28 @@
   - **注意**: 下拉是**元素内自绘**(不是独立弹层窗口), 因此受卡片尺寸限制 —— 行高会自动压缩以塞下 12 行; 鼠标离开卡片即收起
     (自绘下拉没有原生弹层的 KillFocus 失焦机制); 滚轮事件只在打开时 `EnableEvent_XE_MOUSEWHEEL(true)`, 关闭即还回外层 ScrollArea。
 
-## 待办
+- ✅ **月历等比缩放 + 弹层不压任务栏(2026-10-19 用户报障)**:
+  - **月历内部随尺寸缩放**: 原来几何是写死的 32px 格子/12px 内边距, demo 把卡片放大 1.12 倍只有空白变大。现在
+    `Calendar.geom()` 按**元素宽度**算一整套几何(内边距/格子/标题行/星期行/页脚/字号全部等比), 高度只决定 6 行之间的
+    行距(多余空间均摊到行间), 绘制与命中判定共用同一套值; 下拉面板的行高/字号/内边距同样跟着缩放。
+  - **默认尺寸改为 1.12 倍**: `CalWidth/CalHeight/CalFooterHeight` = 278×327 / 41(设计基准 248×292 的比例), 即用户
+    截图里"乘 1.12"的效果; demo 去掉手写的 ×1.12, 直接用 `NewCalendar(0,0,0,0,...)`。
+  - **新增 `CalHeightFor(width)` / `CalFooterHeightFor(width)`**: 只想改宽度时 `cy` 传 0(NewCalendar 自动配平),
+    或显式 `CalHeightFor(w)+CalFooterHeightFor(w)` —— 手写 `CalHeight()*1.5+CalFooterHeight()` 会少算页脚的缩放, 底行被页脚压住。
+  - **弹层夹边界改用显示器工作区**(`MonitorFromWindow`+`GetMonitorInfo` 的 `rcWork`, 见 DESIGN 第八节 74): 最大化窗口 +
+    页面滚到末尾时, 贴着任务栏的日期框向下弹会被任务栏盖住; 现在下方放不下先翻上方, 上方也放不下就贴工作区底边。
+    ⚠️ **必须传 Win32 HWND**(`xc.XWnd_GetHWND`), 传 xcgui 窗口句柄会让 `MonitorFromWindow` 返回 0 并静默退回整屏 —— 这是
+    第一次修完仍然"被任务栏遮挡"的根因(用户第二次报障); 现在取不到显示器时还会退回 `GetDesktopWindow()` 再查一次。
+  - **验收**: 探针(默认 + 1.5 倍宽两张卡片, 高度传 0 自动)截图确认内部等比、6 行不裁切; **真实复现路径**——demo 表单页
+    最大化 + 滚到最底部点日期框, 枚举弹层矩形 (48,531)-(489,1046), 底边 1046 < 任务栏 1520, 弹层翻到触发区上方完整可见;
+    demo 表单页月历卡片改用默认尺寸。
+  - **注意**: 探针里别在 goroutine 里 `dp.Open()` —— xcgui 创建窗口/元素不是线程安全的, 会出现"弹层白板不画月历"的假象(实测)。
+  - **上游化(同一日)**: xui 里散落的 Win32 声明全部收进 xcgui 的 wapi —— 新增 `GetWindowDC / ReleaseDC /
+    PrintWindow / MonitorFromWindow / GetMonitorInfo` + `PW_` / `MONITOR_` 常量 + `wapi.MONITORINFO`(types 包),
+    gdi 侧复用已有的 `gdi.CreateCompatibleDC / CreateDIBSection / SelectObject / DeleteObject / DeleteDC`;
+    `components/backdrop.go` 的 `modUser32/modGdi32` 与 `components/popup.go` 的 MONITORINFO 声明都已删除,
+    xui 中**不再有裸 `syscall.NewLazyDLL`**。上游补了 `TestGetMonitorInfo / TestGetWindowDC`(实测工作区
+    1707×1019 vs 整屏 1707×1067, 任务栏 48px 被扣掉)。
 
 ## 待办
 

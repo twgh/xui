@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -57,6 +58,7 @@ type Calendar struct {
 	dropViewH        int32   // 可视高度
 	dropContentH     int32   // 内容总高
 	dropRect         xc.RECT // 面板矩形(客户区坐标)
+	dropPad          int32   // 面板内边距(随元素缩放)
 
 	// 绘制时更新的热区几何(命中判定直接复用, 客户区坐标)
 	hdrYear, hdrMonth xc.RECT
@@ -69,13 +71,17 @@ type Calendar struct {
 	hoverFoot int32 // 悬停的页脚项索引, -1 = 无
 }
 
-// 月历几何(逻辑像素)。cell 取 32 = shadcn 默认 --cell-size: 2rem。
+// 月历几何(逻辑像素, 设计基准)。cell 取 32 = shadcn 默认 --cell-size: 2rem。
+//
+// 真正落地的是 calGeom: 以宽度为缩放比把这里的每个值等比放大, 所以把元素拉大时
+// 格子/内边距/字号一起变大, 不会只剩空白; 默认尺寸则是基准的 calDefaultScale 倍
+// (实测 1.12 倍的格子 36 / 字号 16 比例更舒展, 已定为默认)。
 const (
 	calCell     int32 = 32
 	calPad      int32 = 12 // 卡片内边距 p-3
 	calTitleH   int32 = 32
 	calWeekH    int32 = 26
-	calRowGap   int32 = 2 // 行间距 mt-2
+	calRowGap   int32 = 2 // 行间距 mt-2(元素偏高时按剩余空间均摊)
 	calGapTitle int32 = 4 // 标题行 → 星期行
 	calGapWeek  int32 = 4 // 星期行 → 日期区
 	calRows     int   = 6
@@ -89,7 +95,84 @@ const (
 	calDropRowMin int32 = 16 // 行高下限(再小就滚动)
 	calDropRowMax int32 = 26 // 行高上限
 	calDropMinW   int32 = 72 // 面板最小宽度
+
+	// calBaseW / calBaseH 是设计基准尺寸(1.0 倍), calDefaultScale 是默认放大比例。
+	calBaseW int32 = calPad*2 + 7*calCell // 248
+	calBaseH int32 = calPad*2 + calTitleH + calGapTitle + calWeekH + calGapWeek +
+		int32(calRows)*calCell + int32(calRows-1)*calRowGap // 292
+	calDefaultScale = 1.12
 )
+
+// calGeom 是一次布局算出的整套几何: 宽度决定缩放比(格子/内边距/字号), 高度决定
+// 6 行日期的行距(多出来的空间均摊到行间, 于是整块日期区始终铺满到页脚之上)。
+// 绘制与命中判定共用同一套值, 保证"看到哪就能点到哪"。
+type calGeom struct {
+	s                 float64
+	pad, cell         int32
+	titleH, weekH     int32
+	rowGap            int32
+	gapTitle, gapWeek int32
+	footH, footBtnH   int32
+	footGap           int32
+	gridTop           int32
+}
+
+// geom 按元素当前尺寸算几何(元素还没创建时退回默认尺寸)。
+func (c *Calendar) geom() calGeom {
+	w := CalWidth()
+	h := CalHeightFor(w)
+	if len(c.footer) > 0 {
+		h += CalFooterHeightFor(w)
+	}
+	if c.Element != nil {
+		if v := c.GetWidth(); v > 0 {
+			w = v
+		}
+		if v := c.GetHeight(); v > 0 {
+			h = v
+		}
+	}
+	s := float64(w) / float64(calBaseW)
+	if s <= 0 {
+		s = calDefaultScale
+	}
+	px := func(v int32) int32 { return int32(math.Round(float64(v) * s)) }
+	g := calGeom{
+		s:        s,
+		pad:      px(calPad),
+		titleH:   px(calTitleH),
+		weekH:    px(calWeekH),
+		gapTitle: px(calGapTitle),
+		gapWeek:  px(calGapWeek),
+		footH:    px(calFootH),
+		footBtnH: px(calFootBtnH),
+		footGap:  px(calFootGap),
+	}
+	if len(c.footer) == 0 {
+		g.footH = 0
+	}
+	g.cell = (w - 2*g.pad) / 7 // 格子铺满宽度并保持正方形
+	if g.cell <= 0 {
+		g.cell = px(calCell)
+	}
+	g.gridTop = g.pad + g.titleH + g.gapTitle + g.weekH + g.gapWeek
+	gridBottom := h - g.pad - g.footH
+	if leftover := gridBottom - g.gridTop - int32(calRows)*g.cell; leftover >= 0 {
+		g.rowGap = leftover / int32(calRows-1)
+	} else {
+		g.rowGap = px(calRowGap)
+	}
+	return g
+}
+
+// fontPx 按缩放比换算字号(主题字号是 14px 档, 元素放大后文字跟着放大)。
+func (g calGeom) fontPx(base int32) int32 {
+	v := int32(math.Round(float64(base) * g.s))
+	if v < 6 {
+		v = 6
+	}
+	return v
+}
 
 // 下拉面板类型。
 const (
@@ -108,17 +191,40 @@ const (
 	calHoverDrop  int32 = 200 // 200+i: 下拉项(年份最多 100+ 项, 不会撞到页脚)
 )
 
-// CalWidth 返回月历卡片的默认宽度(逻辑像素)。
-func CalWidth() int32 { return calPad*2 + 7*calCell }
+// CalWidth 返回月历卡片的默认宽度(逻辑像素, 278)。
+func CalWidth() int32 { return int32(math.Round(float64(calBaseW) * calDefaultScale)) }
 
-// CalHeight 返回月历卡片的默认高度(逻辑像素, 不含页脚)。
-func CalHeight() int32 {
-	return calPad*2 + calTitleH + calGapTitle + calWeekH + calGapWeek + int32(calRows)*calCell + int32(calRows-1)*calRowGap
+// CalHeight 返回月历卡片的默认高度(逻辑像素, 不含页脚; 327)。
+func CalHeight() int32 { return int32(math.Round(float64(calBaseH) * calDefaultScale)) }
+
+// CalHeightFor 返回指定宽度下的自然高度(不含页脚)。内部几何按宽度等比缩放,
+// 想自定义宽度就用它算高度: NewCalendar(0, 0, w, CalHeightFor(w)+CalFooterHeightFor(w))。
+func CalHeightFor(width int32) int32 {
+	if width <= 0 {
+		width = CalWidth()
+	}
+	s := float64(width) / float64(calBaseW)
+	px := func(v int32) int32 { return int32(math.Round(float64(v) * s)) }
+	pad := px(calPad)
+	cell := (width - 2*pad) / 7
+	if cell <= 0 {
+		cell = px(calCell)
+	}
+	return 2*pad + px(calTitleH) + px(calGapTitle) + px(calWeekH) + px(calGapWeek) +
+		int32(calRows)*cell + int32(calRows-1)*px(calRowGap)
 }
 
-// CalFooterHeight 返回启用页脚时卡片额外增加的高度(1px 分隔线 + 上下 6 + 24 按钮)。
-// 自行给元素指定高度(cy > 0)又想用页脚时, 高度要写成 CalHeight()+CalFooterHeight()。
-func CalFooterHeight() int32 { return calFootH }
+// CalFooterHeightFor 返回指定宽度下页脚的高度。
+func CalFooterHeightFor(width int32) int32 {
+	if width <= 0 {
+		width = CalWidth()
+	}
+	return int32(math.Round(float64(calFootH) * float64(width) / float64(calBaseW)))
+}
+
+// CalFooterHeight 返回默认宽度下启用页脚时卡片额外增加的高度(逻辑像素, 41)。
+// 自行给元素指定高度(cy > 0)又想用页脚时, 写成 CalHeightFor(w)+CalFooterHeightFor(w)。
+func CalFooterHeight() int32 { return int32(math.Round(float64(calFootH) * calDefaultScale)) }
 
 // CalendarFooterItem 页脚项: Text 是显示文本; OnClick 非空时是可点按钮(悬停有底),
 // 为空时是纯文本; Disabled 只对按钮生效。
@@ -225,8 +331,9 @@ func calDay(t time.Time) time.Time {
 // calDayKey 把日期压成 y*10000+m*100+d, 便于做集合判定。
 func calDayKey(t time.Time) int { return t.Year()*10000 + int(t.Month())*100 + t.Day() }
 
-// NewCalendar 创建月历卡片。cx/cy 传 0 使用默认尺寸(248×292, 启用页脚时高度再加
-// CalFooterHeight())。
+// NewCalendar 创建月历卡片。cx/cy 传 0 使用默认尺寸(278×327, 启用页脚时高度再加
+// CalFooterHeight()); 只想改宽度时 cy 也传 0 —— 高度按 CalHeightFor(cx) 自动配平,
+// 内部格子/字号/页脚都会等比跟着宽度放大。
 func NewCalendar(x, y, cx, cy int32, hParent int, opts ...CalendarOption) *Calendar {
 	now := time.Now()
 	c := &Calendar{
@@ -251,7 +358,7 @@ func NewCalendar(x, y, cx, cy int32, hParent int, opts ...CalendarOption) *Calen
 	}
 	c.autoH = cy <= 0
 	if cy <= 0 {
-		cy = CalHeight() + c.footExtra()
+		cy = CalHeightFor(cx) + c.footExtraFor(cx)
 	}
 	e := widget.NewElement(x, y, cx, cy, hParent)
 	if e == nil {
@@ -393,28 +500,41 @@ func (c *Calendar) FooterRect() xc.RECT {
 	if len(c.footer) == 0 || c.Element == nil {
 		return xc.RECT{}
 	}
-	top := c.GetHeight() - calFootH + 1 + 6
+	g := c.geom()
+	top := c.GetHeight() - g.footH + 1 + int32(math.Round(6*g.s))
 	return xc.RECT{
-		Left:   calPad,
+		Left:   g.pad,
 		Top:    top,
-		Right:  c.GetWidth() - calPad,
-		Bottom: top + calFootBtnH,
+		Right:  c.GetWidth() - g.pad,
+		Bottom: top + g.footBtnH,
 	}
 }
 
-// footExtra 返回页脚占用的额外高度(无页脚项时 0)。
+// footExtra 返回当前宽度下页脚占用的额外高度(无页脚项时 0)。
 func (c *Calendar) footExtra() int32 {
+	w := CalWidth()
+	if c.Element != nil {
+		if v := c.GetWidth(); v > 0 {
+			w = v
+		}
+	}
+	return c.footExtraFor(w)
+}
+
+// footExtraFor 返回指定宽度下页脚占用的额外高度(无页脚项时 0)。
+func (c *Calendar) footExtraFor(width int32) int32 {
 	if len(c.footer) == 0 {
 		return 0
 	}
-	return calFootH
+	return CalFooterHeightFor(width)
 }
 
 // syncHeight 在页脚项增删后按需调整元素高度(仅构造时未指定高度的实例;
-// 指定了高度的实例由调用方自己预留 CalFooterHeight())。
+// 指定了高度的实例由调用方自己预留 CalFooterHeightFor(width))。
 func (c *Calendar) syncHeight() {
 	if c.autoH && c.Element != nil {
-		c.SetHeight(CalHeight() + c.footExtra())
+		w := c.GetWidth()
+		c.SetHeight(CalHeightFor(w) + c.footExtraFor(w))
 	}
 }
 
@@ -434,24 +554,22 @@ func (c *Calendar) dateAt(idx int32) time.Time {
 }
 
 // gridTop 返回日期区顶边(元素客户区坐标)。
-func (c *Calendar) gridTop() int32 {
-	return calPad + calTitleH + calGapTitle + calWeekH + calGapWeek
-}
+func (c *Calendar) gridTop() int32 { return c.geom().gridTop }
 
 // indexAt 把元素客户区坐标换算成格子索引, 不在格子上时返回 -1。
 func (c *Calendar) indexAt(x, y int32) int32 {
-	top := c.gridTop()
-	if y < top {
+	g := c.geom()
+	if y < g.gridTop {
 		return -1
 	}
-	row := (y - top) / (calCell + calRowGap)
-	if (y-top)-row*(calCell+calRowGap) >= calCell { // 落在行间隙
+	row := (y - g.gridTop) / (g.cell + g.rowGap)
+	if (y-g.gridTop)-row*(g.cell+g.rowGap) >= g.cell { // 落在行间隙
 		return -1
 	}
-	if x < calPad {
+	if x < g.pad {
 		return -1
 	}
-	col := (x - calPad) / calCell
+	col := (x - g.pad) / g.cell
 	if row < 0 || row >= int32(calRows) || col < 0 || col >= 7 {
 		return -1
 	}
@@ -460,13 +578,14 @@ func (c *Calendar) indexAt(x, y int32) int32 {
 
 // hitButton 判断坐标是否落在翻页按钮上: 0 = 上一月, 1 = 下一月, -1 = 都不是。
 func (c *Calendar) hitButton(x, y int32, width int32) int32 {
-	if y < calPad || y > calPad+calTitleH {
+	g := c.geom()
+	if y < g.pad || y > g.pad+g.titleH {
 		return -1
 	}
-	if x >= calPad && x < calPad+calCell {
+	if x >= g.pad && x < g.pad+g.cell {
 		return 0
 	}
-	if x >= width-calPad-calCell && x < width-calPad {
+	if x >= width-g.pad-g.cell && x < width-g.pad {
 		return 1
 	}
 	return -1
@@ -712,62 +831,70 @@ func (c *Calendar) dropCurrent(v int) bool {
 }
 
 // layoutDrop 计算下拉面板几何。面板贴着被点的标题热区下方, 左右夹在卡片内;
-// 行高按"12 行正好塞满可用高度"自适应(16..26), 放不下就滚动。
+// 行高按"12 行正好塞满可用高度"自适应, 放不下就滚动。所有尺寸随元素缩放。
 func (c *Calendar) layoutDrop() bool {
 	if c.dropKind == calDropNone || c.Element == nil {
 		return false
 	}
+	g := c.geom()
+	px := func(v int32) int32 { return int32(math.Round(float64(v) * g.s)) }
+	pad := px(calDropPad)
+	rowMin, rowMax := px(calDropRowMin), px(calDropRowMax)
+	minW := px(calDropMinW)
+
 	w, h := c.GetWidth(), c.GetHeight()
 	anchor := c.hdrMonth
 	if c.dropKind == calDropYear {
 		anchor = c.hdrYear
 	}
 	if anchor.Bottom == 0 { // 还没绘制过: 退化成标题行下沿
-		anchor = xc.RECT{Left: calPad, Top: calPad + calTitleH, Right: w - calPad, Bottom: calPad + calTitleH}
+		anchor = xc.RECT{Left: g.pad, Top: g.pad + g.titleH, Right: w - g.pad, Bottom: g.pad + g.titleH}
 	}
 
-	f := xui.FontHandle(xui.FontSpec{Family: xui.Current().FontDefault.Family, Size: xui.Current().FontDefault.Size})
+	t := xui.Current()
+	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size)})
 	maxW := int32(0)
 	for _, v := range c.dropVals {
 		if tw := xui.TextWidth(c.dropText(v), f); tw > maxW {
 			maxW = tw
 		}
 	}
-	pw := maxW + 40 // 左 6 + 右 22(勾选图标) + 左右内边距
-	if pw < calDropMinW {
-		pw = calDropMinW
+	pw := maxW + px(6) + px(22) + px(12) // 左 6 + 右 22(勾选图标) + 左右内边距
+	if pw < minW {
+		pw = minW
 	}
-	px := anchor.Left
-	if px+pw > w-8 {
-		px = w - 8 - pw
+	left := anchor.Left
+	if left+pw > w-px(8) {
+		left = w - px(8) - pw
 	}
-	if px < 8 {
-		px = 8
+	if left < px(8) {
+		left = px(8)
 	}
-	py := anchor.Bottom + calDropGap
-	avail := h - 4 - py
-	if avail < calDropRowMin+calDropPad*2+4 { // 下方实在太窄: 贴顶铺开
-		py = 4
-		avail = h - 8
+	top := anchor.Bottom + px(calDropGap)
+	avail := h - px(4) - top
+	if avail < rowMin+pad*2+px(4) { // 下方实在太窄: 贴顶铺开
+		top = px(4)
+		avail = h - px(8)
 	}
 
-	rowH := (avail - calDropPad*2) / 12
-	if rowH > calDropRowMax {
-		rowH = calDropRowMax
+	rowH := (avail - pad*2) / 12
+	if rowH > rowMax {
+		rowH = rowMax
 	}
-	if rowH < calDropRowMin {
-		rowH = calDropRowMin
+	if rowH < rowMin {
+		rowH = rowMin
 	}
-	contentH := int32(len(c.dropVals))*rowH + calDropPad*2
+	contentH := int32(len(c.dropVals))*rowH + pad*2
 	viewH := contentH
 	if viewH > avail {
 		viewH = avail
 	}
-	if viewH < rowH+calDropPad*2 {
-		viewH = rowH + calDropPad*2
+	if viewH < rowH+pad*2 {
+		viewH = rowH + pad*2
 	}
-	c.dropRect = xc.RECT{Left: px, Top: py, Right: px + pw, Bottom: py + viewH}
+	c.dropRect = xc.RECT{Left: left, Top: top, Right: left + pw, Bottom: top + viewH}
 	c.dropRowH, c.dropViewH, c.dropContentH = rowH, viewH, contentH
+	c.dropPad = pad
 	c.clampDropScroll()
 	return true
 }
@@ -777,7 +904,7 @@ func (c *Calendar) dropRowsVisible() int32 {
 	if c.dropRowH <= 0 {
 		return 0
 	}
-	return (c.dropViewH - calDropPad*2) / c.dropRowH
+	return (c.dropViewH - c.dropPad*2) / c.dropRowH
 }
 
 // clampDropScroll 把滚动偏移吸附到整行并夹在可达范围内。
@@ -828,8 +955,8 @@ func (c *Calendar) dropIndexAt(x, y int32) int32 {
 	if c.dropKind == calDropNone || c.dropRowH <= 0 || !calInRect(c.dropRect, x, y) {
 		return -1
 	}
-	top := c.dropRect.Top + calDropPad
-	if y < top || y >= c.dropRect.Bottom-calDropPad {
+	top := c.dropRect.Top + c.dropPad
+	if y < top || y >= c.dropRect.Bottom-c.dropPad {
 		return -1
 	}
 	idx := (y - top + c.dropScroll) / c.dropRowH
@@ -838,7 +965,7 @@ func (c *Calendar) dropIndexAt(x, y int32) int32 {
 	}
 	// 只认完整可见的行(面板上下可能露半行, 半行不响应)
 	y0 := top + idx*c.dropRowH - c.dropScroll
-	if y0 < top || y0+c.dropRowH > c.dropRect.Bottom-calDropPad {
+	if y0 < top || y0+c.dropRowH > c.dropRect.Bottom-c.dropPad {
 		return -1
 	}
 	return idx
@@ -862,13 +989,14 @@ func (c *Calendar) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.StrokeRound(&p.Rc, t.Foreground.WithAlpha(26), t.RadiusLg(), 1)
 	}
 
+	g := c.geom()
 	left, top := p.Rc.Left, p.Rc.Top
 	right := p.Rc.Right
 
 	// ---- 标题行: [上一月]  2026年⌄ 10月⌄  [下一月] ----
-	titleTop := top + calPad
-	prev := xc.RECT{Left: left + calPad, Top: titleTop, Right: left + calPad + calCell, Bottom: titleTop + calTitleH}
-	next := xc.RECT{Left: right - calPad - calCell, Top: titleTop, Right: right - calPad, Bottom: titleTop + calTitleH}
+	titleTop := top + g.pad
+	prev := xc.RECT{Left: left + g.pad, Top: titleTop, Right: left + g.pad + g.cell, Bottom: titleTop + g.titleH}
+	next := xc.RECT{Left: right - g.pad - g.cell, Top: titleTop, Right: right - g.pad, Bottom: titleTop + g.titleH}
 
 	if hv := xui.HoverItem(hEle, calHoverPrev, c.hoverBtn == 0); hv > 0 {
 		p.FillRound(&prev, t.Accent.ScaleAlpha(hv), t.RadiusSm())
@@ -876,54 +1004,54 @@ func (c *Calendar) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if hv := xui.HoverItem(hEle, calHoverNext, c.hoverBtn == 1); hv > 0 {
 		p.FillRound(&next, t.Accent.ScaleAlpha(hv), t.RadiusSm())
 	}
-	iconSize := int32(16)
+	iconSize := int32(math.Round(16 * g.s))
 	prevIcon := xc.RECT{
-		Left:   prev.Left + (calCell-iconSize)/2,
-		Top:    prev.Top + (calTitleH-iconSize)/2,
-		Right:  prev.Left + (calCell+iconSize)/2,
-		Bottom: prev.Top + (calTitleH+iconSize)/2,
+		Left:   prev.Left + (g.cell-iconSize)/2,
+		Top:    prev.Top + (g.titleH-iconSize)/2,
+		Right:  prev.Left + (g.cell+iconSize)/2,
+		Bottom: prev.Top + (g.titleH+iconSize)/2,
 	}
 	nextIcon := xc.RECT{
-		Left:   next.Left + (calCell-iconSize)/2,
-		Top:    next.Top + (calTitleH-iconSize)/2,
-		Right:  next.Left + (calCell+iconSize)/2,
-		Bottom: next.Top + (calTitleH+iconSize)/2,
+		Left:   next.Left + (g.cell-iconSize)/2,
+		Top:    next.Top + (g.titleH-iconSize)/2,
+		Right:  next.Left + (g.cell+iconSize)/2,
+		Bottom: next.Top + (g.titleH+iconSize)/2,
 	}
 	p.Icon(icons.IconChevronLeft, &prevIcon, t.Foreground, 2)
 	p.Icon(icons.IconChevronRight, &nextIcon, t.Foreground, 2)
 
-	c.paintHeader(p, t, prev.Right, next.Left, titleTop)
+	c.paintHeader(p, t, g, prev.Right, next.Left, titleTop)
 
 	// ---- 星期行 ----
-	weekTop := titleTop + calTitleH + calGapTitle
-	if f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: t.FontDefault.Size - 2}); f != 0 {
+	weekTop := titleTop + g.titleH + g.gapTitle
+	if f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size - 2)}); f != 0 {
 		p.Draw.SetFont(f)
 	}
 	for i := int32(0); i < 7; i++ {
 		rc := xc.RECT{
-			Left:   left + calPad + i*calCell,
+			Left:   left + g.pad + i*g.cell,
 			Top:    weekTop,
-			Right:  left + calPad + (i+1)*calCell,
-			Bottom: weekTop + calWeekH,
+			Right:  left + g.pad + (i+1)*g.cell,
+			Bottom: weekTop + g.weekH,
 		}
 		name := weekNames[(int(c.weekStart)+int(i))%7]
 		p.Text(name, &rc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 	}
 
 	// ---- 日期格 ----
-	if f := xui.FontHandle(t.FontDefault); f != 0 {
+	if f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size)}); f != 0 {
 		p.Draw.SetFont(f)
 	}
 	now := time.Now()
-	gridTop := c.gridTop()
+	gridTop := g.gridTop
 	for idx := int32(0); idx < int32(calRows*7); idx++ {
 		d := c.dateAt(idx)
 		row, col := idx/7, idx%7
 		rc := xc.RECT{
-			Left:   left + calPad + col*calCell,
-			Top:    gridTop + row*(calCell+calRowGap),
-			Right:  left + calPad + (col+1)*calCell,
-			Bottom: gridTop + row*(calCell+calRowGap) + calCell,
+			Left:   left + g.pad + col*g.cell,
+			Top:    gridTop + row*(g.cell+g.rowGap),
+			Right:  left + g.pad + (col+1)*g.cell,
+			Bottom: gridTop + row*(g.cell+g.rowGap) + g.cell,
 		}
 		inMonth := d.Month() == c.view.Month() && d.Year() == c.view.Year()
 		isSel := !c.sel.IsZero() && d.Year() == c.sel.Year() && d.YearDay() == c.sel.YearDay()
@@ -973,29 +1101,30 @@ func (c *Calendar) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 }
 
 // paintHeader 画标题中部的年月两个热区, 并记下它们的客户区矩形供命中判定复用。
-func (c *Calendar) paintHeader(p *xui.Painter, t *xui.Theme, left, right, titleTop int32) {
-	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: t.FontDefault.Size, Bold: true})
+func (c *Calendar) paintHeader(p *xui.Painter, t *xui.Theme, g calGeom, left, right, titleTop int32) {
+	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size), Bold: true})
 	if f != 0 {
 		p.Draw.SetFont(f)
 	}
 	yearText := fmt.Sprintf("%d年", c.view.Year())
 	monthText := fmt.Sprintf("%d月", int(c.view.Month()))
-	yearW := xui.TextWidth(yearText, f) + 24
-	monthW := xui.TextWidth(monthText, f) + 24
+	padX := int32(math.Round(24 * g.s)) // 左右各 12(含 chevron)
+	gap := int32(math.Round(2 * g.s))
+	h := int32(math.Round(24 * g.s))
+	yearW := xui.TextWidth(yearText, f) + padX
+	monthW := xui.TextWidth(monthText, f) + padX
 
-	const gap = 2
 	x := left + (right-left-yearW-gap-monthW)/2
-	const h = int32(24)
-	y := titleTop + (calTitleH-h)/2
+	y := titleTop + (g.titleH-h)/2
 	c.hdrYear = xc.RECT{Left: x, Top: y, Right: x + yearW, Bottom: y + h}
 	c.hdrMonth = xc.RECT{Left: c.hdrYear.Right + gap, Top: y, Right: c.hdrYear.Right + gap + monthW, Bottom: y + h}
 
-	c.paintHeadLabel(p, t, c.hdrYear, yearText, calHoverYear, c.hoverHead == 0 || c.dropKind == calDropYear)
-	c.paintHeadLabel(p, t, c.hdrMonth, monthText, calHoverMonth, c.hoverHead == 1 || c.dropKind == calDropMonth)
+	c.paintHeadLabel(p, t, g, c.hdrYear, yearText, calHoverYear, c.hoverHead == 0 || c.dropKind == calDropYear)
+	c.paintHeadLabel(p, t, g, c.hdrMonth, monthText, calHoverMonth, c.hoverHead == 1 || c.dropKind == calDropMonth)
 }
 
 // paintHeadLabel 画一个"文字 + chevron-down"的标题按钮(打开时保持 bg-accent)。
-func (c *Calendar) paintHeadLabel(p *xui.Painter, t *xui.Theme, rc xc.RECT, text string, key int32, active bool) {
+func (c *Calendar) paintHeadLabel(p *xui.Painter, t *xui.Theme, g calGeom, rc xc.RECT, text string, key int32, active bool) {
 	hv := xui.HoverItem(c.Handle, key, active)
 	if hv > 0 {
 		p.FillRound(&rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
@@ -1003,16 +1132,17 @@ func (c *Calendar) paintHeadLabel(p *xui.Painter, t *xui.Theme, rc xc.RECT, text
 	fore := xui.Fade(t.Foreground, t.AccentForeground, hv)
 	chev := xui.Fade(t.MutedForeground, t.AccentForeground, hv)
 
+	padL := int32(math.Round(6 * g.s))
+	chevSize := int32(math.Round(10 * g.s))
 	tr := rc
-	tr.Left += 6
-	tr.Right -= 18
+	tr.Left += padL
+	tr.Right -= padL + chevSize
 	p.Text(text, &tr, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 
-	const chevSize = int32(10)
 	ir := xc.RECT{
-		Left:   rc.Right - 6 - chevSize,
+		Left:   rc.Right - padL - chevSize,
 		Top:    rc.Top + (rc.Bottom-rc.Top-chevSize)/2,
-		Right:  rc.Right - 6,
+		Right:  rc.Right - padL,
 		Bottom: rc.Top + (rc.Bottom-rc.Top+chevSize)/2,
 	}
 	p.Icon(icons.IconChevronDown, &ir, chev, 2)
@@ -1023,30 +1153,33 @@ func (c *Calendar) paintFooter(p *xui.Painter, t *xui.Theme) {
 	if len(c.footer) == 0 {
 		return
 	}
-	footerTop := p.Rc.Bottom - calFootH
+	g := c.geom()
+	footerTop := p.Rc.Bottom - g.footH
 	p.Line(p.Rc.Left, footerTop, p.Rc.Right, footerTop, t.Border, 1)
 
-	f := xui.FontHandle(t.FontDefault)
+	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size)})
 	if f != 0 {
 		p.Draw.SetFont(f)
 	}
-	contentTop := footerTop + 1 + 6
+	padTop := int32(math.Round(6 * g.s))
+	padX := int32(math.Round(8 * g.s)) // 按钮左右各 8(px-2)
+	contentTop := footerTop + 1 + padTop
 	widths := make([]int32, len(c.footer))
 	total := int32(0)
 	for i, it := range c.footer {
 		w := xui.TextWidth(it.Text, f)
 		if it.OnClick != nil {
-			w += 16 // px-2
+			w += padX * 2
 		}
 		widths[i] = w
 		total += w
 	}
-	total += int32(len(c.footer)-1) * calFootGap
+	total += int32(len(c.footer)-1) * g.footGap
 	x := p.Rc.Left + (p.W()-total)/2
 
 	c.footRects = c.footRects[:0]
 	for i, it := range c.footer {
-		rc := xc.RECT{Left: x, Top: contentTop, Right: x + widths[i], Bottom: contentTop + calFootBtnH}
+		rc := xc.RECT{Left: x, Top: contentTop, Right: x + widths[i], Bottom: contentTop + g.footBtnH}
 		c.footRects = append(c.footRects, rc)
 		if it.OnClick != nil {
 			hv := xui.HoverItem(c.Handle, calHoverFoot+int32(i), c.hoverFoot == int32(i) && !it.Disabled)
@@ -1061,7 +1194,7 @@ func (c *Calendar) paintFooter(p *xui.Painter, t *xui.Theme) {
 		} else {
 			p.Text(it.Text, &rc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 		}
-		x = rc.Right + calFootGap
+		x = rc.Right + g.footGap
 	}
 }
 
@@ -1075,11 +1208,17 @@ func (c *Calendar) paintDrop(p *xui.Painter, t *xui.Theme) {
 	p.FillRound(&rc, t.Popover, t.RadiusMd())
 	p.StrokeRound(&rc, t.Foreground.WithAlpha(26), t.RadiusMd(), 1)
 
-	viewTop := rc.Top + calDropPad
-	viewBottom := rc.Bottom - calDropPad
+	viewTop := rc.Top + c.dropPad
+	viewBottom := rc.Bottom - c.dropPad
 	scrollable := c.dropContentH > c.dropViewH
+	g := c.geom()
+	s := g.s
+	if s <= 0 {
+		s = calDefaultScale
+	}
+	padX := func(v int32) int32 { return int32(math.Round(float64(v) * s)) }
 
-	if f := xui.FontHandle(t.FontDefault); f != 0 {
+	if f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size)}); f != 0 {
 		p.Draw.SetFont(f)
 	}
 	for i, v := range c.dropVals {
@@ -1088,9 +1227,9 @@ func (c *Calendar) paintDrop(p *xui.Painter, t *xui.Theme) {
 		if y0 < viewTop || y1 > viewBottom {
 			continue // 半行不画: 面板自带底色, 不会露出破绽
 		}
-		item := xc.RECT{Left: rc.Left + calDropPad, Top: y0, Right: rc.Right - calDropPad, Bottom: y1}
+		item := xc.RECT{Left: rc.Left + c.dropPad, Top: y0, Right: rc.Right - c.dropPad, Bottom: y1}
 		if scrollable {
-			item.Right -= 4
+			item.Right -= padX(4)
 		}
 		hv := xui.HoverItem(c.Handle, calHoverDrop+int32(i), c.hoverDrop == int32(i))
 		fore := t.PopoverForeground
@@ -1099,16 +1238,16 @@ func (c *Calendar) paintDrop(p *xui.Painter, t *xui.Theme) {
 			fore = xui.Fade(fore, t.AccentForeground, hv)
 		}
 		tr := item
-		tr.Left += 6
-		tr.Right -= 22
+		tr.Left += padX(6)
+		tr.Right -= padX(22)
 		p.Text(c.dropText(v), &tr, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 
 		if c.dropCurrent(v) {
-			const cs = int32(14)
+			cs := padX(14)
 			ir := xc.RECT{
-				Left:   item.Right - 6 - cs,
+				Left:   item.Right - padX(6) - cs,
 				Top:    item.Top + (item.Bottom-item.Top-cs)/2,
-				Right:  item.Right - 6,
+				Right:  item.Right - padX(6),
 				Bottom: item.Top + (item.Bottom-item.Top+cs)/2,
 			}
 			p.Icon(icons.IconCheck, &ir, fore, 2)
@@ -1118,15 +1257,19 @@ func (c *Calendar) paintDrop(p *xui.Painter, t *xui.Theme) {
 	if scrollable {
 		trackH := viewBottom - viewTop
 		thumbH := trackH * c.dropViewH / c.dropContentH
-		if thumbH < 16 {
-			thumbH = 16
+		if min := padX(16); thumbH < min {
+			thumbH = min
 		}
 		maxScroll := c.dropContentH - c.dropViewH
 		y := viewTop
 		if maxScroll > 0 {
 			y += (trackH - thumbH) * c.dropScroll / maxScroll
 		}
-		bar := xc.RECT{Left: rc.Right - 5, Top: y, Right: rc.Right - 3, Bottom: y + thumbH}
+		barW := padX(2)
+		if barW < 2 {
+			barW = 2
+		}
+		bar := xc.RECT{Left: rc.Right - padX(5), Top: y, Right: rc.Right - padX(5) + barW, Bottom: y + thumbH}
 		p.FillRound(&bar, t.Foreground.WithAlpha(38), 1)
 	}
 }

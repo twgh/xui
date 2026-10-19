@@ -694,7 +694,7 @@ func buildFormPage(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "月历卡片", v6.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
 		"标题年月可下拉切换; 周末禁用(灰显不可点); 页脚 = 内置「今天」+ 自定义「清除」", v6.Handle))
-	// 不声明布局项尺寸 = 用元素自身尺寸(248 宽, 含页脚 329 高), 让它保持方正的卡片比例
+	// 默认尺寸已是"格子 36 / 字号 16"的比例; 元素再放大时内部等比缩放
 	var cal *ui.Calendar
 	cal = ui.NewCalendar(0, 0, 0, 0, v6.Handle,
 		ui.WithCalendarSelected(time.Now()),

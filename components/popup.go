@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"time"
 
 	"github.com/twgh/xcgui/wapi"
@@ -10,6 +11,34 @@ import (
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 )
+
+// monitorWorkArea 返回窗口所在显示器的工作区(物理像素); 取不到时 ok=false。
+//
+// 用工作区而不是整屏: 工作区已经扣掉任务栏 / 停靠栏。弹层夹在整屏高度里时, 只要触发区
+// 靠近屏幕底部(例如页面已滚到底), 卡片下半截就会被任务栏盖住 —— 任务栏永远在最上层,
+// 弹层是 topmost 也盖不过它。
+//
+// ⚠️ hWnd 必须是 **Win32 HWND**(xc.XWnd_GetHWND 转出来的), 不能喂 xcgui 的窗口句柄:
+// MonitorFromWindow 对无效句柄返回 0, 调用方会静默退回"整屏"兜底分支, 任务栏又会盖上来。
+func monitorWorkArea(hWnd uintptr) (xc.RECT, bool) {
+	hMon := wapi.MonitorFromWindow(hWnd, wapi.MONITOR_DEFAULTTONEAREST)
+	if hMon == 0 { // 句柄无效时退回桌面窗口: 至少仍是"工作区", 不会漏掉任务栏
+		hMon = wapi.MonitorFromWindow(wapi.GetDesktopWindow(), wapi.MONITOR_DEFAULTTONEAREST)
+	}
+	if hMon == 0 {
+		return xc.RECT{}, false
+	}
+	var mi wapi.MONITORINFO
+	if !wapi.GetMonitorInfo(hMon, &mi) {
+		return xc.RECT{}, false
+	}
+	return xc.RECT{
+		Left:   mi.RcWork.Left,
+		Top:    mi.RcWork.Top,
+		Right:  mi.RcWork.Right,
+		Bottom: mi.RcWork.Bottom,
+	}, true
+}
 
 // ===== 组件内建弹层的公共基座 =====
 //
@@ -40,8 +69,7 @@ const popoverReopenFadeSkip = 300 * time.Millisecond
 // fadeSubtreeAlpha 遍历设置子树元素透明度, 有两个例外:
 //   - **跳过滚动条子树**: 时间列表的滚动条显隐由 showScrollBarOnHover 自理(初始
 //     隐藏、悬停列表才显示), 若跟随弹层淡入一起设置, 每帧 apply 都会把初始隐藏的
-//     滚动条拉亮, 淡入完成后才被 OnFaded 藏回去 —— 期间滚动条闪现(2026-10-18
-//     用户报障"刚显示时滚动条没有隐藏")。
+//     滚动条拉亮, 淡入完成后才被 OnFaded 藏回去 —— 表现为"弹层刚显示时滚动条没隐藏"。
 //   - **跳过无效句柄**: 原生 ListBox 的子元素里有延迟创建的内部对象(实测 type=62、
 //     `XC_IsHXCGUI(h, XC_ELE)=false` 但 GetChildByIndex 照样返回非 0 句柄), 对它调
 //     XEle_SetAlpha 会触发 xcgui 的 DLL 错误弹窗("SetAlpha 句柄无效")且不产生 Go
@@ -100,7 +128,7 @@ func newPopoverPanel(cw, ch int32, hAnchor int) *popoverPanel {
 	win.SetTransparentAlpha(255)
 	// ⚠️ 必须垫一层 alpha=0 的窗口背景填充: 弹窗默认背景是**白色**, 淡入用元素 alpha,
 	// 元素全透明时白底就从卡片下面露出来 —— 深色主题下表现为"每次弹出闪一下白"
-	// (2026-10-18 用户报障的最终根因之一; 弹窗内逐帧抓图实测第二次显示 mean=228 白帧)。
+	// (逐帧抓图可见第二次显示的首帧 mean=228, 就是这层白底)。
 	// 留空(不设置)会回退系统默认内容, 透明必须显式表达, 同 DESIGN 第八节 30。
 	if bkm := xc.XWnd_GetBkManager(win.Handle); bkm != 0 {
 		xc.XBkM_Clear(bkm)
@@ -171,7 +199,7 @@ func (p *popoverPanel) RecentlyClosed() bool {
 		time.Since(p.lastClose) < 250*time.Millisecond
 }
 
-// Show 在触发元素下方弹出弹层(gap = 与元素的间距); 下方放不下翻到上方, 并夹在屏幕内。
+// Show 在触发元素下方弹出弹层(gap = 与元素的间距); 下方放不下翻到上方, 并夹在显示器工作区内。
 func (p *popoverPanel) Show(hAnchor int, gap int32) {
 	if p == nil || p.open || !p.alive() {
 		return
@@ -191,19 +219,45 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 
 	x := wr.Left + rc.Left
 	y := wr.Top + rc.Bottom + gap
-	screenH := int32(float64(wapi.GetSystemMetrics(wapi.SM_CYSCREEN)) / sc)
-	screenW := int32(float64(wapi.GetSystemMetrics(wapi.SM_CXVIRTUALSCREEN)) / sc)
-	if y+p.ch > screenH { // 下方放不下 → 翻到上方
-		y = wr.Top + rc.Top - gap - p.ch
-	}
-	if y < 0 {
-		y = 0
-	}
-	if x+p.cw > screenW {
-		x = screenW - p.cw
-	}
-	if x < 0 {
-		x = 0
+
+	// 夹在**工作区**里(扣掉任务栏): 只用屏幕高度会把弹层下半截压到任务栏底下。
+	// 注意传 Win32 HWND(xcgui 句柄对 Win32 无效, 会让工作区查询静默失败)。
+	wa, hasWA := monitorWorkArea(xc.XWnd_GetHWND(hWnd))
+	if hasWA {
+		waL := int32(math.Round(float64(wa.Left) / sc))
+		waT := int32(math.Round(float64(wa.Top) / sc))
+		waR := int32(math.Round(float64(wa.Right) / sc))
+		waB := int32(math.Round(float64(wa.Bottom) / sc))
+		if y+p.ch > waB { // 下方放不下(含被任务栏挡住) → 翻到上方
+			y = wr.Top + rc.Top - gap - p.ch
+		}
+		if y+p.ch > waB { // 上方也放不下: 贴着工作区底边
+			y = waB - p.ch
+		}
+		if y < waT {
+			y = waT
+		}
+		if x+p.cw > waR {
+			x = waR - p.cw
+		}
+		if x < waL {
+			x = waL
+		}
+	} else { // 取不到显示器信息: 退回整屏(旧行为)
+		screenH := int32(float64(wapi.GetSystemMetrics(wapi.SM_CYSCREEN)) / sc)
+		screenW := int32(float64(wapi.GetSystemMetrics(wapi.SM_CXVIRTUALSCREEN)) / sc)
+		if y+p.ch > screenH {
+			y = wr.Top + rc.Top - gap - p.ch
+		}
+		if y < 0 {
+			y = 0
+		}
+		if x+p.cw > screenW {
+			x = screenW - p.cw
+		}
+		if x < 0 {
+			x = 0
+		}
 	}
 
 	// SetWindowPos 是 Win32 直通(物理像素), 逻辑坐标要自己乘 DPI; 窗口左上角含阴影带。
@@ -229,7 +283,7 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 
 	// ⚠️ 屏幕外预显示: 复用窗口再次 ShowWindow 时, 首帧合成的是**窗口表面残留的
 	// 上一次内容**(关闭前 alpha=1 的全亮卡片) —— 元素 alpha=0 要等第一次重绘才落地,
-	// 于是屏幕上"直接显示 → 消失 → 再淡入"(用户逐帧确认的闪烁)。
+	// 于是屏幕上"直接显示 → 消失 → 再淡入"(逐帧抓图确认的闪烁)。
 	// 先在屏幕外显示并立即重绘出"透明首帧", 再挪到目标位置: 挪动只改 DWM 合成位置,
 	// 表面内容已是透明帧。Win32 窗口坐标范围 ±32768, -30000 安全。
 	p.win.SetWindowPos(xcc.HWND_TOP, -30000, -30000, 0, 0,
@@ -237,7 +291,7 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 	p.win.ShowWindow(xcc.SW_SHOW)
 	// ⚠️ OnFaded 必须在这次重绘**之前**调用: 子控件的"初始隐藏态"(时间列表的滚动条
 	// alpha=0)要落进首帧 —— 时机错了滚动条会随首帧一起亮出来, 直到鼠标进入列表再
-	// 离开才被显隐逻辑藏掉(2026-10-18 用户报障)。窗口已显示(虽在屏幕外), 子元素句柄
+	// 离开才被显隐逻辑藏掉 —— 表现为"刚弹出时滚动条是亮着的"。窗口已显示(虽在屏幕外), 子元素句柄
 	// 此时全部有效, setAlphaTree 的句柄守卫不会跳过。
 	if p.OnFaded != nil {
 		p.OnFaded()
@@ -258,7 +312,7 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 	// ⚠️ 过渡必须挂**弹窗自己**(p.win), 不能挂宿主窗口: hoverTick 每个 tick 都会
 	// 立即重绘 hOwner —— 挂宿主窗 = 淡入的 100ms 里每帧全量重绘整个主窗口(demo 表单页
 	// 上千个元素), 快速点击时重绘排队, UI 线程卡到出现系统忙碌光标, 弹层开关肉眼可见
-	// 地"抖动/掉帧"(2026-10-18 用户录屏实锤)。整窗 alpha 时代挂宿主窗是被迫的
+	// 地"抖动/掉帧"(录屏逐帧可见)。整窗 alpha 时代挂宿主窗是被迫的
 	// (DWM 合成要宿主带动, 见 47/73), 改元素 alpha 后弹窗自己重绘就落地,
 	// 弹窗只有 400×500 物理像素, 每 tick 重绘毫无压力。
 	hBody := p.body.Handle
@@ -286,7 +340,7 @@ func (p *popoverPanel) Hide() {
 	p.lastClose = time.Now()
 	// ① 清掉本弹窗上全部过渡条目: 淡入中途被隐藏时, 未到位条目(settled=false)会
 	//    随残留定时器继续执行 apply, 与下一次进场(尤其 fast 路径的终态)互相覆盖 ——
-	//    实测表现为弹层概率性停在半透明、透出后方文字(2026-10-18 用户报障)。
+	//    表现为弹层概率性停在半透明、透出后方文字。
 	xui.DropTransitions(p.win.Handle)
 	// ② 元素 alpha 归位到终态(属性): 潜在的 surface 残留帧由下次 Show 的
 	//    屏幕外预显示(fast 路径的重绘)兜底。
