@@ -183,15 +183,13 @@ func main() {
 	})
 
 	// 控制按钮: 最小化 / 最大化(还原) / 关闭, 行为全部交给 xcgui 的按钮类型。
-	// 图标按"墨迹观感"配平: eye/moon/maximize2/minimize2 的路径都占 3..21, 18px 画布下
-	// 墨迹 23~25 物理像素; minus(5..19)与 ×(6..18)同画布只有 17/15, 看起来小一圈。这两个
-	// 的画布放到 22(24 偏大、描边显粗), 墨迹追到 21/19, 与左侧主题按钮齐平。
+	// 最小化和关闭按钮图标放大了些
 	btnMin := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMinus), ui.WithIconSize(22))
 	btnMin.SetTypeEx(xcc.Button_Type_Min)
 
 	btnMax := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMaximize2))
+		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconSquare))
 	btnMax.SetTypeEx(xcc.Button_Type_Max)
 
 	btnClose := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
@@ -202,7 +200,7 @@ func main() {
 	// 挂 WM_SIZE 而不是只挂点击回调 —— 双击标题栏、Win+↑、系统菜单等改状态的路径
 	// 都会经过它; 用 a.UI 推迟到消息处理之后, IsMaxWindow 已是新状态。
 	syncMaxIcon := func() {
-		btnMax.SetIcon(common.Choose(w.IsMaxWindow(), icons.IconMinimize2, icons.IconMaximize2))
+		btnMax.SetIcon(common.Choose(w.IsMaxWindow(), icons.IconCopy, icons.IconSquare))
 	}
 	w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
 		if message == wapi.WM_SIZE && (wParam == wapi.SIZE_MAXIMIZED || wParam == wapi.SIZE_RESTORED) {
@@ -845,8 +843,8 @@ func buildFeedPage(body *widget.LayoutEle, hWindow int) {
 			Title: "同步完成",
 			Description: "本次同步共处理 1,284 个文件, 其中 37 个发生冲突已自动合并, " +
 				"3 个需要手动处理。",
-			Variant: ui.ToastInfo,
-			Duration: -1,
+			Variant:     ui.ToastInfo,
+			Duration:    -1,
 			CloseButton: true,
 		})
 		return 0
