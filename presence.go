@@ -43,7 +43,7 @@ var presenceKeySeq int32
 // 也不再调用 apply(过渡由定时器逐帧驱动, 到位后条目就静默了)。若两个不同的弹层复用同一个
 // 键, 第二个弹层的新窗口会**停留在初始状态**(例如 alpha 压在下限 = 完全看不见, 但窗口已经
 // 存在并吞掉点击), 表现为"点了没反应 / 第二次才生效"。用本函数取键即可避免手工计数器撞车
-// (2026-10-17 实测: menu 与 combobox 各自的计数器都从 1 开始, 先开下拉再开菜单 → 菜单全透明)。
+// (实测: menu 与 combobox 各自的计数器都从 1 开始, 先开下拉再开菜单 → 菜单全透明)。
 func NextPresenceKey() int32 {
 	return atomic.AddInt32(&presenceKeySeq, 1)
 }
@@ -137,7 +137,7 @@ func setAlphaTree(hEle int, a byte) {
 	// 可能尚未初始化, GetChildByIndex 会返回非 0 但无效的句柄; 对它调 XEle_SetAlpha
 	// 会触发 xcgui 的 DLL 错误弹窗("SetAlpha 输入句柄无效"), 该错误不产生 Go panic
 	// (DLL 内部处理), demo 里被"自动关错误弹窗"吞掉后, 后续无效句柄调用可能直接
-	// access violation 闪退(2026-10-18 时间框点击闪退, 用户报障)。
+	// access violation 闪退(时间框点击时就踩过)。
 	if !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
 		return
 	}
@@ -152,7 +152,7 @@ func setAlphaTree(hEle int, a byte) {
 
 // alphaFloor 是窗口透明度的下限(1/255)。
 //
-// 实测(2026-10-06): alpha 精确等于 0 会让 xcgui **停止合成该窗口** —— 之后无论把
+// 实测: alpha 精确等于 0 会让 xcgui **停止合成该窗口** —— 之后无论把
 // 透明度调回多少、怎么重绘, 画面都冻结在停止前的那一帧。表现: 提示气泡退场淡出到
 // 0 再进场, 气泡永远停在约 10% 透明度(调试日志显示 apply 已跑到 v=1.0, 像素不动)。
 // 因此所有调用统一抬到底, "消失"由调用方在退场 done 里自己隐藏窗口。

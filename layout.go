@@ -9,8 +9,8 @@ import (
 // ===== 布局项声明(LayoutEle 排版用) =====
 //
 // xcgui 的布局项每条轴都有一个尺寸类型(Fixed / Fill / Auto / Weight / Percent / Disable),
-// 默认值是 **Layout_Size_Disable —— "这条轴布局不接管, 用元素自己的尺寸"**(2026-10-08 探针
-// 实测: 完全不声明时元素按自身尺寸参与排版, 位置/居中/堆叠全部正确)。
+// 默认值是 **Layout_Size_Disable —— "这条轴布局不接管, 用元素自己的尺寸"**(探针实测:
+// 完全不声明时元素按自身尺寸参与排版, 位置/居中/堆叠全部正确)。
 //
 // 而组件构造函数本来就把设计稿尺寸建在了元素上(Label 24 / Checkbox·Radio 24 / Badge 20 /
 // Input 32 / Pagination 33 / Separator 1 / Progress 4 / Button 视觉高 + 1px 按压预留…),

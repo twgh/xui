@@ -355,7 +355,7 @@ func (g *Pagination) refresh() {
 
 // pagTextWidth 量一段文字的逻辑宽度(单行)。
 //
-// 坑(2026-10-08 探针实测): `app.GetTextShowRect` 的 width 参数传 0 时**不是"不限宽"**,
+// 坑(探针实测): `app.GetTextShowRect` 的 width 参数传 0 时**不是"不限宽"**,
 // 而是按一个字符宽折行 —— 返回的 CX 只是单行宽度、CY 变成行数×行高(3 个汉字 = CX 15/CY 59)。
 // 所以量宽必须给足 width 并加 NoWrap, 此时 CX 就是真实逻辑宽度(汉字 15px/字 @14px 字号),
 // 不需要任何倍率校正。
