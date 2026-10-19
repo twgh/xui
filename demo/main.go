@@ -19,10 +19,8 @@ import (
 
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/common"
-	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/wapi/wutil"
 	"github.com/twgh/xcgui/widget"
-	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
@@ -50,15 +48,10 @@ var (
 	demoTreeSel int32
 )
 
-// 标题栏行高度与窗口阴影边带宽度(逻辑像素)。
-// 二者必须分开用: 窗口/事件坐标的原点在**整窗**左上角, 非最大化时四周各压着 shadowSize
-// 宽的阴影带; 最大化时窗口没有阴影, 原点就是标题栏行左上角 —— 双击标题栏的 y 判定要按
-// 这个规则算(见下面的 LButtonDBClick)。都别写成裸数字。
+// 页面留白与行/列间距(逻辑像素)。标题栏高度(30)与阴影带(12)由 ui.AppWindow 内置。
 const (
-	captionH   int32 = 30 // 标题栏行高度(BorderSize=0 时即 cap 布局项高度)
-	shadowSize int32 = 12 // Window_Transparent_Shadow 的阴影大小(SetShadowInfo 的 nSize)
-	pagePad    int32 = 24 // 页面内容四周留白
-	gap        int32 = 16 // 页面内行/列间距
+	pagePad int32 = 24 // 页面内容四周留白
+	gap     int32 = 16 // 页面内行/列间距
 )
 
 func main() {
@@ -70,180 +63,50 @@ func main() {
 	// 低于 16 也不再涨(实测 ~16.6ms 硬地板)。见 docs/DESIGN.md 第八节 46。
 	a.SetPaintFrequency(10)
 
-	w := window.New(0, 0, 1200, 860, "xui · shadcn 风格自绘组件", 0,
-		xcc.Window_Style_Center|xcc.Window_Style_Border|xcc.Window_Style_Drag_Border|xcc.Window_Style_Drag_Window|xcc.Window_Style_Allow_MaxWindow)
-	w.SetTransparentType(xcc.Window_Transparent_Shadow)
-	w.SetShadowInfo(shadowSize, 128, 8, false, xc.RGBA(0, 0, 0, 128))
-	w.SetTransparentAlpha(255)
-	w.SetBorderSize(0, 0, 0, 0)
-	w.SetDragBorderSize(1, 1, 1, 1) // 让可拖动区域变小, 不然鼠标移到窗口边缘滚动条时会触发拖动改变窗口大小
-	w.SetMinimumSize(960, 660)
-	w.SetFont(xui.FontHandle(xui.Current().FontDefault))
-
-	xui.RegisterWindow(w.Handle)
-	xui.BindWindowBackground(w.Handle) // 窗口底色随主题切换
-	tip = ui.NewTooltip()
-
-	// ===== 布局骨架: 直接挂在窗口上 —— [标题栏行 captionH][内容区 Weight 1] =====
-	// 为什么不套一层 root: 竖轴上 "占满剩余空间" 只有 `Weight` 能做到, 而 **Weight 只在
-	// 父级尺寸确定时才生效**(窗口直属 / Fixed / Weight 父级都算; 父级是 Fill 或 Auto 时
-	// 恒为 0, 实测见 DESIGN 第八节 55)。窗口是唯一"天然确定"的父级, 所以这一层必须直接
-	// 是窗口的子项 —— 中间垫一个 Fill 容器, 下面的 Weight 就全废了。
-	w.EnableLayout(true)
-
-	// 标题栏行: logo/标题居左, 按钮组浮到最右(中间标题 Fill 撑开)。
-	// 行自身鼠标穿透 —— 不挡 Drag_Window 的拖动命中, 子元素(按钮)不受影响。
-	cap := widget.NewLayoutEle(0, 0, 0, captionH, w.Handle)
-	cap.EnableHorizon(true)
-	cap.EnableBkTransparent(true)
-	cap.SetSpace(6)
-	cap.SetAlignV(xcc.Layout_Align_Center)
-	cap.EnableMouseThrough(true)
-	cap.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	cap.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, captionH)
-
-	// logo: Primary 圆角块 + 白色 "x", 绘制时取令牌随主题换色
-	logo := widget.NewLayoutEle(0, 0, 18, 18, cap.Handle)
-	logo.EnableBkTransparent(true)
-	logo.AddEvent_Paint(func(hEle, hDraw int, pbHandled *bool) int {
-		p := xui.BeginPaint(hEle, hDraw)
-		if p == nil {
-			return 0
-		}
-		*pbHandled = true
-		t := xui.Current()
-		p.Icon(icons.IconAppWindow, &p.Rc, t.Foreground, 2)
-		return 0
-	})
-	logo.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, 18)
-	logo.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 18)
-	xui.ItemMarginLeft(logo, 6)
-
-	// 标题文字: Weight 宽度占满剩余空间把按钮组顶到行尾
-	// (横向行里主轴 Fill 会独占整行把兄弟挤到下一行, 剩余空间必须用 Weight)
-	title := widget.NewLayoutEle(0, 0, 0, captionH, cap.Handle)
-	title.EnableHorizon(false)
-	title.EnableBkTransparent(true)
-	title.EnableMouseThrough(true)
-	title.AddEvent_Paint(func(hEle, hDraw int, pbHandled *bool) int {
-		p := xui.BeginPaint(hEle, hDraw)
-		if p == nil {
-			return 0
-		}
-		*pbHandled = true
-		p.Text("xui · shadcn 风格自绘组件", &p.Rc, xui.Current().Foreground,
-			xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
-		return 0
-	})
-	title.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1)
-	title.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
-
-	// 控制按钮(幽灵按钮, hover 才有底色): 关闭贴右缘, 最小化在其左, 主题按钮再往左
-	const (
-		capBtnW int32 = 36
-		capBtnH int32 = 28
-	)
-
 	// 启动主题: 环境变量 XUI_THEME=dark 暗色, 其它/不设为亮色, 免去改代码重建。
-	// 运行中仍可用右上角按钮一键切换。
+	// 运行中仍可用标题栏按钮一键切换。
 	dark := strings.EqualFold(os.Getenv("XUI_THEME"), "dark")
 	if dark {
 		xui.SetTheme(xui.Dark())
 	}
 
+	// 窗口 = ui.NewAppWindow: 阴影/圆角/自绘标题栏(三键)/双击最大化/拖动/主题化底色全部内置。
+	// 内容区是窗口的 Weight 布局项(纵向流式), 页面构建见 buildPages。
+	w := ui.NewAppWindow("xui · shadcn 风格自绘组件", 1200, 860,
+		ui.WithAppWindowMinSize(960, 660),
+		ui.WithAppWindowIcon(icons.IconAppWindow))
+	tip = ui.NewTooltip()
+
+	// 标题栏自定义按钮(排在最小化左边): 布局边界 / 主题切换, 都带 tooltip。
+	// 图标显示点击后的动作 —— 隐藏时 eye(去看), 显示时 eye-off(去关)。
 	showLayoutFrame := false
-	// 标题栏这排按钮都不声明布局尺寸: 尺寸在创建参数里给足(36 宽, 高度含 button.go 的
-	// 1px 按压预留), 布局默认"不接管尺寸"就会原样保留 —— 见 xui/layout.go 的约定。
-	// 显示布局对象边界按钮(ghost 图标按钮, 与最小化/关闭同排同款):
-	// 图标显示点击后的动作 —— 隐藏时 eye(去看), 显示时 eye-off(去关)
-	btnShowLayoutFrame := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconEye))
-	tip.Bind(btnShowLayoutFrame.Handle, "显示/隐藏布局对象边界")
-	btnShowLayoutFrame.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+	var btnFrame *ui.Button
+	btnFrame = w.AddCaptionButton(icons.IconEye, func() {
 		showLayoutFrame = !showLayoutFrame
 		app.ShowLayoutFrame(showLayoutFrame) // 显示布局对象边界
-		btnShowLayoutFrame.SetIcon(common.Choose(showLayoutFrame, icons.IconEyeOff, icons.IconEye))
+		btnFrame.SetIcon(common.Choose(showLayoutFrame, icons.IconEyeOff, icons.IconEye))
 		w.Redraw(false)
-		return 0
 	})
+	tip.Bind(btnFrame.Handle, "显示/隐藏布局对象边界")
 
 	// 主题切换按钮: 图标显示切换目标 —— 亮色时 moon(去暗色), 暗色时 sun(去亮色)
-	toggle := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMoon))
-	tip.Bind(toggle.Handle, "切换主题")
-	if dark {
-		toggle.SetIcon(icons.IconSun)
-	}
-	toggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+	var btnTheme *ui.Button
+	btnTheme = w.AddCaptionButton(icons.IconMoon, func() {
 		dark = !dark
-		toggle.SetIcon(common.Choose(dark, icons.IconSun, icons.IconMoon))
+		btnTheme.SetIcon(common.Choose(dark, icons.IconSun, icons.IconMoon))
 		xui.SetTheme(common.Choose(dark, xui.Dark(), xui.Light()))
-		// 切换主题会重绘窗口, 所以 toggle 不用单独重绘
-		return 0
+		// 切换主题会重绘窗口, 所以按钮不用单独重绘
 	})
-
-	// 控制按钮: 最小化 / 最大化(还原) / 关闭, 行为全部交给 xcgui 的按钮类型。
-	// 最小化和关闭按钮图标放大了些
-	btnMin := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconMinus), ui.WithIconSize(22))
-	btnMin.SetTypeEx(xcc.Button_Type_Min)
-
-	btnMax := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconSquare))
-	btnMax.SetTypeEx(xcc.Button_Type_Max)
-
-	btnClose := ui.NewButton(0, 0, capBtnW, capBtnH, "", cap.Handle,
-		ui.WithVariant(ui.ButtonGhost), ui.WithIcon(icons.IconX), ui.WithIconSize(22))
-	btnClose.SetTypeEx(xcc.Button_Type_Close)
-
-	// 最大化/还原换图标: 按钮类型只管行为, 自绘图标不会跟窗口状态变。
-	// 挂 WM_SIZE 而不是只挂点击回调 —— 双击标题栏、Win+↑、系统菜单等改状态的路径
-	// 都会经过它; 用 a.UI 推迟到消息处理之后, IsMaxWindow 已是新状态。
-	syncMaxIcon := func() {
-		btnMax.SetIcon(common.Choose(w.IsMaxWindow(), icons.IconCopy, icons.IconSquare))
+	tip.Bind(btnTheme.Handle, "切换主题")
+	if dark {
+		btnTheme.SetIcon(icons.IconSun)
 	}
-	w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
-		if message == wapi.WM_SIZE && (wParam == wapi.SIZE_MAXIMIZED || wParam == wapi.SIZE_RESTORED) {
-			a.UI(syncMaxIcon)
-		}
-		return 0
-	})
 
-	// 内容区: 竖向流式 [页签行][页面宿主 Weight 1]。它自己是窗口的 Weight 布局项;
-	// 打开布局后, 页签行与页面宿主就交给它排, 不再需要绝对定位。
-	content := widget.NewLayoutEle(0, 0, 0, 0, w.Handle)
-	content.EnableHorizon(false)
-	content.EnableLayout(true)
-	content.EnableBkTransparent(true)
-	content.EnableAutoWrap(false)
-	content.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	content.LayoutItem_SetHeight(xcc.Layout_Size_Weight, 1)
-
+	// 内容区: AppWindow 的纵向流式容器(宽铺满、高占满标题栏以下); 页面自己管留白
+	content := w.Content()
+	content.SetSpace(0)
 	buildPages(w.Handle, content.Handle)
 
-	// 双击标题栏行最大化/还原。
-	// y 判定必须按窗口**实际**坐标系算: 非最大化时整窗矩形四周含 shadowSize 宽的阴影带,
-	// 而事件坐标原点是整窗左上角, 标题栏行落在 [shadowSize, shadowSize+captionH]; 最大化时
-	// 窗口没有阴影, 行落在 [0, captionH]。只写 captionH 会让非最大化时的双击判定少一段。
-	w.AddEvent_LButtonDBClick(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
-		top := captionH + shadowSize
-		if w.IsMaxWindow() {
-			top = captionH
-		}
-		if pPt.Y > top {
-			return 0
-		} else if w.GetStayEle() != 0 { // 防止点到标题栏上的按钮
-			return 0
-		}
-		if w.IsMaxWindow() {
-			w.ShowWindow(xcc.SW_RESTORE)
-		} else {
-			w.MaxWindow()
-		}
-		return 0
-	})
-
-	w.AdjustLayout()
 	w.Show(true)
 	a.Run()
 	a.Exit()

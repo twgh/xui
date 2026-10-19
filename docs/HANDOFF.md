@@ -274,6 +274,17 @@
   - 验收: 临时项目 `xui init` → `ui/DESIGN.md` 存在且与源文件 MD5 一致; 重复 init 跳过;
     `go build ./...` / `go vet ./...` / `go test ./...` 通过。
 
+- ✅ **AppWindow 主窗口封装**(2026-10-19, `components/window.go`):
+  - `ui.NewAppWindow("标题", w, h)` = 圆角阴影 + 无系统标题栏 + 自绘三键(最小化/最大化/关闭) + 主题化底色;
+    内容放进 `w.Content()`(纵向流式 Weight 1), `AddCaptionButton` 在标题栏加自定义按钮(排在最小化左边)。
+  - 选项: `WithAppWindowMinSize/CaptionHeight/NoMinMax/Icon/ContentPadding`。
+  - 封装期踩到两个坑(细节见 DESIGN 76): ① 窗口 `EnableLayout` 漏调 → 内容区高 0, 界面只剩标题栏;
+    ② 双击判定用 `GetStayEle != 0` → 因标题/图标 MouseThrough 而整段失效, 改成只拦 `XC_BUTTON`。
+  - 验收: 亮/暗两主题、最大化(图标自动切"还原")、双击最大化/还原、拖动、关闭;
+    `ui/window.go` 单组件安装编译通过(依赖 button)。
+  - **demo 已整体迁移**(标题栏的 logo / 布局边界 / 主题按钮走 `WithAppWindowIcon` + `AddCaptionButton`,
+    tooltip 照常绑定): 六页切换、亮/暗、最大化/还原、双击标题栏、拖动全部回归通过; demo 自己那套
+    窗口/标题栏/双击代码已删(`captionH` / `shadowSize` 常量一并移除)。
 - ✅ **发布 GitHub + 首个版本 v0.1.0**(2026-10-19):
   - 仓库公开(https://github.com/twgh/xui),`main` 已推;tag **v0.1.0** 已打并推送(指向 `7d2e7a7`)。
   - 依赖: `go.mod` 升到 `github.com/twgh/xcgui v1.4.3`(含 `svgp` / `wapi/d2d`), `go.sum` 已更新。
@@ -312,7 +323,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 anim(hover 过渡) / presence(进出场) / container·layout(布局骨架)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │                                 button checkbox radio input label separator(含 Badge) card
-│                                 switch progress slider tabs tooltip toast combobox dialog
+│                                 switch progress slider tabs tooltip toast window combobox dialog
 │                                 menu table tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个

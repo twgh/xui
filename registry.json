@@ -57,6 +57,10 @@
       "files": ["toast.go"],
       "deps": []
     },
+    "window": {
+      "files": ["window.go"],
+      "deps": ["button"]
+    },
     "combobox": {
       "files": ["combobox.go", "scrollbar.go"],
       "deps": ["tooltip"]

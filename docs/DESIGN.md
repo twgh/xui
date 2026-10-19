@@ -235,6 +235,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 
 | 组件 | 载体 | 方案 | 验证来源 |
 |---|---|---|---|
+| AppWindow | 原生 window.Window 封装 | 无系统标题栏(样式不含 Icon/Btn_*): 阴影圆角 + 自绘 `[图标][标题 Weight][自定义按钮区][最小化/最大化/关闭]`; 双击标题栏最大化/还原; 内容区 = 纵向流式 Weight 1(第八节 76) | demo 窗口(已迁移) |
 | Button | embed Button | paint 壳, 原生文字(WithIcon 时自绘图标) | BeautifyButton 示例 |
 | Card | LayoutEle(布局容器) | 圆角面板 + ring 描边; 内容区是 Fill 子项、内边距用外边距表达(随卡片缩放), 高度可按内容自撑(Auto), 见第八节 56 | — |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
@@ -1176,6 +1177,14 @@ ui/
     - **位置/透明度动画挂窗口**(`xui.Presence(hWnd, key, …)`, hOwner = 窗口): 透明元素的局部重绘**不擦底**, 卡片一移动就在旧位置留下残影; 挂窗口后每 tick 整窗重绘, 滑入与重排都是干净的(代价是动画期间整窗重绘一次/帧, 通知进出场只有 200ms)。动画期间 `layout` 只更新 `baseX/baseY`、不直接落位, 否则会和 apply 的位置打架。
     - 进场前先 `SetElementsAlpha(0, ele)` + 整窗重绘一帧, 再启动 Presence —— 元素 alpha 要画一遍才落地(同 57/73 的首帧问题), 否则第一帧是上一次的 255。
     - 主题切换: 每条通知 `OnThemeChangeFor` 重新量高再重排 —— 字号/字体变了, 描述折行高度也会变, 只重绘不重量会裁掉末行。
+
+76. **自绘标题栏窗口的封装: `EnableLayout` 必须调, 双击判定别看 `GetStayEle != 0`, 最大化不用手动去阴影**(`ui/window.go`, 亮/暗 + 最大化/还原/拖动/双击逐项实测):
+    - **`XWnd_EnableLayout(true)` 漏调 = 子项"存在但不排版"**: 窗口上 `LayoutItem_SetWidth/Height` 全都不生效, 子元素停在创建位置(实测内容区 rect `{12 0 628 0}` 高 0, 界面只剩标题栏)。封装里要在创建子项**之前**开窗口布局; 用户的子项是之后加进内容容器的, 不用再手动 `AdjustLayout`(LayoutEle 增删子项会自己重排)。
+    - **双击标题栏判定不能用 `GetStayEle() != 0`**: 标题/图标元素为了不挡窗口拖动都开了 `EnableMouseThrough(true)`, 鼠标停在它们上面时 `GetStayEle()` **仍返回该元素**(非 0) —— 按"非 0 就跳过"写, 双击标题栏整段失效(实测: 事件到了, 但被判断挡掉)。正确做法是只拦按钮: `XC_GetObjectType(stay) == xcc.XC_BUTTON`。
+    - **y 判定要算阴影带**: 事件坐标原点是整窗左上角, 非最大化时标题栏落在 `[shadowSize, shadowSize+captionH]`, 最大化时 `[0, captionH]` —— 只写 captionH 会让非最大化时的下半段双击失效。
+    - **最大化不需要手动去阴影**: 阴影窗最大化后窗口矩形 = 工作区(实测 1707×1018 逻辑, 屏幕 1707×1067, 差的就是任务栏), 阴影带由系统处理; 别在 WM_SIZE 里去 `SetShadowInfo(0, …)`(会闪)。
+    - **三键**: `SetTypeEx(xcc.Button_Type_Min/Max/Close)` 直接拿到原生行为(最小化/最大化/关闭窗口); 自绘图标不会跟状态走, 要在 `WM_SIZE(SIZE_MAXIMIZED/SIZE_RESTORED)` 里换 —— 经 `XC_CallUT` 延后到消息处理之后再读 `IsMaxWindow`, 否则拿到旧状态。
+    - **窗口销毁时 `xui.UnregisterWindow`**: 句柄会被系统复用, 主题注册表里留着会让切主题操作到别的窗口(Win32 `WM_DESTROY` 里反注册)。
 
 ---
 
