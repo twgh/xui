@@ -270,7 +270,7 @@ func parseArgs(args []string) (names []string, force, all bool) {
 func usage() {
 	fmt.Println(`xui — shadcn 风格的 xcgui 自绘组件
 
-  xui init [ui目录]     初始化用户项目(默认目录 ui; 已有 theme.go 则跳过)
+  xui init [ui目录]     初始化(默认 ui: theme.go + 基础组件 + DESIGN.md; 已存在则跳过)
   xui add <组件...>     拷贝组件源码到 ui 目录(自动带上依赖组件)
   xui add --all         拷贝全部组件
   xui update [组件...]  更新已装组件(省略组件名 = ui 目录里已装的全部)
@@ -321,12 +321,26 @@ func initProject(dir string, force bool) {
 		fmt.Printf("创建 %s\n", themePath)
 	}
 
+	// 配套文档: 组件源码的注释里大量 "见 DESIGN 第 N 节", 拷给用户才是活的。
+	// 从模块根读(go run pkg@version 时位于模块缓存, 源码文件同样在), 读不到不阻断 init。
+	docPath := filepath.Join(dir, "DESIGN.md")
+	if _, err := os.Stat(docPath); err == nil {
+		fmt.Printf("跳过 %s (已存在)\n", docPath)
+	} else if data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md")); err != nil {
+		fmt.Fprintf(os.Stderr, "xui: 读取 DESIGN.md 失败, 跳过: %v\n", err)
+	} else if err := os.WriteFile(docPath, data, 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "xui: 写入 DESIGN.md 失败: %v\n", err)
+	} else {
+		fmt.Printf("创建 %s\n", docPath)
+	}
+
 	// 拷入全部基础组件, 开箱即用
 	add([]string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card"}, dir, force)
 	fmt.Println("\n完成。接下来:")
 	fmt.Println("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
 	fmt.Printf("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)\n", dir)
 	fmt.Println("  3. 主题在 " + themePath + " 中, 随意修改")
+	fmt.Printf("  4. 改组件/主题前先看 %s (xcgui 的坑、令牌表、每个组件的画法都在里面)\n", docPath)
 }
 
 // add 拷贝组件(含依赖闭包)到 uiDir; 空清单 = 全部组件(--all)。

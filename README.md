@@ -26,7 +26,9 @@ go run github.com/twgh/xui/cmd/xui@latest init
 # go run D:\path\to\xui\cmd\xui init
 ```
 
-`init` 会创建 `ui/` 目录:写入 `theme.go`(你的主题文件)并拷入全部基础组件。
+`init` 会创建 `ui/` 目录:写入 `theme.go`(你的主题文件)、拷入全部基础组件,外加一份
+`DESIGN.md` —— 组件源码的注释里到处是"见 DESIGN 第 N 节",这份**自定义指南**随源码一起安装在你的项目里:
+令牌表、组件解剖、xcgui 的多条踩坑、已验证 API 清单都在里面。改组件前先翻它。
 
 ```go
 package main
@@ -240,7 +242,7 @@ pnpm dev        # http://localhost:5173
 | 文档 | 内容 |
 |---|---|
 | README.md | 本文:安装 / 用法 / 组件一览 |
-| [docs/DESIGN.md](docs/DESIGN.md) | 知识库:架构原理、主题系统、**xcgui 踩坑全集(第八节)**、已验证 API 清单 |
+| [docs/DESIGN.md](docs/DESIGN.md) | **自定义指南(随 `xui init` 安装为 `ui/DESIGN.md`)**:架构原理、主题系统、组件解剖、**xcgui 踩坑全集(第八节)**、已验证 API 清单 |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 开发交接:当前进度 / 待办 / 仓库结构 / 常用命令 / 视觉验证工作流 |
 | [AGENTS.md](AGENTS.md) | AI 会话入口硬规则与文档导航 |
 

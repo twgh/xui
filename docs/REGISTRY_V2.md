@@ -23,7 +23,7 @@
 | `moduleRoot()` | runtime.Caller 定位模块根(模块缓存里也有源码) | 保留,作离线回退 |
 | `loadRegistry()` | 读模块根下 registry.json | 拆成 `loadRegistryRemote()` 优先、`loadRegistry()` 兜底 |
 | `add(names, uiDir)` | 依赖解析(递归 deps)+ 按清单拷文件 + 内容一致跳过/已改动跳过 | 文件读取从"本地路径"改为"数据源读取";其余逻辑不动 |
-| `initProject(dir)` | 建 ui/ + theme.go 模板 + 拷基础组件 | theme.go **仍从内嵌模板出**(不远程拉),其余走 add |
+| `initProject(dir)` | 建 ui/ + theme.go 模板 + DESIGN.md + 拷基础组件 | theme.go **仍从内嵌模板出**(不远程拉),DESIGN.md 从模块根 `docs/` 读,其余走 add |
 | `list()` | 打印清单 | 数据源同 loadRegistry |
 | `update` | **未实现** | 新命令,见下 |
 
@@ -86,7 +86,7 @@ xui add --all           # = init 的组件部分(全量 add)
 - [x] `update`:改过 ui/button.go → 警告跳过;删掉 ui/label.go → 重新创建;`--force` → 覆盖;指定组件只更新该闭包;空目录 → 提示"没有已安装的组件"
 - [x] `add --all` → 18 个文件(19 个组件条目, separator/badge 共享 separator.go)
 - [x] **逐组件单独安装 + 编译**(19 个组件各建一个临时项目 `go build ./ui`):全部通过
-- [x] `init` → theme.go + 基础组件,临时项目 `go build ./ui` 通过
+- [x] `init` → theme.go + DESIGN.md + 基础组件,临时项目 `go build ./ui` 通过(DESIGN.md 与源文件 MD5 一致;重复 init 跳过已存在)
 - [x] **仓库公开后**(唯一依赖 GitHub 的两步,尚未做):
   - [ ] 不设 XUI_REGISTRY 直接 `add` → 走 raw.githubusercontent 真链路
   - [ ] `go run github.com/twgh/xui/cmd/xui@latest init`(新 proxy 会话下;若 proxy 未收录,`GOPROXY=direct go run ...` 先验,并提醒等 proxy 刷新)
