@@ -1,6 +1,6 @@
 # CLI 远程 registry(v2)实施方案
 
-> 状态:**已实现并离线验收通过(2026-10-11)**。仅剩「仓库公开后」两步真实验收(见五,需要 GitHub 可达)。
+> 状态:**已实现并验收通过** —— 离线链路 2026-10-11, 仓库公开后的真链路 2026-10-19(v0.1.0, 见五)。
 > 本文保留为实施记录 + 验收依据;关联:HANDOFF「P3 剩余」;DESIGN 第五节(CLI 与 registry);cmd/xui/main.go。
 
 ## 一、结论先行(决策已定,勿再开讨论)
@@ -84,12 +84,14 @@ xui add --all           # = init 的组件部分(全量 add)
 - [x] 默认源(未设 XUI_REGISTRY)→ 按 直连 → Gitee 镜像 → `ghfast` → `gh-proxy` 依次尝试(每个失败打一行 stderr),全不通才**降级内嵌源**,命令仍成功
 - [x] `XUI_REGISTRY=http://127.0.0.1:9999`(不可达)与 `…/notexist`(HTTP 404)→ 均报错退出(显式指定不降级)
 - [x] `update`:改过 ui/button.go → 警告跳过;删掉 ui/label.go → 重新创建;`--force` → 覆盖;指定组件只更新该闭包;空目录 → 提示"没有已安装的组件"
-- [x] `add --all` → 18 个文件(19 个组件条目, separator/badge 共享 separator.go)
-- [x] **逐组件单独安装 + 编译**(19 个组件各建一个临时项目 `go build ./ui`):全部通过
+- [x] `add --all` → 26 个文件(24 个组件条目; separator/badge 共享 separator.go, dialog/combobox/table/tree/scrollarea/input/timepicker 带跨文件助手)
+- [x] **逐组件单独安装 + 编译**(24 个组件各建一个临时项目 `go build ./ui`;10-17 全量 21 项 + 后续 calendar/datepicker/timepicker/toast 补验 + `add --all`):全部通过
 - [x] `init` → theme.go + DESIGN.md + 基础组件,临时项目 `go build ./ui` 通过(DESIGN.md 与源文件 MD5 一致;重复 init 跳过已存在)
-- [x] **仓库公开后**(唯一依赖 GitHub 的两步,尚未做):
-  - [ ] 不设 XUI_REGISTRY 直接 `add` → 走 raw.githubusercontent 真链路
-  - [ ] `go run github.com/twgh/xui/cmd/xui@latest init`(新 proxy 会话下;若 proxy 未收录,`GOPROXY=direct go run ...` 先验,并提醒等 proxy 刷新)
+- [x] **仓库公开后的真链路**(2026-10-19, 随 v0.1.0 发布验收):
+  - [x] 不设 XUI_REGISTRY 直接跑 → 数据源打到 `https://raw.githubusercontent.com/twgh/xui/main`, 列表正常
+  - [x] `go run github.com/twgh/xui/cmd/xui@v0.1.0 init`(全新项目)→ 生成 `ui/`: theme.go + 基础组件 + DESIGN.md
+  - [x] `GOPROXY=direct go list -m github.com/twgh/xui@latest` → v0.1.0;`@latest` 走 goproxy.cn 时可能因
+    CDN 缓存短暂返回旧伪版本(内容同样是 main 最新), 显式 `@v0.1.0` 不受影响
 
 > 本轮顺带修掉的 registry 数据缺陷(组件单独安装编译不过,原 v1 清单就错):
 > `dialog` 漏登记 `backdrop.go`(backdrop-blur 助手),`combobox` / `menu` 漏登记对 `tooltip` 的依赖

@@ -8,9 +8,9 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-15)
+## 当前状态(截至 2026-10-19)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
@@ -274,19 +274,34 @@
   - 验收: 临时项目 `xui init` → `ui/DESIGN.md` 存在且与源文件 MD5 一致; 重复 init 跳过;
     `go build ./...` / `go vet ./...` / `go test ./...` 通过。
 
-## 待办
-
-- ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计,**只剩 REGISTRY_V2.md 五 的两步真实验收依赖仓库公开**)
-- ⬜ **与 shadcn 仅剩的已知差异**(完整清单见 DESIGN 第四节末):只剩 **Menu 弹层宽度=触发区宽**(`XMenu_SetItemWidth` 实测无效, 见 64, 不可达);其余 aria-invalid / CardAction / MenuInset / chart·sidebar 令牌已于 2026-10-17 补齐
-- ⬜ **Input 的文字/光标/选区/IME 仍由原生 Edit 绘制**:我们能改的只有"参数"——字体字号(`SetFont`)、字色(`SetTextColor`)、占位符色(`SetDefaultTextColor`)、插入符色(`SetCaretColor`)、文字内边距(`SetBorderSize`, 逻辑像素);**行高、文字垂直位置、光标粗细/闪烁、选区背景色、IME 组合文本样式**都在 DLL 内固定, 没有接口。要完全控制文本渲染就得自绘文字, 并自己实现光标闪烁/选区命中/IME 组合窗定位 —— 收益小、风险大, 暂不做;需要完全自绘文本时用 Label / 自绘 Element(见 DESIGN 三 第 4 条 / 23 / 61)
-- ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;2026-10-17 全量 21 项、2026-10-18 新增 calendar/datepicker/timepicker + add --all 通过; 注意 `xui init` 前临时项目必须已有 go.mod, 否则 `go run` 起不来)
-- ⬜ **xcgui 发布含 `d2d` 包的版本后, 把 `go.mod` 的 require 升到该版本**(现在靠 `go.work` 联调; 没有 go.work 的环境编译不过, 因为已提交的 `d2dicon.go` 依赖 `xcgui/d2d`。2026-10-17 查过模块代理, 最新仍是 v1.4.2, 未发版)
-- ✅ **D2D 直通能力的上游化, 一次做齐(2026-10-11)**(趁上游发版窗口把原待办三项做完, 细节见 DESIGN 第八节 43 末 / 65):
+- ✅ **发布 GitHub + 首个版本 v0.1.0**(2026-10-19):
+  - 仓库公开(https://github.com/twgh/xui),`main` 已推;tag **v0.1.0** 已打并推送(指向 `7d2e7a7`)。
+  - 依赖: `go.mod` 升到 `github.com/twgh/xcgui v1.4.3`(含 `svgp` / `wapi/d2d`), `go.sum` 已更新。
+  - 验收(`GOWORK=off`, 即不依赖本地 xcgui 工作副本): `go build/vet/test ./...` 全过;
+    全新项目 `go run .../cmd/xui@v0.1.0 init` 生成 theme.go + 基础组件 + DESIGN.md;
+    `GOPROXY=direct go list -m ...@latest` → v0.1.0。
+  - ⚠️ goproxy.cn 的 `@latest` 元数据有 CDN 缓存延迟, 刚发版时可能返回旧伪版本(内容同样是 main 最新),
+    显式 `@v0.1.0` 或 `GOPROXY=direct` 不受影响; 其 zip 下载偶发一次 `stream error`(重试即好)。
+- ✅ **xcgui 已发 v1.4.3(含 `d2d`/`svgp`), `go.mod` 已升级**(2026-10-19): 不再依赖 `go.work` 联调,
+  `GOWORK=off go build ./...` 通过;发布前必须保持"公共模块可编译" —— 改回本地联调时记得再验证一次。
+- ✅ **D2D 直通能力的上游化, 一次做齐**(2026-10-11)(趁上游发版窗口把原待办三项做完, 细节见 DESIGN 第八节 43 末 / 65):
   ① **"按值浮点形参"的封装扩到基本图元**: `DrawLine`(线宽在**栈[0]** —— 5 个参数, 位置 4 已超出前 4 个 XMM 槽)/ `DrawRectangle` / `DrawEllipse` / `FillRectangle` / `FillEllipse`(各带 `*Color` 便利版); 转发器升级为"最多 4 个栈参数"的 `wapi/com.CallWithFloat32Stack`(栈上的 float 占 8 字节槽、值放低 4 字节)。
   ② **形状几何与参数上移**: `ID2D1Factory` 补 `Create{Rectangle,RoundedRectangle,Ellipse}Geometry`(配 `D2D1_ELLIPSE`/`D2D1_ROUNDED_RECT`); 绘制/填充口参数从 `*ID2D1PathGeometry` 上移到 `*ID2D1Geometry`(各几何加 `Base()`, `Usable()` 随之上移), 于是"任意几何"都能画。
   ③ **几何缓存策略**做成通用的 `d2d.GeometryCache[K comparable]`(按工厂作废 + 失败也记 + 统一 Release), 本仓库的图标几何改用它 —— 重构后墨迹量逐像素不变(143083), 鼠标扫动 734/765ms(此前 828/836ms)。
   ④ 原来的"描边展开算法上游化"**作废**: 描边走 D2D 真描边(见上一条), CPU 展开代码已从本仓库删除。
   探针 `.verify/probeprimitives`(8 种图元/几何一次抓图全对)+ `wapi/com`/`d2d` 单测(槽位/布局/nil 安全)在 CI 与离线均可跑。
+
+## 已知限制(不是待办, 是 xcgui 的能力边界)
+
+- ℹ️ Menu 弹层宽度 = 触发区宽(`XMenu_SetItemWidth` 实测无效, 见 DESIGN 64, 不可达)。
+- ℹ️ Input 的文字/光标/选区/IME 由原生 Edit 绘制(只开放字体/字色/占位符色/插入符色/内边距, 见 DESIGN 三 第 4 条 / 23 / 61)。
+- ℹ️ Toast 只支持四角堆叠(无顶部/底部居中、无 richColors, 见 DESIGN 75)。
+- 完整清单见 DESIGN 第七节。
+
+## 待办
+
+- ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;2026-10-17 全量 21 项、2026-10-18 新增 calendar/datepicker/timepicker + add --all 通过; 注意 `xui init` 前临时项目必须已有 go.mod, 否则 `go run` 起不来)
+- ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
 
 ## 仓库结构
 
@@ -330,7 +345,7 @@ go build -ldflags="-s -w -H windowsgui" -trimpath -o demo/demo.exe ./demo && dem
 # shadcn 参考实现 dev server(可能已在运行: netstat -ano | findstr 5173)
 cd D:\GOProject\src\ui\shadcn && pnpm dev    # http://localhost:5173
 
-# CLI 本地测试(仓库未发布, 默认源直连→Gitee 镜像→代理, 全不通才降级内嵌源码)
+# CLI 本地测试(默认源:直连→Gitee 镜像→代理, 全不通才降级内嵌源码)
 go run ./cmd/xui list / init <目录> / add <组件...> / add --all / update [组件...]
 go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出
 # 想验远程链路(无需 GitHub): 仓库根起 python -m http.server 8123,
