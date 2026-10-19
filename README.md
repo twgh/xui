@@ -1,5 +1,14 @@
 # xui — shadcn 风格的 xcgui 自绘组件
 
+<p>
+    <a href="https://github.com/twgh/xcgui"><img src="https://img.shields.io/badge/xcgui≥1.4.3-blue" alt="release"></a>
+   <a href="https://golang.org"> <img src="https://img.shields.io/badge/golang-≥1.18-blue" alt="golang"></a>
+    <a href="https://pkg.go.dev/github.com/twgh/xui"><img src="https://img.shields.io/badge/go.dev-reference-brightgreen" alt="GoDoc"></a>
+    <a href="https://github.com/twgh/xui/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-brightgreen" alt="License"></a>
+</p>
+
+## 介绍
+
 为 [github.com/twgh/xcgui](https://github.com/twgh/xcgui)(炫彩界面库)提供一套 **shadcn-ui 风格**的自绘组件:主题令牌、变体系统、copy-not-install 分发。
 
 ```
@@ -17,18 +26,20 @@
 └─────────────────────────────────────────────┘
 ```
 
+### 示例图
+
+![xui](https://s41.ax1x.com/2026/10/19/pn0t240.png)
+
 ## 快速开始
 
 ```bash
-# 在你的项目根目录执行
+# 在你的项目根目录执行(需要 Go 1.18+;项目要先有 go.mod,没有就先 go mod init)
 go run github.com/twgh/xui/cmd/xui@latest init
-# 仓库未发布时可用本地路径:
-# go run D:\path\to\xui\cmd\xui init
 ```
 
 `init` 会创建 `ui/` 目录:写入 `theme.go`(你的主题文件)、拷入全部基础组件,外加一份
 `DESIGN.md` —— 组件源码的注释里到处是"见 DESIGN 第 N 节",这份**自定义指南**随源码一起安装在你的项目里:
-令牌表、组件解剖、xcgui 的多条踩坑、已验证 API 清单都在里面。改组件前先翻它。
+令牌表、组件解剖、xcgui 踩坑全集、已验证 API 清单都在里面。改组件前先翻它。
 
 ```go
 package main
@@ -37,7 +48,8 @@ import (
     "github.com/twgh/xcgui/app"
     "github.com/twgh/xcgui/window"
     "github.com/twgh/xcgui/xcc"
-    ui "yourmodule/ui"
+    "github.com/twgh/xui"
+    ui "yourmodule/ui" // 换成你的模块路径
 )
 
 func main() {
@@ -69,7 +81,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 ```
 
 主题文件 `ui/theme.go` 默认是**内置主题的副本**(逐字段改即可换肤),也可以照 shadcn 的
-`:root` / `.dark` 自己写一份 —— 令牌与 CSS 变量一一对应(字段表见 docs/DESIGN.md 3.1)。
+`:root` / `.dark` 自己写一份 —— 令牌与 CSS 变量一一对应(字段表见 DESIGN.md 3.1)。
 
 ## 组件
 
@@ -86,7 +98,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | TimePicker | 时间框:outline 触发区 + 弹层内"时/分"两列滚动列表(原生 ListBox 行为,条目自绘);选择即生效,弹层保持打开 |
 | Menu | 下拉菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 / 文字缩进(`MenuInset`) |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点) |
-| Toast | 通知(窗口内覆盖元素,右下角堆叠):4 种语义类型(success/error/warning/info)+ 动作按钮 + 可选关闭按钮;自动关闭(默认 4s)、悬停暂停、进出场滑入淡入;`NewToaster(w).Success("标题","描述")` |
+| Toast | 通知(窗口内覆盖元素,右下角堆叠):4 种语义类型(success/error/warning/info)+ 动作按钮 + 可选关闭按钮;自动关闭(默认 4s)、悬停暂停、进出场滑入淡入;`NewToaster(w.Handle).Success("标题","描述")` |
 | Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述 + 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环 |
 | Table | 数据表格(原生 `List` 载体 + 全自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽支持"占满剩余宽度" |
 | Tree | 树形视图(原生 `Tree` 载体 + 全自绘皮肤):缩进参考线/旋转 chevron/行悬浮选中;叶节点留空槽位文字全树对齐,点击 chevron 展开收起 |
@@ -94,7 +106,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | ScrollArea | 滚动容器(原生 `LayoutFrame` 载体):内容比容器高时纵向滚动,内容总大小按子项自动撑开、滚动条自动显隐;主题化细滚动条,内容区 `ContentStack()` 随便塞;`SetContentFill()` 切"铺满视口 + 面板吃剩余高度"形态 |
 | Label / Card / Badge / Separator | 静态展示组件:Badge 6 变体(含 ghost/link,悬停生效)、Card 支持 `sm` 尺寸与说明/页脚/卡片头(`NewCardHeader` 的标题+说明+右上动作区)、Separator 支持垂直 |
 
-每个组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环。
+交互类组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环(静态展示与容器类组件没有按下态)。
 
 hover 带过渡动画(默认 **150ms + cubic-bezier(0.4,0,0.2,1)**,与 tailwind / shadcn 的 `transition-*`
 默认值一致;表格行/树行/菜单条目这类逐项高亮同样有过渡)。过渡由运行时管理(临时开一个 16ms 的
@@ -111,7 +123,7 @@ xui.SetHoverDuration(0)                      // 关掉过渡(立即到位)
 ```go
 a := app.New(true)
 a.EnableAutoDPI(true).EnableDPI(true)
-a.SetPaintFrequency(10)   // 实测帧率 30.9 → 59.0 fps(见 docs/DESIGN.md 第八节 46)
+a.SetPaintFrequency(10)   // 实测帧率 30.9 → 59.0 fps(见 DESIGN.md 第八节 46)
 ```
 
 对话框与提示气泡自带进出场动画(dialog 淡入淡出 100ms、tooltip 淡入+8px 滑入 150ms, 对齐
@@ -155,16 +167,16 @@ paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存归�
 ```
 
 组件内部用到的图标同样取 `icons.IconXxx`:实测"只用常量"的程序体积增量 **0 字节**(2130 条数据里
-只进用到的那条),所以组件、业务代码都推荐用常量。资源与常量由 `scripts/gen_icons.py` 一起生成
-(默认取最新版, `--version` 可钉版),转换规则与踩坑见 docs/DESIGN.md 第八节 44。
+只进用到的那条),所以组件、业务代码都推荐用常量。资源与常量由仓库脚本从 lucide 生成(用户无需关心),
+转换规则与踩坑见 DESIGN.md 第八节 44。
 
-demo 的第 6 个页签「图标」可以搜索/翻页浏览整份资源:格子里只画图标(不显示名字),
+仓库 demo 的「图标」页可以搜索/翻页浏览整份资源:格子里只画图标(不显示名字),
 **悬浮出提示气泡显示图标名, 点击把图标名复制到剪贴板**。
 
 ## CLI
 
 ```bash
-xui init [ui目录]      # 初始化(默认目录 ui; 已有 theme.go 则跳过)
+xui init [ui目录]      # 初始化(默认 ui: theme.go + 基础组件 + DESIGN.md; 已存在则跳过)
 xui add button card    # 追加拷贝指定组件(自动带上依赖)
 xui add --all          # 拷贝全部组件
 xui update             # 更新已装组件(省略组件名 = ui/ 里已装的全部)
@@ -176,8 +188,8 @@ xui list               # 列出可用组件
 
 组件源码拷进项目后归你所有;`add` / `update` 都不会覆盖你本地改过的文件,确认要丢弃本地改动时加 `--force`。
 
-**数据源**:默认从仓库 `main` 分支现拉组件(组件永远最新,CLI 本体锁版本用
-`go run github.com/twgh/xui/cmd/xui@v1.2.3`)。默认源**自动选路**:
+**数据源**:默认从仓库 `main` 分支现拉组件,组件永远最新。想锁 CLI 与组件的版本时,把 `@latest`
+换成具体版本号(如 `@v0.1.0`)。默认源**自动选路**:
 
 ```
 直连 https://raw.githubusercontent.com/twgh/xui/main
@@ -192,7 +204,7 @@ CLI 内嵌源码。选路过程逐行打在 stderr 上, 想看清卡在哪一环
 
 ```bash
 XUI_REGISTRY=D:\path\to\xui xui add dialog                    # 本地目录(离线)
-XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v1.2.3 xui add dialog   # 锁组件版本
+XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.1.0 xui add dialog   # 锁组件版本(换成实际 tag)
 XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/main xui add dialog     # 只走直连(跳过镜像与代理)
 XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                # 只走 Gitee 镜像
 ```
@@ -203,14 +215,17 @@ XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                #
 
 - **copy-not-install**:组件源码进你的仓库,可改可删,不受上游版本绑架——组件是起点,不是黑盒。
 - **行为/视觉分层**:xcgui 原生控件当作"无头"层(事件/状态/焦点/输入法),`AddEvent_Paint` + `drawx` 只负责外观。
-- **绘制时取令牌**:组件永不缓存颜色,这是零成本换肤的前提;需要同步给原生 API 的颜色(Edit 文字色、窗口底色)通过 `xui.OnThemeChange` 订阅。
+- **绘制时取令牌**:组件永不缓存颜色,这是零成本换肤的前提;需要同步给原生 API 的颜色(Edit 文字色、窗口底色)通过 `xui.OnThemeChangeFor` 订阅(元素销毁时自动反注册)。
 - **组件文件薄**:绘制细节下沉到运行时助手(`xui.Painter`);连 hover 过渡这种"要定时器/要生命周期"的脏活也归运行时(`xui.Hover`/`HoverItem`/`Fade`),拷贝文件主要是"变体→令牌映射 + 几笔绘制",降低升级冲突面。
-- **交互语义对齐 shadcn 源码**:hover 透明度、focus-visible(键盘才显示焦点框)、disabled opacity-50、按压下沉等均逐条对照本地参考实现的组件源码实现。
+- **交互语义对齐 shadcn 源码**:hover 透明度、focus-visible(键盘才显示焦点框)、disabled opacity-50、按压下沉等均逐条对照 shadcn-ui 官方源码实现。
 
 ## 已知约束
 
 - 仅 Windows;渲染模式固定按 Direct2D(`app.New(true)`)设计。
-- 组件坐标使用逻辑像素,自绘内容按窗口 DPI 缩放(`EnableAutoDPI` + `xui.Painter.Scale`)。
+- 组件坐标使用逻辑像素(`XEle_GetClientRect` 返回未缩放矩形),框架渲染时统一按窗口 DPI 变换;
+  自绘**不要**再乘 DPI(开 `EnableAutoDPI` + `EnableDPI` 即可)。
+- **依赖 `github.com/twgh/xcgui` 的新版本**:用到 `xcgui/svgp`(图标 path 解析)与 `xcgui/wapi/d2d`
+  (直通 D2D),这两个包从 **v1.4.3** 起提供 —— v1.4.2 及更早没有,`go get` 到旧版会编译失败。
 - 主题切换须在 UI 线程调用 `xui.SetTheme`。
 - **本模块的 `go` 指令是 1.18**:即使你用 Go 1.22+ 的工具链,`for range` 的循环变量也按**旧语义共享** ——
   在循环里给控件注册回调(或起 goroutine)时,循环变量必须先拷一份,否则所有回调都取到最后一次的值:
@@ -224,18 +239,14 @@ XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                #
 
 详见 [DESIGN.md](docs/DESIGN.md)。
 
-## 参考实现(本地 shadcn)
+## 参考实现(shadcn-ui)
 
-`D:\GOProject\src\ui\shadcn` 部署了一份可运行的 shadcn-ui(nova 预设),用于对照组件源码与视觉效果:
+交互语义与视觉以 [shadcn-ui](https://github.com/shadcn-ui/ui) 官方源码为准:
 
-```bash
-cd D:\GOProject\src\ui\shadcn
-pnpm dev        # http://localhost:5173
-```
+- 组件源码:`packages/shadcn/src/registry/**/ui/*.tsx`(语义的唯一权威来源)
+- 主题令牌:`app/globals.css` 的 `:root` / `.dark`
 
-- 组件源码:`src/components/ui/*.tsx`(语义的唯一权威来源)
-- 主题令牌:`src/index.css` 的 `:root` / `.dark`
-- `src/App.tsx` 是与 `demo/` 同构的对照页,改完两遍跑一遍即可比对
+本仓库的 `demo/` 是按它逐页对照做的视觉验证程序(全组件 + 亮/暗主题),可对照运行。
 
 ## 项目文档
 
@@ -243,7 +254,11 @@ pnpm dev        # http://localhost:5173
 |---|---|
 | README.md | 本文:安装 / 用法 / 组件一览 |
 | [docs/DESIGN.md](docs/DESIGN.md) | **自定义指南(随 `xui init` 安装为 `ui/DESIGN.md`)**:架构原理、主题系统、组件解剖、**xcgui 踩坑全集(第八节)**、已验证 API 清单 |
-| [docs/HANDOFF.md](docs/HANDOFF.md) | 开发交接:当前进度 / 待办 / 仓库结构 / 常用命令 / 视觉验证工作流 |
-| [AGENTS.md](AGENTS.md) | AI 会话入口硬规则与文档导航 |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | 仓库维护者用:当前进度 / 待办 / 仓库结构 / 常用命令 / 视觉验证工作流 |
+| [AGENTS.md](AGENTS.md) | 仓库维护者用:AI 会话入口硬规则与文档导航 |
 
-> 改任何组件的交互前,先看 DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」,再对照本地 shadcn 源码。
+> 改任何组件的交互前,先看 DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」,再对照 shadcn-ui 官方源码。
+
+## License
+
+[MIT](LICENSE)
