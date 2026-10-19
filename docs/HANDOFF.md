@@ -207,6 +207,20 @@
     快速连点段无爆闪、无忙碌圈; 时间框连点两次进程存活; `.verify/flicker` / `.verify/probealpha` /
     `.verify/vidfinal.py` / `.verify/vidopen2.py` 等工具留存复用。
 
+- ✅ **Calendar 三块新能力(2026-10-19, 参考用户截图)**:
+  - **年月可选**: 标题行原来是一整块"2026年10月", 现在拆成「2026年 ⌄」「10月 ⌄」两个热区, 点开是贴着标题的自绘下拉
+    (bg-popover + ring, 行高按 12 行塞满可用高度自适应, 当前值右侧 check, 超出高度滚轮滚动 + 2px 细滚动条); 面板内点击=取值、
+    面板外=关闭、点另一个热区=直接切换; 只改显示月份不动选中日期。年份范围默认"视图年 ±50", `WithCalendarYearRange` 可配。
+  - **禁用日期**: `WithCalendarDisabled(fn)` + 运行时 `SetDisabled`, 内置 `CalendarDisableBefore/Weekend/Dates/Any` 四个 helper;
+    禁用格 text-muted-foreground opacity-50, **不可点、无悬停、不触发 OnSelect**(探针点周六验证无选中变化)。
+  - **页脚**: `WithCalendarFooter(items...)` / `WithCalendarFooterToday()` / 构造后 `AddFooterItem/Button/Text` / `ClearFooter`;
+    页面全宽 1px 分隔线 + 居中按钮行(ghost 化: 悬停 bg-accent), 元素未指定高度时自动长高 `CalFooterHeight()`(37);
+    要放原生控件时用 `FooterRect()` 取内容区矩形自行摆放(子元素盖在自绘内容之上, 点击不穿透)。
+  - **验收**: 探针(亮色, 两张卡片: 周末禁用 / 页脚)逐项截图 —— 年列表开合与滚轮滚动、选年切月、月份列表、页脚「今天」回本月并选中、
+    点禁用日期无响应; demo 表单页「月历卡片」改为 周末禁用 + 页脚(今天/清除)。`go test ./...`、`go vet` 通过。
+  - **注意**: 下拉是**元素内自绘**(不是独立弹层窗口), 因此受卡片尺寸限制 —— 行高会自动压缩以塞下 12 行; 鼠标离开卡片即收起
+    (自绘下拉没有原生弹层的 KillFocus 失焦机制); 滚轮事件只在打开时 `EnableEvent_XE_MOUSEWHEEL(true)`, 关闭即还回外层 ScrollArea。
+
 ## 待办
 
 ## 待办

@@ -692,9 +692,17 @@ func buildFormPage(body *widget.LayoutEle) {
 	// ---- 右列 3: 月历卡片 ----
 	_, v6 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "月历卡片", v6.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "完全自绘: 6×7 固定网格(周一开头), 选中实心 / 今天浅底 / 悬停 150ms 过渡", v6.Handle))
-	// 不声明布局项尺寸 = 用元素自身尺寸(248×292), 让它保持方正的卡片比例
-	cal := ui.NewCalendar(0, 0, 0, 0, v6.Handle, ui.WithCalendarSelected(time.Now()))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"标题年月可下拉切换; 周末禁用(灰显不可点); 页脚 = 内置「今天」+ 自定义「清除」", v6.Handle))
+	// 不声明布局项尺寸 = 用元素自身尺寸(248 宽, 含页脚 329 高), 让它保持方正的卡片比例
+	var cal *ui.Calendar
+	cal = ui.NewCalendar(0, 0, 0, 0, v6.Handle,
+		ui.WithCalendarSelected(time.Now()),
+		ui.WithCalendarDisabled(ui.CalendarDisableWeekend),
+		ui.WithCalendarFooterToday(),
+		ui.WithCalendarFooter(ui.CalendarFooterItem{Text: "清除", OnClick: func() {
+			cal.SetSelected(time.Time{})
+		}}))
 	cal.OnSelect(func(t time.Time) { tip.Bind(cal.Handle, t.Format("2006年1月2日")) })
 }
 
