@@ -244,6 +244,24 @@
     xui 中**不再有裸 `syscall.NewLazyDLL`**。上游补了 `TestGetMonitorInfo / TestGetWindowDC`(实测工作区
     1707×1019 vs 整屏 1707×1067, 任务栏 48px 被扣掉)。
 
+- ✅ **Toast 通知(2026-10-19, `components/toast.go`)**:
+  - **载体**: 窗口内覆盖元素(每条通知一个自绘 Element, 无子元素), 右下角堆叠、跟随窗口移动/缩放/最小化;
+    不占用原生控件, 关闭按钮/动作按钮的命中在卡片局部坐标里算。
+  - **API**: `ui.NewToaster(w.Handle)` + `Show(ToastOptions{...})` / `Success / Error / Warning / Info`;
+    `Duration` 传负数 = 常驻, `Action` + `OnAction` 动作按钮, `CloseButton` 显示关闭钮;
+    选项 `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible`, 实例 `Update/Close/Handle`。
+  - **交互(对齐 sonner 默认值)**: 自动关闭 4s; **悬停任意一条暂停全部倒计时**(窗口级 MouseMove +
+    `GetStayEle`, 元素级 Stay/Leave 不可靠, 见 DESIGN 21/75); 超出 3 条移除最旧;
+    进场淡入 + 滑入 12px(200ms), 退场淡出 + 侧滑 24px(180ms); 主题切换重新量高重排。
+  - **验收**: demo 反馈页「通知」卡片(成功/错误/警告/信息/带动作/长文本), 亮/暗两主题抓图:
+    单条与三条堆叠、图标语义色、长描述折行、动作按钮与关闭按钮点击、悬停 6s 不消失、移开后自动关闭;
+    `go build ./...` / `go vet ./...` / `go test ./...` 通过。
+  - **内边距对称性(像素实测)**: 卡片排版坐标必须用"卡片矩形"(元素比卡片四周大 6px 画投影),
+    否则卡片可见高度少 12、下内边距被吃掉 6(用户报障"底部空白比顶部小")。修后两行卡片
+    topGap=botGap=28 物理像素(@150% DPI)、单行卡片 26/27; `GetTextShowRect` 的 CY 已含行距
+    (13px: 单行 18 / 两行 36), 别再补偿(见 DESIGN 75)。
+  - 原理与坑见 DESIGN 第八节 **75**(单元素自绘 / 窗口级悬停 / 倒计时用元素 XCTimer / 位置动画挂窗口整窗重绘)。
+
 ## 待办
 
 - ⬜ **发布 GitHub**(发布后 `go run github.com/twgh/xui/cmd/xui@latest init` 即可用;CLI 已按此设计,**只剩 REGISTRY_V2.md 五 的两步真实验收依赖仓库公开**)
@@ -267,7 +285,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 anim(hover 过渡) / presence(进出场) / container·layout(布局骨架)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │                                 button checkbox radio input label separator(含 Badge) card
-│                                 switch progress slider tabs tooltip combobox dialog
+│                                 switch progress slider tabs tooltip toast combobox dialog
 │                                 menu table tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个

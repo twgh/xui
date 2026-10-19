@@ -297,6 +297,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | calendar 页脚 = 卡片全宽 1px border-t + 上下 6px + 24px 按钮行, 项水平居中、间距 8; 按钮 ghost 化(muted-foreground → 悬停 bg-accent + accent-foreground), 纯文本项只有文字; 元素未指定高度时启用页脚自动长高 `CalFooterHeight`(37) | shadcn calendar 的 footer 示例 + 参考截图"今天" |
 | date picker 触发区 = **Button variant="outline"**(不是 Input): h-8 rounded-lg border-input bg-background, 左侧 size-4 calendar 图标 + 文字, hover bg-accent / 文字 accent-foreground; 未选择显示占位符(muted); 弹层 = 自建阴影窗 + Calendar(sideOffset=4, 下方放不下翻上方, 夹在**显示器工作区**内 —— 扣掉任务栏, 见第八节 74); 进场 fade-in 100ms; 选中即回写+关闭+回调, 点外部(弹层失焦)/ESC 关闭; **点触发区关闭后 250ms 内不再重开**(弹层 KillFocus 先于触发区 LButtonUp, 否则表现为"点两次才关掉"); aria-invalid 同 Button | date-picker 文档示例(Button outline + Popover + Calendar) + datepicker.go / popup.go |
 | time picker = 触发区同 date picker(clock 图标 + "09:30") + 弹层两列滚动列表(时 0-23 / 分 0-59): 每列 64 宽、8 项可见(28×8), p-1 内边距; 载体是**原生 ListBox**(滚动/滚轮/点击都是原生), 条目背景与文字自绘 —— 选中 bg-primary + text-primary-foreground, 悬停 bg-accent(150ms 过渡); **选择即生效但弹层保持打开**(继续改另一列), 点外部/ESC 关闭; 打开时选中项滚到列表中间(行步进 = 项高+1, 见第八节 72) | shadcn 无官方 time-picker, 语义取社区通行形态(Popover + 滚动列表) + timepicker.go |
+| toast(sonner) = 右下角堆叠(新的在最下)、卡宽 356、与内容区边缘 24、卡间距 10; 卡片 bg-popover + border + rounded-lg + shadow-md, 内边距 16, 图标 20(与文字间距 10), 标题 13px font-medium / 描述 13px 可折行, 动作按钮 h-26 bg-muted hover:bg-accent, **关闭按钮默认隐藏**(同 shadcn 的 sonner), 显示时在右上角; 类型(success/error/warning/info)只改图标与图标色, 不给卡面上底色(未开 richColors); 自动关闭 **4s**、**悬停任一条暂停全部倒计时**、超出可见条数(默认 3)移除最旧; 进场淡入 + 从堆叠方向滑入 12px(200ms), 退场淡出 + 向侧边滑出 24px(180ms); 类型快捷入口 `Success/Error/Warning/Info`, `Duration < 0` = 常驻 | sonner 默认值(宽度/offset/gap/4s/pauseTimers/visibleToasts=3) + shadcn 的 sonner.tsx(theme 交给令牌; 不传 closeButton) + 第八节 75 |
 
 ### 变体/尺寸与上游的映射、已知差异
 
@@ -319,6 +320,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Card 头 | `ui.NewCardHeader(parent, space)` + `TitleStack()` / `ActionStack()` | 对应 `CardHeader` + `CardAction`(上游是 grid 1fr_auto); 动作区跨两行贴右上 |
 | ScrollArea | **本项目形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档) | 页面滚动容器; 语义与踩坑见第八节 66 |
 | Menu 条目缩进 | `MenuInset()` = shadcn 的 `inset` prop(`data-inset:pl-7`, 文字左缘 28) | 用于让普通条目与带前置图标/勾选的条目文字对齐;高亮底仍是整行 |
+| Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长) + `Success/Error/Warning/Info` 快捷方法; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible`; 实例 `Update/Close/Handle` | sonner 的 `toast()` API 的 Go 形态; 位置只做四角(上游另有 top-center/bottom-center), `richColors` 不做 |
 | Pagination | **本项目扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | 组件库自己不用, 供用户应用取用; 机械转译新主题时一并填(manager_test 有守卫) |
@@ -1159,6 +1161,18 @@ registry.json 条目(shadcn 同构格式):
     - **坑(第二次报障的直接原因)**: `MonitorFromWindow` 要的是 **Win32 HWND**, 而 `xc.XWidget_GetHWINDOW(hAnchor)` 返回的是 **xcgui 窗口句柄** —— 喂进去 `MonitorFromWindow` 返回 0, 代码静默走"整屏高度"兜底分支, 于是任务栏照样盖住弹层(第一次修完看起来好了, 只是因为那一轮探针的窗口恰好离底部足够近, 靠整屏高度也能触发翻上)。**修法**: `xc.XWnd_GetHWND(hWnd)` 转换后再查显示器; `monitorWorkArea` 里再兜一层"句柄无效 → 用 `GetDesktopWindow()` 查", 保证无论如何拿到的都是工作区而不是整屏。
     - **上游化**(2026-10-19): 这些 Win32 声明原先散落在 xui(`components/backdrop.go` 的 `modUser32` + `components/popup.go` 的 `MonitorFromWindow/GetMonitorInfoW`), 现已全部收进 xcgui 的 `wapi`: `GetWindowDC / ReleaseDC / PrintWindow / MonitorFromWindow / GetMonitorInfo` 与 `PW_` / `MONITOR_` / `MONITORINFO`(`wapi/types`); gdi 侧本来就有 `gdi.CreateCompatibleDC / CreateDIBSection / SelectObject / DeleteObject / DeleteDC`。xui 里**不再有任何裸 `syscall.NewLazyDLL`**。
 
+75. **通知(Toast)用窗口内单元素自绘, 悬停暂停走窗口级 GetStayEle, 位置动画必须整窗重绘**(2026-10-19, `components/toast.go`, demo 反馈页逐项点击 + 亮/暗抓图):
+    - **载体**: 通知要贴着主窗口右下角、跟随窗口移动/缩放/最小化 —— 用**窗口内的覆盖元素**(每条通知一个 `widget.NewElement`)而不是独立置顶小窗, 这些跟随都由框架负责。窗口开着布局(`EnableLayout(true)`)时, 未声明 `LayoutItem_*` 的子元素**不会被 AdjustLayout 重排**, 手动 `XEle_SetRect(…, AdjustLayout_No)` 的位置会保留(与 Dialog 的全窗遮罩同一条路径, 实测)。
+    - **一条通知 = 一个元素整体自绘**(图标/标题/描述/动作按钮/关闭按钮全画在它里面, 不建子元素): 悬停不会被内部控件打断, 命中判定只是"卡片局部坐标 + 一次矩形比较"; 若用原生 Button 做关闭钮, 鼠标移到子元素上会让父元素收到 MouseLeave(见 21), 悬停暂停会莫名其妙地恢复。
+    - **悬停暂停必须用窗口级 `MouseMove` + `XWnd_GetStayEle()`**: 元素级 MouseStay/MouseLeave 不可靠(21), 而且这里要的是"鼠标在这组通知的任意一条上"的**整组语义**；单条元素判定在两条卡片之间移动时会反复 leave/enter。窗口尺寸事件同理走 `AddEvent_Size` 重排。
+    - **倒计时**: 每条通知在自己的元素上挂炫彩定时器(ID 用 `0x7876`, 避开 anim 的 `0x7875`、Tree 的 `0x7874`), 100ms 一帧; 悬停时只是不递减(`paused`)。为什么不用窗口级定时器: 同一窗口可能有多个 Toaster, `XWnd_SetXCTimer` 同一 ID 只能有一个定时器, 会互相覆盖。
+    - **定位**: 用 `XWnd_GetBodyRect` 取内容区右下角 —— 阴影窗口(`Window_Transparent_Shadow`)的 Body 比整窗小一圈 band(71), 而**元素坐标原点是窗口原点(含阴影带)**, 不要再叠加. 元素比卡片四周外扩 6px(投影留白), 因为元素绘制被裁剪在自身客户区内。
+    - **布局坐标一律用"卡片矩形", 元素矩形由设置函数外扩**: 元素 = 卡片 + 四周 6px 投影留白。若把 `it.h`(按 padding+内容算出的卡片高)直接当元素高, 卡片可见高度就少 2×6 = 12 —— 上下内边距各被吃掉 6px, 表现为"文字顶到卡片底、上留白大下留白小"(用户报障的原始现象)。修法: 排版/布局全按卡片坐标算, `toastSetRect(h, x, y, w, h)` 内部统一减 6 并加 12; 实测修复后两行卡片 topGap=botGap=28 物理像素(@150% DPI), 单行卡片 26/27。
+    - **`GetTextShowRect` 的 CY 已含行距**(探针 `.verify/probetext`: 微软雅黑 13px 单行 18 / 两行 36 / 三行 53), 与 `p.Text` 实际排版一致 —— 不要按行数再乘系数补偿, 否则底部多出一整行留白。
+    - **位置/透明度动画挂窗口**(`xui.Presence(hWnd, key, …)`, hOwner = 窗口): 透明元素的局部重绘**不擦底**, 卡片一移动就在旧位置留下残影; 挂窗口后每 tick 整窗重绘, 滑入与重排都是干净的(代价是动画期间整窗重绘一次/帧, 通知进出场只有 200ms)。动画期间 `layout()` 只更新 `baseX/baseY`、不直接落位, 否则会和 apply 的位置打架。
+    - 进场前先 `SetElementsAlpha(0, ele)` + 整窗重绘一帧, 再启动 Presence —— 元素 alpha 要画一遍才落地(同 57/73 的首帧问题), 否则第一帧是上一次的 255。
+    - 主题切换: 每条通知 `OnThemeChangeFor` 重新量高再重排 —— 字号/字体变了, 描述折行高度也会变, 只重绘不重量会裁掉末行。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -1184,6 +1198,7 @@ registry.json 条目(shadcn 同构格式):
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55);**对原生自建弹窗**(ComboBox 下拉, 只有窗口句柄)同样可用: `xc.XWnd_SetTransparentType / XWnd_SetTransparentAlpha`, 在弹出回调里(显示前)设置, 见第八节 69
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)
 - Dialog:`XEle_SetZOrderEx(h, 0, xcc.Zorder_Top)`、`XEle_AdjustLayout`、`XEle_Redraw`、`XEle_GetChildCount/GetChildByIndex`、`XObj_GetType`(→ `xcc.XC_*`)、`XWidget_GetParentEle`、`XWnd_GetRect/Redraw`、`XWnd_SetFocusEle/GetFocusEle`、`xcc.AdjustLayout_No`、`wapi.GetAsyncKeyState`
+- Toast(见第八节 75): `XWnd_GetBodyRect`(Body 矩形, 阴影窗口有 band 偏移)、`XWnd_GetStayEle`(窗口级悬停判定)、`XEle_SetXCTimer/KillXCTimer + AddEvent_XC_Timer`(每条通知自己的倒计时)、`XEle_Destroy`、`Element.AddEvent_Destroy_End`、`Window.AddEvent_Size/MouseMove/MouseLeave`、`XEle_SetZOrderEx`
 - Table(原生 List 载体):`CreateAdapterHeader/CreateAdapter/AddColumnText/SetHeaderHeight/SetRowHeightDefault/SetRowSpace/SetColumnWidth/SetSplitLineColor/SetDrawRowBkFlags/AddRowText/SetItemText/GetCount_AD/SetSelectRow/GetSelectRow/GetVisibleRowRange/RefreshRow/RefreshData/AddEvent_List_DrawItem/AddEvent_List_Header_DrawItem/AddEvent_List_Temp_Create_End/AddEvent_List_Header_Temp_Create_End/AddEvent_List_Select/GetTemplateObject/GetHeaderTemplateObject/GetHeaderHELE/GetScrollBarVObj`
 - ⚠️ `TabBar.SetPadding` 在 xcgui.dll 4.0.0.0 中不存在(调用 panic)
 - 直通 D2D(图标抗锯齿, 见第八节 43):`xc.XDraw_GetD2dRenderTarget(hDraw) → *ID2D1RenderTarget`、`xc.XC_GetD2dFactory() → *ID2D1Factory`、`xc.XDraw_ConvRect(hDraw, *RECT) / XDraw_ConvXY`(客户区坐标 → 画布对齐物理坐标, 第三方绘图必须先换算); 用到的 D2D 方法: `ID2D1Factory::CreatePathGeometry`、`ID2D1PathGeometry::Open / GetBounds`、`ID2D1GeometrySink::{SetFillMode, BeginFigure, AddLines, EndFigure, Close}`、`ID2D1RenderTarget::{CreateSolidColorBrush, FillGeometry}`

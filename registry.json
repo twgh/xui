@@ -53,6 +53,10 @@
       "files": ["tooltip.go"],
       "deps": []
     },
+    "toast": {
+      "files": ["toast.go"],
+      "deps": []
+    },
     "combobox": {
       "files": ["combobox.go", "scrollbar.go"],
       "deps": ["tooltip"]

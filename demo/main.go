@@ -798,12 +798,66 @@ func buildFeedPage(body *widget.LayoutEle, hWindow int) {
 	tip.Bind(hoverBtn.Handle, "我是提示气泡")
 	xui.ItemFill(desc(v2.Handle, "绑定的元素自身有弹层时(如 ComboBox), 弹层打开要主动 HideTooltip。"))
 
-	// ---- 第二行: 进度 ----
-	_, v3 := autoCard(body.Handle, 10)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "进度", v3.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "h-1 圆角轨道 + 指示器(宽度按百分比)", v3.Handle))
+	// ---- 第二行: 通知 + 进度 ----
+	r2 := row(body.Handle, 0, gap)
+
+	// 通知: 右下角堆叠, 4s 自动关闭, 悬停暂停
+	_, v3 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "通知", v3.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"窗口内覆盖元素, 右下角堆叠; 4s 自动关闭, 悬停全部暂停; 关闭按钮默认隐藏", v3.Handle))
+	toaster := ui.NewToaster(hWindow)
+	rn1 := xui.HStack(v3.Handle, 36, 8)
+	for _, it := range []struct {
+		text    string
+		variant ui.ToastVariant
+	}{{"成功", ui.ToastSuccess}, {"错误", ui.ToastError}, {"警告", ui.ToastWarning}, {"信息", ui.ToastInfo}} {
+		it := it
+		b := ui.NewButton(0, 0, 0, 0, it.text, rn1.Handle, ui.WithVariant(ui.ButtonOutline))
+		xui.ItemWidth(b, 78)
+		b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+			toaster.Show(ui.ToastOptions{
+				Title:       it.text + "通知",
+				Description: "这条通知会在 4 秒后自动关闭, 鼠标悬停可暂停倒计时。",
+				Variant:     it.variant,
+			})
+			return 0
+		})
+	}
+	rn2 := xui.HStack(v3.Handle, 36, 8)
+	bAction := ui.NewButton(0, 0, 0, 0, "带动作", rn2.Handle, ui.WithVariant(ui.ButtonSecondary))
+	xui.ItemWidth(bAction, 78)
+	bAction.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		toaster.Show(ui.ToastOptions{
+			Title:       "已删除项目",
+			Description: "「xui-demo」已移入回收站。",
+			Action:      "撤销",
+			CloseButton: true,
+			OnAction:    func() { fmt.Println("toast: 撤销删除") },
+			OnClose:     func() { fmt.Println("toast: 关闭") },
+		})
+		return 0
+	})
+	bLong := ui.NewButton(0, 0, 0, 0, "长文本", rn2.Handle, ui.WithVariant(ui.ButtonSecondary))
+	xui.ItemWidth(bLong, 78)
+	bLong.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		toaster.Show(ui.ToastOptions{
+			Title: "同步完成",
+			Description: "本次同步共处理 1,284 个文件, 其中 37 个发生冲突已自动合并, " +
+				"3 个需要手动处理。",
+			Variant: ui.ToastInfo,
+			Duration: -1,
+			CloseButton: true,
+		})
+		return 0
+	})
+	xui.ItemFill(desc(v3.Handle, "ToastOptions.Duration 传负数即常驻; Action 点击后默认关闭通知。"))
+
+	_, v4 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "进度", v4.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "h-1 圆角轨道 + 指示器(宽度按百分比)", v4.Handle))
 	for _, val := range []float64{24, 64, 100} {
-		pg := ui.NewProgress(0, 0, 0, 0, v3.Handle)
+		pg := ui.NewProgress(0, 0, 0, 0, v4.Handle)
 		xui.ItemFill(pg)
 		pg.SetValue(val)
 	}
