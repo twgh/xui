@@ -334,8 +334,8 @@ func initProject(dir string, force bool) {
 		fmt.Printf("创建 %s\n", docPath)
 	}
 
-	// 拷入全部基础组件, 开箱即用
-	add([]string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card"}, dir, force)
+	// 拷入全部基础组件, 开箱即用(window 是快速开始示例用的主窗口封装)
+	add([]string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card", "window"}, dir, force)
 	fmt.Println("\n完成。接下来:")
 	fmt.Println("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
 	fmt.Printf("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)\n", dir)

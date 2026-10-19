@@ -46,31 +46,32 @@ package main
 
 import (
     "github.com/twgh/xcgui/app"
-    "github.com/twgh/xcgui/window"
-    "github.com/twgh/xcgui/xcc"
-    "github.com/twgh/xui"
     ui "yourmodule/ui" // 换成你的模块路径
 )
 
 func main() {
     app.InitOrExit()
-    a := app.New(true) // Direct2D 渲染
-    a.EnableAutoDPI(true).EnableDPI(true)
+    a := app.New(true)                    // Direct2D 渲染
+    a.EnableAutoDPI(true).EnableDPI(true) // 跟随系统 DPI
+    a.SetPaintFrequency(10)               // hover 过渡 ~60fps
 
-    w := window.New(0, 0, 600, 400, "我的应用", 0, xcc.Window_Style_Default)
-    w.SetBorderSize(1, 32, 1, 1)
-    xui.RegisterWindow(w.Handle)
-    xui.BindWindowBackground(w.Handle) // 窗口底色随主题
+    // 窗口: 圆角阴影 + 自绘标题栏(最小化/最大化/关闭) + 主题化底色, 全部默认配好
+    w := ui.NewAppWindow("我的应用", 640, 480)
+    content := w.Content()
+    content.SetPadding(24, 20, 24, 24) // 内容区留白
 
-    ui.NewButton(24, 48, 120, 0, "确定", w.Handle)
-    ui.NewCheckbox(24, 92, 160, 0, "记住我", w.Handle)
-    ui.NewInput(24, 128, 200, 0, w.Handle, ui.WithPlaceholder("用户名"))
+    ui.NewButton(0, 0, 0, 0, "确定", content.Handle)
+    ui.NewCheckbox(0, 0, 0, 0, "记住我", content.Handle)
+    ui.NewInput(0, 0, 0, 0, content.Handle, ui.WithPlaceholder("用户名"))
 
     w.Show(true)
     a.Run()
     a.Exit()
 }
 ```
+
+标题栏要加自己的按钮(如切换主题)用 `w.AddCaptionButton(icons.IconMoon, func() { ... })`,
+排在最小化按钮左边; 内容组件纵向排列, 间距由内容容器的 `SetSpace` 控制。
 
 ## 换肤
 
