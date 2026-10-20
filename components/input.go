@@ -680,17 +680,17 @@ func (i *Input) paintStepArrows(p *xui.Painter, t *xui.Theme, st xui.State, rx, 
 			i.parts = append(i.parts, inputPartRect{part: part, rc: rc, dim: dim})
 		}
 		hv := xui.HoverItem(i.Handle, int32(part), hot)
-		// 悬停**没有底色**(原生微调控件也是) —— 反馈只有箭头变色;
-		// 按下箭头**下沉 1px**, 颜色回到常态。
 		pressedNow := i.pressed == part && enabled && !dim
-		c := xui.Fade(base, t.AccentForeground, hv)
-		if pressedNow {
-			c = base
+		if hv > 0 {
+			// 半高块的悬停底: bg-accent(与 −/+ 一致), 按下期间保持; 圆角比整钮小一档
+			p.FillRound(&rc, t.Accent.ScaleAlpha(hv), 3)
 		}
+		c := xui.Fade(base, t.AccentForeground, hv)
 		if dim {
 			c = base.ScaleAlpha(0.4)
 		}
 		if pressedNow {
+			// 按压反馈 = 箭头下沉 1px(底色不动), 与 −/+ 的下沉一致
 			box.Top += inputSink
 			box.Bottom += inputSink
 		}
