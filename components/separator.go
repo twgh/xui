@@ -86,7 +86,7 @@ const (
 // destructive 为软色调(bg-destructive/10 text-destructive)。
 //
 // 关于悬停: shadcn 的 badge 悬停样式写作 `[a]:hover:*`(只有包在链接里才生效)。
-// Go 侧没有"链接"概念, 这里**恒按悬停生效**, 行为与 Button 一致(见 docs/DESIGN.md 第四节的差异清单)。
+// Go 侧没有"链接"概念, 这里**恒按悬停生效**, 行为与 Button 一致(见 DESIGN.md 第四节的差异清单)。
 type Badge struct {
 	*widget.Element
 	variant BadgeVariant

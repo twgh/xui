@@ -43,7 +43,14 @@ import (
 //
 // 出图优先走 D2D 几何管线(有抗锯齿, 见 d2dicon.go); 只有 GDI 渲染模式(app.New(false))或
 // D2D 资源建不出来时才回落到折线描边。
-func (p *Painter) Icon(data string, rc *xc.RECT, color Color, strokeWidth float32) {
+//
+// scale(可选, 默认 1)是以绘制方块中心为基准的缩放, 用于"按下变小"这类按压反馈 ——
+// 缩放走渲染目标变换矩阵, 不会击穿几何缓存。折线回落路径忽略它(GDI 侧没有变换)。
+func (p *Painter) Icon(data string, rc *xc.RECT, color Color, strokeWidth float32, scale ...float32) {
+	sc := float32(1)
+	if len(scale) > 0 && scale[0] > 0 {
+		sc = scale[0]
+	}
 	paths := data
 	if isIconSVG(data) {
 		v := parseIconSVGCached(data)
@@ -60,7 +67,7 @@ func (p *Painter) Icon(data string, rc *xc.RECT, color Color, strokeWidth float3
 	}
 	if p.d2dIcon(paths, rc, color, strokeWidth, func() []svgp.SubPath {
 		return parseIconPaths(paths)
-	}) {
+	}, sc) {
 		return
 	}
 	ox, oy, size, ok := iconBox(paths, rc, color)

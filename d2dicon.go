@@ -78,7 +78,7 @@ func d2dResources(factory *d2d.ID2D1Factory) *d2d.ID2D1StrokeStyle {
 // d2dIcon 尝试用 D2D 几何绘制管线把图标画在 rc(元素客户区坐标)内,
 // 返回 false 表示不可用(GDI 渲染 / 资源创建失败 / 参数无效), 调用方回落折线。
 func (p *Painter) d2dIcon(paths string, rc *xc.RECT, color Color, strokeWidth float32,
-	build func() []svgp.SubPath) bool {
+	build func() []svgp.SubPath, scale float32) bool {
 
 	if p == nil || p.Draw == nil || p.Draw.Handle <= 0 || rc == nil || color.IsNone() ||
 		rc.Right <= rc.Left || rc.Bottom <= rc.Top {
@@ -95,14 +95,16 @@ func (p *Painter) d2dIcon(paths string, rc *xc.RECT, color Color, strokeWidth fl
 		return false
 	}
 	return p.d2dStroke(d2dGeomKey{paths: paths, size: size},
-		color, ox, oy, size, strokeWidth, build)
+		color, ox, oy, size, strokeWidth, build, scale)
 }
 
 // d2dStroke 给图标出图: 描边子路径走 DrawGeometry(线宽 + 圆角样式), 填充子路径走 FillGeometry。
+// scale 是**以绘制方块中心为基准**的缩放(1 = 原大), 供"按下变小"这类按压反馈用 ——
+// 缩放走渲染目标变换矩阵而不是重建几何, 否则每帧尺寸都变会击穿几何缓存。
 // 返回 false 表示当前环境不可用(GDI 渲染 / 资源创建失败), 调用方回落折线渲染。
 // build 只在几何缓存未命中时调用, 避免每帧重复解析 path。
 func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, strokeWidth float32,
-	build func() []svgp.SubPath) bool {
+	build func() []svgp.SubPath, scale float32) bool {
 
 	if p == nil || p.Draw == nil || p.Draw.Handle <= 0 {
 		return false
@@ -127,15 +129,21 @@ func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, str
 		return false
 	}
 
-	// 位置不烘进几何(见 d2dGeomKey): 用渲染目标的变换矩阵把几何平移到目标位置。
+	// 位置/缩放不烘进几何(见 d2dGeomKey): 用渲染目标的变换矩阵把几何摆到目标位置。
 	// **必须成对恢复** —— 实测炫彩自己的绘制(XDraw_*)在绘制时用的是
 	// 当前变换, 残留的矩阵会把页面内容一起平移; 成对设置/恢复后不受影响。
-	if ox != 0 || oy != 0 {
+	// 缩放以方块中心为基准: x' = x·scale + ox + size/2·(1-scale)。
+	if ox != 0 || oy != 0 || scale != 1 {
 		prev, err := rt.GetTransform()
 		if err != nil {
 			return false
 		}
-		tm := d2d.TranslationMatrix(float32(ox), float32(oy))
+		tm := d2d.D2D1_MATRIX_3X2_F{
+			M11: scale,
+			M22: scale,
+			DX:  float32(ox) + float32(size)/2*(1-scale),
+			DY:  float32(oy) + float32(size)/2*(1-scale),
+		}
 		rt.SetTransform(&tm)
 		defer rt.SetTransform(&prev)
 	}

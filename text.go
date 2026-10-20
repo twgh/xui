@@ -8,7 +8,7 @@ import (
 
 // TextWidth 量测**单行**文本的逻辑像素宽度(与绘制同字体; hFont 用 FontHandle 取)。
 //
-// 坑(探针实测, 见 docs/DESIGN.md 第八节 48): `app.GetTextShowRect` 的 width 参数传 0
+// 坑(探针实测, 见 DESIGN.md 第八节 48): `app.GetTextShowRect` 的 width 参数传 0
 // **不是"不限宽"**, 而是"按一个字符宽折行"——此时返回的 CX 只是一列宽, CY 变成"行数×行高"
 // (3 个汉字会得到 CX=15 / CY=59)。量宽必须给足 width 并加 NoWrap, 此时 CX 就是真实单行宽度
 // (14px 字号下汉字恰好 15/字, 与绘制结果一致), **不需要任何倍率校正**。

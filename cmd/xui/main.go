@@ -1183,7 +1183,7 @@ import "github.com/twgh/xui"
 
 // 这是你的主题文件 —— 改这里即可全局换肤, 组件在绘制时实时读取令牌。
 // 默认取内置主题(nova 预设 neutral)的**副本**, 逐字段改即可自定义;
-// 想从零写一份也行 —— 令牌与 shadcn-ui 的 CSS 变量一一对应, 字段表见 docs/DESIGN.md 3.1。
+// 想从零写一份也行 —— 令牌与 shadcn-ui 的 CSS 变量一一对应, 字段表见 DESIGN.md 3.1。
 
 // Active 当前使用的主题。想要暗色: Active = dark
 var Active = light

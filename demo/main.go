@@ -60,7 +60,7 @@ func main() {
 	a.EnableAutoDPI(true).EnableDPI(true)
 	// 重绘节流默认 30ms(hover 过渡只有约 5 帧); 设 10ms 让过渡/动画跑到 ~60fps。
 	// 10 而不是 16: 节流按两次绘制的间隔算, 与运行时 16ms 的过渡定时器会周期性 beat 掉帧;
-	// 低于 16 也不再涨(实测 ~16.6ms 硬地板)。见 docs/DESIGN.md 第八节 46。
+	// 低于 16 也不再涨(实测 ~16.6ms 硬地板)。见 DESIGN.md 第八节 46。
 	a.SetPaintFrequency(10)
 
 	// 启动主题: 环境变量 XUI_THEME=dark 暗色, 其它/不设为亮色, 免去改代码重建。
@@ -434,7 +434,7 @@ func buildFormPage(body *widget.LayoutEle) {
 	xui.ItemFill(filled)
 	filled.SetValue("twgh")
 	xui.ItemFill(hint(v.Handle, "多行(高度写在创建参数里, 内容溢出会出现滚动条)"))
-	ml := ui.NewInput(0, 0, 0, 72, v.Handle,
+	ml := ui.NewInput(0, 0, 0, 100, v.Handle,
 		ui.WithPlaceholder("介绍一下自己…"), ui.WithMultiline())
 	xui.ItemFill(ml)
 	ml.SetValue(strings.Repeat("测试多行输入, 滚动条样式。\n", 5))
@@ -447,6 +447,30 @@ func buildFormPage(body *widget.LayoutEle) {
 	inv := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithInputInvalid())
 	xui.ItemFill(inv)
 	inv.SetValue("not-an-email")
+	xui.ItemFill(hint(v.Handle, "步进器(−/+ 或 ↑↓ 调整, 失焦自动夹取/吸附; 步长可配 1 / 10 / 0.1)"))
+	step := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithStepper(0, 100, 1))
+	xui.ItemFill(step)
+	step.SetNumber(42)
+	xui.ItemFill(hint(v.Handle, "上下三角步进器(悬停/聚焦才出现, 步长 10)"))
+	arrows := ui.NewInput(0, 0, 0, 0, v.Handle,
+		ui.WithStepper(0, 1000, 10), ui.WithStepperArrows(), ui.WithStepperAutoHide())
+	xui.ItemFill(arrows)
+	arrows.SetNumber(320)
+	xui.ItemFill(hint(v.Handle, "前置图标 + 前后缀(input-group)"))
+	url := ui.NewInput(0, 0, 0, 0, v.Handle,
+		ui.WithLeadingIcon(icons.IconAtSign), ui.WithPrefixText("https://"), ui.WithSuffixText(".com"))
+	xui.ItemFill(url)
+	url.SetValue("twgh")
+	xui.ItemFill(hint(v.Handle, "清除按钮 / 密码显隐 / 字符计数"))
+	search := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithLeadingIcon(icons.IconSearch), ui.WithClearButton())
+	xui.ItemFill(search)
+	search.SetValue("shadcn")
+	pwd := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithPasswordToggle())
+	xui.ItemFill(pwd)
+	pwd.SetValue("secret-123")
+	counter := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithCounter(120))
+	xui.ItemFill(counter)
+	counter.SetValue("这是一段用于演示字数统计的文本")
 
 	// ---- 右列 1: 选择控件 ----
 	_, v2 := autoCard(colR.Handle, 10)

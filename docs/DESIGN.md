@@ -293,6 +293,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | scroll area: 页面/长内容滚动用 `ui.ScrollArea`(原生 LayoutFrame 载体, 见第八节 66): **只做纵向**(内容区恒铺满视口宽); 滚动条**鼠标移入容器才显示、离开淡出**(同 radix 的 `type=hover`, 150ms; 用元素透明度实现, 不改变布局宽度)、10px 轨道 + 8px 圆头滑块(`rounded-full bg-border`)、轨道透明; 滑块悬停**不换色**; 滚轮悬停任意子元素都滚动(原生控件如 List 自吃 —— 嵌套滚动常态); 该规格统一在 `ui/scrollbar.go` 的 `styleScrollBar` + `showScrollBarOnHover`, Table / Tree / ComboBox 弹层 / 多行 Input 同用(**滑块配色与容器不同**: 这四个载体在原版里是浏览器原生滚动条, 用"前景色淡化 + 悬停加深", 见第八节 21) | scroll-area.tsx(w-2.5 p-px `rounded-full bg-border`; radix `type` 默认 hover 淡入 —— 本实现的差异见"已知差异"表) |
 | **disabled:opacity-50 是组级透明**:组件自绘的**形状**(壳体/轨道/勾/滑块/圆点)**逐层各乘 50%**(`ScaleAlpha`, 见第八节 61);**原生文字**不吃 alpha —— 按钮文字/复选框与单选框的标签保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194),输入框禁用文字用"前景色×卡片色对半混"预混后发给原生 Edit。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider/input.tsx |
+| **input 内嵌附加件**(input-group): 前置图标 size-4(16) / 前后缀文字(muted, 与输入同字号) / 清除钮(×)与密码显隐钮(眼睛) size-6(24) 幽灵钮 + 圆角 radius-5 + hover:bg-accent / 计数 `n/max` text-xs(12), 超上限变 destructive; 全部**自绘在壳体内部**, 不建子元素(子元素会被原生 Edit 的绘制盖住), 文字区左右内边距按附加件实际宽度算(`syncPadding`), 内容为空时清除钮不画但**留位**(打字过程中文字不左右跳) | input-group 示例 + 第八节 78/79 |
+| input 步进器: 右侧 −/+ 内嵌按钮(size-6) + ↑/↓ 键 ±1 步 + 回车提交 + 失焦校正; 输入过程中允许任意文本(含负号/小数点), 只有步进/回车/失焦才解析 —— 超出值域夹取、不在刻度上吸附到最近刻度、解析失败回退最近一次有效值; 步长小数位决定显示精度(0.1 → "1.2", 不出现浮点尾巴); 到边界时对应按钮画成不可点 | 社区通行 stepper 语义(shadcn 无官方 stepper), 见 78 |
+| input 密码遮挡沿用浏览器口径: 遮挡符是**实心圆点 (U+25CF)**, 明文/密文切换后焦点与光标留在末尾 | input.tsx(type=password) + 第八节 79 |
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10(ring 画在面板矩形**外侧** 1px, 直接描面板矩形会被遮罩灰吞掉, 见第八节 33);标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
 | dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
 | dialog 遮罩 bg-black/10(固定黑色,不随主题;**只铺 Body 区, 不铺阴影窗口的阴影带**——铺上去会把窗口自身投影再压暗 10%, 四角最明显;**backdrop-blur-xs 已实现**——物理像素抓窗快照(PrintWindow 不缩放, DIB 必须给物理尺寸)+融合降采样+半分辨率盒式模糊+成对平均放大+BkM 图片填充,见第八节 47) | dialog.tsx(语义权威) + 第八节 47 条 6/10 |
@@ -326,6 +329,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Calendar | `WithCalendarSelected/WeekStart/OnSelect` + `WithCalendarFlat`(弹层内嵌不画卡片); 尺寸 `CalWidth/CalHeight`(278×327) + `CalFooterHeight`(41), 自定义宽度时用 `CalHeightFor(width)` / `CalFooterHeightFor(width)` 配高度(或 cy 传 0 自动); 年月下拉 `WithCalendarYearRange(from,to)`; 禁用 `WithCalendarDisabled(fn)` + `SetDisabled` + helper `CalendarDisableBefore/Weekend/Dates/Any`; 页脚 `WithCalendarFooter(items...)` / `WithCalendarFooterToday` / `AddFooterItem/Button/Text` / `ClearFooter` / `FooterRect`(自定义原生控件的插槽) | react-day-picker 的 props;固定 6 行 + 等比缩放是本实现决策 |
 | DatePicker / TimePicker | `WithDatePickerPlaceholder/Value/Invalid` / `WithTimePickerPlaceholder/Value/Invalid` + 运行时 `SetInvalid`; 程序化开关 `Open/Close/IsOpen`; DatePicker 另有 `Clear/SetValue` | 选项名带组件前缀(组件同在 package ui); 弹层骨架 `popup.go` 是两个组件的内部实现, 随组件一起拷贝 |
 | 校验失败态(aria-invalid) | `WithButtonInvalid` / `WithInputInvalid` / `WithComboInvalid` + 运行时 `SetInvalid(bool)` | 选项名带组件前缀, 因为组件同在 `package ui`(Button/Input/ComboBox 三处语义相同); 详见语义表 |
+| Input 内嵌附加件 | `WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible(bool)` / `PasswordVisible()`) / `WithCounter(max)`; 步进器 `WithStepper(min,max,step)` + `SetNumber/Number/OnStep`(`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态, `WithStepperAutoHide` 让按钮只在悬停/聚焦时出现; 悬停/按下都**无底色** —— 悬停只有箭头变色, 按下叠加图标缩到 0.8 作按压反馈) | shadcn 的 input-group 是"输入框 + 兄弟 addon"的复合结构(`InputGroupAddon` 里还能放按钮), 我们是**壳体内部自绘**的简化形态(不建子元素): 前置图标 + 前后缀文字 + 两个 ghost 钮(清除/眼睛) + 计数; 计数放在壳内右侧(上游示例是输入框**下方**右对齐的一行); stepper 上游没有官方组件, 语义取社区通行形态; 显隐切换需重排(见第八节 84) |
 | Card 头 | `ui.NewCardHeader(parent, space)` + `TitleStack` / `ActionStack` | 对应 `CardHeader` + `CardAction`(上游是 grid 1fr_auto); 动作区跨两行贴右上 |
 | ScrollArea | **本库形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档) | 页面滚动容器; 语义与踩坑见第八节 66 |
 | Menu 条目缩进 | `MenuInset` = shadcn 的 `inset` prop(`data-inset:pl-7`, 文字左缘 28) | 用于让普通条目与带前置图标/勾选的条目文字对齐;高亮底仍是整行 |
@@ -1176,6 +1180,52 @@ ui/
     - **修法**(`ui/tooltip.go`): 气泡首次在某个宿主窗口上显示时, 给宿主挂 `WM_DESTROY` —— 丢弃该宿主上的过渡(`DropTransitions`)并销毁气泡窗, 状态清零, 下次显示由 `ensure` 懒重建(气泡最后显示在其他仍存活的宿主上时保留, 等那个宿主销毁再清)。
     - **坑**: 销毁辅助窗时**先清状态再 `DestroyWindow`** —— 销毁过程可能同步派发迟到的鼠标事件, 用旧的 win/ele 句柄会弹 `XEle_SetRect()` 无效句柄错误框; 宿主从收到 `WM_DESTROY` 到销毁完成期间用 `dying` 集合直接拒绝迟到的 `show()`。**组件自建的辅助窗口都要有"宿主销毁 → 辅助窗销毁"的路径**, 否则会挡住消息循环的退出判定; date/time 弹层已由触发元素的 `Destroy` 事件销毁 `popoverPanel`。
 
+78. **输入框的内嵌按钮: 动作要放在 `LButtonUp`, 不能放 `LButtonDown`**(`ui/input.go`, 实测):
+    - **现象**: 步进器连点两次 `+` 只加一步, 而且输入框里的数字被整段选中(蓝底); 把动作(清空/切换明文/步进)写在 `AddEvent_LButtonDown` 里就会这样。
+    - **根因**: 连点同一个位置时, 第二次按下在系统里是 `WM_LBUTTONDBLCLK`, xcgui 不会把它翻译成元素的 LButtonDown 事件 —— 第二下动作丢; 原生 Edit 把双击当"选中单词"处理, 于是文字被选中。**抬起消息两下都有**。
+    - **修法**: `LButtonDown` 只 `*pbHandled = true` 吞掉按下(光标不会跳到按钮底下, 也避免原生开始选词), 真正动作放 `AddEvent_LButtonUp`; 命中判断仍用 `partAt(pPt)`(parts 矩形在 paint 里算)。
+    - **补充**: 光有 `LButtonDown` 还不够 —— 连点的第二次**按下**是 `WM_LBUTTONDBLCLK`, 它**不走** `LButtonDown`, 只绑 Down 的话原生 Edit 照样拿到双击去"选中单词"(现象: 双击步进器按钮, 数字被选蓝)。必须再绑一个 `AddEvent_LButtonDBClick` 并在命中内嵌件时 `*pbHandled = true`(可与 Down 共用同一个处理函数)。
+    - **顺带**: 动作里 `SetFocus()` 之后一定要 `MoveEnd()` —— 原生 Edit 获得焦点时会顺手全选, 不全选的话下一次输入会把整段内容替换掉(步进器表现为"点完 + 再打字, 数字全没了")。
+    - **hover 高亮不受影响**: 内嵌按钮的悬停仍走窗口级 MouseMove + `partAt`(原生 Edit 的 MouseMove 只在进入时报一次, 见 21)。
+
+79. **密码框遮挡符默认是 `*`, 要显式设成实心圆点**(`ui/input.go`, 实测): `EnablePassword(true)` 之后用 `XEdit_SetPasswordCharacter(hEle, '●')`(U+25CF)。默认 `*` 在大多数字体里只有 8px 左右的字形且贴基线, 看起来像"小一号的字", 与浏览器 `-webkit-text-security: disc` 以及 Windows 原生密码框的圆点不一致。注意**每次重新 `EnablePassword(true)` 都会把它重置回 `*`**, 所以明文→密文切回时要再设一次。
+
+80. **原生 `Edit` 的内边距必须自己给(多行尤其)**(`ui/input.go`, 实测):
+    - **现象**: 文本域里正文第一行压住圆角描边、纵向滚动条贴着右边框(单行输入框因为自己算 `SetBorderSize` 才没事)。
+    - **根因**: `widget.NewEdit` 的内边距默认是 **0**, 原生 Edit 会把文字从客户区 (0,0) 开始排, 滚动条也画在客户区右缘; 我们在 paint 里画的圆角描边是 1px 内描边, 于是文字/滚动条直接压上去。
+    - **修法**: 构造时按形态各给一份内边距 —— 单行 = `左(图标/前缀宽度和) / 6 / 右(按钮/计数/后缀宽度和) / 6`, 多行 = `10 / 6 / 10 / 6`。改主题时重算(字体换了前后缀宽度会变), 但**不要在 paint 里调**: `SetBorderSize` 会触发重排+重绘。
+    - **顺带**: 多行的高度由调用方在创建参数里定, 加了纵向内边距后同样高度会少显示小半行 —— 演示/用法里的文本域高度要相应加 12。正文是主题字体时**一行约占 22 逻辑像素**, 所以"干净显示 4 行"要 `12 + 4×22 ≈ 100`(演示就是 100); 高度写小了最后一行会被裁掉半截。
+    - **上下留白要故意不对称 1px**: 原生 Edit 把行盒居中在 text rect 里, 而数字/字母的墨迹只占行盒上半部分(下半是 descender 空白), 上下都留 6px 时实测"上方 14 物理像素 / 下方 17"(32 高输入框), 肉眼看就是"文字偏上、下面空得多"。单行改成 **上 7 / 下 5**, 实测 16/15 基本居中, 同时与自绘前后缀(按整高 Vcenter)的基线也对齐。多行(textarea)仍用 6/6 —— 正文本来就该顶对齐。
+
+81. **内嵌按钮在任何状态都要吞掉点击, 否则连点会选中文字**(`ui/input.go`, 实测):
+    - **现象**: 步进器数值到上限(如 100)后连点 `+`, 输入框里的 "100" 被选中成蓝底; 有时还会在别处留下一层没擦掉的选中文字残影。
+    - **根因**: 到边界时按钮"不可点"就不登记命中矩形, 于是按下落到下面的原生 Edit —— 连点的第二下是 `WM_LBUTTONDBLCLK`, 原生 Edit 按"双击选中单词"处理(见 78)。
+    - **修法**: 命中区**无条件登记**(只要元素未禁用), 到边界只是把图标画淡(40% α)并跳过 hover 高亮; 动作仍走 `activate`, 里面的 `stepBy` 会自己夹住值域, 等于空操作。
+    - **同时**: 关掉原生"获得焦点自动全选"(`EnableAutoSelAll(false)`) —— 内嵌按钮点完都要 `SetFocus()` 回输入框, 全选会真的把内容选成蓝底(用户可见), 取消选中后还可能留下未擦除的选中层。
+
+82. **原生 `Edit` 不继承窗口字体, 必须显式 `SetFont`**(`ui/input.go`, 实测):
+    - **现象**: 输入框里的字比周围小一圈, 数字/中文"挤在一起"(用户描述"这个字体和其他的不同吗")。
+    - **根因**: `widget.NewEdit` 建出来的编辑框用的是 xcgui 内置默认字体(探针实测 `XEle_GetFontEx` = 微软雅黑 **9pt**), 它**不吃** `w.SetFont(主题字体)` 的继承(表头/树/下拉框都靠组件自己 `SetFont`, 见 `combobox.go` / `table.go` / `tree.go`)。主题是 14px → 11pt, 于是输入框正文比标签小 18%。
+    - **修法**: 构造时和换主题时都 `SetFont(xui.FontHandle(t.FontDefault))`。
+    - **验收方法**: 量"同一串字符的实际绘制宽度" —— 把同一串 18 位数字同时放进输入值和 `WithPrefixText`: 修前原生 Edit 只有 126 逻辑像素(9pt), 修后 153, 与自绘前缀 152 基本同宽。只查 `XEle_GetFont` 的句柄不够: 句柄对了但 pt/px 换算错了, 两边照样对不上。
+
+83. **paint 回调里换过的字体必须还原, 否则会带偏原生文字**(`ui/input.go`, 实测):
+    - **现象**: 带字符计数的输入框里, 正文的字体和字距跟旁边输入框明显不同(用户: "字符计数里面的字体与其他不同, 文字间距也大"), 看着像没对齐。
+    - **根因**: `xui.BeginPaint(hEle, hDraw)` 拿到的建图对象**在回调返回后还要继续给原生文字用**, 而计数是 12px、前缀后缀是主题字号 —— 在 `paintAddons` 里 `p.Draw.SetFont(...)` 之后不还原, 原生 Edit 的正文就会接着用最后设的那个字体画。
+    - **修法**: `onPaint` 结尾统一 `p.Draw.SetFont(xui.FontHandle(t.FontDefault))` 还原。同理, 任何在 paint 里临时改画笔状态(字体/画刷/裁剪)的组件都该还原后再返回, 不要指望原生绘制自己重置。
+
+84. **`EnablePassword` 切换不会重排字符步进, 切换后必须手动触发一次重排**(`ui/input.go`, 实测):
+    - **现象**: 点眼睛切明文后, 同一串 `secret-123` 被撑成 `s e c r e t - 1 2 3`(每个字符都占密码圆点的全角宽度); 再切回密文时圆点同样被撑开。奇怪的是"点一下切主题"就恢复正常。
+    - **根因**: `XEdit_EnablePassword` 只换遮挡开关, 内部缓存的字符步进还是上一个模式的(明文按圆点宽度排, 或反之)。换主题能修好, 只是因为主题回调重设了内边距/字体, 顺带触发了重排。
+    - **修法**: 切换后调一次 `syncPadding()`(里面的 `SetBorderSize` 改了 text rect, 原生会按当前模式重新排版)。**不要用"重新 `SetText`"来修** —— 虽然同样能修好, 但会给用户一个假的 `OnChange` 回调(值其实没变)。同理, 想触发重排时优先用"改 text rect / 改行高"这类纯布局操作。
+    - **配套**: 组件公开 `SetPasswordVisible(bool)` / `PasswordVisible()`, 与点眼睛按钮走同一条路径(见语义表)。验收: 切换后量同一串文本的墨迹宽度 —— 明文行与同窗口里的普通输入框逐像素同宽(108 逻辑像素 / 10 个字形块), 密文圆点行与切换前完全一致。
+
+85. **焦点环/校验环画在元素内部, 内嵌控件要按环宽内缩**(`ui/input.go`, 实测):
+    - **现象**: 输入框有焦点框时, 右侧眼睛/清除钮的悬停底色直接压到边框上(用户: "有焦点框时, 这种右侧的按钮悬浮态右侧是压到了些边框"), 看着像啃掉一块边。
+    - **根因**: 环带是 `FocusFrame/RingFrame` 画在**元素客户区内侧**(inset 3), 而内嵌按钮的悬停底色从"距壳体内缘 4"开始 —— 4 > 3 只差 1px, 圆角处实际已经压住环的内描边。
+    - **修法**: 尾部按钮的内缩取 **6**(= 环宽 3 + 余量 3, 正好也是 shadcn input-group add-on 的 `pr-1.5`), 悬停方块与环之间稳定留 3px。规律: 只要组件在"带内描边环"的容器里画控件, 内缩都别小于环宽 + 2~3。
+    - **验收**: 深色主题下聚焦 + 悬停截图放大, 悬停方块右缘与环内描边之间有可见间隙。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -1183,6 +1233,7 @@ ui/
 - `Element.AddEvent_Paint / AddEvent_MouseStay / AddEvent_MouseLeave`(widget/element.go:1192, 1288, 1336)
 - `Element.AddEvent_Menu_Draw_Background / AddEvent_Menu_DrawItem`(widget/element.go:2056, 2080)
 - `drawx.NewByHandle / EnableSmoothingMode / SetBrushColor / FillRoundRect(Ex) / DrawRoundRect(Ex) / GradientFill2/4 / DrawText / TextOut* / Image* / DrawSvg* / SetClipRect / SetLineWidth`
+- **自绘"非 lucide"小图形走图标管线**, 别手算多边形: svgp 的子路径前加 `!` 就是填充形状(走 FillGeometry), 配 `Painter.Icon(path, rc, color, 0)` 直接出图, D2D 几何按 path+size 缓存。步进器的上下微调箭头就是两条 24 网格 path(三角占满 24 宽、Q 曲线倒角), 每枚箭头给一个**正方形**绘制块(管线按短边铺满)。曾手写"削角 + FillPolygonF 逼近圆弧", 10px 尺寸下不是歪就是糊、底角圆弧还会把墨迹洇到底边外, 全部弃用
 - `xc.XBtn_GetStateEx`、`xcc.Button_State_*` 状态
 - `xc.RGBA / xc.ParseRGBA / xc.HexRGB2RGBA`(Web 十六进制色直转)
 - `svg.NewByString / SetUserFillColor / SetUserStrokeColor / SetSize`

@@ -7,7 +7,7 @@ import (
 
 // TestEaseTransitionCurve 校验 hover 过渡的缓动曲线就是 tailwind / shadcn 的
 // cubic-bezier(0.4, 0, 0.2, 1)。参考值由独立实现(直接按贝塞尔公式算, 见
-// docs/DESIGN.md 第八节 45)得出, 容差 1e-3。
+// DESIGN.md 第八节 45)得出, 容差 1e-3。
 func TestEaseTransitionCurve(t *testing.T) {
 	cases := []struct{ x, y float64 }{
 		{0, 0},

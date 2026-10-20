@@ -19,7 +19,7 @@ const (
 	sliderRingPad int32 = 3
 	// sliderHalo 是滑块中心到 ring 外缘的距离(滑块半径 + ring 宽度)。
 	// 元素左右各留出这么多: 元素自绘被裁剪在自身客户区内, 滑块位于轨道两端时
-	// 需要这段余量 ring 才不会被切掉(见 docs/DESIGN.md 第八节 10、20)。
+	// 需要这段余量 ring 才不会被切掉(见 DESIGN.md 第八节 10、20)。
 	sliderHalo int32 = sliderThumb/2 + sliderRingPad // 9
 )
 
