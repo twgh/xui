@@ -38,6 +38,8 @@ type Tooltip struct {
 	ele   *widget.Element
 	tips  map[int]string
 	bound map[int]bool
+	hosts map[int]bool // 已挂"宿主销毁 → 销毁气泡窗"清理的宿主窗口
+	dying map[int]bool // 正在销毁的宿主: 拒绝迟到的鼠标事件再显示气泡
 	text  string
 	below bool // 当前显示在元素下方(箭头朝上)
 
@@ -54,7 +56,12 @@ const tipFadeKey int32 = 1
 
 // NewTooltip 创建提示管理器(窗口懒创建, 首次显示时才建)。
 func NewTooltip() *Tooltip {
-	return &Tooltip{tips: map[int]string{}, bound: map[int]bool{}}
+	return &Tooltip{
+		tips:  map[int]string{},
+		bound: map[int]bool{},
+		hosts: map[int]bool{},
+		dying: map[int]bool{},
+	}
 }
 
 // Bind 把提示绑定到元素: 鼠标进入显示, 离开隐藏。同一个 Tooltip 可绑定任意多个元素。
@@ -119,8 +126,15 @@ func (t *Tooltip) Hide() {
 	// 过渡挂在**触发元素所在的宿主窗口**上: 气泡自己的异型置顶小窗做重绘目标时,
 	// xcgui 的定时器实测会掉到约 100ms/帧(见 DESIGN 第八节 47), 宿主窗口这条
 	// 驱动链与 hover 相同(约 16~30ms/帧), 因此把驱动放在它上面。
+	win := t.win
 	xui.Presence(t.hWnd, tipFadeKey, false, xui.TooltipDuration,
-		t.fade, func(v float64) { t.win.ShowWindow(xcc.SW_HIDE) })
+		t.fade, func(v float64) {
+			// 宿主窗口销毁时气泡窗已经被清理掉(见 watchHost), 此时不能再碰旧句柄;
+			// 另起新窗后旧过渡也不该把新窗藏掉。
+			if t.win == win {
+				win.ShowWindow(xcc.SW_HIDE)
+			}
+		})
 }
 
 // fade 是气泡进出场的每帧回调: 按进度设置气泡的不透明度并立即重绘。
@@ -131,6 +145,9 @@ func (t *Tooltip) Hide() {
 // layered alpha 恒为首次那个值", 于是气泡整块几乎是全透明的, 屏幕上根本看不到它。
 // 元素 alpha 是框架在合成阶段乘上去的, 每帧都生效(对话框整组淡入同理, 见 47/57)。
 func (t *Tooltip) fade(v float64) {
+	if t.win == nil || t.ele == nil {
+		return
+	}
 	xui.SetElementsAlpha(v, t.ele.Handle)
 	t.win.Redraw(true) // 立即重绘: 元素 alpha 要画一遍才落地
 }
@@ -140,6 +157,13 @@ func (t *Tooltip) show(hEle int) {
 	if text == "" {
 		return
 	}
+	hWnd := windowOf(hEle)
+	// 宿主正在销毁(或已失效)时不要再显示: 宿主销毁期间仍可能收到迟到的
+	// MouseMove/MouseStay, 再走一遍显示流程会碰到正在销毁的窗口/元素句柄。
+	if hWnd == 0 || t.dying[hWnd] || !xc.XC_IsHXCGUI(hWnd, xcc.XC_WINDOW) {
+		return
+	}
+	t.watchHost(hWnd)
 	t.ensure()
 	t.text = text
 	t.shownEle = hEle
@@ -164,7 +188,6 @@ func (t *Tooltip) show(hEle int) {
 	// 箭头尖端扎进目标元素里)。
 	var rc, wr xc.RECT
 	xc.XEle_GetWndClientRect(hEle, &rc)
-	hWnd := windowOf(hEle)
 	xc.XWnd_GetRect(hWnd, &wr)
 	sx, sy := wr.Left+rc.Left, wr.Top+rc.Top
 	ex, ey := rc.Right-rc.Left, rc.Bottom-rc.Top
@@ -230,6 +253,56 @@ func (t *Tooltip) show(hEle int) {
 			xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
 		t.fade(v)
 	}, nil)
+}
+
+// watchHost 在气泡首次用于某个宿主窗口时, 挂上"宿主销毁 → 清理气泡窗"的回调。
+//
+// 气泡是独立小窗, 平时只是 ShowWindow(SW_HIDE); 而消息循环的退出
+// 条件是**所有用户创建的窗口都销毁**(不是都不可见) —— 不清理的话主窗口关掉后
+// 进程还挂在 Run() 里(见 DESIGN 第八节 77)。
+func (t *Tooltip) watchHost(hWnd int) {
+	if hWnd == 0 || t.hosts[hWnd] {
+		return
+	}
+	w := window.NewByHandle(hWnd)
+	if w == nil {
+		return
+	}
+	t.hosts[hWnd] = true
+	w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+		if message == wapi.WM_DESTROY {
+			t.onHostDestroy(hWindow)
+		}
+		return 0
+	})
+}
+
+// onHostDestroy 丢弃该宿主上的过渡并销毁气泡窗(气泡最后显示在其他宿主上时保留,
+// 等那个宿主销毁再清)。
+func (t *Tooltip) onHostDestroy(hWnd int) {
+	delete(t.hosts, hWnd)
+	t.dying[hWnd] = true
+	defer delete(t.dying, hWnd)
+	xui.DropTransitions(hWnd)
+	if t.hWnd != hWnd {
+		return
+	}
+	t.destroyWin()
+}
+
+// destroyWin 销毁气泡窗并清空显示状态, 下次 show 由 ensure 重建。
+// 状态要在 DestroyWindow 之前清: 销毁过程可能同步派发迟到的鼠标事件,
+// 那时再用旧的 win/ele 句柄会触发 xcgui 的"句柄无效"错误弹窗。
+func (t *Tooltip) destroyWin() {
+	w := t.win
+	t.win, t.ele = nil, nil
+	t.shown = false
+	t.shownEle = 0
+	t.hWnd = 0
+	t.text = ""
+	if w != nil {
+		w.DestroyWindow()
+	}
 }
 
 func (t *Tooltip) ensure() {
