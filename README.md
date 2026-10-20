@@ -228,12 +228,16 @@ xui info                # 显示 CLI / 项目环境信息
 
 ```
 直连 https://raw.githubusercontent.com/twgh/xui/main
-  → Gitee 镜像 https://gitee.com/twgh/xui/raw/main     (国内稳定)
-  → 加速代理 ghfast / gh-proxy                          (兜底)
+  → Gitee 镜像 https://gitee.com/twgh/xui/raw/main        (国内稳定)
+  → GitCode 镜像 https://api.gitcode.com/api/v5/repos/twgh/xui/contents (国内备用)
+  → 加速代理 ghfast / gh-proxy                             (兜底)
 ```
 
 每个候选的探测就是拉一次 `registry.json`(6s 超时),第一个通的用它跑完本次命令;全都不通才降级到
 CLI 内嵌源码。选路过程逐行打在 stderr 上, 想看清卡在哪一环直接看输出。
+
+拷到一半某个文件拉不到(镜像限速、临时挂起)时, CLI 会按候选顺序换下一个源接着拷并把新源粘住,
+不会留下半套 `ui/`。
 
 环境变量 `XUI_REGISTRY` 覆盖数据源(**写什么就用什么,不再套代理**):
 
@@ -242,6 +246,7 @@ XUI_REGISTRY=D:\path\to\xui xui add dialog                    # 本地目录(离
 XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.1.0 xui add dialog   # 锁组件版本(换成实际 tag)
 XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/main xui add dialog     # 只走直连(跳过镜像与代理)
 XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                # 只走 Gitee 镜像
+XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dialog  # 只走 GitCode 镜像
 ```
 
 显式指定 `XUI_REGISTRY` 时拉取失败会直接报错(便于排查),不静默降级。

@@ -61,14 +61,17 @@
 
 - ✅ **CLI 远程 registry(v2)+ `update` / `add --all`**(2026-10-11):数据源四态 —— 默认源
   `raw.githubusercontent.com/twgh/xui/main`(**自动选路:直连 → Gitee 镜像 `gitee.com/twgh/xui/raw/main`
-  → 加速代理 ghfast / gh-proxy**, 探测 = 拉一次 registry.json, 6s 超时, 第一个通的跑完本次命令, 选路
-  过程逐行打 stderr; 组件跟 main 永远最新)、`XUI_REGISTRY` 指向本地目录或任意 `http(s)://` 基址
+  → GitCode 镜像 `api.gitcode.com/api/v5/repos/twgh/xui/contents`(v5 API, JSON+base64;
+  raw 直链对 `.go` 匿名访问只回 403; 匿名 **50 次/分钟**, 实测 0.4~0.8s/请求) → 加速代理 ghfast / gh-proxy**,
+  探测 = 拉一次 registry.json, 6s 超时, 第一个通的跑完本次命令, 选路
+  过程逐行打 stderr; **拷到一半单文件失败(限速/挂起)按候选顺序换下一个源并把新源粘住**
+  (`source.rest`, 免得留下半套 `ui/`); 组件跟 main 永远最新)、`XUI_REGISTRY` 指向本地目录或任意 `http(s)://` 基址
   (离线 / 锁组件版本; **写什么用什么, 不套镜像/代理**)、全不通时降级 `moduleRoot()` 内嵌源码树
   (显式设了 `XUI_REGISTRY` 则报错不降级);`update` 无 manifest
   语义 = 缺则建 / 一致跳过 / 用户改过警告跳过(`-o/--overwrite` 覆盖),省略组件名 = 更新 `ui/` 里已装的全部;
   新增 `-o/--overwrite` / `--all` 两个旗标。方案与验收清单见 [REGISTRY_V2.md](REGISTRY_V2.md);离线验收全绿
   (本地路径 / 本地 HTTP / 404 / 不可达 / 降级 / update 四态 / 逐组件单独安装后编译 / init 后编译),
-  行为已固化为 `cmd/xui/main_test.go`(候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出)。
+  行为已固化为 `cmd/xui/main_test.go`(候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出 / GitCode API 解码 / 单文件换源)。
   **顺带修掉 registry.json 的依赖缺陷**:`dialog` 漏 `backdrop.go`、`combobox`/`menu` 漏 `tooltip` 依赖
   —— 过去 `xui add dialog` 拷出来的组件根本编译不过。
 
@@ -392,7 +395,7 @@ go build -ldflags="-s -w -H windowsgui" -trimpath -o demo/demo.exe ./demo && dem
 # shadcn 参考实现 dev server(可能已在运行: netstat -ano | findstr 5173)
 cd D:\GOProject\src\ui\shadcn && pnpm dev    # http://localhost:5173
 
-# CLI 本地测试(默认源:直连→Gitee 镜像→代理, 全不通才降级内嵌源码)
+# CLI 本地测试(默认源:直连→Gitee 镜像→GitCode 镜像→代理, 全不通才降级内嵌源码)
 go run ./cmd/xui list / init <目录> / add <组件...> / add --all / update [组件...]
 go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出
 # 想验远程链路(无需 GitHub): 仓库根起 python -m http.server 8123,

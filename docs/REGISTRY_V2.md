@@ -81,7 +81,7 @@ xui add --all           # = init 的组件部分(全量 add)
 
 - [x] `XUI_REGISTRY=<本仓库根> go run ./cmd/xui list` → 列表来自本地 registry.json,并打印数据源行
 - [x] `XUI_REGISTRY=http://127.0.0.1:8123 xui add dialog`(临时目录)→ 拷出 dialog.go + button.go + label.go(dialog 的 deps)
-- [x] 默认源(未设 XUI_REGISTRY)→ 按 直连 → Gitee 镜像 → `ghfast` → `gh-proxy` 依次尝试(每个失败打一行 stderr),全不通才**降级内嵌源**,命令仍成功
+- [x] 默认源(未设 XUI_REGISTRY)→ 按 直连 → Gitee 镜像 → GitCode 镜像 → `ghfast` → `gh-proxy` 依次尝试(每个失败打一行 stderr),全不通才**降级内嵌源**,命令仍成功
 - [x] `XUI_REGISTRY=http://127.0.0.1:9999`(不可达)与 `…/notexist`(HTTP 404)→ 均报错退出(显式指定不降级)
 - [x] `update`:改过 ui/button.go → 警告跳过;删掉 ui/label.go → 重新创建;`--force` → 覆盖;指定组件只更新该闭包;空目录 → 提示"没有已安装的组件"
 - [x] `add --all` → 26 个文件(24 个组件条目; separator/badge 共享 separator.go, dialog/combobox/table/tree/scrollarea/input/timepicker 带跨文件助手)
@@ -99,10 +99,11 @@ xui add --all           # = init 的组件部分(全量 add)
 
 ## 六、已知坑(前人踩过,别再踩)
 
-- **默认源自动选路 = 直连 → Gitee 镜像 → 加速代理**(2026-10-11 定稿; 起初按"先代理后直连"实现过
-  一版, 按用户要求改为"直连优先 + Gitee 镜像"):候选依次为
+- **默认源自动选路 = 直连 → Gitee 镜像 → GitCode 镜像 → 加速代理**(起初按"先代理后直连"实现过
+  一版, 后改为"直连优先 + 国内镜像"):候选依次为
   `https://raw.githubusercontent.com/twgh/xui/main` → `https://gitee.com/twgh/xui/raw/main` →
-  `ghfast` → `gh-proxy`; 探测 = 拉一次 `registry.json`(6s 超时, 不额外发可达性请求), 第一个通的
+  `https://api.gitcode.com/api/v5/repos/twgh/xui/contents` → `ghfast` → `gh-proxy`;
+  探测 = 拉一次 `registry.json`(6s 超时, 不额外发可达性请求), 第一个通的
   跑完本次命令, 失败逐行打 stderr 便于定位卡点; 显式 `XUI_REGISTRY` **一律原样使用, 不套镜像/代理**
   (想只走直连就把默认地址显式写上)。实测(本机, 2026-10-11):
   - Gitee raw 布局与 GitHub raw **同构**, 直接可用:`https://gitee.com/twgh/xcgui/raw/main/README.md`
@@ -111,6 +112,16 @@ xui add --all           # = init 的组件部分(全量 add)
   - **`gitee.com/twgh/xui` 尚不存在(404)**、GitHub 的 `twgh/xui` 也**未公开**(直连被 reset/超时,
     gh-proxy 回源 404)—— 四条候选现在都拿不到真内容, 靠降级内嵌源跑。**仓库公开 + Gitee 建镜像后
     才能真验收**(链路本身已按序跑通)。注意 gitee 镜像需手动同步(或在 Gitee 建仓库并同步 main)。
+  - GitCode 不能走 raw: `gitcode.com/<owner>/<repo>/raw/...` 只回 SPA 网页外壳(200 HTML),
+    `raw.gitcode.com/<owner>/<repo>/files/<分支>/<路径>` 对匿名访问的 `.go` 一律 403
+    `暂不支持预览`(只有 README/.json 等预览白名单文件能取)。因此改走 v5 contents API
+    `https://api.gitcode.com/api/v5/repos/<owner>/<repo>/contents/<路径>?ref=main`,
+    响应是 `{"encoding":"base64","content":"..."}`, CLI 解码后使用; 排在 Gitee 之后当备用镜像。
+    API 侧实测的约束(匿名): **50 次/分钟**(超出回 429 `Threshold: 50 times per user per Minute`,
+    一分钟滚动恢复)、0.4~0.8s/请求(`add --all` 的 28 个请求 ≈ 24.7s, 同规模 Gitee 13.2s / 直连 13.8s)、
+    193 KB 的 DESIGN.md 可整份取回(MD5 一致)、缺文件回 404 JSON; `?ref=` 省略即默认分支;
+    仓库元数据类端点(`/api/v5/repos/<owner>/<repo>`)匿名回 401, 只有 `contents` 放行;
+    `git clone` 不受这些限制(实测浅克隆 1.3s / 78 文件, 内容 MD5 一致)。
   - `ghfast` 时通时断(先 TCP refused, 后 HTTP 404), 仅作兜底。
   - 直连挂起时会吃满 6s 探测超时(实测总耗时 3.5s ~ 8.7s 取决于直连是 RST 还是挂起), 这是"直连优先"
     的固有代价; 想避免就显式 `XUI_REGISTRY` 指向 Gitee 镜像。

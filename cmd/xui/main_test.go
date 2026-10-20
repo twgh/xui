@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"go/parser"
 	"go/token"
 	"net/http"
@@ -12,11 +13,11 @@ import (
 	"testing"
 )
 
-// 候选顺序是行为约定: 直连 → Gitee 镜像 → 加速代理。
+// 候选顺序是行为约定: 直连 → Gitee 镜像 → GitCode 镜像 → 加速代理。
 func TestCandidates(t *testing.T) {
 	cs := candidates(defaultRegistryBase)
-	if len(cs) != len(proxyPrefixes)+2 {
-		t.Fatalf("候选数 = %d, 期望 %d", len(cs), len(proxyPrefixes)+2)
+	if len(cs) != len(proxyPrefixes)+3 {
+		t.Fatalf("候选数 = %d, 期望 %d", len(cs), len(proxyPrefixes)+3)
 	}
 	if cs[0].base != defaultRegistryBase || cs[0].label != "直连" || !cs[0].direct {
 		t.Errorf("第一个候选应为直连 %q, 实为 %q (%q)", defaultRegistryBase, cs[0].base, cs[0].label)
@@ -24,17 +25,21 @@ func TestCandidates(t *testing.T) {
 	if cs[1].base != giteeRegistryBase || cs[1].label != "Gitee 镜像" {
 		t.Errorf("第二个候选应为 Gitee 镜像 %q, 实为 %q (%q)", giteeRegistryBase, cs[1].base, cs[1].label)
 	}
+	if cs[2].base != gitcodeRegistryBase || cs[2].label != "GitCode 镜像" || !cs[2].api {
+		t.Errorf("第三个候选应为 GitCode 镜像 %q(API 模式), 实为 %q (%q, api=%v)",
+			gitcodeRegistryBase, cs[2].base, cs[2].label, cs[2].api)
+	}
 	for i, p := range proxyPrefixes {
-		c := cs[i+2]
+		c := cs[i+3]
 		if c.label != p.name+" 代理" {
-			t.Errorf("候选 %d label = %q, 期望 %q", i+2, c.label, p.name+" 代理")
+			t.Errorf("候选 %d label = %q, 期望 %q", i+3, c.label, p.name+" 代理")
 		}
 		want := p.prefix + defaultRegistryBase
 		if c.base != want {
-			t.Errorf("候选 %d 基址 = %q, 期望 %q", i+2, c.base, want)
+			t.Errorf("候选 %d 基址 = %q, 期望 %q", i+3, c.base, want)
 		}
 	}
-	// Gitee 镜像只在默认基址上有意义, 其它基址不该被镜像化
+	// 国内镜像只在默认基址上有意义, 其它基址不该被镜像化
 	if cs := candidates("https://example.com/raw/main"); len(cs) != len(proxyPrefixes)+1 {
 		t.Errorf("非默认基址的候选数 = %d, 期望 %d", len(cs), len(proxyPrefixes)+1)
 	}
@@ -44,8 +49,8 @@ func TestRegistrySource(t *testing.T) {
 	t.Run("默认源自动选路", func(t *testing.T) {
 		t.Setenv("XUI_REGISTRY", "")
 		src := registrySource()
-		if src.local != "" || len(src.cands) != len(proxyPrefixes)+2 {
-			t.Fatalf("默认源应给出 %d 个候选, 实为 %d (local=%q)", len(proxyPrefixes)+2, len(src.cands), src.local)
+		if src.local != "" || len(src.cands) != len(proxyPrefixes)+3 {
+			t.Fatalf("默认源应给出 %d 个候选, 实为 %d (local=%q)", len(proxyPrefixes)+3, len(src.cands), src.local)
 		}
 		if src.env != "" {
 			t.Errorf("默认源的 env 应为空, 实为 %q", src.env)
@@ -69,6 +74,14 @@ func TestRegistrySource(t *testing.T) {
 		}
 	})
 
+	t.Run("显式 GitCode API 基址", func(t *testing.T) {
+		t.Setenv("XUI_REGISTRY", gitcodeRegistryBase)
+		src := registrySource()
+		if len(src.cands) != 1 || !src.cands[0].api {
+			t.Fatalf("GitCode contents 基址应识别成 API 模式: %+v", src.cands)
+		}
+	})
+
 	t.Run("本地路径", func(t *testing.T) {
 		t.Setenv("XUI_REGISTRY", "testdata-local")
 		src := registrySource()
@@ -79,6 +92,61 @@ func TestRegistrySource(t *testing.T) {
 			t.Errorf("本地路径不对: %q", src.local)
 		}
 	})
+}
+
+// GitCode 的 contents API 返回 JSON+base64, candidate.read 要带 ?ref=main 并解码。
+func TestGitCodeAPIRead(t *testing.T) {
+	const content = "package ui\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/registry.json" || r.URL.Query().Get("ref") != "main" {
+			t.Errorf("请求 = %s, 期望 /registry.json?ref=main", r.URL.String())
+		}
+		w.Write([]byte(`{"encoding":"base64","content":"` + base64.StdEncoding.EncodeToString([]byte(content)) + `"}`))
+	}))
+	defer srv.Close()
+
+	got, err := (candidate{base: srv.URL, api: true}).read("registry.json", fetchTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != content {
+		t.Errorf("解码结果 = %q, 期望 %q", got, content)
+	}
+}
+
+// 选定源中途失败(GitCode 匿名限速这类)时按候选顺序换源, 成功后粘住新源。
+func TestSourceReadFallsBackToNextCandidate(t *testing.T) {
+	const body = "package ui\n// button\n"
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer bad.Close()
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/components/button.go" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(body))
+	}))
+	defer good.Close()
+
+	src := &source{sel: candidate{base: bad.URL}, rest: []candidate{{label: "备用", base: good.URL}}}
+	got, err := src.read("components/button.go")
+	if err != nil {
+		t.Fatalf("换源后应成功: %v", err)
+	}
+	if string(got) != body {
+		t.Errorf("内容 = %q, 期望 %q", got, body)
+	}
+	if src.sel.base != good.URL || len(src.rest) != 0 {
+		t.Errorf("应粘住备用源, 实为 sel=%q rest=%v", src.sel.base, src.rest)
+	}
+
+	// 全都不通才报错(显式源只有一个候选, 直接走这条路)
+	dead := &source{sel: candidate{base: bad.URL}}
+	if _, err := dead.read("components/button.go"); err == nil {
+		t.Error("没有备用候选时应报错")
+	}
 }
 
 func TestParseRegistry(t *testing.T) {

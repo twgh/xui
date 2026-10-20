@@ -13,8 +13,8 @@
 //
 // 通用选项: -c/--cwd <目录> 先切目录, -s/--silent 只打印警告与错误。
 //
-// 数据源默认是仓库 main 分支(组件永远最新), 并按"直连 → Gitee 镜像 → 加速代理"的顺序
-// 自动选路(直连最快但有墙, Gitee 镜像国内稳定, 代理兜底); 环境变量 XUI_REGISTRY 可指向
+// 数据源默认是仓库 main 分支(组件永远最新), 并按"直连 → Gitee 镜像 → GitCode 镜像 →
+// 加速代理"的顺序自动选路(直连最快但有墙, 国内镜像稳定, 代理兜底); 环境变量 XUI_REGISTRY 可指向
 // 本地目录或任意 URL(离线开发 / 锁版本); 远程全不通时降级到 CLI 内嵌源码树。
 // init 在用户项目创建 ui/ 目录并写入 theme.go 模板; add 按 registry.json
 // 把组件源码(及其依赖组件)拷入 ui/, 已存在且被用户改过的文件会提示跳过。
@@ -22,6 +22,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -45,7 +46,13 @@ const defaultRegistryBase = "https://raw.githubusercontent.com/twgh/xui/main"
 // <base>/components/xxx.go), 国内访问稳定。前提是仓库也同步到 Gitee 的 twgh/xui。
 const giteeRegistryBase = "https://gitee.com/twgh/xui/raw/main"
 
-// proxyPrefixes GitHub 加速前缀, 仅作兜底(排在直连与 Gitee 镜像之后)。
+// gitcodeRegistryBase GitCode 镜像。GitCode 的 raw 直链(raw.gitcode.com/.../files/...)
+// 对匿名访问的 .go 文件只回 403 "暂不支持预览", 所以走 v5 contents API(JSON + base64),
+// 只有 JSON/README 这类预览白名单里的文件才能从 raw 直链拿到。匿名 API 也有限速,
+// 所以排在 Gitee 之后当备用镜像。
+const gitcodeRegistryBase = "https://api.gitcode.com/api/v5/repos/twgh/xui/contents"
+
+// proxyPrefixes GitHub 加速前缀, 仅作兜底(排在直连与国内镜像之后)。
 var proxyPrefixes = []struct{ name, prefix string }{
 	{"ghfast", "https://ghfast.top/"},
 	{"gh-proxy", "https://gh-proxy.org/"},
@@ -98,23 +105,51 @@ func fetchWithTimeout(url string, timeout time.Duration) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func fetch(url string) ([]byte, error) {
-	return fetchWithTimeout(url, fetchTimeout)
-}
-
 // candidate 一个远程候选基址。直连失败也会打日志(便于看清卡在哪一环), 但直连成功
 // 与默认路径无异, 不打日志。
 type candidate struct {
-	label  string // 日志名: "直连" / "Gitee 镜像" / "ghfast 代理"
+	label  string // 日志名: "直连" / "Gitee 镜像" / "GitCode 镜像" / "ghfast 代理"
 	direct bool   // 直连(GitHub 原址)
 	base   string // 基址; 组件文件 = <base>/components/<file>
+	api    bool   // GitCode v5 contents API: 返回 JSON+base64, 不是文件原文
 }
 
-// candidates 生成候选序列: 直连 → Gitee 镜像 → 加速代理。
+// read 拉候选源里的相对路径。GitCode 的 contents API 响应形如
+// {"encoding":"base64","content":"..."}, 要解码后才是源码; 默认分支固定 main。
+func (c candidate) read(rel string, timeout time.Duration) ([]byte, error) {
+	u := c.base + "/" + rel
+	if !c.api {
+		return fetchWithTimeout(u, timeout)
+	}
+	data, err := fetchWithTimeout(u+"?ref=main", timeout)
+	if err != nil {
+		return nil, err
+	}
+	var body struct {
+		Encoding string `json:"encoding"`
+		Content  string `json:"content"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		return nil, fmt.Errorf("%s: 解析 GitCode API 响应失败: %w", u, err)
+	}
+	if body.Encoding != "base64" {
+		return nil, fmt.Errorf("%s: GitCode API 编码 = %q, 期望 base64", u, body.Encoding)
+	}
+	out, err := base64.StdEncoding.DecodeString(strings.NewReplacer("\r", "", "\n", "").Replace(body.Content))
+	if err != nil {
+		return nil, fmt.Errorf("%s: 解码 GitCode API 内容失败: %w", u, err)
+	}
+	return out, nil
+}
+
+// candidates 生成候选序列: 直连 → Gitee 镜像 → GitCode 镜像 → 加速代理。
 func candidates(base string) []candidate {
 	out := []candidate{{label: "直连", direct: true, base: base}} // 直连优先
 	if base == defaultRegistryBase {
-		out = append(out, candidate{label: "Gitee 镜像", base: giteeRegistryBase})
+		out = append(out,
+			candidate{label: "Gitee 镜像", base: giteeRegistryBase},
+			candidate{label: "GitCode 镜像", base: gitcodeRegistryBase, api: true},
+		)
 	}
 	for _, p := range proxyPrefixes {
 		out = append(out, candidate{label: p.name + " 代理", base: p.prefix + base})
@@ -126,7 +161,8 @@ func candidates(base string) []candidate {
 type source struct {
 	local string      // 非空 = 本地目录(须含 registry.json 与 components/)
 	cands []candidate // 远程候选, 按顺序尝试, 第一个拉通 registry 的胜出
-	base  string      // 已选定的远程基址(loadRegistry 之后才有效)
+	sel   candidate   // 已选定的远程候选(loadRegistry 之后才有效)
+	rest  []candidate // 选定源之后还没试过的候选, 供单文件拉取失败时换源
 	env   string      // XUI_REGISTRY 原值; 非空 = 用户显式指定, 失败时直接报错不降级
 }
 
@@ -134,26 +170,44 @@ func (s *source) desc() string {
 	if s.local != "" {
 		return s.local
 	}
-	return s.base
+	return s.sel.base
 }
 
-// read 读相对路径(registry.json / components/xxx.go)。本地与远程布局一致。
+// read 读相对路径(registry.json / components/xxx.go)。本地直接读文件; 远程先走已选定的源,
+// 失败就按候选顺序换源并把新源粘住。镜像各有各的限制(GitCode 匿名 API 50 次/分钟),
+// 一次 add --all 要 28 个请求, 撞上限速只报"某个文件读失败"会留下半套 ui/。
 func (s *source) read(rel string) ([]byte, error) {
 	if s.local != "" {
 		return os.ReadFile(filepath.Join(s.local, filepath.FromSlash(rel)))
 	}
-	return fetch(s.base + "/" + rel)
+	data, err := s.sel.read(rel, fetchTimeout)
+	if err == nil {
+		return data, nil
+	}
+	for len(s.rest) > 0 {
+		c := s.rest[0]
+		s.rest = s.rest[1:]
+		if data, err = c.read(rel, fetchTimeout); err == nil {
+			warn("%s 拉取 %s 失败(%v), 数据源切到 %s (%s)", s.sel.base, rel, err, c.base, c.label)
+			s.sel = c
+			return data, nil
+		}
+	}
+	return nil, err
 }
 
-// registrySource 按 XUI_REGISTRY 解析数据源(空 = 默认远程源, 自动先代理后直连)。
+// registrySource 按 XUI_REGISTRY 解析数据源(空 = 默认远程源, 直连优先)。
 func registrySource() *source {
 	env := strings.TrimSpace(os.Getenv("XUI_REGISTRY"))
 	switch {
 	case env == "":
 		return &source{cands: candidates(defaultRegistryBase)}
 	case strings.HasPrefix(env, "http://"), strings.HasPrefix(env, "https://"):
-		// 显式指定的基址原样使用: 想强制直连就把默认地址显式写上, 想用别的代理就写代理地址
-		return &source{cands: []candidate{{base: strings.TrimRight(env, "/")}}, env: env}
+		// 显式指定的基址原样使用: 想强制直连就把默认地址显式写上, 想用别的代理就写代理地址。
+		// GitCode 的 contents API 返回 JSON+base64, 显式指定时也要走解码路径。
+		base := strings.TrimRight(env, "/")
+		api := strings.Contains(base, "gitcode.com/api/v5/repos/") && strings.HasSuffix(base, "/contents")
+		return &source{cands: []candidate{{base: base, api: api}}, env: env}
 	default:
 		abs, err := filepath.Abs(env)
 		if err != nil {
@@ -164,7 +218,7 @@ func registrySource() *source {
 }
 
 // loadRegistry 读 registry.json, 并返回实际生效的数据源。
-// 默认远程源: 逐个候选(先代理后直连)拉 registry.json, 第一个拉通且解析成功的胜出;
+// 默认远程源: 逐个候选(直连优先)拉 registry.json, 第一个拉通且解析成功的胜出;
 // 全都不通才降级内嵌源码树。用户显式指定 XUI_REGISTRY 时直接报错, 不降级。
 func loadRegistry() (*source, *registry) {
 	src := registrySource()
@@ -176,12 +230,13 @@ func loadRegistry() (*source, *registry) {
 		return src, mustParseRegistry(src.desc(), data)
 	}
 	var lastErr error
-	for _, c := range src.cands {
-		data, err := fetchWithTimeout(c.base+"/registry.json", probeTimeout)
+	for i, c := range src.cands {
+		data, err := c.read("registry.json", probeTimeout)
 		if err == nil {
 			reg, perr := parseRegistry(c.base, data)
 			if perr == nil {
-				src.base = c.base
+				src.sel = c
+				src.rest = src.cands[i+1:] // 后续单文件失败时按序换源
 				if !c.direct {
 					fmt.Fprintf(os.Stderr, "xui: 数据源 %s (%s)\n", c.base, c.label)
 				}
@@ -566,8 +621,8 @@ func usage() {
   -s, --silent          只打印警告与错误
 
 数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
-  不设                  自动选路: 直连 → Gitee 镜像 → 加速代理(ghfast / gh-proxy);
-                        全不通则用 CLI 内嵌源码
+  不设                  自动选路: 直连 → Gitee 镜像 → GitCode 镜像 →
+                        加速代理(ghfast / gh-proxy); 全不通则用 CLI 内嵌源码
   本地路径              直接读该目录(须含 registry.json 与 components/), 完全离线
   http(s):// 基址        以该地址为前缀原样拉取, 不套镜像/代理(失败直接报错, 不降级)
 
