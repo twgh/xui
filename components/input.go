@@ -547,10 +547,10 @@ func (i *Input) paintAddons(p *xui.Painter, t *xui.Theme, st xui.State) {
 			i.parts = append(i.parts, inputPartRect{part: part, rc: rc, dim: dim})
 		}
 		hv := xui.HoverItem(i.Handle, int32(part), hot)
-		pressedNow := i.pressed == part && enabled
-		if hv > 0 && !pressedNow {
-			// 幽灵按钮的悬停底: bg-accent, 圆角比壳体小一档。按下期间不画底色 ——
-			// 按压反馈改由图标缩放承担(见 pressOf), 底色叠着缩放会显得很闹。
+		if hv > 0 {
+			// 幽灵按钮的悬停底: bg-accent, 圆角比壳体小一档。**按下期间保持不变** ——
+			// shadcn/tailwind 的按钮没有 active 变换, 按下 = 悬停态延续;
+			// 若按下时撤掉底色, 松开又回来, 视觉上就是一次闪烁(实测)。
 			p.FillRound(&rc, t.Accent.ScaleAlpha(hv), inputBtnR)
 		}
 		glyph := xc.RECT{
@@ -562,14 +562,10 @@ func (i *Input) paintAddons(p *xui.Painter, t *xui.Theme, st xui.State) {
 		glyph.Right = glyph.Left + inputGlyphSz
 		glyph.Bottom = glyph.Top + inputGlyphSz
 		c := xui.Fade(base, t.AccentForeground, hv)
-		if pressedNow {
-			// 按下: 无底色、颜色回到常态, 只靠"缩小"表达按压(参考原生微调控件)
-			c = base
-		}
 		if dim {
 			c = base.ScaleAlpha(0.4) // 到值域边界: 按钮不可用(视觉上变淡, 同 shadcn 的禁用钮)
 		}
-		p.Icon(icon, &glyph, c, 2, pressScale(i.pressOf(part, pressedNow)))
+		p.Icon(icon, &glyph, c, 2)
 		rx = rc.Left - inputGap
 	}
 
