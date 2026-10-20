@@ -1,6 +1,8 @@
 package main
 
 import (
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -122,8 +124,8 @@ func TestAddViaRemoteSource(t *testing.T) {
 	}
 	defer os.Chdir(old)
 
-	add([]string{"button"}, "ui", false) // button 单独装
-	add([]string{"dialog"}, "ui", false) // dialog + 依赖 + 共享的 backdrop.go
+	add(componentOptions{names: []string{"button"}, uiDir: "ui"}) // button 单独装
+	add(componentOptions{names: []string{"dialog"}, uiDir: "ui"}) // dialog + 依赖 + 共享的 backdrop.go
 
 	for name, want := range map[string]string{
 		"button.go":   "package ui\n// button\n",
@@ -144,11 +146,11 @@ func TestAddViaRemoteSource(t *testing.T) {
 	if err := os.WriteFile(edited, []byte("package ui\n// mine\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	update([]string{"button"}, "ui", false, false)
+	update(componentOptions{names: []string{"button"}, uiDir: "ui"})
 	if data, _ := os.ReadFile(edited); string(data) != "package ui\n// mine\n" {
 		t.Errorf("update 默认不该覆盖本地修改, 实为 %q", data)
 	}
-	update([]string{"button"}, "ui", true, false)
+	update(componentOptions{names: []string{"button"}, uiDir: "ui", overwrite: true})
 	if data, _ := os.ReadFile(edited); string(data) != "package ui\n// button\n" {
 		t.Errorf("update --force 应覆盖, 实为 %q", data)
 	}
@@ -173,5 +175,258 @@ func TestExplicitSourceFailureExits(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "拉取 registry 失败") {
 		t.Errorf("报错文案不对: %s", out)
+	}
+}
+
+func TestParseInitArgs(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		want    initOptions
+		wantErr bool
+	}{
+		{"默认 ui", nil, initOptions{uiDir: "ui"}, false},
+		{"旧位置参数", []string{"components"}, initOptions{uiDir: "components"}, false},
+		{"-n", []string{"-n", "myapp"}, initOptions{project: "myapp"}, false},
+		{"--name=", []string{"--name=myapp"}, initOptions{project: "myapp"}, false},
+		{"-n 加 force", []string{"-f", "-n", "myapp"}, initOptions{project: "myapp", force: true}, false},
+		{"--no-install", []string{"--no-install", "-n", "myapp"}, initOptions{project: "myapp", noInstall: true}, false},
+		{"--no-install 缺 -n", []string{"--no-install"}, initOptions{}, true},
+		{"-n 缺值", []string{"-n"}, initOptions{}, true},
+		{"-n= 空值", []string{"-n="}, initOptions{}, true},
+		{"-n 与位置参数冲突", []string{"-n", "myapp", "ui"}, initOptions{}, true},
+		{"多个位置参数", []string{"a", "b"}, initOptions{}, true},
+		{"未知选项", []string{"--wat"}, initOptions{}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := parseInitArgs(c.args)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, c.wantErr)
+			}
+			if !c.wantErr && got != c.want {
+				t.Errorf("got %+v, want %+v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestModuleNameFromProject(t *testing.T) {
+	for name, want := range map[string]string{
+		"myapp":   "myapp",
+		"my-app":  "my-app",
+		"my app":  "my-app",
+		"我的应用":    "app",
+		".hidden": "hidden",
+		"app_1":   "app_1",
+		"--":      "app",
+		"a.b-c_d": "a.b-c_d",
+	} {
+		if got := moduleNameFromProject(name); got != want {
+			t.Errorf("moduleNameFromProject(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestInitNewProject(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot()) // 本地源: 不访问网络
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	if err := initNewProject("myapp", false, true); err != nil {
+		t.Fatalf("initNewProject 失败: %v", err)
+	}
+
+	for _, f := range []string{
+		"go.mod", "main.go", "README.md", ".gitignore",
+		"ui/theme.go", "ui/DESIGN.md", "ui/button.go", "ui/window.go",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, "myapp", f)); err != nil {
+			t.Errorf("缺少 %s: %v", f, err)
+		}
+	}
+
+	gomod, err := os.ReadFile(filepath.Join(dir, "myapp", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"module myapp", "github.com/twgh/xui v", "github.com/twgh/xcgui v"} {
+		if !strings.Contains(string(gomod), want) {
+			t.Errorf("go.mod 缺少 %q:\n%s", want, gomod)
+		}
+	}
+
+	mainGo, err := os.ReadFile(filepath.Join(dir, "myapp", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mainGo), `"myapp/ui"`) {
+		t.Errorf("main.go 未导入 myapp/ui:\n%s", mainGo)
+	}
+	if _, err := parser.ParseFile(token.NewFileSet(), "main.go", mainGo, 0); err != nil {
+		t.Errorf("生成的 main.go 语法错误: %v", err)
+	}
+
+	// 非空目录默认拒绝, --force 放行且不删除无关文件
+	if err := initNewProject("myapp", false, true); err == nil {
+		t.Error("非空目录未加 --force 应报错")
+	}
+	keep := filepath.Join(dir, "myapp", "notes.txt")
+	if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := initNewProject("myapp", true, true); err != nil {
+		t.Fatalf("--force 应允许写入非空目录: %v", err)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Error("--force 不应删除无关文件")
+	}
+}
+
+func TestParseComponentArgs(t *testing.T) {
+	got, err := parseComponentArgs([]string{"-o", "-p", "components", "button", "card"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.overwrite || got.uiDir != "components" || len(got.names) != 2 {
+		t.Errorf("解析结果不对: %+v", got)
+	}
+	if got, err := parseComponentArgs([]string{"--all"}); err != nil || !got.all {
+		t.Errorf("--all 解析失败: %+v, %v", got, err)
+	}
+	if got, err := parseComponentArgs([]string{"--dry-run", "--view=button.go", "button"}); err != nil ||
+		!got.dryRun || !got.view || got.viewFile != "button.go" {
+		t.Errorf("dry-run/view 解析失败: %+v, %v", got, err)
+	}
+	if _, err := parseComponentArgs([]string{"--view", "--diff", "button"}); err == nil {
+		t.Error("--view 与 --diff 应互斥")
+	}
+	if _, err := parseComponentArgs([]string{"--all", "button"}); err == nil {
+		t.Error("--all 与组件名应互斥")
+	}
+	if _, err := parseComponentArgs([]string{"--wat"}); err == nil {
+		t.Error("未知选项应报错")
+	}
+}
+
+func TestParseListArgs(t *testing.T) {
+	got, err := parseListArgs([]string{"-q", "table", "-l", "5", "-o", "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.query != "table" || got.limit != 5 || got.offset != 2 {
+		t.Errorf("解析结果不对: %+v", got)
+	}
+	if got, err := parseListArgs([]string{"--query=card", "--limit=3", "--offset=1"}); err != nil ||
+		got.query != "card" || got.limit != 3 || got.offset != 1 {
+		t.Errorf("= 形式解析失败: %+v, %v", got, err)
+	}
+	for _, args := range [][]string{{"-l", "0"}, {"-l", "x"}, {"-o", "-1"}, {"button"}} {
+		if _, err := parseListArgs(args); err == nil {
+			t.Errorf("%v 应报错", args)
+		}
+	}
+}
+
+func TestParseViewArgs(t *testing.T) {
+	names, err := parseViewArgs([]string{"button", "card"})
+	if err != nil || len(names) != 2 {
+		t.Errorf("view 参数解析失败: %v, %v", names, err)
+	}
+	if _, err := parseViewArgs(nil); err == nil {
+		t.Error("view 缺少组件名应报错")
+	}
+	if _, err := parseViewArgs([]string{"--wat"}); err == nil {
+		t.Error("未知选项应报错")
+	}
+}
+
+func TestExtractGlobal(t *testing.T) {
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	quiet = false
+	defer func() { quiet = false }()
+
+	dir := t.TempDir()
+	rest, err := extractGlobal([]string{"-s", "-c", dir, "add", "button"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !quiet {
+		t.Error("-s 未打开 silent")
+	}
+	if strings.Join(rest, ",") != "add,button" {
+		t.Errorf("剩余参数 = %v", rest)
+	}
+	wd, _ := os.Getwd()
+	if !samePath(wd, dir) {
+		t.Errorf("cwd = %q, want %q", wd, dir)
+	}
+	if _, err := extractGlobal([]string{"--cwd"}); err == nil {
+		t.Error("--cwd 缺值应报错")
+	}
+}
+
+// samePath 规避 Windows 下大小写/8.3 短路径差异, 只用于测试断言。
+func samePath(a, b string) bool {
+	aa, err1 := filepath.Abs(a)
+	bb, err2 := filepath.Abs(b)
+	return err1 == nil && err2 == nil && strings.EqualFold(filepath.Clean(aa), filepath.Clean(bb))
+}
+
+func TestUnifiedDiff(t *testing.T) {
+	d := unifiedDiff("ui/a.go", "components/a.go", "a\nb\n", "a\nc\n")
+	for _, want := range []string{"--- ui/a.go", "+++ components/a.go", "-b\n", "+c\n", " a\n"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("diff 缺少 %q:\n%s", want, d)
+		}
+	}
+	if d := unifiedDiff("a", "b", "", "x\n"); !strings.Contains(d, "+x\n") {
+		t.Errorf("新增文件 diff 不对:\n%s", d)
+	}
+}
+
+func TestFilterComponents(t *testing.T) {
+	all := []string{"button", "card", "table", "tabs"}
+	got := filterComponents(all, "ta")
+	if strings.Join(got, ",") != "table,tabs" {
+		t.Errorf("过滤结果 = %v", got)
+	}
+	if got := filterComponents(all, "TABLE"); len(got) != 1 || got[0] != "table" {
+		t.Errorf("大小写不敏感过滤失败: %v", got)
+	}
+	if got := filterComponents(all, ""); len(got) != 4 {
+		t.Errorf("空查询应返回全部: %v", got)
+	}
+}
+
+func TestAddDryRunDoesNotWrite(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	add(componentOptions{names: []string{"button"}, uiDir: "ui", dryRun: true})
+	if _, err := os.Stat("ui/button.go"); !os.IsNotExist(err) {
+		t.Errorf("--dry-run 不应写文件: %v", err)
+	}
+	add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	if _, err := os.Stat("ui/button.go"); err != nil {
+		t.Errorf("正常 add 应写文件: %v", err)
 	}
 }

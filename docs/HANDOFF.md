@@ -65,8 +65,8 @@
   过程逐行打 stderr; 组件跟 main 永远最新)、`XUI_REGISTRY` 指向本地目录或任意 `http(s)://` 基址
   (离线 / 锁组件版本; **写什么用什么, 不套镜像/代理**)、全不通时降级 `moduleRoot()` 内嵌源码树
   (显式设了 `XUI_REGISTRY` 则报错不降级);`update` 无 manifest
-  语义 = 缺则建 / 一致跳过 / 用户改过警告跳过(`--force` 覆盖),省略组件名 = 更新 `ui/` 里已装的全部;
-  新增 `--force` / `--all` 两个旗标。方案与验收清单见 [REGISTRY_V2.md](REGISTRY_V2.md);离线验收全绿
+  语义 = 缺则建 / 一致跳过 / 用户改过警告跳过(`-o/--overwrite` 覆盖),省略组件名 = 更新 `ui/` 里已装的全部;
+  新增 `-o/--overwrite` / `--all` 两个旗标。方案与验收清单见 [REGISTRY_V2.md](REGISTRY_V2.md);离线验收全绿
   (本地路径 / 本地 HTTP / 404 / 不可达 / 降级 / update 四态 / 逐组件单独安装后编译 / init 后编译),
   行为已固化为 `cmd/xui/main_test.go`(候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出)。
   **顺带修掉 registry.json 的依赖缺陷**:`dialog` 漏 `backdrop.go`、`combobox`/`menu` 漏 `tooltip` 依赖
@@ -301,6 +301,18 @@
   ④ 原来的"描边展开算法上游化"**作废**: 描边走 D2D 真描边(见上一条), CPU 展开代码已从本仓库删除。
   8 种图元/几何一次抓图全对; `wapi/com`/`d2d` 单测(槽位/布局/nil 安全)在 CI 与离线均可跑。
 
+- ✅ **CLI 参数对齐 shadcn + 新项目脚手架**(2026-10-20):
+  - `xui init -n <项目名>` 创建完整 Go 项目: `go.mod`(依赖版本从 CLI build info 取,
+    本地 devel 构建回退 `v0.2.0`)、`main.go`(AppWindow + 示例卡片)、`README.md`、
+    `.gitignore`、`ui/`(theme.go + DESIGN.md + 基础组件); 非空目录需 `-f/--force`;
+    生成后**自动在项目目录执行 `go mod tidy`**（`GOWORK=off`、2 分钟超时，失败只告警不阻断），
+    离线可加 `--no-install` 跳过。
+  - `add/update`: `-o/--overwrite`(移除旧 `--force` 命名)、`-p/--path`、`-a/--all`、
+    `--dry-run`、`--view[=文件]`、`--diff[=文件]`; 新增 `view` / `info` 命令; `list/search` 支持
+    `-q/-l/-o`; 全局 `-c/--cwd`、`-s/--silent`。
+  - `xui init [ui目录]` 旧行为不变; 参数解析、脚手架、dry-run、diff、过滤/分页均有单测。
+  - 验收: 临时目录生成(自动生成 go.sum) → `go build` + 启动截图 + 关闭进程正常;
+    手动跑过 list/view/dry-run/path/overwrite/diff/silent; `go build/vet/test ./...` 通过。
 - ✅ **Menu 弹层宽度对齐 shadcn**(2026-10-20, trigger 宽 + min-w-32 下限):
   - 依据: `XMenu_SetItemWidth` 逐项设"条目文本区宽度"实测有效 —— 弹窗宽 = max(各条目有效宽) + 固定开销
     (BorderSize(4)/条目高 28 配置下 48), 且**设定值完全覆盖自然宽**(自然文本宽 229 的长条目设 60 后弹窗仍 108,

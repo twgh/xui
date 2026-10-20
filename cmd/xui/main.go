@@ -2,11 +2,16 @@
 //
 // 用法:
 //
-//	go run github.com/twgh/xui/cmd/xui@latest init [ui目录]   # 默认 ui
+//	go run github.com/twgh/xui/cmd/xui@latest init -n myapp   # 新建完整项目
+//	go run github.com/twgh/xui/cmd/xui@latest init [ui目录]   # 已有项目装组件(默认 ui)
 //	go run github.com/twgh/xui/cmd/xui@latest add button card ...
 //	go run github.com/twgh/xui/cmd/xui@latest add --all
 //	go run github.com/twgh/xui/cmd/xui@latest update [组件...]
-//	go run github.com/twgh/xui/cmd/xui@latest list
+//	go run github.com/twgh/xui/cmd/xui@latest list [-q 词] [-l n] [-o n]
+//	go run github.com/twgh/xui/cmd/xui@latest view button
+//	go run github.com/twgh/xui/cmd/xui@latest info
+//
+// 通用选项: -c/--cwd <目录> 先切目录, -s/--silent 只打印警告与错误。
 //
 // 数据源默认是仓库 main 分支(组件永远最新), 并按"直连 → Gitee 镜像 → 加速代理"的顺序
 // 自动选路(直连最快但有墙, Gitee 镜像国内稳定, 代理兜底); 环境变量 XUI_REGISTRY 可指向
@@ -22,9 +27,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	rdebug "runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -42,6 +50,13 @@ var proxyPrefixes = []struct{ name, prefix string }{
 	{"ghfast", "https://ghfast.top/"},
 	{"gh-proxy", "https://gh-proxy.org/"},
 }
+
+// 生成新项目 go.mod 的回退依赖版本。正式发布版(go run/install ...@vX)从 build info
+// 读到自身版本; 只有本地 devel 构建会用到这里的值, 取最近一个已发布版本保证可拉取。
+const (
+	fallbackXuiVersion   = "v0.2.0"
+	fallbackXcguiVersion = "v1.4.3"
+)
 
 type entry struct {
 	Files []string `json:"files"`
@@ -226,58 +241,329 @@ func main() {
 	if len(os.Args) < 2 {
 		usage()
 	}
-	cmd, args := os.Args[1], os.Args[2:]
-	names, force, all := parseArgs(args)
+	cmd := os.Args[1]
+	args, err := extractGlobal(os.Args[2:])
+	if err != nil {
+		fatal("%v", err)
+	}
 	switch cmd {
 	case "init":
-		dir := "ui"
-		if len(names) > 0 {
-			dir = names[0]
+		opts, err := parseInitArgs(args)
+		if err != nil {
+			fatal("%v", err)
 		}
-		if len(names) > 1 {
-			fatal("用法: xui init [ui目录]")
+		if opts.project != "" {
+			if err := initNewProject(opts.project, opts.force, opts.noInstall); err != nil {
+				fatal("%v", err)
+			}
+			return
 		}
-		initProject(dir, force)
-	case "add":
-		if !all && len(names) == 0 {
-			fatal("用法: xui add <组件名...> | xui add --all  (组件见 xui list)")
+		initProject(opts.uiDir, opts.force)
+	case "add", "update":
+		opts, err := parseComponentArgs(args)
+		if err != nil {
+			fatal("%v", err)
 		}
-		add(names, "ui", force)
-	case "update":
-		update(names, "ui", force, all)
-	case "list":
-		list()
+		if cmd == "add" {
+			add(opts)
+		} else {
+			update(opts)
+		}
+	case "list", "search": // search 是 shadcn 的写法, list 是历史别名
+		opts, err := parseListArgs(args)
+		if err != nil {
+			fatal("%v", err)
+		}
+		list(opts)
+	case "view":
+		names, err := parseViewArgs(args)
+		if err != nil {
+			fatal("%v", err)
+		}
+		view(names)
+	case "info":
+		if len(args) > 0 {
+			fatal("用法: xui info (不接受参数)")
+		}
+		infoCommand()
 	default:
 		usage()
 	}
 }
 
-// parseArgs 抽出 --force / --all, 其余按位置参数返回(CLI 不做通用旗标解析)。
-func parseArgs(args []string) (names []string, force, all bool) {
-	for _, a := range args {
-		switch a {
-		case "--force", "-f":
-			force = true
-		case "--all", "-a":
-			all = true
+// quiet 由全局 -s/--silent 打开: 只抑制普通进度输出, 警告与错误照常打印。
+var quiet bool
+
+func info(format string, a ...any) {
+	if !quiet {
+		fmt.Printf(format+"\n", a...)
+	}
+}
+
+func infoRaw(s string) {
+	if !quiet {
+		fmt.Print(s)
+	}
+}
+
+// extractGlobal 抽出所有命令通用的 -c/--cwd 与 -s/--silent, 其余原样返回。
+// cwd 在解析阶段就生效, 后续相对路径(项目目录 / ui 目录 / 数据源本地路径)都以它为基准。
+func extractGlobal(args []string) ([]string, error) {
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-c" || a == "--cwd":
+			if i+1 >= len(args) || args[i+1] == "" {
+				return nil, fmt.Errorf("%s 需要一个目录", a)
+			}
+			i++
+			if err := os.Chdir(args[i]); err != nil {
+				return nil, fmt.Errorf("切换工作目录失败: %v", err)
+			}
+		case strings.HasPrefix(a, "--cwd="):
+			dir := strings.TrimPrefix(a, "--cwd=")
+			if dir == "" {
+				return nil, fmt.Errorf("--cwd 需要一个目录")
+			}
+			if err := os.Chdir(dir); err != nil {
+				return nil, fmt.Errorf("切换工作目录失败: %v", err)
+			}
+		case a == "-s" || a == "--silent":
+			quiet = true
 		default:
-			names = append(names, a)
+			rest = append(rest, a)
 		}
 	}
-	return
+	return rest, nil
+}
+
+// initOptions 是 init 的解析结果: project 非空 = 新建完整项目(xui init -n)，
+// 否则 = 在已有项目里初始化组件目录(兼容原来的 xui init [ui目录])。
+type initOptions struct {
+	uiDir     string
+	project   string
+	force     bool
+	noInstall bool
+}
+
+func parseInitArgs(args []string) (initOptions, error) {
+	o := initOptions{}
+	var pos []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-n" || a == "--name":
+			if i+1 >= len(args) || args[i+1] == "" {
+				return o, fmt.Errorf("%s 需要一个项目名", a)
+			}
+			i++
+			o.project = args[i]
+		case strings.HasPrefix(a, "-n="):
+			if o.project = strings.TrimPrefix(a, "-n="); o.project == "" {
+				return o, fmt.Errorf("-n 需要一个项目名")
+			}
+		case strings.HasPrefix(a, "--name="):
+			if o.project = strings.TrimPrefix(a, "--name="); o.project == "" {
+				return o, fmt.Errorf("--name 需要一个项目名")
+			}
+		case a == "-f" || a == "--force":
+			o.force = true
+		case a == "--no-install":
+			o.noInstall = true
+		case strings.HasPrefix(a, "-"):
+			return o, fmt.Errorf("未知选项 %s", a)
+		default:
+			pos = append(pos, a)
+		}
+	}
+	if o.project != "" && len(pos) > 0 {
+		return o, fmt.Errorf("init -n 不能同时指定 ui 目录")
+	}
+	if len(pos) > 1 {
+		return o, fmt.Errorf("用法: xui init [ui目录] | xui init -n <项目名>")
+	}
+	if o.project == "" {
+		if o.noInstall {
+			return o, fmt.Errorf("--no-install 只用于 init -n")
+		}
+		o.uiDir = "ui"
+		if len(pos) == 1 {
+			o.uiDir = pos[0]
+		}
+	}
+	return o, nil
+}
+
+// componentOptions 是 add / update 共用的参数集(对齐 shadcn add 的命名)。
+type componentOptions struct {
+	names     []string
+	all       bool
+	overwrite bool
+	uiDir     string
+	dryRun    bool
+	view      bool
+	viewFile  string
+	diff      bool
+	diffFile  string
+}
+
+func parseComponentArgs(args []string) (componentOptions, error) {
+	o := componentOptions{uiDir: "ui"}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-o" || a == "--overwrite":
+			o.overwrite = true
+		case a == "-a" || a == "--all":
+			o.all = true
+		case a == "-p" || a == "--path":
+			if i+1 >= len(args) || args[i+1] == "" {
+				return o, fmt.Errorf("%s 需要一个目录", a)
+			}
+			i++
+			o.uiDir = args[i]
+		case strings.HasPrefix(a, "--path="):
+			if o.uiDir = strings.TrimPrefix(a, "--path="); o.uiDir == "" {
+				return o, fmt.Errorf("--path 需要一个目录")
+			}
+		case a == "--dry-run":
+			o.dryRun = true
+		case a == "--view":
+			o.view = true
+		case strings.HasPrefix(a, "--view="):
+			o.view = true
+			o.viewFile = strings.TrimPrefix(a, "--view=")
+		case a == "--diff":
+			o.diff = true
+		case strings.HasPrefix(a, "--diff="):
+			o.diff = true
+			o.diffFile = strings.TrimPrefix(a, "--diff=")
+		case strings.HasPrefix(a, "-"):
+			return o, fmt.Errorf("未知选项 %s", a)
+		default:
+			o.names = append(o.names, a)
+		}
+	}
+	if o.view && o.diff {
+		return o, fmt.Errorf("--view 与 --diff 不能同时使用")
+	}
+	if o.all && len(o.names) > 0 {
+		return o, fmt.Errorf("--all 不能与组件名同时使用")
+	}
+	return o, nil
+}
+
+// listOptions 是 list / search 的参数集(对齐 shadcn search: -q / -l / -o)。
+type listOptions struct {
+	query  string
+	limit  int
+	offset int
+}
+
+func parseListArgs(args []string) (listOptions, error) {
+	o := listOptions{}
+	intValue := func(flag, s string) (int, error) {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return 0, fmt.Errorf("%s 需要一个整数: %q", flag, s)
+		}
+		return n, nil
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-q" || a == "--query":
+			if i+1 >= len(args) {
+				return o, fmt.Errorf("%s 需要一个搜索词", a)
+			}
+			i++
+			o.query = args[i]
+		case strings.HasPrefix(a, "--query="):
+			o.query = strings.TrimPrefix(a, "--query=")
+		case a == "-l" || a == "--limit":
+			if i+1 >= len(args) {
+				return o, fmt.Errorf("%s 需要一个数字", a)
+			}
+			i++
+			n, err := intValue(a, args[i])
+			if err != nil || n <= 0 {
+				return o, fmt.Errorf("%s 需要正整数: %q", a, args[i])
+			}
+			o.limit = n
+		case strings.HasPrefix(a, "--limit="):
+			n, err := intValue("--limit", strings.TrimPrefix(a, "--limit="))
+			if err != nil || n <= 0 {
+				return o, fmt.Errorf("--limit 需要正整数")
+			}
+			o.limit = n
+		case a == "-o" || a == "--offset":
+			if i+1 >= len(args) {
+				return o, fmt.Errorf("%s 需要一个数字", a)
+			}
+			i++
+			n, err := intValue(a, args[i])
+			if err != nil || n < 0 {
+				return o, fmt.Errorf("%s 需要非负整数: %q", a, args[i])
+			}
+			o.offset = n
+		case strings.HasPrefix(a, "--offset="):
+			n, err := intValue("--offset", strings.TrimPrefix(a, "--offset="))
+			if err != nil || n < 0 {
+				return o, fmt.Errorf("--offset 需要非负整数")
+			}
+			o.offset = n
+		default:
+			return o, fmt.Errorf("未知参数 %s", a)
+		}
+	}
+	return o, nil
+}
+
+func parseViewArgs(args []string) ([]string, error) {
+	var names []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			return nil, fmt.Errorf("未知选项 %s", a)
+		}
+		names = append(names, a)
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("用法: xui view <组件...>")
+	}
+	return names, nil
 }
 
 func usage() {
 	fmt.Println(`xui — shadcn 风格的 xcgui 自绘组件
 
-  xui init [ui目录]     初始化(默认 ui: theme.go + 基础组件 + DESIGN.md; 已存在则跳过)
-  xui add <组件...>     拷贝组件源码到 ui 目录(自动带上依赖组件)
-  xui add --all         拷贝全部组件
-  xui update [组件...]  更新已装组件(省略组件名 = ui 目录里已装的全部)
-  xui list              列出可用组件
+  xui init -n <项目名>       新建完整 Go 项目(go.mod + main.go + README + ui/ 组件)
+  xui init [ui目录]          已有项目: 只初始化组件目录(默认 ui)
+  xui add <组件...>          拷贝组件(自动带上依赖组件)
+  xui add --all              拷贝全部组件
+  xui add <组件...> --dry-run
+                             只显示将创建/覆盖/跳过的文件
+  xui add <组件...> --view[=文件]
+                             打印组件源码, 不写本地
+  xui add <组件...> --diff[=文件]
+                             与本地文件做逐行 diff, 不写本地
+  xui update [组件...]       更新已装组件(省略组件名 = ui 目录里已装的全部)
+  xui list | xui search      列出/搜索组件
+  xui view <组件...>         打印组件源码
+  xui info                   显示 CLI / 项目环境信息
 
 选项:
-  --force               覆盖本地已修改的文件(默认: 警告并跳过)
+  -n, --name <项目名>   init: 新建项目目录
+  -f, --force           init: 允许写入非空项目目录(覆盖模板文件)
+  --no-install          init -n: 跳过自动 go mod tidy
+  -o, --overwrite       add/update: 覆盖本地已修改的文件
+  -p, --path <目录>     add/update: 组件目录(默认 ui)
+  -a, --all             add/update: 全部组件
+  -q, --query <词>      list/search: 按组件名过滤
+  -l, --limit <n>       list/search: 最多显示 n 个
+  -o, --offset <n>      list/search: 跳过前 n 个
+  -c, --cwd <目录>      先切换到该目录, 后续相对路径都以它为准
+  -s, --silent          只打印警告与错误
 
 数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
   不设                  自动选路: 直连 → Gitee 镜像 → 加速代理(ghfast / gh-proxy);
@@ -292,6 +578,11 @@ func usage() {
 func fatal(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, "xui: "+format+"\n", a...)
 	os.Exit(1)
+}
+
+// warn 打印警告: 不受 -s/--silent 影响(静默模式只压普通进度输出)。
+func warn(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, "xui: "+format+"\n", a...)
 }
 
 // moduleRoot 返回 xui 模块源码根目录(go run / go install 均可用):
@@ -309,62 +600,238 @@ func moduleRoot() string {
 // ---------------------------------------------------------------- 各命令实现
 
 func initProject(dir string, force bool) {
+	if err := scaffoldUI(dir, force); err != nil {
+		fatal("%v", err)
+	}
+	info("\n完成。接下来:")
+	info("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
+	info("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)", dir)
+	info("  3. 主题在 %s 中, 随意修改", filepath.Join(dir, "theme.go"))
+	info("  4. 改组件/主题前先看 %s (xcgui 的坑、令牌表、每个组件的画法都在里面)", filepath.Join(dir, "DESIGN.md"))
+}
+
+// scaffoldUI 写 ui 目录: theme.go + DESIGN.md + 基础组件。普通 init 与 init -n 共用。
+func scaffoldUI(dir string, force bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fatal("创建目录失败: %v", err)
+		return fmt.Errorf("创建目录失败: %v", err)
 	}
 	themePath := filepath.Join(dir, "theme.go")
 	if _, err := os.Stat(themePath); err == nil {
-		fmt.Printf("跳过 %s (已存在)\n", themePath)
+		info("跳过 %s (已存在)", themePath)
 	} else if err := os.WriteFile(themePath, []byte(themeTemplate), 0o644); err != nil {
-		fatal("写入 theme.go 失败: %v", err)
+		return fmt.Errorf("写入 theme.go 失败: %v", err)
 	} else {
-		fmt.Printf("创建 %s\n", themePath)
+		info("创建 %s", themePath)
 	}
 
 	// 配套文档: 组件源码的注释里大量 "见 DESIGN 第 N 节", 拷给用户才是活的。
 	// 从模块根读(go run pkg@version 时位于模块缓存, 源码文件同样在), 读不到不阻断 init。
 	docPath := filepath.Join(dir, "DESIGN.md")
 	if _, err := os.Stat(docPath); err == nil {
-		fmt.Printf("跳过 %s (已存在)\n", docPath)
+		info("跳过 %s (已存在)", docPath)
 	} else if data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md")); err != nil {
-		fmt.Fprintf(os.Stderr, "xui: 读取 DESIGN.md 失败, 跳过: %v\n", err)
+		warn("读取 DESIGN.md 失败, 跳过: %v", err)
 	} else if err := os.WriteFile(docPath, data, 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "xui: 写入 DESIGN.md 失败: %v\n", err)
+		warn("写入 DESIGN.md 失败: %v", err)
 	} else {
-		fmt.Printf("创建 %s\n", docPath)
+		info("创建 %s", docPath)
 	}
 
 	// 拷入全部基础组件, 开箱即用(window 是快速开始示例用的主窗口封装)
-	add([]string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card", "window"}, dir, force)
-	fmt.Println("\n完成。接下来:")
-	fmt.Println("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
-	fmt.Printf("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)\n", dir)
-	fmt.Println("  3. 主题在 " + themePath + " 中, 随意修改")
-	fmt.Printf("  4. 改组件/主题前先看 %s (xcgui 的坑、令牌表、每个组件的画法都在里面)\n", docPath)
+	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: force})
+	return nil
 }
 
-// add 拷贝组件(含依赖闭包)到 uiDir; 空清单 = 全部组件(--all)。
-func add(names []string, uiDir string, force bool) {
+// initNewProject 创建完整项目目录: go.mod + main.go + README + .gitignore + ui/。
+// 目标目录已存在且非空时默认拒绝, force 允许覆盖模板文件(不动无关文件)。
+// noInstall = 跳过自动 go mod tidy(--no-install)。
+func initNewProject(name string, force, noInstall bool) error {
+	if err := validateProjectName(name); err != nil {
+		return err
+	}
+	if entries, err := os.ReadDir(name); err == nil {
+		if len(entries) > 0 && !force {
+			return fmt.Errorf("目录 %s 已存在且非空 (确认后加 --force 覆盖模板文件)", name)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("读取目录 %s 失败: %v", name, err)
+	}
+	if err := os.MkdirAll(name, 0o755); err != nil {
+		return fmt.Errorf("创建项目目录失败: %v", err)
+	}
+
+	module := moduleNameFromProject(name)
+	xuiVer, xcguiVer := templateVersions()
+	files := []struct{ name, body string }{
+		{"go.mod", fmt.Sprintf(goModTemplate, module, xuiVer, xcguiVer)},
+		{"main.go", fmt.Sprintf(mainGoTemplate, module, strconv.Quote(name))},
+		{"README.md", fmt.Sprintf(readmeTemplate, name)},
+		{".gitignore", gitignoreTemplate},
+	}
+	for _, f := range files {
+		path := filepath.Join(name, f.name)
+		action := "创建"
+		if _, err := os.Stat(path); err == nil {
+			action = "覆盖"
+		}
+		if err := os.WriteFile(path, []byte(f.body), 0o644); err != nil {
+			return fmt.Errorf("写入 %s 失败: %v", path, err)
+		}
+		info("%s %s", action, path)
+	}
+	if err := scaffoldUI(filepath.Join(name, "ui"), force); err != nil {
+		return err
+	}
+
+	depsReady := false
+	if !noInstall {
+		info("\n正在安装依赖 (go mod tidy)...")
+		if err := installGoModules(name); err != nil {
+			warn("依赖安装失败: %v", err)
+		} else {
+			depsReady = true
+			info("依赖安装完成")
+		}
+	}
+	if depsReady {
+		info("\n已创建项目 %s (module %s)\n\n接下来:\n  cd %s\n  go run .", name, module, name)
+	} else {
+		info("\n已创建项目 %s (module %s)\n\n接下来:\n  cd %s\n  go mod tidy\n  go run .", name, module, name)
+	}
+	return nil
+}
+
+// installGoModules 在项目目录执行 go mod tidy, 生成 go.sum 并拉取依赖。
+// GOWORK=off: 避免新项目被父目录的 go.work 接管, 依赖解析只按它自己的 go.mod。
+func installGoModules(dir string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "mod", "tidy")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	if msg := strings.TrimSpace(string(out)); msg != "" {
+		return fmt.Errorf("%v\n%s", err, msg)
+	}
+	return err
+}
+
+// validateProjectName 只接受单级目录名(项目在当前目录下创建); 想换模块路径改 go.mod。
+func validateProjectName(name string) error {
+	if name == "" {
+		return fmt.Errorf("项目名不能为空")
+	}
+	if name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("项目名只能是单级目录名: %q", name)
+	}
+	return nil
+}
+
+// moduleNameFromProject 把项目目录名转成合法的本地 Go module 路径:
+// 只保留 ASCII 字母/数字/._-, 空格转 -, 全被过滤掉时回退 app。
+func moduleNameFromProject(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
+			r == '.' || r == '-' || r == '_':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteByte('-')
+		}
+	}
+	s := strings.Trim(b.String(), ".-_")
+	if s == "" {
+		return "app"
+	}
+	return s
+}
+
+// templateVersions 解析生成的 go.mod 用的依赖版本: 正式构建从 build info 取 CLI
+// 自身版本与 xcgui 依赖版本, 本地 devel 构建回退到最近发布版。
+func templateVersions() (xuiVer, xcguiVer string) {
+	xuiVer, xcguiVer = fallbackXuiVersion, fallbackXcguiVersion
+	bi, ok := rdebug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	if bi.Main.Path == "github.com/twgh/xui" && isReleaseVersion(bi.Main.Version) {
+		xuiVer = bi.Main.Version
+	}
+	for _, d := range bi.Deps {
+		switch d.Path {
+		case "github.com/twgh/xui":
+			if isReleaseVersion(d.Version) {
+				xuiVer = d.Version
+			}
+		case "github.com/twgh/xcgui":
+			if isReleaseVersion(d.Version) {
+				xcguiVer = d.Version
+			}
+		}
+	}
+	return
+}
+
+// isReleaseVersion 判断 build info 里的版本能否直接写进 go.mod:
+// 排除 (devel)、+dirty(本地修改)与伪版本(vX.Y.Z-0.<时间戳>-<commit>, 该 commit
+// 不一定已推送/可拉取)。本地开发构建因此回退到 fallbackXuiVersion。
+func isReleaseVersion(v string) bool {
+	if !strings.HasPrefix(v, "v") || strings.Contains(v, "+") || strings.Contains(v, "-0.") {
+		return false
+	}
+	return true
+}
+
+// baseComponents 是 init 默认装好的基础组件(window 是模板主窗口用的封装)。
+var baseComponents = []string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card", "window"}
+
+// add 拷贝组件(含依赖闭包); --view/--diff 只展示不写文件。
+func add(opts componentOptions) {
 	src, reg := loadRegistry()
-	if len(names) == 0 {
+	names := opts.names
+	if opts.all {
 		names = allComponents(reg)
 	}
-	install(src, reg, resolveNames(reg, names), uiDir, force)
+	if len(names) == 0 {
+		fatal("用法: xui add <组件...> | xui add --all  (组件见 xui list)")
+	}
+	order := resolveNames(reg, names)
+	switch {
+	case opts.view:
+		viewFiles(src, reg, order, opts.viewFile)
+	case opts.diff:
+		diffFiles(src, reg, order, opts.uiDir, opts.diffFile)
+	default:
+		install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
+	}
 }
 
 // update 更新已装组件: 省略组件名时 = uiDir 里已装的全部(按 registry 依赖闭包)。
-func update(names []string, uiDir string, force, all bool) {
+func update(opts componentOptions) {
 	src, reg := loadRegistry()
+	names := opts.names
 	switch {
-	case all:
+	case opts.all:
 		names = allComponents(reg)
 	case len(names) == 0:
-		if names = installedComponents(reg, uiDir); len(names) == 0 {
-			fmt.Printf("%s 下没有已安装的组件 (先用 xui add 装)\n", uiDir)
+		if names = installedComponents(reg, opts.uiDir); len(names) == 0 {
+			info("%s 下没有已安装的组件 (先用 xui add 装)", opts.uiDir)
 			return
 		}
 	}
-	install(src, reg, resolveNames(reg, names), uiDir, force)
+	order := resolveNames(reg, names)
+	switch {
+	case opts.view:
+		viewFiles(src, reg, order, opts.viewFile)
+	case opts.diff:
+		diffFiles(src, reg, order, opts.uiDir, opts.diffFile)
+	default:
+		install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
+	}
 }
 
 // allComponents 返回全部组件名(排序保证输出稳定)。
@@ -417,11 +884,14 @@ func installedComponents(reg *registry, uiDir string) []string {
 	return names
 }
 
-// install 逐文件写入: 本地没有则创建, 内容一致则跳过, 用户改过则警告跳过(--force 覆盖)。
+// install 逐文件写入: 本地没有则创建, 内容一致则跳过, 用户改过则警告跳过
+// (-o/--overwrite 覆盖)。dryRun 只打印将要发生的动作, 不创建任何文件/目录。
 // 多个组件共享同一文件(separator/badge)时只处理一次。
-func install(src *source, reg *registry, order []string, uiDir string, force bool) {
-	if err := os.MkdirAll(uiDir, 0o755); err != nil {
-		fatal("创建目录失败: %v", err)
+func install(src *source, reg *registry, order []string, uiDir string, overwrite, dryRun bool) {
+	if !dryRun {
+		if err := os.MkdirAll(uiDir, 0o755); err != nil {
+			fatal("创建目录失败: %v", err)
+		}
 	}
 	done := map[string]bool{}
 	for _, name := range order {
@@ -433,37 +903,223 @@ func install(src *source, reg *registry, order []string, uiDir string, force boo
 			done[dst] = true
 			data := readComponent(src, f)
 			old, err := os.ReadFile(dst)
+			missing := os.IsNotExist(err)
+			if err != nil && !missing {
+				fatal("读取 %s 失败: %v", dst, err)
+			}
 			switch {
-			case err != nil:
-				if err := os.WriteFile(dst, data, 0o644); err != nil {
-					fatal("写入失败: %v", err)
+			case missing:
+				if dryRun {
+					info("将创建 %s (%s)", dst, name)
+				} else {
+					if err := os.WriteFile(dst, data, 0o644); err != nil {
+						fatal("写入失败: %v", err)
+					}
+					info("创建 %s (%s)", dst, name)
 				}
-				fmt.Printf("创建 %s (%s)\n", dst, name)
 			case string(old) == string(data):
-				fmt.Printf("已一致 %s\n", dst)
-			case force:
-				if err := os.WriteFile(dst, data, 0o644); err != nil {
-					fatal("写入失败: %v", err)
+				info("已一致 %s", dst)
+			case overwrite:
+				if dryRun {
+					info("将覆盖 %s (本地修改已丢弃)", dst)
+				} else {
+					if err := os.WriteFile(dst, data, 0o644); err != nil {
+						fatal("写入失败: %v", err)
+					}
+					info("覆盖 %s (本地修改已丢弃)", dst)
 				}
-				fmt.Printf("覆盖 %s (本地修改已丢弃)\n", dst)
 			default:
-				fmt.Printf("警告 %s 本地已修改, 跳过 (确认后加 --force 覆盖)\n", dst)
+				warn("%s 本地已修改, 跳过 (确认后加 -o/--overwrite 覆盖)", dst)
 			}
 		}
 	}
 }
 
-func list() {
+// viewFiles 打印组件的文件内容(不写本地); filter 非空时按文件名过滤。
+func viewFiles(src *source, reg *registry, order []string, filter string) {
+	done := map[string]bool{}
+	found := false
+	for _, name := range order {
+		for _, f := range reg.Components[name].Files {
+			if done[f] {
+				continue
+			}
+			done[f] = true
+			if filter != "" && filepath.Base(f) != filepath.Base(filter) {
+				continue
+			}
+			found = true
+			info("\n===== %s (%s) =====", f, name)
+			infoRaw(string(readComponent(src, f)))
+		}
+	}
+	if !found {
+		info("没有匹配的文件: %s", filter)
+	}
+}
+
+// view 打印指定组件的全部源码(依赖闭包内的共享文件去重)。
+func view(names []string) {
 	src, reg := loadRegistry()
-	fmt.Printf("可用组件 (数据源: %s):\n", src.desc())
-	for _, name := range allComponents(reg) {
+	viewFiles(src, reg, resolveNames(reg, names), "")
+}
+
+// infoCommand 打印本机环境与项目状态(不拉 registry, 离线可用)。
+func infoCommand() {
+	ver := "(devel)"
+	if bi, ok := rdebug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+		ver = bi.Main.Version
+	}
+	wd, _ := os.Getwd()
+	info("xui: %s", ver)
+	info("工作目录: %s", wd)
+	info("Go: %s", runtime.Version())
+	if entries, err := os.ReadDir("ui"); err == nil {
+		n := 0
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
+				n++
+			}
+		}
+		info("ui/: %d 个 Go 文件", n)
+	} else {
+		info("ui/: 未初始化")
+	}
+	src := strings.TrimSpace(os.Getenv("XUI_REGISTRY"))
+	if src == "" {
+		src = "默认(远程 main 分支)"
+	}
+	info("数据源: %s", src)
+}
+
+// diffFiles 把本地文件与 registry 内容做逐行 diff(不写本地); filter 非空时按文件名过滤。
+func diffFiles(src *source, reg *registry, order []string, uiDir, filter string) {
+	done := map[string]bool{}
+	found := false
+	for _, name := range order {
+		for _, f := range reg.Components[name].Files {
+			if done[f] {
+				continue
+			}
+			done[f] = true
+			if filter != "" && filepath.Base(f) != filepath.Base(filter) {
+				continue
+			}
+			remote := string(readComponent(src, f))
+			dst := filepath.Join(uiDir, f)
+			local, err := os.ReadFile(dst)
+			if err != nil && !os.IsNotExist(err) {
+				fatal("读取 %s 失败: %v", dst, err)
+			}
+			if err == nil && string(local) == remote {
+				continue
+			}
+			found = true
+			infoRaw(unifiedDiff(dst, "components/"+f, string(local), remote))
+		}
+	}
+	if !found {
+		info("没有差异")
+	}
+}
+
+// unifiedDiff 生成整文件级的 unified diff(一个 hunk), 用于 add/update --diff。
+// 不做 3 行上下文裁剪: 组件文件通常只有几百行, 整文件输出更直观。
+func unifiedDiff(localName, remoteName, local, remote string) string {
+	a, b := splitDiffLines(local), splitDiffLines(remote)
+	if len(a) == 0 && len(b) == 0 {
+		return ""
+	}
+	// LCS 动态规划; 组件源码规模下内存/时间都可接受。
+	n, m := len(a), len(b)
+	dp := make([][]int32, n+1)
+	for i := range dp {
+		dp[i] = make([]int32, m+1)
+	}
+	for i := n - 1; i >= 0; i-- {
+		for j := m - 1; j >= 0; j-- {
+			if a[i] == b[j] {
+				dp[i][j] = dp[i+1][j+1] + 1
+			} else if dp[i+1][j] >= dp[i][j+1] {
+				dp[i][j] = dp[i+1][j]
+			} else {
+				dp[i][j] = dp[i][j+1]
+			}
+		}
+	}
+	var out strings.Builder
+	fmt.Fprintf(&out, "--- %s\n+++ %s\n@@ -1,%d +1,%d @@\n", localName, remoteName, len(a), len(b))
+	for i, j := 0, 0; i < n || j < m; {
+		switch {
+		case i < n && j < m && a[i] == b[j]:
+			out.WriteString(" " + a[i] + "\n")
+			i++
+			j++
+		case j >= m || (i < n && dp[i+1][j] >= dp[i][j+1]):
+			out.WriteString("-" + a[i] + "\n")
+			i++
+		default:
+			out.WriteString("+" + b[j] + "\n")
+			j++
+		}
+	}
+	return out.String()
+}
+
+func splitDiffLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	s = strings.TrimSuffix(s, "\n")
+	return strings.Split(s, "\n")
+}
+
+// list 列出/搜索组件; -l/--limit 与 -o/--offset 按过滤后的顺序切片。
+func list(opts listOptions) {
+	src, reg := loadRegistry()
+	matched := filterComponents(allComponents(reg), opts.query)
+	start := opts.offset
+	if start > len(matched) {
+		start = len(matched)
+	}
+	end := len(matched)
+	if opts.limit > 0 && start+opts.limit < end {
+		end = start + opts.limit
+	}
+	info("可用组件 (数据源: %s):", src.desc())
+	if start == end {
+		if len(matched) == 0 {
+			info("  (没有匹配的组件)")
+		} else {
+			info("  (没有更多组件)")
+		}
+	}
+	for _, name := range matched[start:end] {
 		e := reg.Components[name]
 		extra := ""
 		if len(e.Deps) > 0 {
 			extra = "  (依赖: " + strings.Join(e.Deps, ", ") + ")"
 		}
-		fmt.Printf("  %-12s %s%s\n", name, strings.Join(e.Files, ", "), extra)
+		info("  %-12s %s%s", name, strings.Join(e.Files, ", "), extra)
 	}
+	if opts.query != "" || opts.limit > 0 || opts.offset > 0 {
+		info("\n共 %d 个匹配, 显示 %d 个", len(matched), end-start)
+	}
+}
+
+// filterComponents 按组件名做大小写不敏感的子串过滤(空 query = 全部)。
+func filterComponents(names []string, query string) []string {
+	q := strings.ToLower(query)
+	if q == "" {
+		return names
+	}
+	var out []string
+	for _, name := range names {
+		if strings.Contains(strings.ToLower(name), q) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 const themeTemplate = `package ui
@@ -493,4 +1149,110 @@ var dark = *xui.Dark()
 //		light.PrimaryForeground = xui.Hex("#ffffff")
 //		light.Radius = 8
 //	}
+`
+
+// goModTemplate 生成的 go.mod: 模块名取项目名, 依赖版本见 templateVersions。
+const goModTemplate = `module %s
+
+go 1.18
+
+require (
+	github.com/twgh/xui %s
+	github.com/twgh/xcgui %s
+)
+`
+
+// mainGoTemplate 生成的项目入口: AppWindow + 一张示例卡片(只用 init 装好的基础组件)。
+const mainGoTemplate = `package main
+
+import (
+	"github.com/twgh/xcgui/app"
+	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/xcc"
+	"github.com/twgh/xui"
+	ui "%s/ui"
+)
+
+func main() {
+	app.InitOrExit()
+	a := app.New(true) // xui 固定使用 Direct2D 渲染
+	a.EnableAutoDPI(true).EnableDPI(true)
+	a.SetPaintFrequency(10) // 重绘节流 10ms, hover 过渡约 60fps
+
+	w := ui.NewAppWindow(%s, 960, 640, ui.WithAppWindowMinSize(640, 480))
+	content := w.Content()
+	content.SetPadding(24, 24, 24, 24)
+	content.SetSpace(16)
+
+	_, stack := newCard(content.Handle, 12)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "欢迎使用 xui", stack.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "ui/ 目录是组件源码, 归你所有, 可随意修改。", stack.Handle))
+	xui.ItemFill(ui.NewInput(0, 0, 0, 0, stack.Handle, ui.WithPlaceholder("输入点什么...")))
+	xui.ItemFill(ui.NewCheckbox(0, 0, 0, 0, "记住我", stack.Handle))
+
+	row := xui.HStack(stack.Handle, 36, 8)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "开始使用", row.Handle), 104)
+	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "了解更多", row.Handle, ui.WithVariant(ui.ButtonOutline)), 104)
+
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "打开 ui/theme.go 改主题, 或看 ui/DESIGN.md 了解组件。", content.Handle).SetMuted())
+
+	w.Show(true)
+	a.Run()
+	a.Exit()
+}
+
+// newCard 建一张宽度铺满、高度按内容自撑的卡片, 返回卡片与内容区。
+func newCard(parent int, space int32) (*ui.Card, *widget.LayoutEle) {
+	c := ui.NewCard(0, 0, 0, 0, parent)
+	c.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	c.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	return c, c.ContentStack(space)
+}
+`
+
+const readmeTemplate = `# %s
+
+由 xui 生成的项目骨架: Go + xcgui + xui(shadcn 风格自绘组件)。
+
+## 运行
+
+~~~bash
+go run .
+~~~
+
+生成项目时已自动执行 go mod tidy; 如果初始化时用了 --no-install, 先跑一次 go mod tidy。
+
+## 目录
+
+- main.go — 应用入口(AppWindow + 示例卡片)
+- ui/ — 组件源码拷贝, 归你所有, 可随意修改
+- ui/theme.go — 主题令牌, 改这里全局换肤
+- ui/DESIGN.md — 组件自定义指南与 xcgui 踩坑全集
+
+## 添加组件
+
+~~~bash
+go run github.com/twgh/xui/cmd/xui@latest add table tree
+~~~
+
+组件名见 xui list 的输出。
+
+## 依赖
+
+- github.com/twgh/xui — 组件运行时 + CLI
+- github.com/twgh/xcgui — 界面库(Windows, Direct2D)
+`
+
+const gitignoreTemplate = `# 编译产物
+*.exe
+*.test
+*.out
+
+# Go 工作区
+go.work
+go.work.sum
+
+# 编辑器
+.idea/
+.vscode/
 `

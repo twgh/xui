@@ -32,12 +32,27 @@
 
 ## 快速开始
 
+### 新建项目(推荐)
+
 ```bash
-# 在你的项目根目录执行(需要 Go 1.18+;项目要先有 go.mod,没有就先 go mod init)
+go run github.com/twgh/xui/cmd/xui@latest init -n myapp
+cd myapp
+go run .
+```
+
+`-n` 会创建一个完整项目目录:`go.mod` + `main.go`(AppWindow + 示例卡片) + `README.md` +
+`.gitignore` + `ui/`(theme.go + 基础组件 + DESIGN.md), 并**自动执行 `go mod tidy`** 装好
+依赖(生成 `go.sum`)。目录已存在且非空时需加 `-f/--force`; 想跳过依赖安装(如离线)加
+`--no-install`, 之后手动跑一次 `go mod tidy`。
+
+### 已有项目
+
+```bash
+# 先在你的项目根目录执行(需要 Go 1.18+;项目要先有 go.mod,没有就先 go mod init)
 go run github.com/twgh/xui/cmd/xui@latest init
 ```
 
-`init` 会创建 `ui/` 目录:写入 `theme.go`(你的主题文件)、拷入全部基础组件,外加一份
+此时 `init` 只创建 `ui/` 目录:写入 `theme.go`(你的主题文件)、拷入全部基础组件,外加一份
 `DESIGN.md` —— 组件源码的注释里到处是"见 DESIGN 第 N 节",这份**自定义指南**随源码一起安装在你的项目里:
 令牌表、组件解剖、xcgui 踩坑全集、已验证 API 清单都在里面。改组件前先翻它。
 
@@ -178,17 +193,35 @@ paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存归�
 ## CLI
 
 ```bash
-xui init [ui目录]      # 初始化(默认 ui: theme.go + 基础组件 + DESIGN.md; 已存在则跳过)
-xui add button card    # 追加拷贝指定组件(自动带上依赖)
-xui add --all          # 拷贝全部组件
-xui update             # 更新已装组件(省略组件名 = ui/ 里已装的全部)
-xui update button      # 只更新指定组件(含依赖)
-xui list               # 列出可用组件
+xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + ui/)
+xui init [ui目录]       # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md; 已存在则跳过)
+xui add button card     # 追加拷贝指定组件(自动带上依赖)
+xui add --all           # 拷贝全部组件
+xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地
+xui add card --view     # 打印组件源码(可加 =card.go 只看某个文件), 不写本地
+xui add card --diff     # 与本地文件做逐行 diff, 不写本地
+xui update              # 更新已装组件(省略组件名 = ui/ 里已装的全部)
+xui update button       # 只更新指定组件(含依赖)
+xui list                # 列出可用组件
+xui search -q table     # 按组件名搜索(等价于 list -q table)
+xui view button         # 打印组件源码
+xui info                # 显示 CLI / 项目环境信息
 ```
 
-选项:`--force` 覆盖本地已修改的文件(默认会警告并跳过)。
+选项:
 
-组件源码拷进项目后归你所有;`add` / `update` 都不会覆盖你本地改过的文件,确认要丢弃本地改动时加 `--force`。
+- `init -n, --name <项目名>`: 新建项目目录(`-n myapp` 等价于在当前目录创建 `myapp/`);
+- `init -f, --force`: 允许写入非空项目目录(覆盖模板文件, 不动无关文件);
+- `init --no-install`: 跳过生成后的自动 `go mod tidy`(离线时用);
+- `add/update -o, --overwrite`: 覆盖本地已修改的组件文件(默认警告并跳过);
+- `add/update -p, --path <目录>`: 组件目录, 默认 `ui`;
+- `add/update -a, --all`: 全部组件;
+- `add --dry-run`: 预览动作, 不写文件;
+- `add --view[=文件]` / `--diff[=文件]`: 查看源码 / 与本地对比, 不写文件;
+- `list/search -q, --query <词>` / `-l, --limit <n>` / `-o, --offset <n>`: 过滤、限制数量、跳过前 n 个;
+- 通用 `-c, --cwd <目录>` 先切工作目录, `-s, --silent` 只打印警告与错误。
+
+组件源码拷进项目后归你所有;`add` / `update` 都不会覆盖你本地改过的文件,确认要丢弃本地改动时加 `-o/--overwrite`。
 
 **数据源**:默认从仓库 `main` 分支现拉组件,组件永远最新。想锁 CLI 与组件的版本时,把 `@latest`
 换成具体版本号(如 `@v0.1.0`)。默认源**自动选路**:
