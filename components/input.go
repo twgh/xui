@@ -33,6 +33,7 @@ const (
 	inputStepColW  int32 = 20 // 上下三角形态的箭头列宽
 	inputArrowBox  int32 = 8  // 箭头 SVG 的绘制方块边长(正方形, 图标管线按短边铺满)
 	inputArrowPad  int32 = 2  // 箭头列上下端的留白(叠加列在输入框里自带的 4px 边距, 上下各 ~6px)
+	inputSink      int32 = 1  // 内嵌按钮按下时图标下沉的距离(原生桌面按钮的按压习惯)
 )
 
 // 步进器的上下箭头, 24 网格 SVG path(`!` 前缀 = 填充形状, 走 FillGeometry)。
@@ -142,7 +143,7 @@ type Input struct {
 
 	hover      inputPart       // 当前悬停的内嵌件
 	hoverInput bool            // 鼠标是否停在输入框上(stepAuto 用)
-	pressed    inputPart       // 当前按下的内嵌件(partNone = 无; 按压反馈: 图标缩小)
+	pressed    inputPart       // 当前按下的内嵌件(按压反馈"下沉"用; partNone = 无)
 	parts      []inputPartRect // 内嵌件命中区(paint 时重算)
 }
 
@@ -547,6 +548,7 @@ func (i *Input) paintAddons(p *xui.Painter, t *xui.Theme, st xui.State) {
 			i.parts = append(i.parts, inputPartRect{part: part, rc: rc, dim: dim})
 		}
 		hv := xui.HoverItem(i.Handle, int32(part), hot)
+		pressedNow := i.pressed == part && enabled && !dim
 		if hv > 0 {
 			// 幽灵按钮的悬停底: bg-accent, 圆角比壳体小一档。**按下期间保持不变** ——
 			// shadcn/tailwind 的按钮没有 active 变换, 按下 = 悬停态延续;
@@ -564,6 +566,12 @@ func (i *Input) paintAddons(p *xui.Painter, t *xui.Theme, st xui.State) {
 		c := xui.Fade(base, t.AccentForeground, hv)
 		if dim {
 			c = base.ScaleAlpha(0.4) // 到值域边界: 按钮不可用(视觉上变淡, 同 shadcn 的禁用钮)
+		}
+		// 按压反馈 = 图标下沉 1px(原生桌面按钮的习惯); 底色与颜色都保持悬停态。
+		// 直接读元素状态(st.Pressed), 不用自己簿记按下的是哪一枚。
+		if pressedNow {
+			glyph.Top += inputSink
+			glyph.Bottom += inputSink
 		}
 		p.Icon(icon, &glyph, c, 2)
 		rx = rc.Left - inputGap
@@ -672,17 +680,21 @@ func (i *Input) paintStepArrows(p *xui.Painter, t *xui.Theme, st xui.State, rx, 
 			i.parts = append(i.parts, inputPartRect{part: part, rc: rc, dim: dim})
 		}
 		hv := xui.HoverItem(i.Handle, int32(part), hot)
-		pressedNow := i.pressed == part && enabled
-		// 悬停**没有底色**(原生微调控件也是) —— 反馈只有箭头变色; 按下再叠加"缩小"
+		// 悬停**没有底色**(原生微调控件也是) —— 反馈只有箭头变色;
+		// 按下箭头**下沉 1px**, 颜色回到常态。
+		pressedNow := i.pressed == part && enabled && !dim
 		c := xui.Fade(base, t.AccentForeground, hv)
 		if pressedNow {
-			// 按下: 颜色回到常态, 只靠"缩小"表达按压
 			c = base
 		}
 		if dim {
 			c = base.ScaleAlpha(0.4)
 		}
-		p.Icon(svg, &box, c, 0, pressScale(i.pressOf(part, pressedNow)))
+		if pressedNow {
+			box.Top += inputSink
+			box.Bottom += inputSink
+		}
+		p.Icon(svg, &box, c, 0)
 	}
 	halfBtn(partStepUp, xc.RECT{Left: colL, Top: top, Right: colR, Bottom: top + half}, upBox, arrowUpSVG, i.atMax(cur))
 	halfBtn(partStepDown, xc.RECT{Left: colL, Top: top + half, Right: colR, Bottom: top + inputBtnSz}, dnBox, arrowDownSVG, i.atMin(cur))
@@ -691,28 +703,13 @@ func (i *Input) paintStepArrows(p *xui.Painter, t *xui.Theme, st xui.State, rx, 
 
 // ===== 交互 =====
 
-// pressOf 取内嵌按钮的按压过渡值(0..1) —— 按下时图标缩小的动画走 hover 同一套
-// 过渡内核(150ms), 键从 8 起避开 hover 占用的 1..4。
-func (i *Input) pressOf(part inputPart, active bool) float64 {
-	return xui.HoverItem(i.Handle, int32(part)+8, active)
-}
-
-// pressScale 由按压过渡值算图标缩放: 松开 1.0, 按到底 0.8(原生微调控件的按压幅度)。
-func pressScale(pv float64) float32 { return float32(1 - 0.2*pv) }
-
-// setPressed 记录/清除按下的内嵌件并驱动缩放动画(过渡内核会负责期间的重绘)。
+// setPressed 记录/清除按下的内嵌件(按压反馈"下沉"用)。paint 时直接读字段,
+// 因为 Down 事件被吞掉后原生不会把元素置入 Down 态, st.Pressed 拿不到(实测)。
 func (i *Input) setPressed(part inputPart) {
 	if i.pressed == part {
 		return
 	}
-	old := i.pressed
 	i.pressed = part
-	if old != partNone {
-		i.pressOf(old, false)
-	}
-	if part != partNone {
-		i.pressOf(part, true)
-	}
 	i.Redraw(true)
 }
 
@@ -720,12 +717,9 @@ func (i *Input) setPressed(part inputPart) {
 // 同时挂在 LBUTTONDBLCLK 上: 连点的第二次按下是**双击消息**, 不走 LButtonDown,
 // 只绑 Down 的话原生 Edit 会拿双击去"选中单词"(现象: 双击 + 把数字选成蓝底)。
 //
-// 为什么动作不在按下时做: 按住不放会连续触发, 且原生 Edit 会先接管这次按下;
-// 抬起消息每次都有, 放在这里每点都生效。
+// dim(到值域边界)的按钮: 点击照吞(防双击穿透), 但不记按下 —— 禁用态图标必须完全静止。
 func (i *Input) onLButtonDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 	if pr, ok := i.partAt(pPt.X, pPt.Y); ok && i.IsEnable() {
-		// dim(到值域边界)的按钮: 点击照吞(防双击穿透到原生 Edit), 但**不进按压反馈**
-		// —— 禁用态的图标不该跟着缩放/变色(实测: 值为 0 时按 ↓, 灰箭头也做了缩小动画)。
 		if !pr.dim {
 			i.setPressed(pr.part)
 		}
@@ -737,7 +731,7 @@ func (i *Input) onLButtonDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bo
 	return 0
 }
 
-// onLButtonUp 在抬起处执行内嵌按钮的动作(见 onLButtonDown 的说明), 并结束按压反馈。
+// onLButtonUp 在抬起处执行内嵌按钮的动作(见 onLButtonDown 的说明)。
 func (i *Input) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 	if pr, ok := i.partAt(pPt.X, pPt.Y); ok && i.IsEnable() {
 		*pbHandled = true
