@@ -888,7 +888,7 @@ func toastFont(th *xui.Theme, bold bool) int {
 
 // toastTextHeight 量出按宽度折行后的文本高度(绘制与量测必须同一字体、同一限宽)。
 //
-// 实测(探针 .verify/probetext, 微软雅黑 13px): GetTextShowRect 返回的 CY **已含行距**
+// 实测(微软雅黑 13px): GetTextShowRect 返回的 CY **已含行距**
 // —— 单行 18、两行 36、三行 53, 与 p.Text 的实际排版一致。别自作聪明再按行数补偿,
 // 那样底部会多出一行留白(第一版踩过)。
 func toastTextHeight(text string, hFont int, w int32) int32 {

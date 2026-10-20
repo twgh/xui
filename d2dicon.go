@@ -128,7 +128,7 @@ func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, str
 	}
 
 	// 位置不烘进几何(见 d2dGeomKey): 用渲染目标的变换矩阵把几何平移到目标位置。
-	// **必须成对恢复** —— 实测(探针 .verify/probexform2)炫彩自己的绘制(XDraw_*)在绘制时用的是
+	// **必须成对恢复** —— 实测炫彩自己的绘制(XDraw_*)在绘制时用的是
 	// 当前变换, 残留的矩阵会把页面内容一起平移; 成对设置/恢复后不受影响。
 	if ox != 0 || oy != 0 {
 		prev, err := rt.GetTransform()

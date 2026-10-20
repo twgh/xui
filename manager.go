@@ -139,7 +139,7 @@ func BindWindowBackground(hWindow int) {
 // OnThemeChangeFor 订阅主题切换, 并在 hEle 销毁时**自动反注册**。
 // 组件构造函数用它替代裸 OnThemeChange —— 元素/窗口反复创建时, 裸订阅会在全局
 // 订阅表里无限累积, 句柄被复用后还可能把回调刷到无关元素上。
-// 实测(探针 .verify/probe_destroy): 元素显式 Destroy、随父窗口 CloseWindow 连带销毁、
+// 实测: 元素显式 Destroy、随父窗口 CloseWindow 连带销毁、
 // 以及嵌套在子容器里的元素, 都会触发 XE_DESTROY, 所以这条绑定是可靠的。
 func OnThemeChangeFor(hEle int, fn func(*Theme)) {
 	if fn == nil {
