@@ -33,8 +33,13 @@ import (
 //   - 分组标签: text-xs muted; 分隔栏: 1px bg-border 全宽(-mx-1; 原生槽高仅
 //     4px, shadcn my-1 的 9px 不可达, 已知差异);
 //   - 快捷键: 右对齐 text-xs muted(借助原生 "\t" 解析预留宽度);
-//   - 宽度: 原生按内容自适应(shadcn 是 trigger 宽 / min-w-32; XMenu_SetItemWidth
-//     实测不改变布局, 触发区对齐宽度不可达, 已知差异);
+//   - 宽度: 对齐 shadcn `w-(--radix-dropdown-menu-trigger-width) min-w-32` ——
+//     弹层宽 = max(触发区宽, 128), 通过 XMenu_SetItemWidth 逐条目设
+//     "目标宽 − 固定开销"的文本区宽实现(探针实测设定值完全覆盖自然宽, 长条目
+//     不会撑宽弹层, 长文本绘制时硬裁剪, 见 DESIGN 64); 需要更宽用 Width(w)
+//     (= shadcn 在 Content 上加 className="w-56" 的覆盖);
+//     右键菜单(PopupAtCursor)无触发区, 退化为内容自适应 + 128 下限;
+//     子菜单条目不设宽(shadcn 的 SubContent 是内容自适应 + min-w-96, 不跟触发区);
 //   - 定位: 触发元素下方左对齐 sideOffset=4(radix Content 默认), 下方放不下
 //     翻到上方, 屏幕边缘夹紧。
 //
@@ -53,6 +58,12 @@ type Menu struct {
 
 	// 弹出锚点(物理屏幕像素); 翻转/夹紧由原生菜单自带, 不需也不应手动校正
 	ax, yBelow int32
+	// 触发元素宽(逻辑像素, PopupAtElement 记录; 0 = 无触发元素, 如右键菜单),
+	// 用于弹层宽对齐触发区(shadcn 的 w-(--trigger-width) min-w-32)。
+	triggerW int32
+	// 显式弹层宽(Width 设置, 对应 shadcn 在 Content 上加 className="w-56" 这类
+	// 覆盖); 0 = 走组件默认(max(触发区宽, 128))。
+	width int32
 }
 
 type menuKind int8
@@ -184,6 +195,7 @@ func (m *Menu) PopupAtElement(hEle int) {
 	const sideOffset = 4
 	m.ax = mrc.Left + int32(float64(trig.Left)*sc)
 	m.yBelow = mrc.Top + int32(float64(trig.Bottom)*sc) + int32(sideOffset*sc)
+	m.triggerW = trig.Right - trig.Left // 逻辑像素(XEle_GetWndClientRect 未缩放)
 	m.popup(hw)
 }
 
@@ -196,7 +208,39 @@ func (m *Menu) PopupAtCursor(hWindow int) {
 	var pt wapi.POINT
 	wapi.GetCursorPos(&pt)
 	m.ax, m.yBelow = pt.X, pt.Y
+	m.triggerW = 0 // 右键菜单无触发区, 弹层宽退化为内容自适应 + min-w-32 下限
 	m.popup(hWindow)
+}
+
+// menuMinWidth 是 shadcn DropdownMenuContent 的 min-w-32(8rem = 128 逻辑像素)。
+const menuMinWidth int32 = 128
+
+// menuWidthOverhead 是弹窗宽与最大条目文本区宽之间的固定开销(逻辑像素):
+// 由左右边框(SetBorderSize(4) ×2)与原生文本间隔等构成, 探针实测 48;
+// 随 BorderSize / 文本间隔设置变化, 条目高 28 / LeftWidth(0) 配置下成立。
+const menuWidthOverhead int32 = 48
+
+// menuTargetWidth 弹层目标宽: 显式 Width 优先(shadcn 的 className="w-56" 覆盖);
+// 默认 = shadcn 组件默认类 `w-(--radix-dropdown-menu-trigger-width) min-w-32`
+// = max(触发区宽, 128)(radix 确实提供该变量, = popper-anchor-width); 无触发
+// 元素(右键菜单)时取 128 下限 —— 给条目设 128−开销 后弹窗宽 = max(128, 内容
+// 自然宽), 即"内容自适应 + 下限"。
+func (m *Menu) menuTargetWidth() int32 {
+	if m.width > 0 {
+		return m.width
+	}
+	if m.triggerW > menuMinWidth {
+		return m.triggerW
+	}
+	return menuMinWidth
+}
+
+// Width 显式指定弹层宽度(逻辑像素), 对应 shadcn 在 DropdownMenuContent 上加
+// `className="w-56"` 这类宽度覆盖(w-56 = 224)。
+// 不调用时走组件默认: 弹层宽 = max(触发区宽, 128)。
+func (m *Menu) Width(w int32) *Menu {
+	m.width = w
+	return m
 }
 
 func (m *Menu) popup(hWindow int) {
@@ -239,6 +283,19 @@ func (m *Menu) build(hWindow int) *widget.Menu {
 			flags = xcc.Menu_Item_Flag_Check
 		}
 		menu.AddItem(it.id, text, it.parent, flags)
+	}
+	// 弹层宽对齐 shadcn(dropdown-menu.tsx `w-(--radix-dropdown-menu-trigger-width)
+	// min-w-32`): 给每个顶级条目设"目标宽 − 开销"的文本区宽, 弹窗宽即为目标宽。
+	// 依据(探针实测, 见 DESIGN 64): XMenu_SetItemWidth 逐项设"文本区宽度",
+	// 弹窗宽 = max(各条目有效宽) + 固定开销, 且设定值完全覆盖自然宽(长条目不会
+	// 撑宽弹层) —— 自然宽 < 目标宽时弹层仍是目标宽, min-w-32 语义随之自然成立。
+	// 子菜单条目不设: shadcn 的 SubContent 是内容自适应 + min-w-96, 不跟触发区。
+	target := m.menuTargetWidth()
+	w := target - menuWidthOverhead
+	for _, it := range m.items {
+		if it.parent == 0 && it.kind != menuKindSeparator {
+			menu.SetItemWidth(it.id, w)
+		}
 	}
 	ensureMenuSkin(hWindow)
 	menuSkin.active = m
@@ -511,7 +568,12 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 		d.SetBrushColor(uint32(fore))
 	}
 	d.SetTextAlign(xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter | xcc.TextFormatFlag_NoWrap)
+	// 长文本硬裁剪(shadcn overflow-x-hidden): 宽度对齐触发区后弹层不再按内容
+	// 撑宽, 超出文本区的墨迹裁掉, 与 radix 行为一致(原生条目文本同样裁在弹层
+	// 边缘, 探针截图验证)。
+	d.SetClipRect(&textRc)
 	d.DrawText(name, &textRc)
+	d.ClearClip()
 
 	// 快捷键: 右对齐 text-xs muted(hot 时跟随 accent-foreground)
 	if shortcut != "" {

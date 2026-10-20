@@ -1034,6 +1034,8 @@ var (
 // showDemoMenu 弹出演示菜单, 覆盖全部条目类型。
 func showDemoMenu(hEle int) {
 	m := ui.NewMenu()
+	// 明确指定弹层宽度; 不加 Width 时组件默认 = max(触发区宽, 128)。
+	m.Width(224)
 	m.Item("复制", ui.MenuShortcut("Ctrl+C"), ui.MenuOnSelect(func() {}))
 	m.Item("粘贴", ui.MenuShortcut("Ctrl+V"))
 	m.Separator()

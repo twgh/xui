@@ -41,7 +41,7 @@
 - ✅ **Tooltip 跟随主题切换**(2026-10-09):气泡挂在屏幕上时点"切换主题", 它过去会保持旧配色 —— 自建的独立置顶小窗不在 `RegisterWindow` 重绘清单里, 得自己 `OnThemeChangeFor` 订阅并重算+重绘(见 58); 顺带把窗口扩展样式改成 `window.NewEx` 一次传入。验收=光标停在主题按钮上直接点它, 气泡当场从深色块变浅色块(`.verify/hovercheck.ps1`)
 
 - ✅ **表格"首屏自适应列宽塌成最小值"修复**(2026-10-10):数据页刚进来时最后一列只有 20px(表头裁成"日"、单元格全显示 `...`), 拉一下窗口才正常 —— 根因是"列宽按元素宽度算, 而 `Show()` 之前元素宽度是 0"; 现在组件自己订阅 `List.AddEvent_Size` 自愈(`lastW` 防震荡), 调用方不必再记得调 `FitColumns`(见 60)
-- ✅ **Menu 弹层阴影 + p-1 边距 + 进场淡入**(2026-10-10):弹窗转 `Window_Transparent_Shadow`(官方 DrawMenu 同款, 圆角+投影+整窗 alpha 一次解决); `SetBorderSize(4)` 落实 shadcn p-1(高亮距弹层左右边缘 4 逻辑像素对称, 修掉"与参考差 1px"); 分隔栏改全宽(-mx-1); 进场 fade-in 100ms(Presence 挂宿主窗驱动)。三处深坑: 过渡闭包捕获 `Menu_PopupWnd_` **指针**会读到 0/垃圾(0=淡入冻结, 垃圾=崩进程), 必须拷贝句柄值 + `XC_IsHXCGUI` 守卫; 对菜单弹窗 `SetWindowPos` 位移直接崩进程 → slide-in 不可实现, 只做淡入; `XMenu_SetItemWidth` 实测无效, trigger 宽对齐不可达(见 64)
+- ✅ **Menu 弹层阴影 + p-1 边距 + 进场淡入**(2026-10-10):弹窗转 `Window_Transparent_Shadow`(官方 DrawMenu 同款, 圆角+投影+整窗 alpha 一次解决); `SetBorderSize(4)` 落实 shadcn p-1(高亮距弹层左右边缘 4 逻辑像素对称, 修掉"与参考差 1px"); 分隔栏改全宽(-mx-1); 进场 fade-in 100ms(Presence 挂宿主窗驱动)。三处深坑: 过渡闭包捕获 `Menu_PopupWnd_` **指针**会读到 0/垃圾(0=淡入冻结, 垃圾=崩进程), 必须拷贝句柄值 + `XC_IsHXCGUI` 守卫; 对菜单弹窗 `SetWindowPos` 位移直接崩进程 → slide-in 不可实现, 只做淡入; `XMenu_SetItemWidth` 实测有效(早期"无效"结论已修正, 见 64)
 - ✅ **暗色禁用/未选态配色按 shadcn 逐像素对齐**(2026-10-10):复选框未选态(暗色 `bg-input/30`)、复选框/单选框/开关的禁用态、禁用输入框过去都错用 `WithAlpha` 覆盖半透明令牌(暗色下画出发亮灰块 / 亮白框线 / 全亮白滑块)。现在统一为"**先铺宿主底色(Card) + 每个图层各乘 50%**":形状全部跟随, 原生文字保持原色, 输入框禁用文字预混变淡(见 61); 顺带修掉透明元素重绘**不擦底**留下的旧像素(焦点环 / 上一个状态)。验收=探针 `.verify/statecheck` 让"切换后的渲染"与"直接建成目标状态"逐像素比, 亮/暗各一轮都是 **0 像素差**(色值与 shadcn 的整组 50% 合成理论值逐条吻合)
 - ✅ **本地 shadcn 参照页(界面展示)与新 demo 同构**(2026-10-10):`shadcn/src/App.tsx` 重整为与 demo 一致的六页(**基础 / 表单 / 导航 / 反馈 / 数据 / 图标**), 内容逐条对应(6 变体 × 4 档尺寸 + 4 方形图标档、徽章 6 变体、CardFooter、多行与禁用输入、滑动条两档、开关 default/sm、Tabs default/line/纵向、恒 7 槽分页、表格 12 行 + 树); 新增 `?tab=form` 这类初始页签参数(对应 demo 的 `XUI_HOME_PAGE`), 便于分页截图对照; `pnpm build` 通过
 
@@ -143,7 +143,7 @@
   - **`MenuInset()`**: 对应 shadcn dropdown-menu 的 `inset` prop(`data-inset:pl-7`), 条目文字左缘 = 28,
     普通条目借此与带勾选/图标的条目对齐;demo 菜单加了一项。
   - **`--chart-1..5` / `--sidebar-*` 令牌进 `xui.Theme`**(Chart1..5 / Sidebar*): 组件库不用, 供用户应用取用;
-    `manager_test.go` 有守卫防漏填。DESIGN 第四节末只剩"Menu 弹层宽度=触发区宽"这一条不可达差异。
+    `manager_test.go` 有守卫防漏填。DESIGN 第七节已无菜单宽度差异(原"`XMenu_SetItemWidth` 无效"结论有误, 已修正, 见 DESIGN 64)。
 
 - ✅ **修复: 弹层键撞车导致"点击没反应"(2026-10-17, 用户报障)**: 选过 sm 下拉框后第一次点"打开菜单"无反应(第二次才开),
   反过来先开菜单再点下拉框也无反应。事件日志证明 BN_CLICK 已触发 —— 菜单确实弹了, 但 alpha 停在 `AlphaFloor`(全透明)且处于模态,
@@ -302,9 +302,23 @@
   ④ 原来的"描边展开算法上游化"**作废**: 描边走 D2D 真描边(见上一条), CPU 展开代码已从本仓库删除。
   探针 `.verify/probeprimitives`(8 种图元/几何一次抓图全对)+ `wapi/com`/`d2d` 单测(槽位/布局/nil 安全)在 CI 与离线均可跑。
 
+- ✅ **Menu 弹层宽度对齐 shadcn**(2026-10-20, trigger 宽 + min-w-32 下限):
+  - 依据: `XMenu_SetItemWidth` 逐项设"条目文本区宽度"实测有效 —— 弹窗宽 = max(各条目有效宽) + 固定开销
+    (BorderSize(4)/条目高 28 配置下 48), 且**设定值完全覆盖自然宽**(自然文本宽 229 的长条目设 60 后弹窗仍 108,
+    长条目不会撑宽弹层)。早期"实测无效"的结论已证伪修正(详见 DESIGN 64)。
+  - 实现(`components/menu.go`): `PopupAtElement` 记录触发区宽(逻辑像素), build 时给每个**顶级**条目设
+    `max(触发区宽, 128) − 48` → 弹层宽 = max(触发区宽, 128), shadcn `w-(--radix-dropdown-menu-trigger-width)
+    min-w-32` 语义齐了; 右键菜单(PopupAtCursor)无触发区 → 内容自适应 + 128 下限; 子菜单条目不设宽
+    (shadcn SubContent 是内容自适应 + min-w-96, 不跟触发区); 分隔栏不设。长文本由自绘 `XDraw_SetClipRect`
+    硬裁剪(= overflow-x-hidden; 原生条目文本同样裁在弹层边缘, 截图验证)。显式覆盖 = `Menu.Width(w)`
+    (对应 shadcn 在 Content 上加 `className="w-56"` 这类宽度类 —— **shadcn 参考卡 App.tsx:815 就是 w-56=224**,
+    所以参考页里看到的"默认"其实带了这个覆盖; demo 已同步 `Width(224)` 对齐)。
+  - 验收: 探针(直接用 `ui.Menu` + 真实触发钮)断言弹窗客户区宽 —— 触发钮 240 → 240 ✓, 触发钮 60 → 128 ✓,
+    `Width(224)` → 224 ✓; 窄触发 + 超长条目截图放大: 文本裁在弹层边缘内、勾选/快捷键/destructive/label 全部正常;
+    `go build/vet/test ./...` 通过。
+
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
 
-- ℹ️ Menu 弹层宽度 = 触发区宽(`XMenu_SetItemWidth` 实测无效, 见 DESIGN 64, 不可达)。
 - ℹ️ Input 的文字/光标/选区/IME 由原生 Edit 绘制(只开放字体/字色/占位符色/插入符色/内边距, 见 DESIGN 三 第 4 条 / 23 / 61)。
 - ℹ️ Toast 只支持四角堆叠(无顶部/底部居中、无 richColors, 见 DESIGN 75)。
 - 完整清单见 DESIGN 第七节。

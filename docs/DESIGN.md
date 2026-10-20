@@ -286,7 +286,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条);**弹层进场 fade-in 100ms**(整窗 alpha: 弹出回调里转 `Window_Transparent_Shaped`, 见第八节 30/69);**aria-invalid** = 红边框 + ring-3 destructive/20(暗色 /40), 见上表 | select.tsx + combobox.go(弹层接管路线见第八节 30) |
-| menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场 fade-in 100ms(整窗 alpha, 无位移 —— 位移会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; `MenuInset` 条目文字左缩进到 28(pl-7); 宽度按内容自适应(shadcn 的 trigger 宽/min-w-32 不可达 —— XMenu_SetItemWidth 实测无效, 已知差异) | dropdown-menu.tsx + menu.go(原生菜单皮肤, 见第八节 36/64) |
+| menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场 fade-in 100ms(整窗 alpha, 无位移 —— 位移会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; `MenuInset` 条目文字左缩进到 28(pl-7); 弹层宽 = `Width(w)` 显式指定, 否则 max(触发区宽, 128)(shadcn 的 `w-(--radix-dropdown-menu-trigger-width) min-w-32`, 经 `XMenu_SetItemWidth` 逐条目设"目标宽 − 开销"实现, 长文本硬裁剪, 见第八节 64); 右键菜单(PopupAtCursor)无触发区, 退化为内容自适应 + 128 下限; 子菜单条目不跟宽(shadcn SubContent 内容自适应 + min-w-96) | dropdown-menu.tsx + menu.go(原生菜单皮肤, 见第八节 36/64) |
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx + table.go(原生 List 接管路线见第八节 40) |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本库令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
@@ -333,7 +333,6 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | 组件库自己不用, 供你的应用取用; 机械转译新主题时一并填(运行时的主题测试有守卫) |
-| Menu 弹层宽度 | 宽度 = 触发区宽, 无法做到 shadcn 的"按内容自适应"(`XMenu_SetItemWidth` 实测无效, 见第八节 64) | 其余 aria-invalid / CardAction / MenuInset / chart·sidebar 令牌均已补齐 |
 
 **下划线(Button link / Badge link)**: xcgui 没有下划线文本标志位(`TextFormatFlag_` 里没有), 只能手绘: 宽度用 `xui.TextWidth` 量, y = 行盒中心 + 0.3em + 4px(`underline-offset-4`), 1px 线(`button.go` / `separator.go`)。实测(150% DPI): "Link" 下方 1 条 43 物理像素宽的横线, 紧贴文字下沿。
 
@@ -387,7 +386,6 @@ ui/
 
 | 差异 | 原因 |
 |---|---|
-| Menu 弹层宽度 = 触发区宽 | `XMenu_SetItemWidth` 实测无效(第八节 64) |
 | Input 的文字/光标/选区/IME 由原生 Edit 绘制 | 都在 DLL 内;只开放字体/字色/占位符色/插入符色/文字内边距。要完全控制就得自绘文字并接管光标闪烁、选区命中、IME 组合窗 |
 | Toast 只支持四角堆叠, 无 `richColors` | 顶部/底部居中与"按类型给卡面上底色"未做(第八节 75) |
 | 没有 `asChild` / `data-slot` / `data-state` | React/DOM 概念, Go 侧没有对应物 |
@@ -524,7 +522,7 @@ ui/
     - 项几何(`SetBorderSize(4,4,4,4)` 后探针实测): `Menu_DrawItem` 的 `RcItem` 四周各留 **4px**(= shadcn p-1; 默认边距是 3, 差的那 1px 就是"高亮距弹层左右边缘与参考不一致"的根因), 高度 = `SetItemHeight`(28); **分隔栏槽高固定 4px**, 1px 线画在 `Top+2`、左右越过边距铺满弹层(shadcn `-mx-1`);
     - `"	"` 快捷键: 原生把 `	` 后的文本算进自适应宽度并预留 `NShortcutKeyWidth`(实测 "Ctrl+C"=37) → 把 "名字	快捷键" 整串传给 AddItem, 自绘时拆开分别渲染就得到右对齐快捷键, 不用自己量宽;
     - `SetLeftWidth(0)` 去掉左侧图标条; Label 项借 `Menu_Item_Flag_Disable` 实现"不可高亮不可点"(自绘时对 kind==label 单独配色);
-    - **`XMenu_SetItemWidth` 实测不改变布局**(条目/窗口宽度纹丝不动, 探针复现两次, 官方示例注释"设置菜单宽度"无法复现) → shadcn 的"弹层宽 = 触发区宽 / min-w-32"对齐不可达, 宽度维持内容自适应(已知差异);
+    - **`XMenu_SetItemWidth` 逐项设置条目文本区宽度, 有效**(官方 DrawMenu 示例同款用法: AddItem 后对单个 nID 调用, 返回 true 表示受理; 探针实测: 3 条短条目弹窗宽 104, 全部条目 `SetItemWidth(300)` → 348, 只设其中一条 → 同样 348, 全部设 60 → 108): 弹窗宽 = **max(各条目有效宽) + 固定开销**(未设条目按自然文本宽计入; 开销 = 边框 + 文本间隔等, 条目高 28 / BorderSize(4) / LeftWidth(0) 配置下实测 48); **设定值完全覆盖自然宽** —— 自然文本宽 229 的长条目设 60 后弹窗仍 108, 长条目不会撑宽弹层。shadcn 的"弹层宽 = 触发区宽 + min-w-32 下限"(dropdown-menu.tsx `w-(--radix-dropdown-menu-trigger-width) min-w-32`)由此实现: 逐条目设 `max(触发区宽, 128) − 开销`(menu.go 已接入) —— 长文本由自绘 `XDraw_SetClipRect` 硬裁剪, 与 radix 的 overflow-x-hidden 一致(原生条目文本同样裁在弹层边缘, 截图验证); 显式覆盖 = `Menu.Width(w)`(对应 shadcn 在 Content 上加 `className="w-56"` 这类宽度类, demo 参考卡就是 w-56=224, 实测精确命中); 右键菜单(PopupAtCursor)无触发区, 退化为"内容自适应 + 128 下限"; 子菜单条目不设宽(shadcn SubContent 是内容自适应 + min-w-96, 不跟触发区);
     - 事件拓扑: 窗口级 `XWM_MENU_DRAW_BACKGROUND/DRAWITEM` 对该窗口弹出的**所有**菜单生效(每次新建的菜单对象、各自的子菜单窗口都触发) → 皮肤每窗口只注册一次(map 守卫), 绘制实时取令牌, 换肤零成本; `Menu_PopupWnd` 对每个弹出窗口(含子菜单)各触发一次且顶级先于子菜单 → 阴影处理放这里全命中;
     - 弹窗定位: `Popup` 收**物理像素**; 元素锚点 = `XEle_GetWndClientRect`(逻辑, 原点=窗口矩形含阴影边距) + `wapi.GetWindowRect`(物理) 换算; **翻转/夹紧/子菜单定位全部原生自带, 任何手动位置校正都不做** —— 详见下一条;
     - ⚠️ **验收坑: 全屏缩略截图里暗色弹层窗口会显示成亮底**(截图管线对弹层窗口的合成/缩放问题), 区域放大看才是真实效果 —— 弹层类组件的暗色验收一律以 zoom/像素测量为准, 不要凭全屏缩略图下结论。
