@@ -1,6 +1,6 @@
 # xui — shadcn 风格的 xcgui 自绘组件库: 自定义指南
 
-> 这份文档随 `xui init` 安装到你的 `ui/` 目录, 是组件源码的配套说明书。源码注释里的
+> 这份文档随 `xui init` / `xui init -n` 安装到你的 `ui/` 目录, 是组件源码的配套说明书。源码注释里的
 > "见 DESIGN 第 N 节 / 第八节 N 条"指的就是这里 —— 章节与条目编号稳定, 只增不改。
 >
 > **按需查**:
@@ -341,14 +341,26 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 ## 五、安装与更新
 
 ```bash
-xui init                 # 创建 ui/: theme.go + 基础组件 + 这份说明
+xui init -n myapp        # 新建完整项目: go.mod + main.go + README + .gitignore + ui/,
+                         # 并自动执行 go mod tidy
+xui init                 # 已有项目: 只创建 ui/(theme.go + 基础组件 + 这份说明)
+
 xui add button dialog    # 追加组件(自动带上依赖的组件)
 xui add --all            # 拷贝全部组件
+xui add card --dry-run   # 预览将创建/覆盖/跳过的文件, 不写本地
+xui add card --view      # 打印 registry 源码(可加 =card.go 只看某个文件)
+xui add card --diff      # 与本地文件做逐行 diff
 xui update               # 更新已装组件(省略组件名 = ui/ 里已装的全部)
 xui list                 # 列出可用组件
+xui search -q table      # 按名称搜索(等价于 list -q table)
+xui view button          # 打印组件源码
+xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
 ```
 
-- **`update` 不覆盖你改过的文件**:逐个比对内容 —— 本地没有则创建、内容一致则跳过、被改过则警告跳过;确认要丢掉本地改动时加 `--force`。这是 copy-not-install 的前提:代码归你。
+- **默认不覆盖你改过的文件**:逐个比对内容 —— 本地没有则创建、内容一致则跳过、被改过则警告跳过;确认要丢掉本地改动时加 `-o/--overwrite`。这是 copy-not-install 的前提:代码归你。
+- **组件目录**默认 `ui`, 可用 `add/update -p/--path <目录>` 指定;全局 `-c/--cwd` 先切换工作目录, `-s/--silent` 只打印警告与错误。
+- **新建项目**:目标目录已存在且非空时需 `-f/--force`(只覆盖模板文件, 不动无关文件)。
+- **依赖安装**:`xui init -n` 生成后默认在项目目录执行 `go mod tidy`(生成 `go.sum`);离线或想手动控制时加 `--no-install`, 之后自己跑一次。
 - **数据源**:默认从仓库 `main` 分支拉组件(永远最新),自动在直连 / Gitee 镜像 / 加速代理之间选路;`XUI_REGISTRY` 可指向本地目录或任意 `http(s)://` 基址(离线开发 / 锁定组件版本),显式设置时只走你写的地址、失败直接报错(不静默降级)。
 - **registry.json** 是组件清单:每个组件登记 `files`(要拷的文件,含跨文件助手)与 `deps`(依赖的其它组件)。CLI 只拷这些 `.go` 文件;运行时(`github.com/twgh/xui`)与图标子包(`github.com/twgh/xui/icons`)是 Go 模块依赖,不进 `ui/`。
 
@@ -356,7 +368,7 @@ xui list                 # 列出可用组件
 
 ## 六、ui/ 目录与组件依赖
 
-`xui init` 之后你的项目里是:
+`xui init` / `xui init -n` 之后你的项目里是:
 
 ```
 ui/
