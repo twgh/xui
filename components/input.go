@@ -58,9 +58,13 @@ const (
 // inputPartRect 是一个内嵌件在元素客户区里的矩形(逻辑像素)。
 // 每次 paint 重算并存进 Input.parts, 供点击命中与悬停判定复用 ——
 // 不用"按下标反推坐标"是因为内嵌件是按宽度从右往左排的, 反推容易和绘制走样。
+//
+// dim = 该内嵌件当前处于"不可用"态(如步进器到值域边界): 点击仍然要被吞掉
+// (防双击穿透到原生 Edit, 见 onLButtonDown), 但**不触发按压反馈也不执行动作**。
 type inputPartRect struct {
 	part inputPart
 	rc   xc.RECT
+	dim  bool
 }
 
 // inputStep 是步进器的值域与步进。decimals 由 step 的小数位推出,
@@ -420,14 +424,14 @@ func (i *Input) syncPadding() {
 	i.SetBorderSize(left, 7, right, 5)
 }
 
-// partAt 返回元素客户区坐标 (x,y) 落在哪个内嵌件上。
-func (i *Input) partAt(x, y int32) (inputPart, bool) {
+// partAt 返回元素客户区坐标 (x,y) 落在哪个内嵌件上(含其 dim 标记)。
+func (i *Input) partAt(x, y int32) (inputPartRect, bool) {
 	for _, s := range i.parts {
 		if x >= s.rc.Left && x < s.rc.Right && y >= s.rc.Top && y < s.rc.Bottom {
-			return s.part, true
+			return s, true
 		}
 	}
-	return partNone, false
+	return inputPartRect{part: partNone}, false
 }
 
 // setHover 切换悬停的内嵌件并立即重绘(延迟重绘会被合并, 高亮要等到鼠标停下才出现)。
@@ -480,8 +484,8 @@ func (i *Input) trackHover() {
 		}
 		var rc xc.RECT
 		xc.XEle_GetWndClientRect(i.Handle, &rc)
-		part, _ := i.partAt(pPt.X-rc.Left, pPt.Y-rc.Top)
-		i.setHover(part)
+		pr, _ := i.partAt(pPt.X-rc.Left, pPt.Y-rc.Top)
+		i.setHover(pr.part)
 		return 0
 	})
 	w.AddEvent_MouseLeave(func(hWin int, pbHandled *bool) int {
@@ -540,7 +544,7 @@ func (i *Input) paintAddons(p *xui.Painter, t *xui.Theme, st xui.State) {
 			// 命中区**永远**登记(含到边界的 +/−): 否则这一下会落到底下的原生 Edit,
 			// 连点时第二下变成"双击选中单词"(实测: 值到 100 再连点 + 会把 100 选成蓝底)。
 			// 到边界时只是变灰、不响应动作(activate 里的 stepBy 会夹住), 但点击仍被吞掉。
-			i.parts = append(i.parts, inputPartRect{part: part, rc: rc})
+			i.parts = append(i.parts, inputPartRect{part: part, rc: rc, dim: dim})
 		}
 		hv := xui.HoverItem(i.Handle, int32(part), hot)
 		pressedNow := i.pressed == part && enabled
@@ -669,7 +673,7 @@ func (i *Input) paintStepArrows(p *xui.Painter, t *xui.Theme, st xui.State, rx, 
 		hot := enabled && !dim && i.hover == part
 		if enabled {
 			// 命中区无条件登记(理由同 btn: 到边界时也不能让点击穿透到原生 Edit)
-			i.parts = append(i.parts, inputPartRect{part: part, rc: rc})
+			i.parts = append(i.parts, inputPartRect{part: part, rc: rc, dim: dim})
 		}
 		hv := xui.HoverItem(i.Handle, int32(part), hot)
 		pressedNow := i.pressed == part && enabled
@@ -723,8 +727,12 @@ func (i *Input) setPressed(part inputPart) {
 // 为什么动作不在按下时做: 按住不放会连续触发, 且原生 Edit 会先接管这次按下;
 // 抬起消息每次都有, 放在这里每点都生效。
 func (i *Input) onLButtonDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if part, ok := i.partAt(pPt.X, pPt.Y); ok && i.IsEnable() {
-		i.setPressed(part)
+	if pr, ok := i.partAt(pPt.X, pPt.Y); ok && i.IsEnable() {
+		// dim(到值域边界)的按钮: 点击照吞(防双击穿透到原生 Edit), 但**不进按压反馈**
+		// —— 禁用态的图标不该跟着缩放/变色(实测: 值为 0 时按 ↓, 灰箭头也做了缩小动画)。
+		if !pr.dim {
+			i.setPressed(pr.part)
+		}
 		*pbHandled = true
 		return 0
 	}
@@ -735,9 +743,11 @@ func (i *Input) onLButtonDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bo
 
 // onLButtonUp 在抬起处执行内嵌按钮的动作(见 onLButtonDown 的说明), 并结束按压反馈。
 func (i *Input) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if part, ok := i.partAt(pPt.X, pPt.Y); ok && i.IsEnable() {
+	if pr, ok := i.partAt(pPt.X, pPt.Y); ok && i.IsEnable() {
 		*pbHandled = true
-		i.activate(part)
+		if !pr.dim {
+			i.activate(pr.part)
+		}
 	}
 	i.setPressed(partNone)
 	return 0
