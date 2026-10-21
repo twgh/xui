@@ -359,21 +359,29 @@ func (t *Tooltip) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		bubble.Bottom = p.Rc.Top + p.H() - tipArrow
 	}
 
-	// 箭头: 45° 旋转的方块(菱形), 中心压在气泡边线上; 先画箭头再画气泡, 气泡盖住内侧一半,
-	// 露出的三角形高 tipArrow(底宽 2*tipArrow), 尖端正好落在窗口边缘 = 目标元素边缘上。
+	// 箭头: 只画露在气泡外的三角形(底宽 2*tipArrow), 底边与气泡边线严格重合。
+	// 不要改回"画完整菱形 + 气泡盖住内侧一半": XEle_SetAlpha 是**逐图元**混合而不是
+	// 整层合成 —— 淡入/淡出到半透明时, 被气泡盖住的那半个菱形会二次叠色, 看起来像
+	// "倒三角上方浮出一个正三角"(见 DESIGN 第八节 89)。箭头与气泡的填充不能重叠。
+	// 尖端留 1px 在窗口内(窗口边缘 = 目标元素边缘), 避免被元素矩形裁掉。
 	cx := (p.Rc.Left + p.Rc.Right) / 2
-	cy := bubble.Bottom - 1
-	if t.below {
-		cy = bubble.Top + 1
-	}
 	half := tipArrow
 	p.Draw.SetBrushColor(uint32(th.Foreground))
-	p.Draw.FillPolygon([]xc.POINT{
-		{X: cx, Y: cy - half},
-		{X: cx + half, Y: cy},
-		{X: cx, Y: cy + half},
-		{X: cx - half, Y: cy},
-	})
+	if t.below {
+		base := bubble.Top
+		p.Draw.FillPolygon([]xc.POINT{
+			{X: cx - half, Y: base},
+			{X: cx + half, Y: base},
+			{X: cx, Y: p.Rc.Top + 1},
+		})
+	} else {
+		base := bubble.Bottom
+		p.Draw.FillPolygon([]xc.POINT{
+			{X: cx - half, Y: base},
+			{X: cx + half, Y: base},
+			{X: cx, Y: p.Rc.Bottom - 1},
+		})
+	}
 
 	// 气泡: bg-foreground, rounded-md
 	p.FillRound(&bubble, th.Foreground, tipRadius)
