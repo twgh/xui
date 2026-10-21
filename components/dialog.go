@@ -28,7 +28,58 @@ const (
 	// dlgTextOver: 文本元素的上下外扩量。行盒按 CSS 的 leading-none/默认行高算,
 	// 但元素内文字是垂直居中且被裁在元素内, 需要外扩几个像素才放得下字形
 	dlgTextOver int32 = 3
+	// 原生 Button 载体绘制文字时会再内缩一圈: 量折行高度要用收窄后的宽度,
+	// 否则最后一行会被裁掉并出现省略号(同 alert.go, 见 DESIGN 第八节 90)
+	dlgTextInsetX int32 = 12
+	dlgTextPadY   int32 = 4
 )
+
+// AlertDialog 几何常量(对齐 alert-dialog.tsx (radix-nova), 单位逻辑像素):
+const (
+	alertDlgSmallW     int32 = 320 // max-w-xs(20rem)
+	alertDlgDefaultW   int32 = 384 // data-[size=default]:sm:max-w-sm
+	alertDlgHeadGap    int32 = 6   // AlertDialogHeader 的 gap-1.5
+	alertDlgTitleH     int32 = 24  // text-base(16) 默认行高 1.5rem(没有 leading-none)
+	alertDlgMediaSize  int32 = 40  // AlertDialogMedia 的 size-10
+	alertDlgMediaIcon  int32 = 24  // media 里的 svg 是 size-6
+	alertDlgMediaGapX  int32 = 16  // has-media 时的 gap-x-4
+	alertDlgMediaGapY  int32 = 8   // media 的 mb-2(小尺寸上下堆叠时)
+	alertDlgSmallBreak int32 = 640 // tailwind 的 sm 断点: 更窄时 default 也用 xs 宽
+)
+
+// AlertDialogSize 对应 alert-dialog.tsx 的 size prop(类型放在 dialog.go: 对话框面板
+// 布局要按尺寸算宽度与页脚排列, dialog 单独安装时也必须能编译)。
+type AlertDialogSize int
+
+const (
+	// AlertDialogSizeDefault: 宽 320/384(窄窗口 320, 桌面 384), 头部左对齐, 页脚右对齐。
+	AlertDialogSizeDefault AlertDialogSize = iota
+	// AlertDialogSizeSmall: 宽 320, 头部居中, 页脚两个按钮等宽双列(grid-cols-2)。
+	AlertDialogSizeSmall
+)
+
+// AlertDialogMediaTone 控制 AlertDialogMedia 图标的配色。
+type AlertDialogMediaTone int
+
+const (
+	// AlertDialogMediaMuted: bg-muted + text-muted-foreground(默认)。
+	AlertDialogMediaMuted AlertDialogMediaTone = iota
+	// AlertDialogMediaDestructive: bg-destructive/10 + text-destructive(暗色 /20)。
+	AlertDialogMediaDestructive
+)
+
+// alertDialogPanelWidth 按尺寸与 Body 宽算 AlertDialog 面板宽:
+// sm 恒 320; default 在 <640 断点为 320、否则 384; 都不超过 Body 宽 − 2rem。
+func alertDialogPanelWidth(size AlertDialogSize, bodyW int32) int32 {
+	pw := alertDlgDefaultW
+	if size == AlertDialogSizeSmall || bodyW < alertDlgSmallBreak {
+		pw = alertDlgSmallW
+	}
+	if max := bodyW - 2*dlgPad; pw > max {
+		pw = max
+	}
+	return pw
+}
 
 // 对话框用到的虚拟键码。
 const (
@@ -71,6 +122,26 @@ type Dialog struct {
 	descText  string
 	showClose bool
 
+	// AlertDialog 形态(由 alertdialog.go 配置, Dialog 自身不设置):
+	//   - alert: 头部间距/行高换 alert-dialog.tsx 的一套, 页脚可按尺寸走双列;
+	//   - alertSize: default = 左对齐头 + 右对齐页脚, sm = 居中头 + 等宽双列页脚;
+	//   - media: 40×40 的图标块(可带破坏性配色);
+	//   - dismissOutside = false: 点遮罩不关闭(radix AlertDialog 的 onInteractOutside preventDefault);
+	//   - initialFocus: 打开时强制聚焦的元素(AlertDialog 聚焦 Cancel, 而不是内容区首项)。
+	alert          bool
+	alertSize      AlertDialogSize
+	media          *widget.Element
+	mediaIcon      string
+	mediaTone      AlertDialogMediaTone
+	dismissOutside bool
+	initialFocus   int
+
+	// 可滚动内容: 内容区外包一个 ScrollArea, 头部/页脚固定(对应文档的
+	// "Scrollable Content / With Sticky Footer")。scrollMax <= 0 时用 70vh。
+	scroll    *ScrollArea
+	scrollOn  bool
+	scrollMax int32
+
 	// fadeKey 是本实例的 presence 键(见 xui.NextPresenceKey): 所有对话框共用宿主窗口的
 	// 键空间, 固定键会撞上别的弹层或上一个对话框已完成的过渡(过渡不启动 → 对话框全透明)。
 	fadeKey   int32
@@ -78,12 +149,18 @@ type Dialog struct {
 	open      bool
 	suspended bool // 最小化挂起中: 子树已同步隐藏, 还原后重新 Show(见构造函数注释)
 	focusIdx  int  // 焦点序列的当前位置(Tab 循环的兜底基准)
+	lastFocus int  // 最近一次真实聚焦的控件(关闭上层模态后还原焦点用)
 
 	panel    xc.RECT // 面板矩形(遮罩局部坐标 —— 遮罩贴在 Body 上, 原点不再是窗口 (0,0))
 	footerRc xc.RECT // 页脚带矩形(同上)
 
 	onClose []func()
 }
+
+// 模态栈: 一个宿主窗口上可能叠多层(例如对话框里再开一个 AlertDialog)。
+// 只有栈顶响应 ESC / Tab / 遮罩点击, 否则一次 ESC 会把两层一起关掉,
+// 两层 KeyDown 回调还会互相抢焦点。
+var modalStack []*Dialog
 
 // DialogOption 对话框配置项, 构造时传入。
 type DialogOption func(*Dialog)
@@ -94,13 +171,21 @@ func WithDialogWidth(w int32) DialogOption { return func(d *Dialog) { d.width = 
 // WithDialogCloseButton 是否显示右上角关闭按钮(默认显示)。
 func WithDialogCloseButton(b bool) DialogOption { return func(d *Dialog) { d.showClose = b } }
 
+// WithDialogScroll 让内容区可以纵向滚动(头部与页脚固定, 对应 shadcn 文档的
+// "Scrollable Content / With Sticky Footer"): 内容放进 ScrollArea(), 高度超过
+// maxHeight 后出滚动条; maxHeight <= 0 时取窗口 Body 高的 70%。
+func WithDialogScroll(maxHeight int32) DialogOption {
+	return func(d *Dialog) { d.scrollOn = true; d.scrollMax = maxHeight }
+}
+
 // NewDialog 创建对话框(默认隐藏)。hWnd 为宿主窗口句柄, 对话框覆盖整个窗口。
 func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	win := app.NewWindowByHandle(hWnd)
 	if win == nil {
 		return nil
 	}
-	d := &Dialog{hWnd: hWnd, win: win, width: dlgDefaultW, showClose: true, fadeKey: xui.NextPresenceKey()}
+	d := &Dialog{hWnd: hWnd, win: win, width: dlgDefaultW, showClose: true,
+		dismissOutside: true, fadeKey: xui.NextPresenceKey()}
 	for _, o := range opts {
 		o(d)
 	}
@@ -118,6 +203,13 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	d.overlay.EnableDrawBorder(false)
 	d.overlay.AddEvent_Paint(d.onPaint)
 	d.overlay.AddEvent_LButtonDown(d.onOverlayDown)
+	// modal 打开时阻止滚轮穿透到页面的 ScrollArea(浏览器里 body 不滚);
+	// 对话框内的 ScrollArea / 原生列表在子元素上就把滚轮消费掉, 不会到这里
+	d.overlay.EnableEvent_XE_MOUSEWHEEL(true)
+	d.overlay.AddEvent_MouseWheel(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		*pbHandled = true
+		return 0
+	})
 
 	// 背景模糊层: 抓窗快照 + 盒式模糊, 在遮罩之下、其余内容之上(见 backdrop.go)
 	d.backdrop = newBackdrop(hWnd)
@@ -125,7 +217,9 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	// shadcn: text-base font-medium(500) —— 16px + 中等字重(不是 Bold 的 17px)
 	d.title = NewLabel(0, 0, 0, dlgTitleH, "", d.overlay.Handle).SetMedium()
 	d.title.SetFontSize(16)
-	d.desc = NewLabel(0, 0, 0, dlgDescH, "", d.overlay.Handle).SetMuted()
+	// 折行: 窄面板/长标题不会截断; 高度由 layout 按面板宽量出(见 textHeight)
+	d.title.SetWrap()
+	d.desc = NewLabel(0, 0, 0, dlgDescH, "", d.overlay.Handle).SetMuted().SetWrap()
 
 	d.content = widget.NewElement(0, 0, 0, 0, d.overlay.Handle)
 	d.content.EnableBkTransparent(true)
@@ -133,6 +227,14 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	// 原生焦点框与边框都要灭: 点击容器会聚焦到它, 框架会给它画蓝框/深色边框
 	d.content.EnableFocus(false)
 	d.content.EnableDrawBorder(false)
+
+	if d.scrollOn {
+		d.scroll = NewScrollArea(0, 0, 0, 0, d.content.Handle)
+		if d.scroll != nil {
+			d.scroll.EnableSwitchFocus(false)
+			d.scroll.Content().EnableSwitchFocus(false)
+		}
+	}
 
 	if d.showClose {
 		d.closeBtn = NewButton(0, 0, dlgCloseSize, 0, "", d.overlay.Handle,
@@ -165,6 +267,10 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	// WM_SIZE/SIZE_MINIMIZED 抓时机; ②WM_ACTIVATE/WM_SIZE 里直接操作元素会把
 	// 还原流程的合成打断(实测全窗白屏), 恢复动作放 AfterFunc 中延迟到消息循环。
 	win.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+		if message == wapi.WM_DESTROY {
+			dropModalStack(d.hWnd)
+			return 0
+		}
 		if message == wapi.WM_SIZE {
 			switch wParam {
 			case 1: // SIZE_MINIMIZED: 挂起 —— 同步隐藏整组(Hide 的淡出完成回调是异步的, 最小化期间不会执行)
@@ -193,9 +299,14 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 							d.overlay.Redraw(false)
 							xc.XWnd_Redraw(d.hWnd, true)
 							d.focusIdx = 0
-							if fs := d.focusables(); len(fs) > 0 {
-								d.setCaretWidthOf(fs[0], 1) // 挂起时清过焦点, caret 已销毁, 重建即到位
-								xc.XWnd_SetFocusEle(d.hWnd, fs[0])
+							// 多层模态一起还原时, 只有栈顶抢焦点(各实例的 WM_SIZE 都会跑)
+							if d.isTopModal() {
+								if fs := d.focusables(); len(fs) > 0 {
+									h := d.defaultFocus(fs)
+									d.lastFocus = h
+									d.setCaretWidthOf(h, 1) // 挂起时清过焦点, caret 已销毁, 重建即到位
+									xc.XWnd_SetFocusEle(d.hWnd, h)
+								}
 							}
 						}
 					})
@@ -215,6 +326,7 @@ func (d *Dialog) SetTitle(s string) *Dialog {
 		return d
 	}
 	d.titleText = s
+	d.title.SetText(s) // 先落地: layout 里的 WrappedHeight 读的是 Label 当前文本
 	d.title.Show(s != "")
 	d.relayoutIfOpen()
 	return d
@@ -226,6 +338,7 @@ func (d *Dialog) SetDescription(s string) *Dialog {
 		return d
 	}
 	d.descText = s
+	d.desc.SetText(s)
 	d.desc.Show(s != "")
 	d.relayoutIfOpen()
 	return d
@@ -247,7 +360,19 @@ func (d *Dialog) Content() int {
 	if d == nil || d.content == nil {
 		return 0
 	}
+	if d.scroll != nil {
+		return d.scroll.Content().Handle
+	}
 	return d.content.Handle
+}
+
+// ScrollArea 返回可滚动内容容器(仅在 NewDialog 传入 WithDialogScroll 后非 nil)。
+// 往它的 Content()/ContentStack() 里放内容; Content() 也直接返回这个内容区。
+func (d *Dialog) ScrollArea() *ScrollArea {
+	if d == nil {
+		return nil
+	}
+	return d.scroll
 }
 
 // ContentWidth 内容容器宽度(面板宽 - 左右 padding), 创建内容元素时作参考宽度。
@@ -256,7 +381,37 @@ func (d *Dialog) ContentWidth() int32 {
 	if w <= 0 {
 		w = dlgDefaultW
 	}
+	if d.alert {
+		w = alertDlgDefaultW
+		if d.alertSize == AlertDialogSizeSmall {
+			w = alertDlgSmallW
+		}
+	}
 	return w - 2*dlgPad
+}
+
+// addFooterButton 创建页脚按钮并登记(不绑定点击、不重排); AlertDialog 与 AddFooter 共用。
+func (d *Dialog) addFooterButton(text string, variant ButtonVariant) *Button {
+	// 用运行时 TextWidth 量单行宽(GetTextShowRect 传 width=0 会按"一个字符宽折行",
+	// 返回的 CX 只是一列宽 —— 英语/多字文本的按钮会被挤成两行, 见 DESIGN 第八节 48)
+	w := int32(0)
+	if f := xui.FontHandle(xui.FontSpec{
+		Family: xui.Current().FontDefault.Family,
+		Size:   buttonSpecs[ButtonSizeDefault].font,
+	}); f != 0 {
+		w = xui.TextWidth(text, f)
+	}
+	if w <= 0 {
+		w = 40
+	}
+	w += 2 * dlgBtnPadX // px-2.5
+	btn := NewButton(0, 0, w, 0, text, d.overlay.Handle, WithVariant(variant))
+	if btn == nil {
+		return nil
+	}
+	d.footers = append(d.footers, btn)
+	showEleTree(btn.Handle, d.open)
+	return btn
 }
 
 // AddFooter 在页脚追加一个按钮(右对齐排列, 高度用默认 h-8, 宽度按文字量出)。
@@ -265,22 +420,7 @@ func (d *Dialog) AddFooter(text string, variant ButtonVariant, onClick func()) *
 	if d == nil {
 		return d
 	}
-	w := int32(0)
-	if f := xui.FontHandle(xui.FontSpec{
-		Family: xui.Current().FontDefault.Family,
-		Size:   buttonSpecs[ButtonSizeDefault].font,
-	}); f != 0 {
-		var sz xc.SIZE
-		app.GetTextShowRect(text, -1, f, 0, 0, &sz)
-		// 该 API 的返回值约为实际绘制宽度的一半(144 DPI 实测: "保存" 返回 14.7 逻辑,
-		// 实际绘制 29.3), 直接拿它算宽度会导致按钮挤到文字上, 这里 ×2 校正
-		w = sz.CX * 2
-	}
-	if w <= 0 {
-		w = 40
-	}
-	w += 2 * dlgBtnPadX // px-2.5
-	btn := NewButton(0, 0, w, 0, text, d.overlay.Handle, WithVariant(variant))
+	btn := d.addFooterButton(text, variant)
 	if btn == nil {
 		return d
 	}
@@ -290,9 +430,19 @@ func (d *Dialog) AddFooter(text string, variant ButtonVariant, onClick func()) *
 			return 0
 		})
 	}
-	d.footers = append(d.footers, btn)
-	showEleTree(btn.Handle, d.open)
 	d.relayoutIfOpen()
+	return d
+}
+
+// BindClose 把任意可点击控件绑成"点击即关闭"(= shadcn 的 DialogClose)。
+func (d *Dialog) BindClose(t clickBinder) *Dialog {
+	if d == nil || t == nil {
+		return d
+	}
+	t.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		d.Close()
+		return 0
+	})
 	return d
 }
 
@@ -321,10 +471,64 @@ func (d *Dialog) materialize() {
 	d.refreshBackdrop()
 	showEleTree(d.overlay.Handle, true)
 	d.layout()
-	if d.backdrop != nil {
-		d.backdrop.SetZOrderEx(0, xcc.Zorder_Top)
+	raiseModalStack(d.hWnd)
+}
+
+// raiseModalStack 按打开顺序重抬所有对话框的 z 序: 后打开的(栈顶)必须压在
+// 先打开的上面。逐个"backdrop 再 overlay"地抬, 最后一个对话框的 overlay 在最高层。
+func raiseModalStack(hWnd int) {
+	for _, x := range modalStack {
+		if x == nil || x.hWnd != hWnd || !x.open || x.overlay == nil {
+			continue
+		}
+		if x.backdrop != nil {
+			x.backdrop.SetZOrderEx(0, xcc.Zorder_Top)
+		}
+		x.overlay.SetZOrderEx(0, xcc.Zorder_Top)
 	}
-	d.overlay.SetZOrderEx(0, xcc.Zorder_Top)
+}
+
+// pushModal 把对话框压入模态栈(重复打开时移到栈顶)。
+func (d *Dialog) pushModal() {
+	d.popModal()
+	modalStack = append(modalStack, d)
+}
+
+// popModal 从模态栈移除自己。
+func (d *Dialog) popModal() {
+	for i := len(modalStack) - 1; i >= 0; i-- {
+		if modalStack[i] == d {
+			modalStack = append(modalStack[:i], modalStack[i+1:]...)
+			return
+		}
+	}
+}
+
+// dropModalStack 丢弃某个宿主窗口上的模态记录(窗口销毁时调用, 避免句柄复用后
+// 旧对话框还在栈里冒充"栈顶")。
+func dropModalStack(hWnd int) {
+	out := modalStack[:0]
+	for _, x := range modalStack {
+		if x == nil || x.hWnd != hWnd {
+			out = append(out, x)
+		}
+	}
+	modalStack = out
+}
+
+// topModal 返回指定宿主窗口上的栈顶对话框(没有则 nil)。
+func topModal(hWnd int) *Dialog {
+	for i := len(modalStack) - 1; i >= 0; i-- {
+		if x := modalStack[i]; x != nil && x.hWnd == hWnd && x.open {
+			return x
+		}
+	}
+	return nil
+}
+
+// isTopModal 报告自己是不是宿主窗口上的栈顶模态。
+func (d *Dialog) isTopModal() bool {
+	return topModal(d.hWnd) == d
 }
 
 // clickBinder 任何带原生点击事件的控件(Button / Label / Checkbox / Radio / Switch ...)。
@@ -352,7 +556,12 @@ func (d *Dialog) Show() *Dialog {
 		return d
 	}
 	d.open = true
+	d.pushModal()
 	d.materialize()
+	if d.scroll != nil {
+		// shadcn 每次打开都重新挂载内容, 滚动位置回到顶部; 本实现复用元素, 手动归零
+		d.scroll.ScrollPosYV(0)
+	}
 	// 进场: 整组(模糊层 + 遮罩 + 面板 + 全部子元素)从全透明淡入 —— 对齐 shadcn dialog 的
 	// data-open:animate-in fade-in-0 zoom-in-95(时长 100ms); 缩放在 xcgui 里做不到
 	// (元素级 ani 对自绘元素无效, 见 DESIGN 第八节 47), 这里只做淡入。
@@ -363,19 +572,21 @@ func (d *Dialog) Show() *Dialog {
 	xc.XWnd_Redraw(d.hWnd, true)
 	d.focusIdx = 0
 	fs := d.focusables()
-	if len(fs) > 0 {
+	focus := d.defaultFocus(fs)
+	if focus != 0 {
 		// 插入符宽度只在 caret 创建(获得焦点)时生效 —— 对已显示的 caret 改宽度无效,
 		// 清焦点再聚焦才生效(实测)。所以聚焦前先把宽度置 0, 淡入期间插入符隐身;
 		// 到位后恢复宽度并重铸焦点让插入符回来(焦点环则始终随整组淡入, 不闪)
-		d.setCaretWidthOf(fs[0], 0)
-		xc.XWnd_SetFocusEle(d.hWnd, fs[0])
+		d.setCaretWidthOf(focus, 0)
+		xc.XWnd_SetFocusEle(d.hWnd, focus)
+		d.lastFocus = focus
 	}
 	xui.Presence(d.hWnd, d.fadeKey, true, xui.PopupDuration, d.applyFade, func(float64) {
-		if len(fs) > 0 {
-			d.setCaretWidthOf(fs[0], 1)
-			if xc.XWnd_GetFocusEle(d.hWnd) == fs[0] {
+		if focus != 0 {
+			d.setCaretWidthOf(focus, 1)
+			if xc.XWnd_GetFocusEle(d.hWnd) == focus {
 				xc.XWnd_SetFocusEle(d.hWnd, 0)
-				xc.XWnd_SetFocusEle(d.hWnd, fs[0])
+				xc.XWnd_SetFocusEle(d.hWnd, focus)
 			}
 		}
 	})
@@ -389,10 +600,13 @@ func (d *Dialog) Hide() *Dialog {
 		return d
 	}
 	d.open = false
+	d.popModal()
 	// 清焦点: 插入符随焦点消失, 淡出的 100ms 里不会闪现全亮度的插入符,
 	// 也避免键盘输入继续打进正在消失的输入框
 	d.suspended = false // 挂起中被隐藏(如还原前按了 ESC): 清标记, 否则下次最小化不会挂起
 	xc.XWnd_SetFocusEle(d.hWnd, 0)
+	// 叠在别的对话框上时(如对话框里再开 AlertDialog), 关闭后把焦点还给下层
+	restoreModalFocus(d.hWnd)
 	xui.Presence(d.hWnd, d.fadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
 		showEleTree(d.overlay.Handle, false)
 		if d.backdrop != nil {
@@ -480,29 +694,77 @@ func (d *Dialog) layout() {
 		}
 	}
 
-	// 面板宽度: w-full max-w-sm, 同时不超过 窗口宽 - 2rem
+	// 面板宽度:
+	//   - Dialog: w-full max-w-sm(384), 不超过 窗口宽 - 2rem;
+	//   - AlertDialog: data-[size=sm] 恒为 max-w-xs(320); default 在 <sm 断点时也是 320,
+	//     宽屏才是 384(tailwind `data-[size=default]:max-w-xs data-[size=default]:sm:max-w-sm`)。
 	pw := d.width
 	if pw <= 0 {
 		pw = dlgDefaultW
 	}
-	if max := ow - 2*dlgPad; pw > max {
+	if d.alert {
+		pw = alertDialogPanelWidth(d.alertSize, ow)
+	} else if max := ow - 2*dlgPad; pw > max {
 		pw = max
 	}
+	innerW := pw - 2*dlgPad
 
-	// 头部高度: 标题(text-base) + gap-2 + 描述(text-sm)
-	headerH := int32(0)
-	if d.titleText != "" {
-		headerH = dlgTitleH
-	}
-	if d.descText != "" {
-		if headerH > 0 {
-			headerH += dlgHeadGap
+	// 文本列宽度: 对话框给右上角关闭钮让位; AlertDialog 的 media 在 default 尺寸下
+	// 与文本并排(占 40 + gap-4), 在 sm 尺寸下堆在文本上方。
+	// 用 mediaIcon 而不是 IsShow: showEleTree 会无条件显示整棵子树, 空图标不能占位
+	mediaOn := d.media != nil && d.mediaIcon != ""
+	mediaStacked := d.alert && mediaOn && d.alertSize == AlertDialogSizeSmall
+	textW := innerW
+	if d.alert {
+		if mediaOn && !mediaStacked {
+			textW -= alertDlgMediaSize + alertDlgMediaGapX
 		}
-		headerH += dlgDescH
+	} else if d.closeBtn != nil {
+		textW -= dlgCloseSize + dlgCloseOff
 	}
-	contentH := d.contentHeight()
 
-	// 面板高度: 三组按 gap-4 排列; 页脚 -mb-4 抵消面板的下 padding, 所以贴到底边
+	// 头部: 标题/描述按可用宽折行量高。两套行高/间距:
+	//   - Dialog: text-base leading-none(16) / gap-2(8);
+	//   - AlertDialog: text-base 默认行高(24) / gap-1.5(6)。
+	titleLineH, headGap := dlgTitleH, dlgHeadGap
+	if d.alert {
+		titleLineH, headGap = alertDlgTitleH, alertDlgHeadGap
+	}
+	titleH := d.textHeight(d.title, d.titleText, textW, titleLineH)
+	descH := d.textHeight(d.desc, d.descText, textW, dlgDescH)
+	headerH := int32(0)
+	if titleH > 0 {
+		headerH = titleH
+	}
+	if descH > 0 {
+		if headerH > 0 {
+			headerH += headGap
+		}
+		headerH += descH
+	}
+	if d.alert && mediaOn {
+		if mediaStacked {
+			headerH += alertDlgMediaSize + alertDlgMediaGapY
+		} else if headerH < alertDlgMediaSize {
+			headerH = alertDlgMediaSize // media 与文本列同一网格行, 行高取两者较大值
+		}
+	}
+
+	footerH := int32(0)
+	if len(d.footers) > 0 {
+		footerH = dlgFooterH
+	}
+
+	// 内容高度: 普通内容量子元素占位; 可滚动内容取 min(内容自然高, 上限)。
+	contentH := int32(0)
+	if d.scroll != nil {
+		contentH = d.scrollContentHeight(innerW, headerH, footerH, oh)
+	} else {
+		contentH = d.contentHeight()
+	}
+
+	// 面板高度: 三组按 gap-4 排列; 页脚 -mb-4 抵消面板的下 padding, 所以贴到底边。
+	// 没有页脚时要补下 padding —— 旧实现漏掉这 16px, 纯头部/纯内容的对话框底部会贴边。
 	body := headerH
 	if contentH > 0 {
 		if body > 0 {
@@ -510,73 +772,103 @@ func (d *Dialog) layout() {
 		}
 		body += contentH
 	}
-	if len(d.footers) > 0 {
+	if footerH > 0 {
 		if body > 0 {
 			body += dlgGap
 		}
-		// 页脚 -mb-4 抵消面板的下 padding, 上下都归零后它的高度全量计入
-		body += dlgFooterH
+		body += footerH
 	}
 	ph := dlgPad + body
+	if footerH == 0 {
+		ph += dlgPad
+	}
 
 	px := (ow - pw) / 2
 	py := (oh - ph) / 2
 	d.panel = xc.RECT{Left: px, Top: py, Right: px + pw, Bottom: py + ph}
 	d.footerRc = xc.RECT{}
-	if len(d.footers) > 0 {
+	if footerH > 0 {
 		d.footerRc = xc.RECT{
 			Left:   d.panel.Left,
-			Top:    d.panel.Bottom - dlgFooterH,
+			Top:    d.panel.Bottom - footerH,
 			Right:  d.panel.Right,
 			Bottom: d.panel.Bottom,
 		}
 	}
 
-	// 标题/描述/内容: 纵向游标, 组间 gap-4
+	// 头部/内容: 纵向游标
 	innerX := px + dlgPad
-	innerW := pw - 2*dlgPad
-	textW := innerW - dlgCloseSize - dlgCloseOff // 给右上角关闭按钮让位
 	y := py + dlgPad
 	if d.closeBtn != nil {
 		h := d.closeBtn.GetHeight()
 		setEleRect(d.closeBtn.Handle, px+pw-dlgCloseOff-dlgCloseSize, py+dlgCloseOff, dlgCloseSize, h)
 	}
-	if d.titleText != "" {
-		// 元素高度比行盒大 dlgTextOver: 文字在元素内垂直居中, 行盒按 leading-none 计,
-		// 元素在行盒上下各外扩一点才能既放得下字形又不占布局高度
-		setEleRect(d.title.Handle, innerX, y-dlgTextOver, textW, dlgTitleH+2*dlgTextOver)
-		d.title.SetText(d.titleText)
-		y += dlgTitleH
-	}
-	if d.descText != "" {
-		if d.titleText != "" {
-			y += dlgHeadGap
+	textX := innerX
+	if d.alert && mediaOn {
+		if mediaStacked {
+			mx := px + (pw-alertDlgMediaSize)/2
+			setEleRect(d.media.Handle, mx, y, alertDlgMediaSize, alertDlgMediaSize)
+			y += alertDlgMediaSize + alertDlgMediaGapY
+		} else {
+			setEleRect(d.media.Handle, innerX, y, alertDlgMediaSize, alertDlgMediaSize)
+			textX = innerX + alertDlgMediaSize + alertDlgMediaGapX
 		}
-		setEleRect(d.desc.Handle, innerX, y-dlgTextOver, textW, dlgDescH+2*dlgTextOver)
+	}
+	if titleH > 0 {
+		// 元素高度比行盒大 dlgTextOver: 文字在元素内垂直居中, 元素上下各外扩一点
+		// 才能既放得下字形(含折行时的行距)又不占布局高度
+		setEleRect(d.title.Handle, textX, y-dlgTextOver, textW, titleH+2*dlgTextOver)
+		d.title.SetText(d.titleText)
+		y += titleH
+	}
+	if descH > 0 {
+		if titleH > 0 {
+			y += headGap
+		}
+		setEleRect(d.desc.Handle, textX, y-dlgTextOver, textW, descH+2*dlgTextOver)
 		d.desc.SetText(d.descText)
-		y += dlgDescH
+		y += descH
 	}
 	if contentH > 0 {
-		if y > py+dlgPad {
-			y += dlgGap
+		cy := py + dlgPad + headerH
+		if headerH > 0 {
+			cy += dlgGap
 		}
-		setEleRect(d.content.Handle, innerX, y, innerW, contentH)
+		setEleRect(d.content.Handle, innerX, cy, innerW, contentH)
+		if d.scroll != nil {
+			// ScrollArea 是内容容器里的子元素, 用容器局部坐标
+			setEleRect(d.scroll.Handle, 0, 0, innerW, contentH)
+			xc.XEle_AdjustLayout(d.scroll.Handle)
+		}
 	}
 
-	// 页脚按钮: 右对齐, 间距 gap-2
-	if len(d.footers) > 0 {
-		total := int32(0)
-		for i, b := range d.footers {
-			if i > 0 {
-				total += dlgFooterGap
-			}
-			total += b.GetWidth()
-		}
-		x := d.footerRc.Right - dlgPad - total
+	// 页脚按钮:
+	//   - Dialog / AlertDialog(default): 右对齐一行, gap-2;
+	//   - AlertDialog(sm): grid-cols-2, 两个按钮等宽各占一半。
+	if footerH > 0 {
 		by := d.footerRc.Top + dlgPad
-		for _, b := range d.footers {
-			setEleRect(b.Handle, x, by, b.GetWidth(), b.GetHeight())
-			x += b.GetWidth() + dlgFooterGap
+		if d.alert && d.alertSize == AlertDialogSizeSmall {
+			cellW := (innerW - dlgFooterGap) / 2
+			for i, b := range d.footers {
+				if i >= 2 {
+					break // AlertDialogFooter 只有 Cancel/Action 两个
+				}
+				x := innerX + int32(i)*(cellW+dlgFooterGap)
+				setEleRect(b.Handle, x, by, cellW, b.GetHeight())
+			}
+		} else {
+			total := int32(0)
+			for i, b := range d.footers {
+				if i > 0 {
+					total += dlgFooterGap
+				}
+				total += b.GetWidth()
+			}
+			x := d.footerRc.Right - dlgPad - total
+			for _, b := range d.footers {
+				setEleRect(b.Handle, x, by, b.GetWidth(), b.GetHeight())
+				x += b.GetWidth() + dlgFooterGap
+			}
 		}
 	}
 }
@@ -588,10 +880,15 @@ func (d *Dialog) contentHeight() int32 {
 		return 0
 	}
 	xc.XEle_AdjustLayout(d.content.Handle)
+	return childrenBottom(d.content.Handle)
+}
+
+// childrenBottom 返回某容器内可见子元素占位并集的底边(局部坐标)。
+func childrenBottom(hParent int) int32 {
 	var maxB int32
-	n := d.content.GetChildCount()
+	n := xc.XEle_GetChildCount(hParent)
 	for i := int32(0); i < n; i++ {
-		h := d.content.GetChildByIndex(i)
+		h := xc.XEle_GetChildByIndex(hParent, i)
 		if h == 0 || !xc.XWidget_IsShow(h) {
 			continue
 		}
@@ -602,6 +899,62 @@ func (d *Dialog) contentHeight() int32 {
 		}
 	}
 	return maxB
+}
+
+// textHeight 量标题/描述在当前宽度下的折行高度(逻辑像素)。
+//
+// 量宽要收 dlgTextInsetX: 原生 Button 载体的文字排版区比元素窄一圈, 按元素宽量会
+// 少算一行(同 alert.go 的踩坑)。单行高度直接用行盒尺寸; 多行时取整到整行并补 4px,
+// 否则最后一行会被裁掉并出现省略号。
+func (d *Dialog) textHeight(l *Label, text string, width, lineH int32) int32 {
+	if l == nil || text == "" || width <= 0 || lineH <= 0 {
+		return 0
+	}
+	measureW := width - dlgTextInsetX
+	if measureW < lineH {
+		measureW = width
+	}
+	h := l.WrappedHeight(measureW)
+	// GetTextShowRect 的单行返回值比行盒略高(16px 字约 19), 容差内仍按单行算
+	if h <= lineH+dlgTextPadY {
+		return lineH
+	}
+	return (h+lineH-1)/lineH*lineH + dlgTextPadY
+}
+
+// scrollContentHeight 量可滚动内容的自然高度, 夹到 70vh / 面板可用高度以内。
+// 先给 ScrollArea 一个临时高度并重排, 才能拿到内容区子项的真实占位。
+func (d *Dialog) scrollContentHeight(innerW, headerH, footerH, bodyH int32) int32 {
+	if d.scroll == nil {
+		return 0
+	}
+	maxH := d.scrollMax
+	if maxH <= 0 {
+		maxH = bodyH * 7 / 10 // shadcn 示例的 max-h-[70vh]
+	}
+	avail := bodyH - 2*dlgPad - headerH - footerH
+	if headerH > 0 {
+		avail -= dlgGap
+	}
+	if footerH > 0 {
+		avail -= dlgGap
+	}
+	if avail < 80 {
+		avail = 80
+	}
+	if maxH > avail {
+		maxH = avail
+	}
+	setEleRect(d.scroll.Handle, 0, 0, innerW, maxH)
+	xc.XEle_AdjustLayout(d.scroll.Handle)
+	h := childrenBottom(d.scroll.Content().Handle)
+	if h > maxH {
+		h = maxH
+	}
+	if h < 1 {
+		h = 1
+	}
+	return h
 }
 
 // onPaint 绘制遮罩、面板、页脚带与描边。
@@ -625,14 +978,13 @@ func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 面板: bg-popover
 	p.FillRound(&panel, t.Popover, radius)
 
-	// 页脚带: bg-muted/50 + border-t, 只有下面两个角随面板圆角
+	// 页脚带: bg-muted/50 + border-t, 只有下面两个角随面板圆角。
+	// 必须**一次**画出"上平下圆"的整块: 先画圆角矩形再用方角块补上边缘会让半透明色
+	// 在交叠区被合成两次(实测顶部 radius 高的一条比页脚其余部分深一档, 呈 #f7f7f7 条带)。
 	if d.footerRc.Bottom > d.footerRc.Top {
 		fr := d.footerRc
-		band := t.Muted.WithAlpha(128)
-		p.FillRound(&fr, band, radius)
-		// 上两个角补平(-mx-4 的页脚带左右贴面板边, 上方与面板内容同面)
-		sq := xc.RECT{Left: fr.Left, Top: fr.Top, Right: fr.Right, Bottom: fr.Top + radius}
-		p.FillRound(&sq, band, 0)
+		band := t.Muted.ScaleAlpha(0.5) // bg-muted/50: 在令牌自身 alpha 上乘, 不是覆盖
+		p.FillRoundCorners(&fr, band, xui.Corners{BottomRight: radius, BottomLeft: radius})
 		p.Line(fr.Left, fr.Top, fr.Right, fr.Top, t.Border, 1)
 	}
 
@@ -649,9 +1001,41 @@ func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	return 0
 }
 
+// onMediaPaint 画 AlertDialogMedia: size-10 rounded-md bg-muted + size-6 图标;
+// 破坏性变体是 bg-destructive/10 text-destructive(暗色 /20)。
+func (d *Dialog) onMediaPaint(hEle int, hDraw int, pbHandled *bool) int {
+	p := xui.BeginPaint(hEle, hDraw)
+	if p == nil || d.mediaIcon == "" {
+		return 0
+	}
+	*pbHandled = true
+	t := xui.Current()
+	bg, fg := t.Muted, t.MutedForeground
+	if d.mediaTone == AlertDialogMediaDestructive {
+		frac := 0.1
+		if t.IsDark() {
+			frac = 0.2
+		}
+		bg, fg = t.Destructive.ScaleAlpha(frac), t.Destructive
+	}
+	p.FillRound(&p.Rc, bg, t.RadiusMd())
+	ir := p.Rc
+	inset := (alertDlgMediaSize - alertDlgMediaIcon) / 2
+	ir.Left += inset
+	ir.Top += inset
+	ir.Right -= inset
+	ir.Bottom -= inset
+	p.Icon(d.mediaIcon, &ir, fg, 2)
+	return 0
+}
+
 // onOverlayDown 点击遮罩(面板之外)关闭对话框。
 func (d *Dialog) onOverlayDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if !d.open || pPt == nil {
+	if !d.open || !d.isTopModal() || pPt == nil {
+		return 0
+	}
+	// 对齐 radix AlertDialog: onInteractOutside preventDefault, 点遮罩不关闭
+	if !d.dismissOutside {
 		return 0
 	}
 	// pPt 与 d.panel 都是遮罩局部坐标(遮罩原点 = Body 左上角), 直接比
@@ -664,7 +1048,7 @@ func (d *Dialog) onOverlayDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *b
 // onWindowKeyDown 处理 ESC 与 Tab: 键盘事件统一走窗口(实测: 元素收不到键盘事件,
 // 编辑框聚焦时窗口也照常收到), 因此在这里做模态键盘拦截。
 func (d *Dialog) onWindowKeyDown(hWindow int, wParam, lParam uintptr, pbHandled *bool) int {
-	if !d.open {
+	if !d.open || !d.isTopModal() {
 		return 0
 	}
 	switch wParam {
@@ -702,6 +1086,7 @@ func (d *Dialog) moveFocus(back bool) {
 		}
 		if xc.XWnd_SetFocusEle(d.hWnd, fs[next]) {
 			d.focusIdx = next
+			d.lastFocus = fs[next]
 			// 焦点状态变化不一定触发重绘, 手动刷新新旧元素(否则按钮上的焦点框不出现)
 			if old != 0 && old != fs[next] {
 				xc.XEle_Redraw(old, false)
@@ -745,6 +1130,53 @@ func (d *Dialog) focusables() []int {
 		list = append(list, d.closeBtn.Handle)
 	}
 	return list
+}
+
+// defaultFocus 返回打开时应聚焦的元素:
+//   - AlertDialog 强制聚焦 Cancel(radix 的 onOpenAutoFocus → cancelRef.focus), 没有
+//     Cancel 时才退到第一个可聚焦控件;
+//   - Dialog 聚焦第一个可聚焦控件。
+func (d *Dialog) defaultFocus(fs []int) int {
+	if len(fs) == 0 {
+		return 0
+	}
+	if d.initialFocus != 0 {
+		for _, h := range fs {
+			if h == d.initialFocus {
+				return h
+			}
+		}
+	}
+	return fs[0]
+}
+
+// restoreModalFocus 关闭栈顶后, 把焦点还给下层对话框最近一次聚焦的控件
+// (没有记录/已不可见时退回它的默认焦点)。没有下层时什么都不做。
+func restoreModalFocus(hWnd int) {
+	top := topModal(hWnd)
+	if top == nil {
+		return
+	}
+	fs := top.focusables()
+	if len(fs) == 0 {
+		return
+	}
+	h := top.lastFocus
+	if h == 0 {
+		h = top.defaultFocus(fs)
+	}
+	for _, f := range fs {
+		if f == h {
+			top.setCaretWidthOf(h, 1)
+			xc.XWnd_SetFocusEle(hWnd, h)
+			xc.XEle_Redraw(h, false)
+			return
+		}
+	}
+	h = top.defaultFocus(fs)
+	top.lastFocus = h
+	xc.XWnd_SetFocusEle(hWnd, h)
+	xc.XEle_Redraw(h, false)
 }
 
 // collectFocusable 深度优先收集可聚焦的交互控件(只认按钮/编辑框这类原生控件,

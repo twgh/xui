@@ -116,6 +116,20 @@ func (l *Label) SetWrap() *Label {
 	return l
 }
 
+// SetAlignCenter 水平居中对齐(AlertDialog 的 sm 尺寸头部用)。
+func (l *Label) SetAlignCenter() *Label {
+	f := l.GetTextAlign() &^ (xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Right)
+	l.SetTextAlign(f | xcc.TextAlignFlag_Center)
+	return l
+}
+
+// SetAlignLeft 水平左对齐(默认)。
+func (l *Label) SetAlignLeft() *Label {
+	f := l.GetTextAlign() &^ (xcc.TextAlignFlag_Center | xcc.TextAlignFlag_Right)
+	l.SetTextAlign(f | xcc.TextAlignFlag_Left)
+	return l
+}
+
 func (l *Label) applyTheme(t *xui.Theme) {
 	spec := t.FontDefault
 	if l.size > 0 {

@@ -795,8 +795,10 @@ func buildFeedPage(body *widget.LayoutEle, hWindow int) {
 	xui.ItemWidth(editBtn, 104)
 	delBtn := ui.NewButton(0, 0, 0, 0, "删除项目", rd.Handle, ui.WithVariant(ui.ButtonDestructive))
 	xui.ItemWidth(delBtn, 104)
-	buildDialogs(hWindow, editBtn, delBtn)
-	xui.ItemFill(desc(v.Handle, "ESC / 点击遮罩 / 右上角 X 关闭; Tab 与 Shift+Tab 在对话框内循环。"))
+	scrollBtn := ui.NewButton(0, 0, 0, 0, "滚动内容", rd.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(scrollBtn, 104)
+	buildDialogs(hWindow, editBtn, delBtn, scrollBtn)
+	xui.ItemFill(desc(v.Handle, "ESC / 遮罩 / X 关闭, Tab 焦点循环;「滚动内容」头部/页脚固定。"))
 
 	// ---- 列 2: 提示气泡 ----
 	_, v2 := autoCard(col(r.Handle, 1, gap).Handle, 10)
@@ -856,7 +858,38 @@ func buildFeedPage(body *widget.LayoutEle, hWindow int) {
 	xui.ItemWidth(badge, 44)
 	xui.ItemFill(desc(vb.Handle, "动作槽用 Action() 取; 可放 Button / Badge, 顶端对齐、内容自量宽。"))
 
-	// ---- 第三行: 通知 + 进度 ----
+	// ---- 第三行: 警示对话框 + 对话框变体 ----
+	rDlg := row(body.Handle, 0, gap)
+
+	_, vd := autoCard(col(rDlg.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "警示对话框", vd.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"无 X、点遮罩不关、ESC 关闭; sm 居中 + 按钮等宽双列", vd.Handle))
+	rad := xui.HStack(vd.Handle, 36, 8)
+	dfltBtn := ui.NewButton(0, 0, 0, 0, "默认", rad.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(dfltBtn, 78)
+	smBtn := ui.NewButton(0, 0, 0, 0, "小尺寸", rad.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(smBtn, 78)
+	mediaBtn := ui.NewButton(0, 0, 0, 0, "带图标", rad.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(mediaBtn, 78)
+	destrBtn := ui.NewButton(0, 0, 0, 0, "破坏性", rad.Handle, ui.WithVariant(ui.ButtonDestructive))
+	xui.ItemWidth(destrBtn, 78)
+	buildAlertDialogs(hWindow, dfltBtn, smBtn, mediaBtn, destrBtn)
+	xui.ItemFill(desc(vd.Handle, "打开时焦点落在 Cancel; Tab 只在当前对话框内循环; Action / Cancel 点击后关闭。"))
+
+	_, vdv := autoCard(col(rDlg.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "对话框变体", vdv.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"无关闭钮; 嵌套时只有栈顶响应 ESC, 关闭上层后焦点回到下层", vdv.Handle))
+	rv := xui.HStack(vdv.Handle, 36, 8)
+	noCloseBtn := ui.NewButton(0, 0, 0, 0, "无关闭钮", rv.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(noCloseBtn, 104)
+	nestedBtn := ui.NewButton(0, 0, 0, 0, "嵌套警示", rv.Handle, ui.WithVariant(ui.ButtonSecondary))
+	xui.ItemWidth(nestedBtn, 104)
+	buildDialogVariants(hWindow, noCloseBtn, nestedBtn)
+	xui.ItemFill(desc(vdv.Handle, "嵌套示例: 点「打开警示」在对话框上再叠一层; 连按 ESC 会先关上层。"))
+
+	// ---- 第四行: 通知 + 进度 ----
 	r2 := row(body.Handle, 0, gap)
 
 	// 通知: 右下角堆叠, 4s 自动关闭, 悬停暂停
@@ -1259,8 +1292,8 @@ func showDemoMenu(hEle int) {
 	m.PopupAtElement(hEle)
 }
 
-// buildDialogs 两个对话框: 表单型(编辑资料) 与 确认型(删除项目)。
-func buildDialogs(hWindow int, editTrigger, delTrigger *ui.Button) {
+// buildDialogs 三个对话框: 表单型(编辑资料)、确认型(删除项目) 与可滚动内容。
+func buildDialogs(hWindow int, editTrigger, delTrigger, scrollTrigger *ui.Button) {
 	// 表单对话框: 标题 + 描述 + 两个带标签的输入框 + 页脚
 	edit := ui.NewDialog(hWindow)
 	edit.SetTitle("编辑资料")
@@ -1286,4 +1319,85 @@ func buildDialogs(hWindow int, editTrigger, delTrigger *ui.Button) {
 	del.BindTrigger(delTrigger)
 	del.AddFooter("取消", ui.ButtonOutline, func() { del.Close() })
 	del.AddFooter("删除", ui.ButtonDestructive, func() { del.Close() })
+
+	// 可滚动内容: 对应 shadcn 文档的 Scrollable Content / With Sticky Footer ——
+	// 头部与页脚固定, 中间内容超过 70vh(实际再夹到面板可用高度)后出滚动条。
+	scroll := ui.NewDialog(hWindow, ui.WithDialogScroll(0))
+	scroll.SetTitle("可滚动内容")
+	scroll.SetDescription("头部与页脚固定, 中间内容区超过可用高度后滚动。")
+	scroll.BindTrigger(scrollTrigger)
+	body := scroll.ScrollArea().ContentStack(12)
+	for i := 0; i < 10; i++ {
+		l := ui.NewLabel(0, 0, 0, 100, fmt.Sprintf(
+			"%d. 这是一段用于演示滚动的长文本。对话框的面板高度由头部、内容与页脚共同决定, "+
+				"内容超过 max-h-[70vh] 时保持头部和页脚不动, 只让中间区域滚动。", i+1),
+			body.Handle).SetMuted().SetWrap()
+		xui.ItemFill(l)
+	}
+	scroll.AddFooter("关闭", ui.ButtonOutline, func() { scroll.Close() })
+}
+
+// buildAlertDialogs 四个 AlertDialog 示例: 默认 / 小尺寸 / 带媒体块 / 破坏性。
+func buildAlertDialogs(hWindow int, defaultTrigger, smallTrigger, mediaTrigger, destructiveTrigger *ui.Button) {
+	basic := ui.NewAlertDialog(hWindow,
+		ui.WithAlertDialogTitle("Are you absolutely sure?"),
+		ui.WithAlertDialogDescription("This action cannot be undone. This will permanently delete your account and remove your data from our servers."))
+	basic.AddCancel("Cancel", nil)
+	basic.AddAction("Continue", ui.ButtonPrimary, nil)
+	basic.BindTrigger(defaultTrigger)
+
+	small := ui.NewAlertDialog(hWindow,
+		ui.WithAlertDialogSize(ui.AlertDialogSizeSmall),
+		ui.WithAlertDialogTitle("Allow accessory to connect?"),
+		ui.WithAlertDialogDescription("Do you want to allow the USB accessory to connect to this device?"))
+	small.AddCancel("Don't allow", nil)
+	small.AddAction("Allow", ui.ButtonPrimary, nil)
+	small.BindTrigger(smallTrigger)
+
+	media := ui.NewAlertDialog(hWindow,
+		ui.WithAlertDialogMedia(icons.IconBluetooth),
+		ui.WithAlertDialogTitle("Are you absolutely sure?"),
+		ui.WithAlertDialogDescription("This will permanently delete your account and remove your data from our servers."))
+	media.AddCancel("Cancel", nil)
+	media.AddAction("Continue", ui.ButtonPrimary, nil)
+	media.BindTrigger(mediaTrigger)
+
+	destructive := ui.NewAlertDialog(hWindow,
+		ui.WithAlertDialogSize(ui.AlertDialogSizeSmall),
+		ui.WithAlertDialogMedia(icons.IconTrash2),
+		ui.WithAlertDialogMediaTone(ui.AlertDialogMediaDestructive),
+		ui.WithAlertDialogTitle("Delete chat?"),
+		ui.WithAlertDialogDescription("This will permanently delete this chat conversation. You can delete any memories saved during this chat in Settings."))
+	destructive.AddCancel("Cancel", nil)
+	destructive.CancelButton().SetVariant(ui.ButtonGhost)
+	destructive.AddAction("Delete", ui.ButtonDestructive, nil)
+	destructive.BindTrigger(destructiveTrigger)
+}
+
+// buildDialogVariants 无右上角关闭钮的对话框 + 嵌套模态示例(对话框里再开 AlertDialog)。
+func buildDialogVariants(hWindow int, noCloseTrigger, nestedTrigger *ui.Button) {
+	noClose := ui.NewDialog(hWindow, ui.WithDialogCloseButton(false))
+	noClose.SetTitle("No Close Button")
+	noClose.SetDescription("This dialog doesn't have a close button in the top-right corner.")
+	noClose.BindTrigger(noCloseTrigger)
+	noClose.AddFooter("Close", ui.ButtonOutline, func() { noClose.Close() })
+
+	// 嵌套: 下层 Dialog 开着一层 AlertDialog。模态栈保证只有栈顶响应 ESC/Tab,
+	// 关闭上层后焦点回到下层对话框。
+	host := ui.NewDialog(hWindow)
+	host.SetTitle("Alert Dialog Example")
+	host.SetDescription("Click the button below to open an alert dialog.")
+	host.BindTrigger(nestedTrigger)
+	nested := ui.NewAlertDialog(hWindow,
+		ui.WithAlertDialogSize(ui.AlertDialogSizeSmall),
+		ui.WithAlertDialogTitle("Are you absolutely sure?"),
+		ui.WithAlertDialogDescription("This action cannot be undone. This will permanently delete your account and remove your data from our servers."))
+	nested.AddCancel("Cancel", nil)
+	nested.AddAction("Continue", ui.ButtonPrimary, nil)
+	openNested := ui.NewButton(0, 8, host.ContentWidth(), 0, "Open Alert Dialog", host.Content())
+	openNested.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		nested.Show()
+		return 0
+	})
+	host.AddFooter("Close", ui.ButtonOutline, func() { host.Close() })
 }

@@ -86,8 +86,12 @@
       "deps": []
     },
     "dialog": {
-      "files": ["dialog.go", "backdrop.go"],
+      "files": ["dialog.go", "backdrop.go", "scrollarea.go", "scrollbar.go"],
       "deps": ["button", "label"]
+    },
+    "alertdialog": {
+      "files": ["alertdialog.go"],
+      "deps": ["dialog"]
     },
     "menu": {
       "files": ["menu.go"],

@@ -247,7 +247,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Slider | 纯自绘 Element | **弃用原生 SliderBar**(滑块按钮 BkInfo 残留压不住, 见第八节 25), 自实现拖拽/点击跳转/键盘 | BeautifySliderBar 示例 + 探针 |
 | ComboBox | embed ComboBox | 画输入框; 下拉 ListView 弹层在 `AddEvent_Combobox_Popup_List` 里半接管(第八节 30) | 库文档 FAQ |
 | Tabs | embed TabBar | paint(default/line 两变体) | — |
-| Dialog | 纯 Element 覆盖层 | 全窗遮罩元素(自绘黑 10% + backdrop-blur) + 面板子元素;ESC/点遮罩关闭, Tab 焦点循环(第八节 33) | — |
+| Dialog | 纯 Element 覆盖层 | 全窗遮罩元素(自绘黑 10% + backdrop-blur) + 面板子元素;ESC/点遮罩关闭, Tab 焦点循环(第八节 33);可滚动内容用内嵌 ScrollArea(第八节 91) | — |
+| AlertDialog | 复用 Dialog 覆盖层 | 同一套遮罩/模糊/焦点陷阱/模态栈;面板按 default/sm 排头部与页脚, media 自绘;点遮罩不关、焦点强制 Cancel(第八节 91) | alert-dialog.tsx(radix-nova) |
 | Menu | 原生菜单 | `XMenu_EnableDrawBackground/EnableDrawItem` + `AddEvent_Menu_Draw_Background/DrawItem`(第八节 36) | element.go 已确认事件存在 |
 | Tooltip | FloatWindow | paint, 异型透明窗口 + 进出场 fade/slide(第八节 24/47) | — |
 | Table | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做 | Basic/List 示例 + 本库探针 |
@@ -303,7 +304,12 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | dialog 面板 = w-full sm:max-w-sm(384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10(ring 画在面板矩形**外侧** 1px, 直接描面板矩形会被遮罩灰吞掉, 见第八节 33);标题 text-base(16)/描述 text-sm(14) muted,header gap-2 | dialog.tsx |
 | dialog 关闭钮 = 幽灵图标钮 size-7(28×28) top-2 right-2(X 图标 size-4);页脚 -mx-4 -mb-4 贴面板左右与底边、border-t、bg-muted/50、p-4、gap-2、右对齐(只有下两角随圆角) | dialog.tsx |
 | dialog 遮罩 bg-black/10(固定黑色,不随主题;**只铺 Body 区, 不铺阴影窗口的阴影带**——铺上去会把窗口自身投影再压暗 10%, 四角最明显;**backdrop-blur-xs 已实现**——物理像素抓窗快照(PrintWindow 不缩放, DIB 必须给物理尺寸)+融合降采样+半分辨率盒式模糊+成对平均放大+BkM 图片填充,见第八节 47) | dialog.tsx(语义权威) + 第八节 47 条 6/10 |
-| dialog 打开时焦点进第一个可聚焦控件,Tab/Shift+Tab 在对话框内循环(焦点陷阱),ESC / 点击遮罩 / 关闭钮关闭 | radix dialog 语义 |
+| dialog 打开时焦点进第一个可聚焦控件,Tab/Shift+Tab 在对话框内循环(焦点陷阱),ESC / 点击遮罩 / 关闭钮关闭;标题/描述按面板宽折行(量高见第八节 90),`WithDialogScroll` 让内容区滚动、头部与页脚固定 | radix dialog 语义 |
+| alert-dialog 面板 = max-w-xs(320;default 在 <640 断点也是 320,桌面 384) rounded-xl bg-popover p-4 gap-4 + ring-1 ring-foreground/10;标题 text-base(行高 24)、描述 text-sm muted,header gap-1.5(6);**没有右上角关闭钮** | alert-dialog.tsx(radix-nova) |
+| alert-dialog 头部:default 左对齐;sm 居中(grid + place-items-center);media = size-10(40) rounded-md bg-muted + size-6 图标,destructive 用 bg-destructive/10 text-destructive(暗色 /20);default+media 时 media 与文本并排(media 跨两行、gap-x-4),sm+media 时 media 堆在标题上方(mb-2) | alert-dialog.tsx |
+| alert-dialog 页脚 = 与 dialog 相同的 -mx-4 -mb-4 帯;default 右对齐一行,sm 是 grid-cols-2 两个等宽按钮;Action 默认 primary、Cancel 默认 outline(可改变体) | alert-dialog.tsx |
+| alert-dialog 交互:点遮罩**不关闭**(radix onInteractOutside preventDefault),ESC 关闭,打开时焦点强制落在 Cancel(radix onOpenAutoFocus),Cancel/Action 点击后关闭;Tab 焦点陷阱 | radix alert-dialog 语义 |
+| 多层模态(对话框里再开 AlertDialog):同一宿主窗口维护打开顺序的模态栈,**只有栈顶**响应 ESC / Tab / 遮罩点击;后打开的弹层 z 序更高,关闭上层后焦点还给下层最近聚焦的控件 | 本库实现(radix 用嵌套 portal + 各层 DismissableLayer,语义一致) |
 | **中文 500 字重 ≈ 常规**: Label 默认常规、按钮文字常规(用粗体字形实现 500 会明显偏粗); 标签比描述"看着粗"是**颜色**差(foreground 近黑 vs muted 灰), 实测笔画同宽 | label.tsx 500 + 实测像素 |
 | 令牌表 nova 预设 neutral 色板(oklch 已换算 hex) | index.css :root/.dark |
 | **字体单位**: xcgui 字体 size 是 pt 不是 px, FontHandle 统一按 px×0.75 换算(14px→11pt); 按 px 直接当 pt 会让全局文字放大 1.33× | font.go(见第八节 31) |
@@ -329,6 +335,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Badge 悬停 | `ghost` = hover 出 bg-muted, `link` = hover 加下划线 | 下划线手绘(无下划线标志位, 见下方"下划线") |
 | Card | `WithCardSize(CardSizeSm)` = `--card-spacing` 4→3(16→12) | 标题字号上游是 `text-base` + `font-medium`, 中文下 500 回落常规 → `NewCardTitle` 用 16 常规(不是粗体); sm 卡片标题自己 `SetFontSize(14)` |
 | Alert | `NewAlert(..., WithAlertVariant/WithAlertIcon/WithAlertTitle/WithAlertDescription)` + `Action()`; 标题/描述由组件内部持有 | 对应 alert.tsx 的 `Alert` + `AlertTitle/AlertDescription/AlertAction`; Go 侧是整体自撑高度的组件; 需要自定义文字样式时用 `Title()` / `Description()` 改字体后 `Refresh()`; 动作槽按内容宽(上游固定预留 pr-18=72, 本实现由动作实际宽度缩短文本列) |
+| Dialog | `NewDialog(hWnd, WithDialogWidth/WithDialogCloseButton/WithDialogScroll)` + `SetTitle/SetDescription/AddFooter/BindTrigger/BindClose/Content/ScrollArea/Refresh` | 对应 dialog.tsx 的 `DialogContent` + `DialogHeader/Title/Description/Footer/Close/Trigger`; 无 compound 子组件拆分, 头部/页脚由组件内部持有; `WithDialogScroll` 对应文档的 Scrollable Content / With Sticky Footer; 缩放动画不做(见第八节 47) |
+| AlertDialog | `NewAlertDialog(hWnd, WithAlertDialogSize/WithAlertDialogTitle/WithAlertDialogDescription/WithAlertDialogMedia/WithAlertDialogMediaTone)` + `AddCancel/AddAction/BindTrigger` + `CancelButton/ActionButton` | 对应 alert-dialog.tsx 的 `AlertDialogContent` + `Header/Title/Description/Footer/Media/Action/Cancel/Trigger`; `size` 是枚举 `AlertDialogSizeDefault/Small`; 媒体块由组件自绘(不建子控件); `AddCancel` 固定 outline、`AddAction` 的变体由调用方给(可用 `CancelButton().SetVariant(ButtonGhost)` 改变体) |
 | Separator | `WithSeparatorVertical` 支持垂直 | 上游 `data-vertical:w-px` |
 | Tabs | `WithTabsVertical` 支持垂直(标签堆叠、左对齐、指示条在右侧) | 上游 `group-data-vertical/tabs:*` |
 | Slider | `WithSliderRange(min,max)` / `WithSliderStep(step)` | 对应 radix 的 min/max/step; 默认仍是 0~100 连续 |
@@ -393,11 +401,11 @@ ui/
 
   | 文件 | 作用 | 被谁依赖 |
   |---|---|---|
-  | `scrollbar.go` | 细滚动条皮肤 + 悬停显隐 | table / tree / combobox / input(多行) / scrollarea |
+  | `scrollbar.go` | 细滚动条皮肤 + 悬停显隐 | table / tree / combobox / input(多行) / scrollarea / dialog(可滚动内容) |
   | `popup.go` | 弹层骨架(定位、阴影、进出场) | datepicker / timepicker |
   | `backdrop.go` | 弹层背景模糊(抓窗快照) | dialog |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`combobox → tooltip`、`menu → tooltip`;`add` 会自动补齐,不用手抄。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在 `ui/` 里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update` 或 `xui update button`(只更新该组件及其依赖)。
 
@@ -411,7 +419,8 @@ ui/
 |---|---|
 | Input 的文字/光标/选区/IME 由原生 Edit 绘制 | 都在 DLL 内;只开放字体/字色/占位符色/插入符色/文字内边距。要完全控制就得自绘文字并接管光标闪烁、选区命中、IME 组合窗 |
 | Toast 只支持四角堆叠, 无 `richColors` | 顶部/底部居中与"按类型给卡面上底色"未做(第八节 75) |
-| 英文长文本折行按字符断行(可能在单词中间换行) | Label 载体是原生 Button, 折行算法在 DLL 内, 不按单词边界; 中文不受影响(第八节 90) |
+| 英文长文本折行按字符断行(可能在单词中间换行) | Label 载体是原生 Button, 折行算法在 DLL 内, 不按单词边界; 中文不受影响(第八节 90/91) |
+| Dialog 没有 zoom-in-95 / AlertDialog 没有 text-balance | 元素级缩放对自绘元素无效(第八节 47); 自绘文字没有平衡排版能力 |
 | 没有 `asChild` / `data-slot` / `data-state` | React/DOM 概念, Go 侧没有对应物 |
 | `--chart-*` / `--sidebar-*` 令牌只提供取值 | 组件库自身不用, 供你的应用取用 |
 
@@ -922,9 +931,11 @@ ui/
          - `app.GetTextShowRect(str, -1, hFont, align, 0, &sz)` 对 `"上一页"` 返回 `CX=15 CY=59`
          —— CX 只是**一行的宽度**(一个汉字), CY 是"行数×行高"; 对 `"保存"` 返回 `CX=15 CY=39`
          (2 行), `"accessibility"` 返回 `CX=10 CY=252`(11 行)。看上去像"宽度只有一半",
-         于是 dialog.go 里做了 `CX*2` 校正 —— 那只对**恰好 2 个字**的按钮文案凑巧对
-         (`保存` 15→30, 真实 30), 换成 3 个字的 `上一页` 就偏小(30 vs 真实 45) →
-         分页组件的"上一页/下一页"文字被矩形裁掉半截(实测只剩 "上-" / "-页")。
+         早期的 `CX*2` 校正只对**恰好 2 个字**的按钮文案凑巧对(`保存` 15→30, 真实 30),
+         换成 3 个字的 `上一页` 就偏小(30 vs 真实 45) → 分页组件的"上一页/下一页"文字被
+         矩形裁掉半截(实测只剩 "上-" / "-页")。对话框页脚同样踩过: 英文按钮 "Cancel"
+         量出的宽度不足, 文字被挤成两行。**现在统一用运行时 `xui.TextWidth`(内部给足宽 +
+         NoWrap), 不要再用 `CX*2` 或 width=0 的量法。**
          - 正确用法: **给足 width, 并加 `TextFormatFlag_NoWrap`**,
          `GetTextShowRect(str, -1, hFont, TextAlignFlag_Left|TextFormatFlag_NoWrap, 1000, &sz)`
          返回的 `CX` 就是单行真实逻辑宽度(14px 字号的汉字恰好 15/字, 与绘制结果一致),
@@ -1265,6 +1276,7 @@ ui/
     - **根因**: `XEle_SetAlpha` 不是"先把整个元素画到离屏层、再整体乘 alpha", 而是**逐图元**混合 —— 每个 Fill 都各自与目标缓冲做一次 `src-over`。旧画法是"先画一个完整菱形箭头, 再用气泡圆角矩形盖住内侧一半": 不透明时后画的气泡完全覆盖, 看不出接缝; 半透明时重叠区被混了两次, 颜色更深, 于是被盖住的那半个菱形又显出来了。任何"用同色图元拼一个异形轮廓"的画法(圆角矩形+箭头、两个半圆拼胶囊)都会中招。
     - **修法**: 拼轮廓的图元**不要重叠**, 只画轮廓外露的部分。Tooltip 现在只画露在气泡外的三角形, 底边与气泡边线共线, 不再画被盖住的那一半; 文字画在气泡上不受影响(颜色不同, 本来就是覆盖关系)。不要用"把底边压进气泡 1px"来防缝 —— 那会留下一条更深的 1px 线; 共线即可, 同一次绘制里相邻边的抗锯齿不会产生透底缝。
     - **验收**: 用 `xui.SetAnimationScale(20~200)` 把进出场放慢(参数是**时长倍率**, 20 = 慢 20 倍; 0 = 立即到位), 在 alpha≈0.3/0.5 的中段帧截图放大检查; 正常速度下只有约 9 帧, 截图脚本很难稳定命中, 也看不出叠加。亮/暗主题各验一轮。
+    - **同源坑(对话框页脚带)**: 旧画法是先 `FillRound` 整块半透明页脚、再用方角矩形补上沿的两个角 —— 补角区被合成两次, 按钮上方出现一条比页脚其余部分深一档的条带(实测亮色 #f7f7f7 vs 页脚 #fafafa)。修法 = `Painter.FillRoundCorners` **一次**画出"上平下圆"的整块(`dialog.go` 的 onPaint)。任何半透明块都不要用"整块 + 补角块"叠出来。
 
 90. **折行文本的高度与 Auto 布局重排**(`components/alert.go` + `components/label.go`, 实测):
     - **现象**: Alert 的长标题/描述只显示一两行就被省略号截断;把 Label 的布局项高度声明成 `Auto` 也不会自撑。
@@ -1274,6 +1286,14 @@ ui/
     - **重绘**: 高度变化后要重绘标题/描述和窗口;只重绘 Alert 背景不会触发子元素重绘。
     - **触发时机**: 布局赋予宽度时尺寸事件不一定触发;在 Alert 的 paint 里比较文本列当前宽与上次量高宽度, 变化时预约一次 `AfterFunc(0)` 重排。不要在尺寸/paint 回调里直接改布局(会重入)。
     - **验收**: demo 反馈页 1200/960/1500 三种宽度、亮/暗主题下长标题与长描述完整显示、无省略号, 动作按钮始终贴右上;亮/暗运行时切换颜色实时跟随。
+
+91. **AlertDialog / 多层模态 / 折行量测的一批结论**(`ui/alertdialog.go` + `ui/dialog.go`, 实测):
+    - **多层模态必须自己做栈**: 同一窗口开两个 Dialog(例如对话框里再开 AlertDialog)时, 每个实例都在窗口上注册了 `AddEvent_KeyDown`。不排栈的话一次 ESC 会把两层一起关掉, Tab 也会被两个实例同时搬焦点。修法 = 包级 `modalStack` 记录打开顺序; `isTopModal()` 为假时 ESC/Tab/遮罩点击全部忽略; `materialize` 后按栈顺序重抬 z 序(`raiseModalStack`, 逐个"backdrop → overlay", 后打开的压在上面); 关闭栈顶后 `restoreModalFocus` 把焦点还给下层最近聚焦的控件。最小化还原时各实例的 WM_SIZE 回调都会跑, 抢焦点也要加 `isTopModal()` 条件。
+    - **AlertDialog 的语义不能照抄 Dialog**: radix 的 AlertDialog 对 `onInteractOutside` 做了 `preventDefault`(点遮罩不关), 但 **ESC 仍会关闭**(源码没有拦 Escape); 打开时 `onOpenAutoFocus` 强制聚焦 Cancel。实现里用 `dismissOutside=false` + `initialFocus=Cancel` 表达。页脚 `Cancel` 先于 `Action` 加入, 这样焦点序列的第一项就是 Cancel。
+    - **Label 的文本必须先 `SetText` 再参与量高**: `Label.WrappedHeight` 量的是 **Label 当前文本**。如果只在 layout 里量完高再 `SetText`, 量到的是空串 → 返回 0 → 描述只占一行并被省略号截断(现象: 明明该折 3 行的描述只显示一行)。`SetTitle/SetDescription` 现在立即把文本写进 Label; layout 里再设一次只是兜底。
+    - **整树显隐会覆盖"可选子元素"的隐藏状态**: `showEleTree(overlay, true)` 会无条件显示所有子元素, 所以判断"有没有 media"不能用 `media.IsShow()`(永远为真, 空 media 也占 40+16 的宽度)。用独立的 `mediaIcon != ""` 判断; media 在构造选项里创建时还要补一次 `showEleTree(e, d.open)` 与对话框状态同步。
+    - **折行是字符级, 没有 word wrap**: xcgui 的文本排版不支持 DirectWrite 的 word-break 控制(`TextFormatFlag_` 里只有 NoWrap), 英文长词会在任意字符处断开(如 "permane / ntly")。中文排版无影响; 需要英文严格按单词换行时只能在文案里手动加换行(本库不做 `text-balance` / `text-pretty`, 与上游的差异见语义表)。
+    - **可滚动内容的量高顺序**: `WithDialogScroll` 的内容区是 ScrollArea。先给框架一个临时高度并 `XEle_AdjustLayout`(让内容区子项拿到宽度), 用 `childrenBottom` 量出自然高, 再夹到 `min(70vh, 面板可用高度)`; 面板排好后用最终高度再排一次框架(重算滚动范围)。头部/页脚始终在框架之外, 所以滚动时它们固定。遮罩元素还要 `EnableEvent_XE_MOUSEWHEEL(true)` 并吞掉滚轮(`*pbHandled=true`), 否则 modal 打开时滚轮会穿透到页面的 ScrollArea(浏览器里 body 是锁定的); 对话框自己的 ScrollArea / 原生列表会在子元素上先消费滚轮。
 
 ---
 
@@ -1300,7 +1320,7 @@ ui/
 - backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验证)
 - 排查"窗口可见但屏幕上看不见"(见 57):`user32!EnumWindows` + `GetWindowThreadProcessId` 枚举进程窗口(⚠️ 别用 `Process.MainWindowHandle`, 弹层小窗存在时它会返回小窗)、`IsWindowVisible`、`user32!GetLayeredWindowAttributes`(读 layered alpha/颜色键)、`PrintWindow` 与 `CopyFromScreen` 对照(画了 vs 屏幕上没有)
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽;返回的 CY **已含行距** —— 13px 字体单行 18 / 两行 36, 见第八节 75)
-- 折行文本(见第八节 90):`Label.WrappedHeight(width)`(当前字体下按宽度折行的高度)、`Label.SetColorFunc(fn)`(语义字色按当前主题实时解析)、`xc.XC_IsHXCGUI(h, xcc.XC_LAYOUT_FRAME)`(识别滚动容器框架)、`xc.XWnd_AdjustLayout`(窗口级重排;`XEle_AdjustLayout` 不能直接作用于 LayoutFrame 的内容区)
+- 折行文本(见第八节 90/91):`Label.WrappedHeight(width)`(当前字体下按宽度折行的高度;读的是 Label **当前文本**,先 SetText 再量)、`Label.SetWrap()`、`Label.SetAlignCenter()/SetAlignLeft()`、`Label.SetColorFunc(fn)`(语义字色按当前主题实时解析)、`xui.TextWidth(text, hFont)`(单行真实宽度, dialog 页脚按它定宽)、`xc.XC_IsHXCGUI(h, xcc.XC_LAYOUT_FRAME)`(识别滚动容器框架)、`xc.XWnd_AdjustLayout`(窗口级重排;`XEle_AdjustLayout` 不能直接作用于 LayoutFrame 的内容区)
 - `Element.SetBorderSize(左, 上, 右, 下)`:原生 Edit/ComboBox 的**文字内边距**, 传**逻辑像素**、由框架随 DPI 自动缩放(实测 150% DPI: Input 传 10, 文字起点距边框 20 物理 ≈ 13.3 逻辑 = 10 + 字形左侧留白) —— 别再乘 `dpi/96`, 会重复放大
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55);**对原生自建弹窗**(ComboBox 下拉, 只有窗口句柄)同样可用: `xc.XWnd_SetTransparentType / XWnd_SetTransparentAlpha`, 在弹出回调里(显示前)设置, 见第八节 69
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)

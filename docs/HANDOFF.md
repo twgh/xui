@@ -444,6 +444,31 @@
     亮/暗主题整窗截图 + 4× 放大核对首尾圆角、无缝边框、文本块/分隔条对齐;hover/按压态截图确认组内按钮
     仍整体下沉、背景过渡正常;`go build` / `go vet` / `go test ./...` 通过。
 
+- ✅ **Dialog 补齐文档能力 + AlertDialog**(2026-10-21, 参考 shadcn dialog / alert-dialog 文档):
+  - **Dialog**: 标题/描述按面板宽折行(量高口径同 Alert, 见 DESIGN 90/91); 修正无页脚时漏算的下内边距;
+    新增 `WithDialogScroll(maxHeight)`(内容区 ScrollArea, 头部/页脚固定, max 0 = 70vh)与 `BindClose`
+    (任意控件绑成 DialogClose); 页脚按钮宽度改用 `xui.TextWidth`(旧的 `GetTextShowRect width=0 + CX*2`
+    会把英文按钮挤成两行); 无关闭钮/自定义关闭钮均可配。
+  - **`components/alertdialog.go`**: 对齐 alert-dialog.tsx(radix-nova) —— default/sm 两尺寸
+    (default 桌面 384、sm 320; 头部 default 左对齐 / sm 居中)、media 40×40 图标块(破坏性配色)、
+    sm 页脚等宽双列; 无右上角 X、点遮罩不关闭(radix onInteractOutside preventDefault)、ESC 关闭、
+    打开时焦点强制 Cancel; `AddCancel` / `AddAction` 点击后关闭, 变体可经 `CancelButton()` 改。
+  - **多层模态栈**: 同一窗口叠两层时只有栈顶响应 ESC/Tab/遮罩, z 序按打开顺序抬升, 关闭上层后焦点
+    还给下层最近聚焦控件; 最小化还原时只有栈顶抢焦点。demo 反馈页加了「警示对话框」四例 +
+    「对话框变体」(无关闭钮 / 嵌套警示 / 滚动内容), registry 新增 alertdialog(依赖 dialog)。
+  - 验收: 探针亮/暗双主题逐例截图 —— default 左对齐 + 右对齐按钮、sm 居中 + 等宽双列、media 并排/堆叠、
+    destructive 红底图标 + ghost Cancel、滚动内容头部/页脚固定且可滚、嵌套 Alert 在 Dialog 之上、
+    ESC 第一次只关上层第二次关下层、关闭上层后焦点回到下层按钮、连点两次遮罩不关闭; 真实鼠标从触发钮打开时
+    焦点落在 Cancel 且不显示焦点环; 对话框打开时滚轮被遮罩吞掉、页面不滚; `go build/vet/test` 与
+    dialog/alertdialog/`add --all` 三种安装闭包编译全部通过。
+
+- ✅ **修复: 对话框页脚带上沿出现深一档的条带**(2026-10-21, 用户截图):
+  - 现象: 按钮上方一条 rgb(247,247,247) 横带, 与页脚其余部分(#fafafa)不同色。
+  - 根因: 页脚带是**半透明**的 `bg-muted/50`; 旧画法先画整块圆角矩形, 再用方角矩形补上沿
+    两个角, 交叠的 radius 高区域被合成两次。与第八节 89 的 Tooltip 箭头是同一类问题。
+  - 修法: `onPaint` 改用 `Painter.FillRoundCorners` 一次画出"上平下圆"的页脚带; 实测截图沿
+    页脚全高采样统一为 250, 条带消失。Dialog 与 AlertDialog 共用这块绘制, 两处同时修复。
+
 - ✅ **Alert 提示条**(2026-10-21): `components/alert.go` 对齐 shadcn alert.tsx(radix-nova):
   图标(16, 下移 2)+ 标题/描述 + 右上动作槽;`AlertDefault` / `AlertDestructive`(标题/图标 destructive、
   描述 destructive/90);标题/描述随宽度自动折行, 高度按内容自撑, 动作槽可放 Button / Badge。
@@ -482,7 +507,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 anim(hover 过渡) / presence(进出场) / container·layout(布局骨架)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │                                 button checkbox radio input label separator(含 Badge) card alert
-│                                 switch progress slider tabs tooltip toast window combobox dialog
+│                                 switch progress slider tabs tooltip toast window combobox dialog alertdialog
 │                                 menu table tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个

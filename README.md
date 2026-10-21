@@ -118,7 +118,8 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点) |
 | Toast | 通知(窗口内覆盖元素,右下角堆叠):4 种语义类型(success/error/warning/info)+ 动作按钮 + 可选关闭按钮;自动关闭(默认 4s)、悬停暂停、进出场滑入淡入;`NewToaster(w.Handle).Success("标题","描述")` |
 | AppWindow | 主窗口封装:圆角阴影 + 自绘标题栏(最小化/最大化/关闭,双击标题栏最大化/还原,拖动,最大化图标自动切换) + 主题化底色;`NewAppWindow("标题", 640, 480)` 后往 `Content()` 里放内容,`AddCaptionButton` 加标题栏按钮(如切换主题),`WithAppWindowNoMinMax` 只留关闭 |
-| Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述 + 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环 |
+| Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述(按宽度折行)+ 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环;`WithDialogScroll` 让内容区滚动、头部/页脚固定,`BindClose` 可把任意控件变成关闭钮 |
+| AlertDialog | 警示对话框:必须明确选择(无右上角 X、点遮罩不关闭、ESC 关闭,焦点落在 Cancel);`AlertDialogSizeDefault` / `Small`(居中头 + 等宽双列页脚)、`WithAlertDialogMedia` 图标块(含破坏性配色);`AddCancel` / `AddAction` 点击后关闭;与 Dialog 共用遮罩/模糊/焦点陷阱,支持对话框内再叠一层 |
 | Table | 数据表格(原生 `List` 载体 + 全自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽支持"占满剩余宽度" |
 | Tree | 树形视图(原生 `Tree` 载体 + 全自绘皮肤):缩进参考线/旋转 chevron/行悬浮选中;叶节点留空槽位文字全树对齐,点击 chevron 展开收起 |
 | Pagination | 分页(纯自绘单元素,鼠标驱动):上一页/下一页 + 页码 + 省略号折叠(>7 页),内容居中、当前页为描边态;`SetTotal/SetPageSize/SetPage/OnChange` |
