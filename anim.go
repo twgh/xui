@@ -385,7 +385,10 @@ func hoverTick(hOwner int) {
 	for _, c := range applies {
 		c.fn(c.v)
 	}
-	if active {
+	// 最后一帧也必须重绘: 到位那一帧 active 已经是 false(定时器也停了), 但 apply
+	// 刚把终态(如 alpha=255)写进属性 —— 不重绘的话屏幕上留的还是倒数第二帧的半透明
+	// 内容, 要等下一次无关重绘才"突然变实"(弹层淡入停在半透明的根因)。
+	if active || len(applies) > 0 {
 		if xc.XC_IsHELE(hOwner) {
 			xc.XEle_Redraw(hOwner, true)
 		} else {
