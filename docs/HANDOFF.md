@@ -488,7 +488,17 @@
     上下两种朝向都改。`SetAnimationScale(20~200)` 放慢到 alpha≈0.5 逐帧截图验证, 鬼影消失、接缝无暗线。
   - 详见 DESIGN 第八节 89。
 
+- ✅ **Calendar / DatePicker 对齐 shadcn 文档能力(2026-10-21, 参 shadcn calendar / date-picker 文档页)**:
+  - **Calendar 新能力**(`components/calendar.go`): **范围选择** `WithCalendarRange/SelectedRange/OnRangeSelect` + `SetRange/SelectedRange/RangeMode`(两次点击落区间, 早于起点自动交换, 完整后重开; 中段 bg-accent 色带 + 两端 primary, 起止同日只画一个实心格); **多月并排** `WithCalendarMonths(1~4)`(翻页钮在整块两端, 每月自己的年月下拉, 下拉只改被点的那个月); **ISO 周数列** `WithCalendarWeekNumbers`(取该行的周一算 ISOWeek, 周日开头的行 +1 天); **预订划线** `WithCalendarStrike` + `CalendarStrikeDates`(被划线格不再叠禁用的 50% 变淡 —— shadcn booked = disabled + opacity-100 的 line-through, 半透明线压半透明字实测不可见); **预设** `WithCalendarPresets(CalPreset(label,days,to))`; 页脚**自动换行**(行数多时高度跟着长); `CalendarDisableAfter` / `CalendarDisableBefore` 对称; 尺寸 helper `CalWidthFor(months)` / `CalWidthForWeekNumbers(months)` / `CalHeightForMonths(width,months)`; **宽度被布局拉伸时自动按新宽度重算高度并逐级重排祖先**(见 DESIGN 93)。单选 API 全兼容(hover 键位从 100 起, 页脚/下拉键挪到 1000+, 容纳 4 个月 ×42 格)。
+  - **DatePicker 新能力**(`components/datepicker.go`): **范围模式** `WithDatePickerRange` + `WithDatePickerRangeValue` + `Range/SetRange/OnRangeChange`(弹层并排两个月; 起点未落终点时保持打开, 补上终点关闭; 触发区 "起点 - 终点"); **预设** `WithDatePickerPresets`; **年份范围** `WithDatePickerYearRange` / **禁用日期** `WithDatePickerDisabled`; **可输入形态** `WithDatePickerEditable` = InputGroup(文字区原生 Edit + 右侧 ghost 日历钮, Enter/失焦解析回写, ↓ 打开弹层; Edit 宽度随触发区 Size 事件同步, 见 DESIGN 93); `ParseDateText(s)` 解析 2026-10-22 / 2026年10月22日 / 今天/明天/后天/大后天 / N天后 / N周后。范围模式不支持可输入(自动退回普通触发区)。弹层高度含预设页脚的换行高度。
+  - **修复: 弹层淡入停在半透明**(用户可见的"透字"弹层): `hoverTick` 里过渡**到位那一帧**不再重绘(active 已 false), 屏幕留在倒数第二帧, 等无关重绘才变实 —— 重绘条件改成 `active || len(applies)>0`(见 DESIGN 92)。60fps 抓帧验证: 弹层出现后 ≤2 帧到全亮、无半透明滞留。
+  - **demo**: 表单页第二行新增 4 张卡(日期范围框+预设 / 可输入日期框 / 范围月历(禁用未来) / 周数+预订划线+预设); `registry.json` 无新文件(datepicker 本就带 calendar.go/popup.go)。
+  - **不适用**(shadcn 文档里有但 Go/xcgui 侧做不了或无意义): RTL(dir=rtl)、波斯/Jalali 历、timeZone、自然语言解析(chrono-node 无等价物; 常用相对日期已被 `ParseDateText` 覆盖)。已记 DESIGN 第七节。
+  - 验收: 亮/暗双主题整卡 + 双月弹层/预设/周数/删除线逐项截图; 交互实测 —— 范围两次点击(第一次保持打开、第二次关闭)、预设"未来 30 天"回写、可输入键入 2026-10-22 回车回写、图标钮打开弹层(年份 1900 起)、ESC/点外部关闭; `go build/vet/test ./...` 通过; calendar/datepicker 纯逻辑单测(范围状态机/ISO 周数/几何基准/ParseDateText/Text)在 `components/calendar_test.go`。
+  - **2026-10-21 用户报障两连修 + 一条改判**: ①**点年份无效、点月份弹出年份** —— `headerHit` 的编码(块*2 + 0 年/1 月)被直接当 `calDrop*` 用, `calDropNone=0` 恰好是"年"的编码 → 点年份变成关面板、点月份落到 `calDropYear`; 新增 `calHeadKind(head)` 换算(DESIGN 语义表同条)。②**双月范围出现 3 个"选中"的 10** —— 相邻块的 outside 区按日期判定也会画端点/色带(9 月块拖尾 = 10 月上旬); 改为选中/范围标识只画在本月格上, outside 重复格只画弱化文字(DESIGN 多月并排条目)。③**跨多月范围重开停在起点** —— 曾按报障改成"终点对齐", 后确认上游 `defaultMonth={from}` 本就只认起点(区间比窗口长时终点在窗外、翻页可看), 属预期行为, 已按用户意见改回起点对齐(DESIGN 范围条目注明)。
+
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
+
 
 - ℹ️ Input 的文字/光标/选区/IME 由原生 Edit 绘制(只开放字体/字色/占位符色/插入符色/内边距, 见 DESIGN 三 第 4 条 / 23 / 61)。
 - ℹ️ Toast 只支持四角堆叠(无顶部/底部居中、无 richColors, 见 DESIGN 75)。

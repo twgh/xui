@@ -709,6 +709,109 @@ func buildFormPage(body *widget.LayoutEle) {
 			cal.SetSelected(time.Time{})
 		}}))
 	cal.OnSelect(func(t time.Time) { tip.Bind(cal.Handle, t.Format("2006年1月2日")) })
+
+	// ---- 第二行: 月历 / 日期框的 shadcn 文档能力 ----
+	r2 := row(body.Handle, 0, gap)
+	colL2 := col(r2.Handle, 1, gap)
+	colR2 := col(r2.Handle, 1, gap)
+
+	// ---- 左列 1: 日期范围框 ----
+	_, v7 := autoCard(colL2.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "日期范围框", v7.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"两次点击落区间; 弹层并排两个月份 + 预设按钮; 起点未落终点时保持打开", v7.Handle))
+	xui.ItemFill(hint(v7.Handle, "范围选择(预设: 今天 / 未来 7 天 / 未来 30 天)"))
+	now := time.Now()
+	rf := time.Date(now.Year(), time.January, 20, 0, 0, 0, 0, time.Local)
+	rt := rf.AddDate(0, 0, 20)
+	dr := ui.NewDatePicker(0, 0, 0, 0, v7.Handle,
+		ui.WithDatePickerRangeValue(rf, rt),
+		ui.WithDatePickerYearRange(2000, now.Year()+1),
+		ui.WithDatePickerPresets(
+			ui.CalPreset("今天", 0, 0),
+			ui.CalPreset("未来 7 天", 0, 7),
+			ui.CalPreset("未来 30 天", 0, 30)))
+	xui.ItemFill(dr)
+	drVal := ui.NewLabel(0, 0, 0, 0, "范围: "+dr.Text(), v7.Handle).SetMuted()
+	xui.ItemFill(drVal)
+	dr.OnRangeChange(func(from, to time.Time) {
+		if to.IsZero() {
+			drVal.SetText("起点: " + from.Format("2006年1月2日") + " · 再选终点").Redraw()
+			return
+		}
+		drVal.SetText("范围: " + from.Format("2006年1月2日") + " - " + to.Format("2006年1月2日")).Redraw()
+	})
+
+	// ---- 左列 2: 可输入日期框 ----
+	_, v8 := autoCard(colL2.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可输入日期框", v8.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"InputGroup 形态: 键入 2026-10-22 / 2026年10月22日 / 明天 / 3天后, Enter 或失焦回写; 右侧日历图标打开弹层", v8.Handle))
+	xui.ItemFill(hint(v8.Handle, "出生日期(年份范围 1900 - 今天, 弹层带年月下拉)"))
+	dp2 := ui.NewDatePicker(0, 0, 0, 0, v8.Handle,
+		ui.WithDatePickerEditable(),
+		ui.WithDatePickerYearRange(1900, now.Year()),
+		ui.WithDatePickerPlaceholder("1990-01-01 或 明天"),
+		ui.WithDatePickerValue(time.Date(1990, time.January, 1, 0, 0, 0, 0, time.Local)))
+	xui.ItemFill(dp2)
+	dp2Val := ui.NewLabel(0, 0, 0, 0, "输入值: "+dp2.Text(), v8.Handle).SetMuted()
+	xui.ItemFill(dp2Val)
+	dp2.OnChange(func(t time.Time) {
+		if t.IsZero() {
+			dp2Val.SetText("输入值: (空)").Redraw()
+			return
+		}
+		dp2Val.SetText("输入值: " + t.Format("2006年1月2日")).Redraw()
+	})
+
+	// ---- 右列 1: 范围月历(宽度跟随列, 高度按宽度自动配平) ----
+	_, v9 := autoCard(colR2.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "范围月历", v9.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"两个并排月份 + 范围选择; 今天之后的日期禁用(CalendarDisableAfter)", v9.Handle))
+	calRange := ui.NewCalendar(0, 0, 0, 0, v9.Handle,
+		ui.WithCalendarMonths(2),
+		ui.WithCalendarRange(),
+		ui.WithCalendarSelectedRange(rf, rt),
+		ui.WithCalendarDisabled(ui.CalendarDisableAfter(now)))
+	xui.ItemFill(calRange)
+	rangeInfo := ui.NewLabel(0, 0, 0, 0, "范围: "+dateRangeText(rf, rt), v9.Handle).SetMuted()
+	xui.ItemFill(rangeInfo)
+	calRange.OnRangeSelect(func(from, to time.Time) {
+		rangeInfo.SetText("范围: " + dateRangeText(from, to)).Redraw()
+	})
+
+	// ---- 右列 2: 周数 / 预订日期 / 预设 ----
+	_, v10 := autoCard(colR2.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "周数与预订日期", v10.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"ISO 周数列(周一开头); 预订日期删除线 + 禁用不可点; 页脚预设按钮", v10.Handle))
+	booked := make([]time.Time, 0, 5)
+	for i := 0; i < 5; i++ {
+		booked = append(booked, now.AddDate(0, 0, 3+i))
+	}
+	calWeek := ui.NewCalendar(0, 0, 0, 0, v10.Handle,
+		ui.WithCalendarWeekNumbers(),
+		ui.WithCalendarSelected(now),
+		ui.WithCalendarDisabled(ui.CalendarDisableDates(booked...)),
+		ui.WithCalendarStrike(ui.CalendarStrikeDates(booked...)),
+		ui.WithCalendarPresets(
+			ui.CalPreset("今天", 0, 0),
+			ui.CalPreset("明天", 1, 0),
+			ui.CalPreset("一周后", 7, 0)))
+	// 周数日历保持默认宽度: 被卡片拉满会把格子/字号一起放大。
+	xui.ItemWidth(calWeek, ui.CalWidthForWeekNumbers(1))
+}
+
+// dateRangeText 是 demo 里展示范围用的短文本。
+func dateRangeText(from, to time.Time) string {
+	if from.IsZero() {
+		return "未选择"
+	}
+	if to.IsZero() {
+		return from.Format("2006年1月2日") + " - 再选终点"
+	}
+	return from.Format("2006年1月2日") + " - " + to.Format("2006年1月2日")
 }
 
 // ===== 页 3: 导航(标签页 / 分页 / 菜单) =====

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -27,31 +28,48 @@ import (
 //     text-primary-foreground, 今天 bg-accent, 悬停 bg-accent(带 150ms 过渡),
 //     非本月 text-muted-foreground;
 //   - 固定 6 行: 月份切换时卡片高度不跳(弹层尺寸恒定), 越界日期按 outside 显示。
+//   - **范围选择**(mode="range"): 两次点击落 from/to(第二次早于第一次时自动交换),
+//     区间中段 bg-accent + 文字 accent-foreground, 两端实心 primary; 完整选中后再点
+//     是"重新开始"。区间两端同一天时只画一个实心格(react-day-picker 的 addToRange 语义)。
+//   - **多个月**(numberOfMonths): 1~4 个月并排(默认 1), 翻页按钮在整块左右两端,
+//     每个月各有自己的年月下拉; 点击只改被点的那个月。
+//   - **周数**(showWeekNumber): 每月左侧多一列 ISO 周数(周一为一周起点;
+//     周日开头的行取该行里的周一算周数), 宽度 = 一个格子。
 //   - **年月可选**: 标题行拆成 "2026年 ⌄" / "10月 ⌄" 两个热区, 点开是贴着标题的自绘
 //     下拉列表(月 12 项, 年 = 视图年 ±50 可配), 滚轮滚动 + 2px 滚动条, 当前值右侧打勾;
 //     改动只切显示月份, 不动选中日期(react-day-picker 的 captionLayout="dropdown" 语义);
-//   - **禁用日期**: WithCalendarDisabled 传判定函数(内置禁用过去 / 周末 / 日期数组 / 组合
-//     四个 helper), 禁用格 text-muted-foreground opacity-50, 不可点、无悬停、不参与选中;
-//   - **页脚**: WithCalendarFooter / WithCalendarFooterToday(内置"今天"), 或构造后
-//     AddFooterItem / AddFooterButton / AddFooterText 追加; 页脚项自绘(幽灵按钮:
-//     悬停 bg-accent), 需要放原生控件时用 FooterRect() 取内容区矩形自行摆放子元素。
+//   - **禁用日期**: WithCalendarDisabled 传判定函数(内置禁用过去 / 未来 / 周末 / 日期数组 /
+//     组合 helper), 禁用格 text-muted-foreground opacity-50, 不可点、无悬停、不参与选中;
+//     预订日期这类"仍显示但划线"用 WithCalendarStrike(不参与命中判定)。
+//   - **页脚 / 预设**: WithCalendarFooter / WithCalendarFooterToday / WithCalendarPresets;
+//     页脚自动换行(按钮数多时高度跟着涨), 项自绘(幽灵按钮, 悬停 bg-accent)。
 type Calendar struct {
 	*widget.Element
 
-	view      time.Time    // 当前显示的月份(取 1 号)
-	sel       time.Time    // 选中日期, 零值 = 未选择
+	view      time.Time    // 第一个可见月份(取 1 号)
+	sel       time.Time    // 单选选中日期, 零值 = 未选择
 	weekStart time.Weekday // 一周起始日, 默认周一(中文习惯)
 	onSelect  func(time.Time)
 	flat      bool                 // 不画卡片底/边框(由所在弹层负责), 供 popover 内嵌
 	disabled  func(time.Time) bool // 禁用日期判定, nil = 全部可选
 
+	mode      int // calModeSingle / calModeRange
+	months    int // 并排显示几个月(1~4)
+	weekNums  bool
+	rangeFrom time.Time
+	rangeTo   time.Time
+	onRange   func(from, to time.Time)
+	strike    func(time.Time) bool // 划线日期(预订/占用), 不影响可点性
+
 	// ---- 页脚 ----
-	footer []CalendarFooterItem
-	autoH  bool // 构造时未指定高度: 增删页脚项时元素自己长高 / 缩回
+	footer      []CalendarFooterItem
+	autoH       bool // 构造时未指定高度: 增删页脚项时元素自己长高 / 缩回
+	syncPending bool // 已预约一次"按宽度重算高度"(尺寸事件里不能直接重入布局)
 
 	// ---- 年月下拉 ----
 	yearFrom, yearTo int     // 年份范围, 0/0 = 视图年 ±50
 	dropKind         int     // calDropNone / calDropYear / calDropMonth
+	dropMonth        int     // 下拉所属的月份块索引(多个月时只改这一块)
 	dropVals         []int   // 下拉项的值(年份或 1..12 的月份)
 	dropScroll       int32   // 滚动偏移(像素, 吸附到整行)
 	dropRowH         int32   // 行高(按可用高度自适应, 保证 12 行放得下)
@@ -61,15 +79,28 @@ type Calendar struct {
 	dropPad          int32   // 面板内边距(随元素缩放)
 
 	// 绘制时更新的热区几何(命中判定直接复用, 客户区坐标)
-	hdrYear, hdrMonth xc.RECT
+	hdrYear, hdrMonth []xc.RECT
 	footRects         []xc.RECT
 
-	hoverIdx  int32 // 悬停的格子索引(0..41), -1 = 无
+	hoverIdx  int32 // 悬停的格子索引(月份块*42 + 0..41), -1 = 无
 	hoverBtn  int32 // 悬停的翻页按钮(0 上/1 下), -1 = 无
-	hoverHead int32 // 悬停的标题热区(0 年/1 月), -1 = 无
+	hoverHead int32 // 悬停的标题热区(块*2 + 0 年/1 月), -1 = 无
 	hoverDrop int32 // 悬停的下拉项索引, -1 = 无
 	hoverFoot int32 // 悬停的页脚项索引, -1 = 无
 }
+
+// 选择模式。
+const (
+	calModeSingle = iota
+	calModeRange
+)
+
+// 年月下拉面板类型。
+const (
+	calDropNone = iota
+	calDropYear
+	calDropMonth
+)
 
 // 月历几何(逻辑像素, 设计基准)。cell 取 32 = shadcn 默认 --cell-size: 2rem。
 //
@@ -86,145 +117,227 @@ const (
 	calGapWeek  int32 = 4 // 星期行 → 日期区
 	calRows     int   = 6
 
-	calFootH    int32 = 37 // 页脚: 1px 分隔线 + 上 6 + 按钮 24 + 下 6
-	calFootGap  int32 = 8  // 页脚项间距
-	calFootBtnH int32 = 24 // 页脚按钮高(ghost size-sm)
+	calMonthGap  int32 = 16 // 多个月之间的 gap-4
+	calMaxMonths int   = 4
 
+	calFootH      int32 = 37 // 页脚: 1px 分隔线 + 上 6 + 按钮 24 + 下 6
+	calFootGap    int32 = 8  // 页脚项间距
+	calFootBtnH   int32 = 24 // 页脚按钮高(ghost size-sm)
+	calFootPadTop int32 = 6
+	calFootPadBot int32 = 6
+	calFootRowGap int32 = 4
+	calFootPadX   int32 = 8  // 页脚按钮左右内边距(px-2)
 	calDropPad    int32 = 4  // 下拉面板内边距 p-1
 	calDropGap    int32 = 2  // 标题 → 面板
 	calDropRowMin int32 = 16 // 行高下限(再小就滚动)
 	calDropRowMax int32 = 26 // 行高上限
 	calDropMinW   int32 = 72 // 面板最小宽度
-
-	// calBaseW / calBaseH 是设计基准尺寸(1.0 倍), calDefaultScale 是默认放大比例。
-	calBaseW int32 = calPad*2 + 7*calCell // 248
-	calBaseH int32 = calPad*2 + calTitleH + calGapTitle + calWeekH + calGapWeek +
+	calMonthInner int32 = 7 * calCell
+	calBaseW      int32 = calPad*2 + calMonthInner // 单月基准宽 248
+	calBaseH      int32 = calPad*2 + calTitleH + calGapTitle + calWeekH + calGapWeek +
 		int32(calRows)*calCell + int32(calRows-1)*calRowGap // 292
 	calDefaultScale = 1.12
 )
+
+// hover 过渡键: 日期格用 0..(months*42-1), 其余从 1000 起(不要互相撞车,
+// 撞了会共用过渡值; 1000 以下留给最多 4 个月的 168 个格子)。
+const (
+	calHoverPrev int32 = 1000
+	calHoverNext int32 = 1001
+	calHoverHead int32 = 1010 // 1010 + 块*2 + 0 年/1 月
+	calHoverFoot int32 = 1100 // 1100+i: 页脚项
+	calHoverDrop int32 = 1200 // 1200+i: 下拉项(年份最多 100+ 项, 不会撞到页脚)
+)
+
+// calMetrics 是由宽度、月数、周数列决定的整套固定尺寸(不含高度相关的行距)。
+type calMetrics struct {
+	s      float64
+	pad    int32
+	cell   int32
+	weekW  int32
+	monthW int32
+
+	titleH   int32
+	weekH    int32
+	rowGap   int32
+	gapTitle int32
+	gapWeek  int32
+	monthGap int32
+
+	footPadTop int32
+	footPadX   int32
+	footBtnH   int32
+	footGap    int32
+	footRowGap int32
+	footPadBot int32
+}
 
 // calGeom 是一次布局算出的整套几何: 宽度决定缩放比(格子/内边距/字号), 高度决定
 // 6 行日期的行距(多出来的空间均摊到行间, 于是整块日期区始终铺满到页脚之上)。
 // 绘制与命中判定共用同一套值, 保证"看到哪就能点到哪"。
 type calGeom struct {
-	s                 float64
-	pad, cell         int32
-	titleH, weekH     int32
-	rowGap            int32
-	gapTitle, gapWeek int32
-	footH, footBtnH   int32
-	footGap           int32
-	gridTop           int32
+	calMetrics
+
+	foot       calFooterLayout
+	footH      int32
+	gridTop    int32
+	monthsLeft int32
+	monthsW    int32
+	rowGap     int32
 }
 
-// geom 按元素当前尺寸算几何(元素还没创建时退回默认尺寸)。
-func (c *Calendar) geom() calGeom {
-	w := CalWidth()
-	h := CalHeightFor(w)
-	if len(c.footer) > 0 {
-		h += CalFooterHeightFor(w)
-	}
-	if c.Element != nil {
-		if v := c.GetWidth(); v > 0 {
-			w = v
-		}
-		if v := c.GetHeight(); v > 0 {
-			h = v
-		}
-	}
-	s := float64(w) / float64(calBaseW)
-	if s <= 0 {
-		s = calDefaultScale
-	}
-	px := func(v int32) int32 { return int32(math.Round(float64(v) * s)) }
-	g := calGeom{
-		s:        s,
-		pad:      px(calPad),
-		titleH:   px(calTitleH),
-		weekH:    px(calWeekH),
-		gapTitle: px(calGapTitle),
-		gapWeek:  px(calGapWeek),
-		footH:    px(calFootH),
-		footBtnH: px(calFootBtnH),
-		footGap:  px(calFootGap),
-	}
-	if len(c.footer) == 0 {
-		g.footH = 0
-	}
-	g.cell = (w - 2*g.pad) / 7 // 格子铺满宽度并保持正方形
-	if g.cell <= 0 {
-		g.cell = px(calCell)
-	}
-	g.gridTop = g.pad + g.titleH + g.gapTitle + g.weekH + g.gapWeek
-	gridBottom := h - g.pad - g.footH
-	if leftover := gridBottom - g.gridTop - int32(calRows)*g.cell; leftover >= 0 {
-		g.rowGap = leftover / int32(calRows-1)
-	} else {
-		g.rowGap = px(calRowGap)
-	}
-	return g
+// calFooterLayout 是页脚换行后的布局(行号分组 + 每项宽度 + 总高)。
+type calFooterLayout struct {
+	widths []int32
+	rows   [][]int32
+	rowH   int32
+	rowGap int32
+	padTop int32
+	padBot int32
+	totalH int32
 }
 
 // fontPx 按缩放比换算字号(主题字号是 14px 档, 元素放大后文字跟着放大)。
-func (g calGeom) fontPx(base int32) int32 {
-	v := int32(math.Round(float64(base) * g.s))
+func (m calMetrics) fontPx(base int32) int32 {
+	v := int32(math.Round(float64(base) * m.s))
 	if v < 6 {
 		v = 6
 	}
 	return v
 }
 
-// 下拉面板类型。
-const (
-	calDropNone = iota
-	calDropYear
-	calDropMonth
-)
-
-// hover 过渡键: 0..41 留给日期格, 其余从这里往后取(不要互相撞车, 撞了会共用过渡值)。
-const (
-	calHoverPrev  int32 = 100
-	calHoverNext  int32 = 101
-	calHoverYear  int32 = 102
-	calHoverMonth int32 = 103
-	calHoverFoot  int32 = 120 // 120+i: 页脚项
-	calHoverDrop  int32 = 200 // 200+i: 下拉项(年份最多 100+ 项, 不会撞到页脚)
-)
-
-// CalWidth 返回月历卡片的默认宽度(逻辑像素, 278)。
-func CalWidth() int32 { return int32(math.Round(float64(calBaseW) * calDefaultScale)) }
-
-// CalHeight 返回月历卡片的默认高度(逻辑像素, 不含页脚; 327)。
-func CalHeight() int32 { return int32(math.Round(float64(calBaseH) * calDefaultScale)) }
-
-// CalHeightFor 返回指定宽度下的自然高度(不含页脚)。内部几何按宽度等比缩放,
-// 想自定义宽度就用它算高度: NewCalendar(0, 0, w, CalHeightFor(w)+CalFooterHeightFor(w))。
-func CalHeightFor(width int32) int32 {
-	if width <= 0 {
-		width = CalWidth()
+func calClampMonths(months int) int {
+	if months < 1 {
+		return 1
 	}
-	s := float64(width) / float64(calBaseW)
+	if months > calMaxMonths {
+		return calMaxMonths
+	}
+	return months
+}
+
+// calBaseTotalWidth 返回指定月数/周数列的基准总宽(未缩放)。
+func calBaseTotalWidth(months int, weekNumbers bool) int32 {
+	months = calClampMonths(months)
+	inner := calMonthInner
+	if weekNumbers {
+		inner += calCell
+	}
+	return calPad*2 + int32(months)*inner + int32(months-1)*calMonthGap
+}
+
+// calScaleFor 由元素宽度反推等比缩放比例。
+func calScaleFor(width int32, months int, weekNumbers bool) float64 {
+	if width <= 0 {
+		return calDefaultScale
+	}
+	s := float64(width) / float64(calBaseTotalWidth(months, weekNumbers))
+	if s <= 0 {
+		return calDefaultScale
+	}
+	return s
+}
+
+// calMetricsFor 算固定尺寸。实际月份内容宽度可能与设想的宽度差 1~2px(取整), 绘制时居中。
+func calMetricsFor(width int32, months int, weekNumbers bool) calMetrics {
+	months = calClampMonths(months)
+	s := calScaleFor(width, months, weekNumbers)
 	px := func(v int32) int32 { return int32(math.Round(float64(v) * s)) }
 	pad := px(calPad)
-	cell := (width - 2*pad) / 7
+	monthGap := px(calMonthGap)
+	cols := int32(7)
+	if weekNumbers {
+		cols = 8
+	}
+	// 格子宽按"可用宽度均分"算(与旧版单月口径一致): 先把四舍五入吃掉的零头
+	// 留在两侧, 而不是从格子里扣 —— 否则默认 278 宽会从 36 掉到 35, 整卡矮 6px。
+	avail := width - 2*pad - int32(months-1)*monthGap
+	if avail <= 0 {
+		avail = int32(months) * cols * px(calCell)
+	}
+	cell := avail / (int32(months) * cols)
 	if cell <= 0 {
 		cell = px(calCell)
 	}
-	return 2*pad + px(calTitleH) + px(calGapTitle) + px(calWeekH) + px(calGapWeek) +
-		int32(calRows)*cell + int32(calRows-1)*px(calRowGap)
+	monthW := cols * cell
+	weekW := int32(0)
+	if weekNumbers {
+		weekW = cell
+	}
+	return calMetrics{
+		s:          s,
+		pad:        pad,
+		cell:       cell,
+		weekW:      weekW,
+		monthW:     monthW,
+		titleH:     px(calTitleH),
+		weekH:      px(calWeekH),
+		rowGap:     px(calRowGap),
+		gapTitle:   px(calGapTitle),
+		gapWeek:    px(calGapWeek),
+		monthGap:   monthGap,
+		footPadTop: px(calFootPadTop),
+		footPadX:   px(calFootPadX),
+		footBtnH:   px(calFootBtnH),
+		footGap:    px(calFootGap),
+		footRowGap: px(calFootRowGap),
+		footPadBot: px(calFootPadBot),
+	}
 }
 
-// CalFooterHeightFor 返回指定宽度下页脚的高度。
-func CalFooterHeightFor(width int32) int32 {
+// calBaseHeight 返回不含页脚的自然高度(6 行固定)。
+func calBaseHeight(m calMetrics) int32 {
+	return 2*m.pad + m.titleH + m.gapTitle + m.weekH + m.gapWeek +
+		int32(calRows)*m.cell + int32(calRows-1)*m.rowGap
+}
+
+// CalWidth 返回单月、无周数列的默认宽度(逻辑像素, 278)。
+func CalWidth() int32 { return CalWidthFor(1) }
+
+// CalWidthFor 返回指定月数的默认宽度(不含周数列)。多个月时额外加月间距。
+func CalWidthFor(months int) int32 {
+	return int32(math.Round(float64(calBaseTotalWidth(months, false)) * calDefaultScale))
+}
+
+// CalWidthForWeekNumbers 返回启用周数列时的默认宽度(每月多占一格)。
+// 外部布局要固定宽度时用它, 否则元素被拉伸后格子会跟着放大。
+func CalWidthForWeekNumbers(months int) int32 {
+	return int32(math.Round(float64(calBaseTotalWidth(months, true)) * calDefaultScale))
+}
+
+// CalHeight 返回单月默认高度(逻辑像素, 不含页脚; 327)。
+func CalHeight() int32 { return CalHeightFor(CalWidth()) }
+
+// CalHeightFor 返回指定宽度下、单月的自然高度(不含页脚)。
+func CalHeightFor(width int32) int32 { return CalHeightForMonths(width, 1) }
+
+// CalHeightForMonths 返回指定宽度与月数下的自然高度(不含页脚、不含周数列)。
+// 多个月是并排的, 高度只跟单月宽度有关, 所以宽度要传整块宽度、月数传并排数量。
+func CalHeightForMonths(width int32, months int) int32 {
 	if width <= 0 {
-		width = CalWidth()
+		width = CalWidthFor(months)
 	}
-	return int32(math.Round(float64(calFootH) * float64(width) / float64(calBaseW)))
+	return calBaseHeight(calMetricsFor(width, months, false))
+}
+
+// CalFooterHeightFor 返回指定宽度下页脚的高度(单行基准)。页脚按钮较多换行时,
+// 实际高度以元素自撑(cy 传 0)为准。
+func CalFooterHeightFor(width int32) int32 { return CalFooterHeightForMonths(width, 1) }
+
+// CalFooterHeightForMonths 返回指定宽度与月数下的页脚高度(单行基准, 用于显式指定
+// 元素高度时预留; 页脚会换行时请把 cy 传 0 让组件按内容自撑)。
+func CalFooterHeightForMonths(width int32, months int) int32 {
+	if width <= 0 {
+		width = CalWidthFor(months)
+	}
+	m := calMetricsFor(width, months, false)
+	return int32(math.Round(float64(calFootH) * m.s))
 }
 
 // CalFooterHeight 返回默认宽度下启用页脚时卡片额外增加的高度(逻辑像素, 41)。
-// 自行给元素指定高度(cy > 0)又想用页脚时, 写成 CalHeightFor(w)+CalFooterHeightFor(w)。
-func CalFooterHeight() int32 { return int32(math.Round(float64(calFootH) * calDefaultScale)) }
+func CalFooterHeight() int32 {
+	return int32(math.Round(float64(calFootH) * calDefaultScale))
+}
 
 // CalendarFooterItem 页脚项: Text 是显示文本; OnClick 非空时是可点按钮(悬停有底),
 // 为空时是纯文本; Disabled 只对按钮生效。
@@ -232,6 +345,19 @@ type CalendarFooterItem struct {
 	Text     string
 	OnClick  func()
 	Disabled bool
+}
+
+// CalendarPreset 是页脚预设按钮: Days/To 是相对今天的天数(可为负, 表示过去)。
+// 单选模式只用 Days; 范围模式 from = 今天+Days, to = 今天+To。
+type CalendarPreset struct {
+	Label string
+	Days  int
+	To    int
+}
+
+// CalPreset 是 CalendarPreset 的简写构造。
+func CalPreset(label string, days, to int) CalendarPreset {
+	return CalendarPreset{Label: label, Days: days, To: to}
 }
 
 // CalendarOption 月历配置项。
@@ -242,14 +368,45 @@ func WithCalendarSelected(t time.Time) CalendarOption {
 	return func(c *Calendar) { c.sel = t }
 }
 
+// WithCalendarRange 启用范围选择模式(mode="range")。范围未选完时只高亮起点,
+// 第二次点击补齐区间; 再点一次重新开始。
+func WithCalendarRange() CalendarOption {
+	return func(c *Calendar) { c.mode = calModeRange }
+}
+
+// WithCalendarSelectedRange 启用范围模式并设置初始区间(只传 from 时区间未完成)。
+// to 早于 from 时自动交换。
+func WithCalendarSelectedRange(from, to time.Time) CalendarOption {
+	return func(c *Calendar) {
+		c.mode = calModeRange
+		c.rangeFrom, c.rangeTo = calNormalizeRange(from, to)
+	}
+}
+
+// WithCalendarMonths 设置并排显示的月数(numberOfMonths, 1~4)。
+func WithCalendarMonths(n int) CalendarOption {
+	return func(c *Calendar) { c.months = calClampMonths(n) }
+}
+
+// WithCalendarWeekNumbers 在每月左侧显示 ISO 周数(showWeekNumber)。
+func WithCalendarWeekNumbers() CalendarOption {
+	return func(c *Calendar) { c.weekNums = true }
+}
+
 // WithCalendarWeekStart 设置一周起始日(默认 time.Monday)。
 func WithCalendarWeekStart(w time.Weekday) CalendarOption {
 	return func(c *Calendar) { c.weekStart = w }
 }
 
-// WithCalendarOnSelect 注册日期选中回调。
+// WithCalendarOnSelect 注册单选日期选中回调(范围模式请用 WithCalendarOnRangeSelect)。
 func WithCalendarOnSelect(fn func(time.Time)) CalendarOption {
 	return func(c *Calendar) { c.onSelect = fn }
+}
+
+// WithCalendarOnRangeSelect 注册范围回调。第一次点击(from 落定、to 为零)也会回调,
+// 第二次点击补上 to; 预设按钮一次给出完整区间。只会在范围模式下触发。
+func WithCalendarOnRangeSelect(fn func(from, to time.Time)) CalendarOption {
+	return func(c *Calendar) { c.onRange = fn }
 }
 
 // WithCalendarFlat 让月历不画自己的卡片底与边框 —— 内嵌在 popover 弹层里时用,
@@ -264,6 +421,12 @@ func WithCalendarDisabled(fn func(time.Time) bool) CalendarOption {
 	return func(c *Calendar) { c.disabled = fn }
 }
 
+// WithCalendarStrike 设置划线日期判定: 返回 true 的日期文字上画一条删除线(预订/占用).
+// 与禁用是两回事 —— 只划线不影响可点性, 需要同时禁用请再传 WithCalendarDisabled。
+func WithCalendarStrike(fn func(time.Time) bool) CalendarOption {
+	return func(c *Calendar) { c.strike = fn }
+}
+
 // WithCalendarYearRange 限定年份下拉的范围(闭区间)。不设置时为"视图年 ±50",
 // 列表打开时自动滚到当前年。
 func WithCalendarYearRange(from, to int) CalendarOption {
@@ -276,7 +439,8 @@ func WithCalendarYearRange(from, to int) CalendarOption {
 }
 
 // WithCalendarFooter 启用页脚并追加页脚项(可传多组, 每次追加到已有项之后)。
-// 页脚自带 1px 分隔线, 项在卡片底部水平居中; 元素未指定高度时会自动长高。
+// 页脚自带 1px 分隔线, 项在卡片底部水平居中(一行放不下自动换行); 元素未指定
+// 高度时会自动长高。
 func WithCalendarFooter(items ...CalendarFooterItem) CalendarOption {
 	return func(c *Calendar) { c.footer = append(c.footer, items...) }
 }
@@ -289,11 +453,32 @@ func WithCalendarFooterToday() CalendarOption {
 	}
 }
 
-// CalendarDisableBefore 返回"禁用 t 之前(按天比较)"的判定函数 —— 今天可用,
-// 昨天的所有日期灰显。
+// WithCalendarPresets 启用页脚并追加一组预设日期按钮(shadcn calendar 的 Presets 示例):
+// 单选模式跳到今天+N 天并选中; 范围模式一次选中 [今天+Days, 今天+To] 区间。
+func WithCalendarPresets(presets ...CalendarPreset) CalendarOption {
+	return func(c *Calendar) {
+		for _, p := range presets {
+			p := p // go 1.18: 循环变量共享, 必须拷一份
+			c.footer = append(c.footer, CalendarFooterItem{
+				Text:    p.Label,
+				OnClick: func() { c.applyPreset(p) },
+			})
+		}
+	}
+}
+
+// CalendarDisableBefore 返回"禁用 t 之前(按天比较)"的判定函数 —— t 当天可用,
+// 之前的日期全部灰显。
 func CalendarDisableBefore(t time.Time) func(time.Time) bool {
 	limit := calDay(t)
 	return func(d time.Time) bool { return calDay(d).Before(limit) }
+}
+
+// CalendarDisableAfter 返回"禁用 t 之后(按天比较)"的判定函数 —— t 当天可用,
+// 之后的日期全部灰显(日期范围选择里限制"不能选未来"常用)。
+func CalendarDisableAfter(t time.Time) func(time.Time) bool {
+	limit := calDay(t)
+	return func(d time.Time) bool { return calDay(d).After(limit) }
 }
 
 // CalendarDisableWeekend 判定周六/周日(直接当判定函数用)。
@@ -304,6 +489,15 @@ func CalendarDisableWeekend(d time.Time) bool {
 
 // CalendarDisableDates 返回"禁用 dates 里列出的这些天(按年月日比较)"的判定函数。
 func CalendarDisableDates(dates ...time.Time) func(time.Time) bool {
+	set := make(map[int]bool, len(dates))
+	for _, d := range dates {
+		set[calDayKey(d)] = true
+	}
+	return func(d time.Time) bool { return set[calDayKey(d)] }
+}
+
+// CalendarStrikeDates 返回"给 dates 里的日期画删除线"的判定函数(预订日期示例)。
+func CalendarStrikeDates(dates ...time.Time) func(time.Time) bool {
 	set := make(map[int]bool, len(dates))
 	for _, d := range dates {
 		set[calDayKey(d)] = true
@@ -331,14 +525,45 @@ func calDay(t time.Time) time.Time {
 // calDayKey 把日期压成 y*10000+m*100+d, 便于做集合判定。
 func calDayKey(t time.Time) int { return t.Year()*10000 + int(t.Month())*100 + t.Day() }
 
-// NewCalendar 创建月历卡片。cx/cy 传 0 使用默认尺寸(278×327, 启用页脚时高度再加
-// CalFooterHeight()); 只想改宽度时 cy 也传 0 —— 高度按 CalHeightFor(cx) 自动配平,
-// 内部格子/字号/页脚都会等比跟着宽度放大。
+func calSameDay(a, b time.Time) bool {
+	return a.Year() == b.Year() && a.Month() == b.Month() && a.Day() == b.Day()
+}
+
+// calNormalizeRange 处理"第二次点击早于第一次"的情况(react-day-picker 会交换两端)。
+func calNormalizeRange(from, to time.Time) (time.Time, time.Time) {
+	if !from.IsZero() && !to.IsZero() && calDay(to).Before(calDay(from)) {
+		return to, from
+	}
+	return from, to
+}
+
+// calRangeAfterClick 是范围选择的单击状态机, 对齐 react-day-picker v9 的 addToRange:
+//   - 没有起点, 或上一段区间已经完整 → 这次点击作为新起点;
+//   - 只有起点 → 这次点击补终点(早于起点则交换)。
+func calRangeAfterClick(from, to, d time.Time) (time.Time, time.Time) {
+	if from.IsZero() || !to.IsZero() {
+		return calDay(d), time.Time{}
+	}
+	return calNormalizeRange(from, d)
+}
+
+// calWeekNumber 返回一行日期对应的 ISO 周数。ISO 周以周一为起点, 所以取该行里的
+// 周一来算: 周一开头的行就是行首; 周日开头的行要 +1 天, 否则会把周日算进上一周。
+func calWeekNumber(rowStart time.Time, weekStart time.Weekday) int {
+	offset := (8 - int(weekStart)) % 7
+	_, week := rowStart.AddDate(0, 0, offset).ISOWeek()
+	return week
+}
+
+// NewCalendar 创建月历卡片。cx/cy 传 0 使用默认尺寸(单月 278×327, 多个月宽度按
+// CalWidthFor(months) 加宽, 启用页脚时高度再加页脚高); 只想改宽度时 cy 也传 0 ——
+// 高度按宽度自动配平, 内部格子/字号/页脚都会等比跟着宽度放大。
 func NewCalendar(x, y, cx, cy int32, hParent int, opts ...CalendarOption) *Calendar {
 	now := time.Now()
 	c := &Calendar{
 		view:      time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local),
 		weekStart: time.Monday,
+		months:    1,
 		hoverIdx:  -1,
 		hoverBtn:  -1,
 		hoverHead: -1,
@@ -348,17 +573,21 @@ func NewCalendar(x, y, cx, cy int32, hParent int, opts ...CalendarOption) *Calen
 	for _, o := range opts {
 		o(c)
 	}
-	if c.sel.IsZero() {
-		// 未选择: 显示当月
-	} else {
+	c.months = calClampMonths(c.months)
+	c.rangeFrom, c.rangeTo = calNormalizeRange(c.rangeFrom, c.rangeTo)
+	switch {
+	case !c.rangeFrom.IsZero():
+		c.sel = c.rangeFrom
+		c.view = time.Date(c.rangeFrom.Year(), c.rangeFrom.Month(), 1, 0, 0, 0, 0, time.Local)
+	case !c.sel.IsZero():
 		c.view = time.Date(c.sel.Year(), c.sel.Month(), 1, 0, 0, 0, 0, time.Local)
 	}
 	if cx <= 0 {
-		cx = CalWidth()
+		cx = calDefaultWidth(c.months, c.weekNums)
 	}
 	c.autoH = cy <= 0
 	if cy <= 0 {
-		cy = CalHeightFor(cx) + c.footExtraFor(cx)
+		cy = c.naturalHeightFor(cx)
 	}
 	e := widget.NewElement(x, y, cx, cy, hParent)
 	if e == nil {
@@ -371,16 +600,144 @@ func NewCalendar(x, y, cx, cy int32, hParent int, opts ...CalendarOption) *Calen
 	e.AddEvent_MouseMove(c.onMouseMove)
 	e.AddEvent_MouseLeave(c.onMouseLeave)
 	e.AddEvent_MouseWheel(c.onMouseWheel)
+	if c.autoH {
+		// 宽度由布局拉伸时, 高度按新宽度重新配平(格子等比缩放 + 页脚可能换行)。
+		// 没有这一条, Fill 宽的元素会保持构造时的固定高度, 宽高比走样。
+		// 尺寸事件里不能直接改高度并重排(会重入布局), 推迟到下一轮消息。
+		e.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+			c.scheduleSyncHeight()
+			return 0
+		})
+	}
 	xui.AttachWindow(e.Handle)
 	return c
 }
 
-// Selected 返回当前选中日期, 未选择时为零值。
+// calDefaultWidth 按配置返回默认宽度(周数列会多占一格)。
+func calDefaultWidth(months int, weekNumbers bool) int32 {
+	return int32(math.Round(float64(calBaseTotalWidth(months, weekNumbers)) * calDefaultScale))
+}
+
+// naturalHeightFor 返回当前配置在指定宽度下的自然高度(含页脚, 页脚多行时会加高)。
+func (c *Calendar) naturalHeightFor(width int32) int32 {
+	m := calMetricsFor(width, c.months, c.weekNums)
+	h := calBaseHeight(m)
+	if len(c.footer) > 0 {
+		h += calLayoutFooter(width, c.months, c.weekNums, c.footer).totalH
+	}
+	return h
+}
+
+// calLayoutFooter 把页脚项按可用宽度换行, 返回每项宽度、行分组和总高。
+func calLayoutFooter(width int32, months int, weekNumbers bool, items []CalendarFooterItem) calFooterLayout {
+	if len(items) == 0 {
+		return calFooterLayout{}
+	}
+	m := calMetricsFor(width, months, weekNumbers)
+	lay := calFooterLayout{
+		widths: make([]int32, len(items)),
+		rowH:   m.footBtnH,
+		rowGap: m.footRowGap,
+		padTop: m.footPadTop,
+		padBot: m.footPadBot,
+	}
+	t := xui.Current()
+	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: m.fontPx(t.FontDefault.Size)})
+	for i, it := range items {
+		w := int32(0)
+		if f != 0 {
+			w = xui.TextWidth(it.Text, f)
+		} else {
+			w = int32(len([]rune(it.Text))) * m.fontPx(t.FontDefault.Size)
+		}
+		if it.OnClick != nil {
+			w += m.footPadX * 2
+		}
+		lay.widths[i] = w
+	}
+	avail := width - 2*m.pad
+	var row []int32
+	rowW := int32(0)
+	for i, w := range lay.widths {
+		add := w
+		if len(row) > 0 {
+			add += m.footGap
+		}
+		if len(row) > 0 && rowW+add > avail {
+			lay.rows = append(lay.rows, row)
+			row = nil
+			rowW = 0
+			add = w
+		}
+		row = append(row, int32(i))
+		rowW += add
+	}
+	if len(row) > 0 {
+		lay.rows = append(lay.rows, row)
+	}
+	lay.totalH = 1 + lay.padTop + int32(len(lay.rows))*lay.rowH +
+		int32(len(lay.rows)-1)*lay.rowGap + lay.padBot
+	return lay
+}
+
+// geom 按元素当前尺寸算几何(元素还没创建时退回默认尺寸)。
+func (c *Calendar) geom() calGeom {
+	months := calClampMonths(c.months)
+	m := calMetricsFor(calDefaultWidth(months, c.weekNums), months, c.weekNums)
+	w := calDefaultWidth(months, c.weekNums)
+	h := c.naturalHeightFor(w)
+	if c.Element != nil {
+		if v := c.GetWidth(); v > 0 {
+			w = v
+			m = calMetricsFor(w, months, c.weekNums)
+		}
+		if v := c.GetHeight(); v > 0 {
+			h = v
+		} else {
+			h = c.naturalHeightFor(w)
+		}
+	}
+	lay := calLayoutFooter(w, months, c.weekNums, c.footer)
+	g := calGeom{
+		calMetrics: m,
+		foot:       lay,
+		footH:      lay.totalH,
+	}
+	g.monthsW = int32(months)*m.monthW + int32(months-1)*m.monthGap
+	g.monthsLeft = m.pad + (w-2*m.pad-g.monthsW)/2
+	if g.monthsLeft < m.pad {
+		g.monthsLeft = m.pad
+	}
+	g.gridTop = m.pad + m.titleH + m.gapTitle + m.weekH + m.gapWeek
+	gridBottom := h - m.pad - g.footH
+	leftover := gridBottom - g.gridTop - int32(calRows)*m.cell
+	if leftover >= 0 {
+		g.rowGap = leftover / int32(calRows-1)
+	} else {
+		g.rowGap = m.rowGap
+	}
+	return g
+}
+
+// fontPx 保留旧的调用方式(calGeom 内嵌 calMetrics, 已有同名方法)。
+func (g calGeom) px(v int32) int32 { return int32(math.Round(float64(v) * g.s)) }
+
+// Selected 返回当前选中日期(范围模式返回起点), 未选择时为零值。
 func (c *Calendar) Selected() time.Time { return c.sel }
 
+// SelectedRange 返回当前范围(单选模式时 from 为选中日期, to 为零值)。
+func (c *Calendar) SelectedRange() (from, to time.Time) { return c.rangeFrom, c.rangeTo }
+
+// RangeMode 报告是否处于范围选择模式。
+func (c *Calendar) RangeMode() bool { return c.mode == calModeRange }
+
 // SetSelected 设置选中日期, 同时把显示月份切到该日期所在月。传零值 = 清除选择。
+// 范围模式下会把起点设为 t 并清空终点。
 func (c *Calendar) SetSelected(t time.Time) *Calendar {
 	c.sel = t
+	if c.mode == calModeRange {
+		c.rangeFrom, c.rangeTo = t, time.Time{}
+	}
 	if !t.IsZero() {
 		c.view = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.Local)
 	}
@@ -388,37 +745,62 @@ func (c *Calendar) SetSelected(t time.Time) *Calendar {
 	return c
 }
 
-// SetMonth 切换显示月份(不改选中日期)。
+// SetRange 设置范围(传零值 = 清除)。to 早于 from 时自动交换; 只传 from 表示
+// "范围尚未选完"。显示月份对齐**起点**所在月 —— 与上游 defaultMonth={from} 一致;
+// 区间比可见月数长时终点在窗口外, 往左翻页可看(上游同款行为)。
+func (c *Calendar) SetRange(from, to time.Time) *Calendar {
+	c.mode = calModeRange
+	c.rangeFrom, c.rangeTo = calNormalizeRange(from, to)
+	c.sel = c.rangeFrom
+	if !c.rangeFrom.IsZero() {
+		c.view = time.Date(c.rangeFrom.Year(), c.rangeFrom.Month(), 1, 0, 0, 0, 0, time.Local)
+	}
+	c.Redraw(false)
+	return c
+}
+
+// SetMonth 切换第一个可见月份(不改选中日期)。
 func (c *Calendar) SetMonth(year int, month time.Month) *Calendar {
 	c.view = time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
 	c.Redraw(false)
 	return c
 }
 
-// NextMonth 显示下一个月。
+// NextMonth 显示下一个月(多个月时整块一起前移一个月)。
 func (c *Calendar) NextMonth() *Calendar {
 	c.view = c.view.AddDate(0, 1, 0)
 	c.Redraw(false)
 	return c
 }
 
-// PrevMonth 显示上一个月。
+// PrevMonth 显示上一个月(多个月时整块一起后移一个月)。
 func (c *Calendar) PrevMonth() *Calendar {
 	c.view = c.view.AddDate(0, -1, 0)
 	c.Redraw(false)
 	return c
 }
 
-// Today 切到今天所在月份; 今天未被禁用时同时选中并触发 OnSelect 回调。
+// Today 切到今天所在月份; 今天未被禁用时同时选中并触发回调
+// (范围模式下区间 = 今天~今天)。
 func (c *Calendar) Today() *Calendar {
 	now := time.Now()
 	c.view = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 	today := calDay(now)
 	if !c.dateDisabled(today) {
 		c.sel = today
+		if c.mode == calModeRange {
+			c.rangeFrom, c.rangeTo = today, today
+			c.Redraw(false)
+			if c.onRange != nil {
+				c.onRange(today, today)
+			}
+			return c
+		}
+		c.Redraw(false)
 		if c.onSelect != nil {
 			c.onSelect(today)
 		}
+		return c
 	}
 	c.Redraw(false)
 	return c
@@ -427,7 +809,29 @@ func (c *Calendar) Today() *Calendar {
 // goToday 是内置"今天"页脚按钮的动作。
 func (c *Calendar) goToday() { c.Today() }
 
-// ViewMonth 返回当前显示的年月。
+// applyPreset 是预设按钮的动作: 相对今天计算并选中(范围模式一次落两端)。
+func (c *Calendar) applyPreset(p CalendarPreset) {
+	base := calDay(time.Now())
+	from := base.AddDate(0, 0, p.Days)
+	if c.mode == calModeRange {
+		to := base.AddDate(0, 0, p.To)
+		if p.To == 0 && p.Days != 0 {
+			to = from // 单日预设(Days 非 0、To 省略)按"起止同一天"处理
+		}
+		c.SetRange(from, to)
+		c.sel = c.rangeFrom
+		if c.onRange != nil {
+			c.onRange(c.rangeFrom, c.rangeTo)
+		}
+		return
+	}
+	c.SetSelected(from)
+	if c.onSelect != nil {
+		c.onSelect(from)
+	}
+}
+
+// ViewMonth 返回第一个可见月份的年月。
 func (c *Calendar) ViewMonth() (year int, month time.Month) {
 	return c.view.Year(), c.view.Month()
 }
@@ -439,9 +843,22 @@ func (c *Calendar) OnSelect(fn func(time.Time)) *Calendar {
 	return c
 }
 
+// OnRangeSelect 注册范围回调。
+func (c *Calendar) OnRangeSelect(fn func(from, to time.Time)) *Calendar {
+	c.onRange = fn
+	return c
+}
+
 // SetDisabled 运行时替换禁用日期判定(传 nil = 全部可选)。
 func (c *Calendar) SetDisabled(fn func(time.Time) bool) *Calendar {
 	c.disabled = fn
+	c.Redraw(false)
+	return c
+}
+
+// SetStrike 运行时替换划线日期判定(传 nil = 不划线)。
+func (c *Calendar) SetStrike(fn func(time.Time) bool) *Calendar {
+	c.strike = fn
 	c.Redraw(false)
 	return c
 }
@@ -501,40 +918,73 @@ func (c *Calendar) FooterRect() xc.RECT {
 		return xc.RECT{}
 	}
 	g := c.geom()
-	top := c.GetHeight() - g.footH + 1 + int32(math.Round(6*g.s))
+	top := c.GetHeight() - g.footH + 1 + g.footPadTop
 	return xc.RECT{
 		Left:   g.pad,
 		Top:    top,
 		Right:  c.GetWidth() - g.pad,
-		Bottom: top + g.footBtnH,
+		Bottom: c.GetHeight() - g.footPadBot,
 	}
-}
-
-// footExtra 返回当前宽度下页脚占用的额外高度(无页脚项时 0)。
-func (c *Calendar) footExtra() int32 {
-	w := CalWidth()
-	if c.Element != nil {
-		if v := c.GetWidth(); v > 0 {
-			w = v
-		}
-	}
-	return c.footExtraFor(w)
-}
-
-// footExtraFor 返回指定宽度下页脚占用的额外高度(无页脚项时 0)。
-func (c *Calendar) footExtraFor(width int32) int32 {
-	if len(c.footer) == 0 {
-		return 0
-	}
-	return CalFooterHeightFor(width)
 }
 
 // syncHeight 在页脚项增删后按需调整元素高度(仅构造时未指定高度的实例;
-// 指定了高度的实例由调用方自己预留 CalFooterHeightFor(width))。
+// 指定了高度的实例由调用方自己预留 CalFooterHeightFor、或把 cy 传 0)。
 func (c *Calendar) syncHeight() {
-	if c.autoH && c.Element != nil {
-		w := c.GetWidth()
-		c.SetHeight(CalHeightFor(w) + c.footExtraFor(w))
+	if !c.autoH || c.Element == nil {
+		return
+	}
+	w := c.GetWidth()
+	if w <= 0 {
+		return
+	}
+	h := c.naturalHeightFor(w)
+	if h == c.GetHeight() {
+		return
+	}
+	c.SetHeight(h)
+	// 高度变化后要逐级通知祖先重排: 只改自己时, Auto 高的卡片/行仍按旧高度排版,
+	// ScrollArea 也不会重算滚动范围(同 Alert, 见 DESIGN 第八节 90)。
+	c.adjustAncestors()
+}
+
+// scheduleSyncHeight 把尺寸事件里的高度重算推迟到下一轮 UI 消息(直接重入布局会乱)。
+func (c *Calendar) scheduleSyncHeight() {
+	if c == nil || c.syncPending {
+		return
+	}
+	c.syncPending = true
+	app.AfterFunc(0, func() {
+		c.syncPending = false
+		c.syncHeight()
+	})
+}
+
+// adjustAncestors 从自己开始逐级对祖先调用 AdjustLayout。
+func (c *Calendar) adjustAncestors() {
+	if c.Element == nil {
+		return
+	}
+	xc.XEle_AdjustLayout(c.Handle)
+	for p := xc.XWidget_GetParentEle(c.Handle); p != 0; p = xc.XWidget_GetParentEle(p) {
+		if xc.XC_IsHXCGUI(p, xcc.XC_LAYOUT_FRAME) {
+			// ScrollArea 的框架自己会重排内容区并重算滚动范围。
+			xc.XEle_AdjustLayout(p)
+			break
+		}
+		if pp := xc.XWidget_GetParentEle(p); pp != 0 && xc.XC_IsHXCGUI(pp, xcc.XC_LAYOUT_FRAME) {
+			// p 是框架的内容区: 直接对内容区 AdjustLayout 会把子项宽度打成 0(实测),
+			// 必须交给框架排。
+			xc.XEle_AdjustLayout(pp)
+			break
+		}
+		if xc.XC_IsHXCGUI(p, xcc.XC_ELE) {
+			xc.XEle_AdjustLayout(p)
+			continue
+		}
+		if xc.XC_IsHXCGUI(p, xcc.XC_WINDOW) {
+			xc.XWnd_AdjustLayout(p)
+		}
+		break
 	}
 }
 
@@ -543,20 +993,25 @@ func (c *Calendar) dateDisabled(d time.Time) bool {
 	return c.disabled != nil && c.disabled(d)
 }
 
-// dateAt 返回第 idx 个格子(0..41)对应的日期。
+// monthAt 返回第 i 个可见月份(取 1 号)。
+func (c *Calendar) monthAt(i int) time.Time {
+	return c.view.AddDate(0, i, 0)
+}
+
+// dateAtMonth 返回第 monthIdx 个月、第 idx 个格子(0..41)对应的日期。
 //
 // 网格起点 = 当月 1 号回退到"所在周的第一天"(weekStart 决定), 之后顺序排 42 天。
-func (c *Calendar) dateAt(idx int32) time.Time {
-	first := time.Date(c.view.Year(), c.view.Month(), 1, 0, 0, 0, 0, time.Local)
+func (c *Calendar) dateAtMonth(monthIdx int, idx int32) time.Time {
+	first := c.monthAt(monthIdx)
 	offset := (int(first.Weekday()) - int(c.weekStart) + 7) % 7
 	start := first.AddDate(0, 0, -offset)
 	return start.AddDate(0, 0, int(idx))
 }
 
-// gridTop 返回日期区顶边(元素客户区坐标)。
-func (c *Calendar) gridTop() int32 { return c.geom().gridTop }
+// dateAt 返回第一个月第 idx 个格子对应的日期(保留旧接口)。
+func (c *Calendar) dateAt(idx int32) time.Time { return c.dateAtMonth(0, idx) }
 
-// indexAt 把元素客户区坐标换算成格子索引, 不在格子上时返回 -1。
+// indexAt 把元素客户区坐标换算成格子索引(块*42 + 0..41), 不在格子上时返回 -1。
 func (c *Calendar) indexAt(x, y int32) int32 {
 	g := c.geom()
 	if y < g.gridTop {
@@ -566,14 +1021,24 @@ func (c *Calendar) indexAt(x, y int32) int32 {
 	if (y-g.gridTop)-row*(g.cell+g.rowGap) >= g.cell { // 落在行间隙
 		return -1
 	}
-	if x < g.pad {
+	if row < 0 || row >= int32(calRows) {
 		return -1
 	}
-	col := (x - g.pad) / g.cell
-	if row < 0 || row >= int32(calRows) || col < 0 || col >= 7 {
-		return -1
+	for i := 0; i < c.months; i++ {
+		mx := g.monthsLeft + int32(i)*(g.monthW+g.monthGap)
+		if x < mx || x >= mx+g.monthW {
+			continue
+		}
+		if c.weekNums && x < mx+g.weekW {
+			return -1
+		}
+		col := (x - mx - g.weekW) / g.cell
+		if col < 0 || col >= 7 {
+			return -1
+		}
+		return int32(i)*int32(calRows*7) + row*7 + col
 	}
-	return row*7 + col
+	return -1
 }
 
 // hitButton 判断坐标是否落在翻页按钮上: 0 = 上一月, 1 = 下一月, -1 = 都不是。
@@ -591,15 +1056,30 @@ func (c *Calendar) hitButton(x, y int32, width int32) int32 {
 	return -1
 }
 
-// headerHit 判断坐标是否落在标题的年 / 月热区上: 0 = 年, 1 = 月, -1 = 都不是。
+// headerHit 判断坐标是否落在某个月的年 / 月热区上:
+// 返回值 = 块*2 + 0(年) / 1(月); -1 = 都不是。
 func (c *Calendar) headerHit(x, y int32) int32 {
-	if calInRect(c.hdrYear, x, y) {
-		return 0
+	for i, rc := range c.hdrYear {
+		if calInRect(rc, x, y) {
+			return int32(i * 2)
+		}
 	}
-	if calInRect(c.hdrMonth, x, y) {
-		return 1
+	for i, rc := range c.hdrMonth {
+		if calInRect(rc, x, y) {
+			return int32(i*2 + 1)
+		}
 	}
 	return -1
+}
+
+// calHeadKind 把 headerHit 的编码(块*2 + 0 年/1 月)换算成 calDrop* 面板类型。
+// ⚠️ 不能直接把编码当 calDrop* 用: calDropNone=0 恰好是"年"的编码, 直接传给
+// toggleDrop 会变成"关面板"(实测: 点年份无效、点月份弹出年份列表)。
+func calHeadKind(head int32) int {
+	if head%2 == 0 {
+		return calDropYear
+	}
+	return calDropMonth
 }
 
 // footHit 判断坐标是否落在某个页脚项上(纯文本项也返回索引, 由调用方决定是否响应)。
@@ -626,27 +1106,22 @@ func (c *Calendar) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *b
 			c.closeDrop()
 			return 0
 		}
-		// 点另一个标题热区: 一次点击就切成另一个列表(与原生 select 一致)
+		// 点标题热区: 同一个 = 收起, 另一个 = 直接切过去(与原生 select 一致)
 		if head := c.headerHit(x, y); head >= 0 {
-			kind := calDropYear
-			if head == 1 {
-				kind = calDropMonth
+			block, kind := int(head/2), calHeadKind(head)
+			if block == c.dropMonth && kind == c.dropKind {
+				c.closeDrop()
+			} else {
+				c.toggleDrop(kind, block)
 			}
-			if kind != c.dropKind {
-				c.toggleDrop(kind)
-				return 0
-			}
+			return 0
 		}
 		c.closeDrop()
 		return 0
 	}
 
 	if head := c.headerHit(x, y); head >= 0 {
-		if head == 0 {
-			c.toggleDrop(calDropYear)
-		} else {
-			c.toggleDrop(calDropMonth)
-		}
+		c.toggleDrop(calHeadKind(head), int(head/2))
 		return 0
 	}
 	if b := c.hitButton(x, y, c.GetWidth()); b >= 0 {
@@ -668,13 +1143,30 @@ func (c *Calendar) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *b
 	if idx < 0 {
 		return 0
 	}
-	d := c.dateAt(idx)
+	block := int(idx / int32(calRows*7))
+	cell := idx % int32(calRows*7)
+	d := c.dateAtMonth(block, cell)
 	if c.dateDisabled(d) {
 		return 0
 	}
+
+	if c.mode == calModeRange {
+		c.rangeFrom, c.rangeTo = calRangeAfterClick(c.rangeFrom, c.rangeTo, d)
+		c.sel = c.rangeFrom
+		// 点 outside 日期时单月跟随翻页(多个月并排时不跳, 否则整块窗口会突然位移)
+		if c.months == 1 && (d.Month() != c.view.Month() || d.Year() != c.view.Year()) {
+			c.view = time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, time.Local)
+		}
+		c.Redraw(false)
+		if c.onRange != nil {
+			c.onRange(c.rangeFrom, c.rangeTo)
+		}
+		return 0
+	}
+
 	c.sel = d
-	// 点到 outside 日期: 跟随翻到目标月(shadcn 的行为)
-	if d.Month() != c.view.Month() || d.Year() != c.view.Year() {
+	// 点到 outside 日期: 跟随翻到目标月(shadcn 的行为; 多个月并排时不跳)
+	if c.months == 1 && (d.Month() != c.view.Month() || d.Year() != c.view.Year()) {
 		c.view = time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, time.Local)
 	}
 	c.Redraw(false)
@@ -702,8 +1194,11 @@ func (c *Calendar) onMouseMove(hEle int, nFlags int, pPt *xc.POINT, pbHandled *b
 	}
 
 	idx := c.indexAt(x, y)
-	if idx >= 0 && c.dateDisabled(c.dateAt(idx)) {
-		idx = -1 // 禁用格不高亮
+	if idx >= 0 {
+		block := int(idx / int32(calRows*7))
+		if c.dateDisabled(c.dateAtMonth(block, idx%int32(calRows*7))) {
+			idx = -1 // 禁用格不高亮
+		}
 	}
 	btn := c.hitButton(x, y, c.GetWidth())
 	head := c.headerHit(x, y)
@@ -758,13 +1253,17 @@ func (c *Calendar) onMouseWheel(hEle int, nFlags int, pPt *xc.POINT, pbHandled *
 
 // ---- 年月下拉 ----
 
-// toggleDrop 打开 / 收起某一类下拉(再点同一个标题热区就是收起)。
-func (c *Calendar) toggleDrop(kind int) {
-	if c.dropKind == kind {
+// toggleDrop 打开 / 收起某一类下拉(再点同一个热区就是收起)。
+func (c *Calendar) toggleDrop(kind, monthIdx int) {
+	if monthIdx < 0 || monthIdx >= c.months {
+		monthIdx = 0
+	}
+	if c.dropKind == kind && c.dropMonth == monthIdx {
 		c.closeDrop()
 		return
 	}
 	c.dropKind = kind
+	c.dropMonth = monthIdx
 	c.rebuildDropVals()
 	c.hoverDrop = -1
 	c.EnableEvent_XE_MOUSEWHEEL(true)
@@ -779,11 +1278,20 @@ func (c *Calendar) closeDrop() {
 		return
 	}
 	c.dropKind = calDropNone
+	c.dropMonth = 0
 	c.dropVals = nil
 	c.dropScroll = 0
 	c.hoverDrop = -1
 	c.EnableEvent_XE_MOUSEWHEEL(false)
 	c.Redraw(false)
+}
+
+// dropBase 返回下拉所属月份块当前显示的年月。
+func (c *Calendar) dropBase() time.Time {
+	if c.dropMonth < 0 || c.dropMonth >= c.months {
+		return c.view
+	}
+	return c.monthAt(c.dropMonth)
 }
 
 // rebuildDropVals 按当前类型生成下拉项: 月 1..12, 年 = 设定范围或视图年 ±50。
@@ -795,9 +1303,10 @@ func (c *Calendar) rebuildDropVals() {
 		}
 		return
 	}
+	base := c.dropBase()
 	from, to := c.yearFrom, c.yearTo
 	if c.yearFrom == 0 && c.yearTo == 0 {
-		from, to = c.view.Year()-50, c.view.Year()+50
+		from, to = base.Year()-50, base.Year()+50
 	}
 	c.dropVals = c.dropVals[:0]
 	for y := from; y <= to; y++ {
@@ -805,13 +1314,17 @@ func (c *Calendar) rebuildDropVals() {
 	}
 }
 
-// applyDrop 把下拉的选中值落到显示月份上(不动选中日期)。
+// applyDrop 把下拉的选中值落到"被点的那一块"的显示月份上(不动选中日期)。
+// 多个月时通过回推 view 让目标块正好显示选中的年月。
 func (c *Calendar) applyDrop(v int) {
+	base := c.dropBase()
+	var target time.Time
 	if c.dropKind == calDropYear {
-		c.view = time.Date(v, c.view.Month(), 1, 0, 0, 0, 0, time.Local)
+		target = time.Date(v, base.Month(), 1, 0, 0, 0, 0, time.Local)
 	} else {
-		c.view = time.Date(c.view.Year(), time.Month(v), 1, 0, 0, 0, 0, time.Local)
+		target = time.Date(base.Year(), time.Month(v), 1, 0, 0, 0, 0, time.Local)
 	}
+	c.view = target.AddDate(0, -c.dropMonth, 0)
 }
 
 // dropText 返回下拉项显示文本。
@@ -824,10 +1337,11 @@ func (c *Calendar) dropText(v int) string {
 
 // dropCurrent 报告下拉项是否为当前显示的年 / 月(右侧打勾)。
 func (c *Calendar) dropCurrent(v int) bool {
+	base := c.dropBase()
 	if c.dropKind == calDropYear {
-		return v == c.view.Year()
+		return v == base.Year()
 	}
-	return v == int(c.view.Month())
+	return v == int(base.Month())
 }
 
 // layoutDrop 计算下拉面板几何。面板贴着被点的标题热区下方, 左右夹在卡片内;
@@ -843,12 +1357,17 @@ func (c *Calendar) layoutDrop() bool {
 	minW := px(calDropMinW)
 
 	w, h := c.GetWidth(), c.GetHeight()
-	anchor := c.hdrMonth
-	if c.dropKind == calDropYear {
-		anchor = c.hdrYear
+	anchor := xc.RECT{}
+	if c.dropMonth >= 0 && c.dropMonth < len(c.hdrMonth) {
+		if c.dropKind == calDropYear {
+			anchor = c.hdrYear[c.dropMonth]
+		} else {
+			anchor = c.hdrMonth[c.dropMonth]
+		}
 	}
 	if anchor.Bottom == 0 { // 还没绘制过: 退化成标题行下沿
-		anchor = xc.RECT{Left: g.pad, Top: g.pad + g.titleH, Right: w - g.pad, Bottom: g.pad + g.titleH}
+		blockX := g.monthsLeft + int32(c.dropMonth)*(g.monthW+g.monthGap)
+		anchor = xc.RECT{Left: blockX, Top: g.pad + g.titleH, Right: blockX + g.monthW, Bottom: g.pad + g.titleH}
 	}
 
 	t := xui.Current()
@@ -931,9 +1450,10 @@ func (c *Calendar) clampDropScroll() {
 
 // scrollDropToCurrent 打开时把当前年 / 月滚到可视区中间。
 func (c *Calendar) scrollDropToCurrent() {
-	cur := int(c.view.Month())
+	base := c.dropBase()
+	cur := int(base.Month())
 	if c.dropKind == calDropYear {
-		cur = c.view.Year()
+		cur = base.Year()
 	}
 	idx := -1
 	for i, v := range c.dropVals {
@@ -990,124 +1510,120 @@ func (c *Calendar) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 
 	g := c.geom()
-	left, top := p.Rc.Left, p.Rc.Top
-	right := p.Rc.Right
+	titleTop := p.Rc.Top + g.pad
 
-	// ---- 标题行: [上一月]  2026年⌄ 10月⌄  [下一月] ----
-	titleTop := top + g.pad
-	prev := xc.RECT{Left: left + g.pad, Top: titleTop, Right: left + g.pad + g.cell, Bottom: titleTop + g.titleH}
-	next := xc.RECT{Left: right - g.pad - g.cell, Top: titleTop, Right: right - g.pad, Bottom: titleTop + g.titleH}
+	// 翻页按钮位于整块日历的左右两端(shadcn 的 nav 横跨所有月份)。
+	prev := xc.RECT{Left: p.Rc.Left + g.pad, Top: titleTop, Right: p.Rc.Left + g.pad + g.cell, Bottom: titleTop + g.titleH}
+	next := xc.RECT{Left: p.Rc.Right - g.pad - g.cell, Top: titleTop, Right: p.Rc.Right - g.pad, Bottom: titleTop + g.titleH}
+	c.paintNavButton(p, t, g, prev, calHoverPrev, c.hoverBtn == 0, icons.IconChevronLeft)
+	c.paintNavButton(p, t, g, next, calHoverNext, c.hoverBtn == 1, icons.IconChevronRight)
 
-	if hv := xui.HoverItem(hEle, calHoverPrev, c.hoverBtn == 0); hv > 0 {
-		p.FillRound(&prev, t.Accent.ScaleAlpha(hv), t.RadiusSm())
-	}
-	if hv := xui.HoverItem(hEle, calHoverNext, c.hoverBtn == 1); hv > 0 {
-		p.FillRound(&next, t.Accent.ScaleAlpha(hv), t.RadiusSm())
-	}
-	iconSize := int32(math.Round(16 * g.s))
-	prevIcon := xc.RECT{
-		Left:   prev.Left + (g.cell-iconSize)/2,
-		Top:    prev.Top + (g.titleH-iconSize)/2,
-		Right:  prev.Left + (g.cell+iconSize)/2,
-		Bottom: prev.Top + (g.titleH+iconSize)/2,
-	}
-	nextIcon := xc.RECT{
-		Left:   next.Left + (g.cell-iconSize)/2,
-		Top:    next.Top + (g.titleH-iconSize)/2,
-		Right:  next.Left + (g.cell+iconSize)/2,
-		Bottom: next.Top + (g.titleH+iconSize)/2,
-	}
-	p.Icon(icons.IconChevronLeft, &prevIcon, t.Foreground, 2)
-	p.Icon(icons.IconChevronRight, &nextIcon, t.Foreground, 2)
-
-	c.paintHeader(p, t, g, prev.Right, next.Left, titleTop)
-
-	// ---- 星期行 ----
-	weekTop := titleTop + g.titleH + g.gapTitle
-	if f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size - 2)}); f != 0 {
-		p.Draw.SetFont(f)
-	}
-	for i := int32(0); i < 7; i++ {
-		rc := xc.RECT{
-			Left:   left + g.pad + i*g.cell,
-			Top:    weekTop,
-			Right:  left + g.pad + (i+1)*g.cell,
-			Bottom: weekTop + g.weekH,
-		}
-		name := weekNames[(int(c.weekStart)+int(i))%7]
-		p.Text(name, &rc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
-	}
-
-	// ---- 日期格 ----
-	if f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size)}); f != 0 {
-		p.Draw.SetFont(f)
-	}
-	now := time.Now()
-	gridTop := g.gridTop
-	for idx := int32(0); idx < int32(calRows*7); idx++ {
-		d := c.dateAt(idx)
-		row, col := idx/7, idx%7
-		rc := xc.RECT{
-			Left:   left + g.pad + col*g.cell,
-			Top:    gridTop + row*(g.cell+g.rowGap),
-			Right:  left + g.pad + (col+1)*g.cell,
-			Bottom: gridTop + row*(g.cell+g.rowGap) + g.cell,
-		}
-		inMonth := d.Month() == c.view.Month() && d.Year() == c.view.Year()
-		isSel := !c.sel.IsZero() && d.Year() == c.sel.Year() && d.YearDay() == c.sel.YearDay()
-		isToday := d.Year() == now.Year() && d.YearDay() == now.YearDay()
-		dis := c.dateDisabled(d)
-
-		// 禁用格按 react-day-picker 的 `.rdp-disabled`: 整格 opacity-50, 无悬停反馈。
-		// 选中/今天标识仍画, 但一起淡下去(否则一个"看起来可选"的实心块点不动)。
-		half := func(c0 xui.Color) xui.Color { return c0.ScaleAlpha(0.5) }
-		switch {
-		case isSel && dis:
-			p.FillRound(&rc, half(t.Primary), t.RadiusSm())
-		case isSel:
-			p.FillRound(&rc, t.Primary, t.RadiusSm())
-		case isToday && dis:
-			p.FillRound(&rc, half(t.Accent), t.RadiusSm())
-		case isToday:
-			// shadcn: today = bg-accent text-accent-foreground
-			p.FillRound(&rc, t.Accent, t.RadiusSm())
-		case !dis:
-			if hv := xui.HoverItem(hEle, idx, c.hoverIdx == idx); hv > 0 {
-				p.FillRound(&rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
-			}
-		}
-
-		fore := t.Foreground
-		switch {
-		case dis:
-			fore = t.MutedForeground.ScaleAlpha(0.5)
-			if isSel {
-				fore = t.PrimaryForeground.ScaleAlpha(0.5)
-			}
-		case isSel:
-			fore = t.PrimaryForeground
-		case !inMonth:
-			fore = t.MutedForeground
-		}
-		p.Text(strconv.Itoa(d.Day()), &rc, fore, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+	// 每个月块: 标题(年月下拉)+ 星期行 + 日期网格。
+	c.hdrYear = c.hdrYear[:0]
+	c.hdrMonth = c.hdrMonth[:0]
+	for i := 0; i < c.months; i++ {
+		c.paintMonth(p, t, g, i)
 	}
 
 	// ---- 页脚 ----
-	c.paintFooter(p, t)
+	c.paintFooter(p, t, g)
 
 	// ---- 年月下拉(最后画, 盖住日期与页脚) ----
-	c.paintDrop(p, t)
+	c.paintDrop(p, t, g)
 	return 0
 }
 
-// paintHeader 画标题中部的年月两个热区, 并记下它们的客户区矩形供命中判定复用。
-func (c *Calendar) paintHeader(p *xui.Painter, t *xui.Theme, g calGeom, left, right, titleTop int32) {
+// paintNavButton 画标题行左右两端的换月按钮(ghost size-8, 悬停 bg-accent)。
+func (c *Calendar) paintNavButton(p *xui.Painter, t *xui.Theme, g calGeom, rc xc.RECT, key int32, active bool, icon string) {
+	if hv := xui.HoverItem(c.Handle, key, active); hv > 0 {
+		p.FillRound(&rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
+	}
+	iconSize := int32(math.Round(16 * g.s))
+	ir := xc.RECT{
+		Left:   rc.Left + (rc.Right-rc.Left-iconSize)/2,
+		Top:    rc.Top + (rc.Bottom-rc.Top-iconSize)/2,
+		Right:  rc.Left + (rc.Right-rc.Left+iconSize)/2,
+		Bottom: rc.Top + (rc.Bottom-rc.Top+iconSize)/2,
+	}
+	p.Icon(icon, &ir, t.Foreground, 2)
+}
+
+// paintMonth 画第 i 个月: 标题行(年月热区)、星期行、6×7 日期网格与周数列。
+func (c *Calendar) paintMonth(p *xui.Painter, t *xui.Theme, g calGeom, i int) {
+	blockX := p.Rc.Left + g.monthsLeft + int32(i)*(g.monthW+g.monthGap)
+	month := c.monthAt(i)
+	titleTop := p.Rc.Top + g.pad
+
+	// 标题中部预留两个翻页按钮的宽度(与 shadcn month_caption 的 px-(--cell-size) 一致)
+	capL := blockX + g.cell
+	capR := blockX + g.monthW - g.cell
+	c.paintMonthHeader(p, t, g, i, month, capL, capR, titleTop)
+
+	// ---- 星期行 ----
+	weekTop := titleTop + g.titleH + g.gapTitle
+	fSmall := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size - 2)})
+	if fSmall != 0 {
+		p.Draw.SetFont(fSmall)
+	}
+	if c.weekNums {
+		// 周数列表头留空(shadcn WeekNumber 的 header 也是空白)
+	}
+	for col := int32(0); col < 7; col++ {
+		rc := xc.RECT{
+			Left:   blockX + g.weekW + col*g.cell,
+			Top:    weekTop,
+			Right:  blockX + g.weekW + (col+1)*g.cell,
+			Bottom: weekTop + g.weekH,
+		}
+		name := weekNames[(int(c.weekStart)+int(col))%7]
+		p.Text(name, &rc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+	}
+
+	// ---- 周数列(每月各一列, 行首日期计算 ISO 周数) ----
+	if c.weekNums {
+		if fSmall != 0 {
+			p.Draw.SetFont(fSmall)
+		}
+		for row := int32(0); row < int32(calRows); row++ {
+			top := g.gridTop + row*(g.cell+g.rowGap)
+			wrc := xc.RECT{
+				Left:   blockX,
+				Top:    top + p.Rc.Top,
+				Right:  blockX + g.weekW,
+				Bottom: top + g.cell + p.Rc.Top,
+			}
+			week := calWeekNumber(c.dateAtMonth(i, row*7), c.weekStart)
+			p.Text(strconv.Itoa(week), &wrc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+		}
+	}
+
+	// ---- 日期格 ----
+	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size)})
+	if f != 0 {
+		p.Draw.SetFont(f)
+	}
+	now := time.Now()
+	for idx := int32(0); idx < int32(calRows*7); idx++ {
+		d := c.dateAtMonth(i, idx)
+		row, col := idx/7, idx%7
+		rc := xc.RECT{
+			Left:   blockX + g.weekW + col*g.cell,
+			Top:    g.gridTop + row*(g.cell+g.rowGap) + p.Rc.Top,
+			Right:  blockX + g.weekW + (col+1)*g.cell,
+			Bottom: g.gridTop + row*(g.cell+g.rowGap) + g.cell + p.Rc.Top,
+		}
+		c.paintDay(p, t, g, month, d, rc, int32(i)*int32(calRows*7)+idx, now)
+	}
+}
+
+// paintMonthHeader 画一个月的 "2026年 ⌄ 10月 ⌄", 并记下热区供命中判定复用。
+func (c *Calendar) paintMonthHeader(p *xui.Painter, t *xui.Theme, g calGeom, block int, month time.Time, left, right, titleTop int32) {
 	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: g.fontPx(t.FontDefault.Size), Bold: true})
 	if f != 0 {
 		p.Draw.SetFont(f)
 	}
-	yearText := fmt.Sprintf("%d年", c.view.Year())
-	monthText := fmt.Sprintf("%d月", int(c.view.Month()))
+	yearText := fmt.Sprintf("%d年", month.Year())
+	monthText := fmt.Sprintf("%d月", int(month.Month()))
 	padX := int32(math.Round(24 * g.s)) // 左右各 12(含 chevron)
 	gap := int32(math.Round(2 * g.s))
 	h := int32(math.Round(24 * g.s))
@@ -1116,16 +1632,18 @@ func (c *Calendar) paintHeader(p *xui.Painter, t *xui.Theme, g calGeom, left, ri
 
 	x := left + (right-left-yearW-gap-monthW)/2
 	y := titleTop + (g.titleH-h)/2
-	c.hdrYear = xc.RECT{Left: x, Top: y, Right: x + yearW, Bottom: y + h}
-	c.hdrMonth = xc.RECT{Left: c.hdrYear.Right + gap, Top: y, Right: c.hdrYear.Right + gap + monthW, Bottom: y + h}
+	yearRc := xc.RECT{Left: x, Top: y, Right: x + yearW, Bottom: y + h}
+	monthRc := xc.RECT{Left: yearRc.Right + gap, Top: y, Right: yearRc.Right + gap + monthW, Bottom: y + h}
+	c.hdrYear = append(c.hdrYear, yearRc)
+	c.hdrMonth = append(c.hdrMonth, monthRc)
 
-	c.paintHeadLabel(p, t, g, c.hdrYear, yearText, calHoverYear, c.hoverHead == 0 || c.dropKind == calDropYear)
-	c.paintHeadLabel(p, t, g, c.hdrMonth, monthText, calHoverMonth, c.hoverHead == 1 || c.dropKind == calDropMonth)
+	c.paintHeadLabel(p, t, g, yearRc, yearText, int32(block*2), c.hoverHead == int32(block*2) || (c.dropKind == calDropYear && c.dropMonth == block))
+	c.paintHeadLabel(p, t, g, monthRc, monthText, int32(block*2+1), c.hoverHead == int32(block*2+1) || (c.dropKind == calDropMonth && c.dropMonth == block))
 }
 
 // paintHeadLabel 画一个"文字 + chevron-down"的标题按钮(打开时保持 bg-accent)。
-func (c *Calendar) paintHeadLabel(p *xui.Painter, t *xui.Theme, g calGeom, rc xc.RECT, text string, key int32, active bool) {
-	hv := xui.HoverItem(c.Handle, key, active)
+func (c *Calendar) paintHeadLabel(p *xui.Painter, t *xui.Theme, g calGeom, rc xc.RECT, text string, headKey int32, active bool) {
+	hv := xui.HoverItem(c.Handle, calHoverHead+headKey, active)
 	if hv > 0 {
 		p.FillRound(&rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
 	}
@@ -1148,12 +1666,99 @@ func (c *Calendar) paintHeadLabel(p *xui.Painter, t *xui.Theme, g calGeom, rc xc
 	p.Icon(icons.IconChevronDown, &ir, chev, 2)
 }
 
-// paintFooter 画页脚: 1px 分隔线(卡片全宽) + 水平居中、间距 8 的一组项。
-func (c *Calendar) paintFooter(p *xui.Painter, t *xui.Theme) {
+// paintDay 画一个日期格: 范围色带 / 选中实心 / 今天 / 悬停 / 禁用 / 删除线。
+// month 是格子所属的月份块(多个月时 outside 判定必须按各自的块来)。
+func (c *Calendar) paintDay(p *xui.Painter, t *xui.Theme, g calGeom, month time.Time, d time.Time, rc xc.RECT, key int32, now time.Time) {
+	inMonth := d.Month() == month.Month() && d.Year() == month.Year()
+	dis := c.dateDisabled(d)
+	struck := c.strike != nil && c.strike(d)
+	isToday := calSameDay(d, now)
+	// 选中/范围标识只画在"本月"格上: 多月并排时同一天会同时出现在相邻块的
+	// outside 区(如 9 月块的拖尾就是 10 月上旬), 按日期判定会让端点/色带在
+	// 隔壁块重复出现(实测: 范围端点同时高亮两处 + 隔壁块一份, 共 3 个"选中")。
+	isSel := !c.sel.IsZero() && calSameDay(d, c.sel) && c.mode == calModeSingle && inMonth
+	isStart := !c.rangeFrom.IsZero() && calSameDay(d, c.rangeFrom) && inMonth
+	isEnd := !c.rangeTo.IsZero() && calSameDay(d, c.rangeTo) && inMonth
+	inRange := c.mode == calModeRange && inMonth && !c.rangeFrom.IsZero() && !c.rangeTo.IsZero() &&
+		!calDay(d).Before(calDay(c.rangeFrom)) && !calDay(d).After(calDay(c.rangeTo))
+	endpoint := isSel || ((isStart || isEnd) && c.mode == calModeRange)
+	sameEnds := inRange && calSameDay(c.rangeFrom, c.rangeTo)
+	band := inRange && !sameEnds
+
+	half := func(c0 xui.Color) xui.Color { return c0.ScaleAlpha(0.5) }
+
+	// 范围中段: 铺满格子的 accent 色带, 两端做单侧圆角(react-day-picker 的
+	// range_start / range_middle / range_end); 端点再用 primary 实心盖上去。
+	if band {
+		bandColor := t.Accent
+		if dis {
+			bandColor = half(t.Accent)
+		}
+		corners := xui.Corners{}
+		if isStart {
+			corners.TopLeft, corners.BottomLeft = t.RadiusSm(), t.RadiusSm()
+		}
+		if isEnd {
+			corners.TopRight, corners.BottomRight = t.RadiusSm(), t.RadiusSm()
+		}
+		p.FillRoundCorners(&rc, bandColor, corners)
+	}
+
+	switch {
+	case endpoint && dis:
+		p.FillRound(&rc, half(t.Primary), t.RadiusSm())
+	case endpoint:
+		p.FillRound(&rc, t.Primary, t.RadiusSm())
+	case isToday && !band && dis:
+		p.FillRound(&rc, half(t.Accent), t.RadiusSm())
+	case isToday && !band:
+		p.FillRound(&rc, t.Accent, t.RadiusSm())
+	case !dis && !band:
+		if hv := xui.HoverItem(c.Handle, key, c.hoverIdx == key); hv > 0 {
+			p.FillRound(&rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
+		}
+	}
+
+	// 预订日期(shadcn booked-dates 示例)= disabled + `opacity-100` 的 line-through:
+	// 划线本身就把"不可用"说清楚了, 所以被划线的格子不再叠 50% 变淡, 否则一条
+	// 半透明灰线压在半透明灰字上等于什么都没画(实测不可见)。
+	fore := t.Foreground
+	switch {
+	case dis && struck && endpoint:
+		fore = t.PrimaryForeground
+	case dis && struck:
+		fore = t.MutedForeground
+	case dis && endpoint:
+		fore = half(t.PrimaryForeground)
+	case dis:
+		fore = half(t.MutedForeground)
+	case endpoint:
+		fore = t.PrimaryForeground
+	case inRange:
+		fore = t.AccentForeground
+	case isToday:
+		fore = t.AccentForeground
+	case !inMonth:
+		fore = t.MutedForeground
+	}
+	p.Text(strconv.Itoa(d.Day()), &rc, fore, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+
+	// 预订日期: 文字上画一条删除线(react-day-picker 的 modifiersClassNames line-through)。
+	if struck {
+		padding := g.cell / 4
+		if padding < 2 {
+			padding = 2
+		}
+		midY := rc.Top + (rc.Bottom-rc.Top)/2
+		p.Line(rc.Left+padding, midY, rc.Right-padding, midY, fore, 1)
+	}
+}
+
+// paintFooter 画页脚: 1px 分隔线(卡片全宽) + 水平居中、可换行的一组项。
+func (c *Calendar) paintFooter(p *xui.Painter, t *xui.Theme, g calGeom) {
 	if len(c.footer) == 0 {
 		return
 	}
-	g := c.geom()
 	footerTop := p.Rc.Bottom - g.footH
 	p.Line(p.Rc.Left, footerTop, p.Rc.Right, footerTop, t.Border, 1)
 
@@ -1161,46 +1766,44 @@ func (c *Calendar) paintFooter(p *xui.Painter, t *xui.Theme) {
 	if f != 0 {
 		p.Draw.SetFont(f)
 	}
-	padTop := int32(math.Round(6 * g.s))
-	padX := int32(math.Round(8 * g.s)) // 按钮左右各 8(px-2)
-	contentTop := footerTop + 1 + padTop
-	widths := make([]int32, len(c.footer))
-	total := int32(0)
-	for i, it := range c.footer {
-		w := xui.TextWidth(it.Text, f)
-		if it.OnClick != nil {
-			w += padX * 2
-		}
-		widths[i] = w
-		total += w
-	}
-	total += int32(len(c.footer)-1) * g.footGap
-	x := p.Rc.Left + (p.W()-total)/2
+	contentTop := footerTop + 1 + g.foot.padTop
 
 	c.footRects = c.footRects[:0]
-	for i, it := range c.footer {
-		rc := xc.RECT{Left: x, Top: contentTop, Right: x + widths[i], Bottom: contentTop + g.footBtnH}
-		c.footRects = append(c.footRects, rc)
-		if it.OnClick != nil {
-			hv := xui.HoverItem(c.Handle, calHoverFoot+int32(i), c.hoverFoot == int32(i) && !it.Disabled)
-			if hv > 0 {
-				p.FillRound(&rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
+	for rowIdx, row := range g.foot.rows {
+		total := int32(0)
+		for k, idx := range row {
+			if k > 0 {
+				total += g.footGap
 			}
-			fore := xui.Fade(t.MutedForeground, t.AccentForeground, hv)
-			if it.Disabled {
-				fore = t.MutedForeground.ScaleAlpha(0.5)
-			}
-			p.Text(it.Text, &rc, fore, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
-		} else {
-			p.Text(it.Text, &rc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+			total += g.foot.widths[idx]
 		}
-		x = rc.Right + g.footGap
+		x := p.Rc.Left + (p.W()-total)/2
+		y := contentTop + int32(rowIdx)*(g.foot.rowH+g.foot.rowGap)
+		for _, idx := range row {
+			it := c.footer[idx]
+			rc := xc.RECT{Left: x, Top: y, Right: x + g.foot.widths[idx], Bottom: y + g.foot.rowH}
+			c.footRects = append(c.footRects, rc)
+			if it.OnClick != nil {
+				hv := xui.HoverItem(c.Handle, calHoverFoot+idx, c.hoverFoot == idx && !it.Disabled)
+				if hv > 0 {
+					p.FillRound(&rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
+				}
+				fore := xui.Fade(t.MutedForeground, t.AccentForeground, hv)
+				if it.Disabled {
+					fore = t.MutedForeground.ScaleAlpha(0.5)
+				}
+				p.Text(it.Text, &rc, fore, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+			} else {
+				p.Text(it.Text, &rc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+			}
+			x = rc.Right + g.footGap
+		}
 	}
 }
 
 // paintDrop 画年月下拉面板: bg-popover rounded-md + ring, 悬停 bg-accent,
 // 当前值右侧打勾; 内容超出可视高度时右侧画 2px 滚动条(滚轮滚动)。
-func (c *Calendar) paintDrop(p *xui.Painter, t *xui.Theme) {
+func (c *Calendar) paintDrop(p *xui.Painter, t *xui.Theme, g calGeom) {
 	if !c.layoutDrop() {
 		return
 	}
@@ -1211,7 +1814,6 @@ func (c *Calendar) paintDrop(p *xui.Painter, t *xui.Theme) {
 	viewTop := rc.Top + c.dropPad
 	viewBottom := rc.Bottom - c.dropPad
 	scrollable := c.dropContentH > c.dropViewH
-	g := c.geom()
 	s := g.s
 	if s <= 0 {
 		s = calDefaultScale
