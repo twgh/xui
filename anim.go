@@ -29,6 +29,11 @@ import (
 //	bg = xui.Fade(bgRest, bgHover, hv)       // 颜色插值
 //	p.FillRound(&rc, t.Accent.ScaleAlpha(hv), r)  // 只是"叠加层"时直接压透明度
 //
+// 持续旋转(spinner)用同一个定时器:
+//
+//	if loading { phase := xui.Spin(hEle, true) } // 0..1, 1s/圈
+//	p.IconRotated(icon, &rc, color, 2, phase*2*math.Pi)
+//
 // 为什么不把过渡值存在组件字段里: 组件源码是拷贝分发给用户的, 过渡状态属于
 // 运行时该管的脏活(定时器、事件、生命周期), 放运行时组件文件才能保持写薄。
 //
@@ -46,6 +51,8 @@ const (
 	defaultHoverDuration = 150 * time.Millisecond
 	// itemKeyBase 是逐项过渡的键基数: 键 0 留给元素级 hover, 行索引整体上抬。
 	itemKeyBase int32 = 1
+	// spinPeriod 是持续旋转动画一圈的时长, 对齐 tailwind animate-spin 的 1s linear。
+	spinPeriod = time.Second
 )
 
 // hoverItem 是一个过渡值: 在 from → target 之间按缓动插值。
@@ -65,11 +72,17 @@ type hoverItem struct {
 	done  func(v float64) // 到位一次
 }
 
-// hoverOwner 是一个重绘目标(元素或窗口)上的全部过渡值。
+// spinItem 是一个持续旋转动画的起始时间(相位由绘制时的墙钟时间算)。
+type spinItem struct {
+	start time.Time
+}
+
+// hoverOwner 是一个重绘目标(元素或窗口)上的全部过渡值与旋转动画。
 type hoverOwner struct {
 	hOwner  int
 	running bool
 	items   map[int32]*hoverItem
+	spins   map[int32]*spinItem
 }
 
 var hovers = struct {
@@ -129,6 +142,56 @@ func Hover(hOwner int, active bool) float64 {
 // 观察到的项状态(如 List_Item_State_Stay)。
 func HoverItem(hOwner int, index int32, active bool) float64 {
 	return hoverValue(hOwner, index+itemKeyBase, active)
+}
+
+// Spin 返回 hOwner 上持续旋转动画的相位(0..1), active=true 时启动/继续,
+// active=false 时停止并返回 0。周期固定 1s(与 tailwind 的 animate-spin 一致),
+// 由运行时同一个重绘定时器约 60fps 驱动 —— 组件在绘制回调里每帧调用即可,
+// **不要自己起定时器或缓存相位**。
+//
+// 相位按墙钟时间算(不是逐帧累加), 掉帧时不会走慢; SetAnimationScale(0) 会
+// 冻结旋转(便于截图对比), 恢复后从当前相位继续。
+func Spin(hOwner int, active bool) float64 {
+	const key int32 = 0
+	if hOwner == 0 {
+		return 0
+	}
+	now := time.Now()
+	hovers.mu.Lock()
+	defer hovers.mu.Unlock()
+	o := hovers.owners[hOwner]
+	if !active {
+		if o == nil {
+			return 0
+		}
+		if _, ok := o.spins[key]; ok {
+			delete(o.spins, key)
+			// 没有其它过渡时立刻关定时器; 还有 hover 条目就交给下一帧 tick 收尾。
+			if len(o.spins) == 0 && len(o.items) == 0 {
+				o.running = false
+				setHoverTimer(hOwner, false)
+			}
+		}
+		return 0
+	}
+	if hovers.scale <= 0 { // 全局关动画: 停在 0 相位, 也不启动定时器
+		return 0
+	}
+	if o == nil {
+		o = newHoverOwner(hOwner)
+		hovers.owners[hOwner] = o
+	}
+	it := o.spins[key]
+	if it == nil {
+		it = &spinItem{start: now}
+		o.spins[key] = it
+		o.ensureRunning()
+	}
+	el := now.Sub(it.start)
+	if el < 0 {
+		el = 0
+	}
+	return float64(el%spinPeriod) / float64(spinPeriod)
 }
 
 func hoverValue(hOwner int, key int32, active bool) float64 {
@@ -214,7 +277,7 @@ func (o *hoverOwner) ensureRunning() {
 // newHoverOwner 登记一个重绘目标并挂上定时器事件(只挂一次, 走事件总线, 不占
 // syscall 回调上限)。
 func newHoverOwner(hOwner int) *hoverOwner {
-	o := &hoverOwner{hOwner: hOwner, items: map[int32]*hoverItem{}}
+	o := &hoverOwner{hOwner: hOwner, items: map[int32]*hoverItem{}, spins: map[int32]*spinItem{}}
 	if xc.XC_IsHELE(hOwner) {
 		if e := widget.NewElementByHandle(hOwner); e != nil {
 			e.AddEvent_XC_Timer(func(hEle, nID int, pbHandled *bool) int {
@@ -280,7 +343,7 @@ func hoverTick(hOwner int) {
 		return
 	}
 	dur := hovers.duration
-	active := false
+	active := len(o.spins) > 0 // 旋转动画: 每帧都要重绘, 相位由绘制时读墙钟
 	type callback struct {
 		fn func(float64)
 		v  float64

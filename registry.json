@@ -2,8 +2,12 @@
   "$schema": "https://raw.githubusercontent.com/twgh/xui/main/registry.schema.json",
   "components": {
     "button": {
-      "files": ["button.go"],
+      "files": ["button.go", "group.go"],
       "deps": []
+    },
+    "buttongroup": {
+      "files": ["buttongroup.go"],
+      "deps": ["button"]
     },
     "checkbox": {
       "files": ["checkbox.go"],
@@ -14,7 +18,7 @@
       "deps": []
     },
     "input": {
-      "files": ["input.go", "scrollbar.go"],
+      "files": ["input.go", "scrollbar.go", "group.go"],
       "deps": []
     },
     "label": {
@@ -62,7 +66,7 @@
       "deps": ["button"]
     },
     "combobox": {
-      "files": ["combobox.go", "scrollbar.go"],
+      "files": ["combobox.go", "scrollbar.go", "group.go"],
       "deps": ["tooltip"]
     },
     "calendar": {

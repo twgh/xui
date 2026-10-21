@@ -79,6 +79,49 @@ func (p *Painter) StrokeRound(rc *xc.RECT, color Color, radius int32, lineWidth 
 	p.Draw.DrawRoundRect(rc, radius, radius)
 }
 
+// Corners 是四角独立的圆角半径(逻辑像素), 用于按钮组这类"外角圆、内角方"的壳。
+type Corners struct {
+	TopLeft     int32
+	TopRight    int32
+	BottomRight int32
+	BottomLeft  int32
+}
+
+// UniformCorners 返回四角相同的圆角。
+func UniformCorners(radius int32) Corners {
+	return Corners{radius, radius, radius, radius}
+}
+
+// Inset 把四角半径同时收缩 d(不小于 0), 供焦点环内芯与描边内缩使用。
+func (c Corners) Inset(d int32) Corners {
+	f := func(r int32) int32 {
+		if r -= d; r < 0 {
+			return 0
+		}
+		return r
+	}
+	return Corners{f(c.TopLeft), f(c.TopRight), f(c.BottomRight), f(c.BottomLeft)}
+}
+
+// FillRoundCorners 填充四角半径可不同的圆角矩形。
+func (p *Painter) FillRoundCorners(rc *xc.RECT, color Color, c Corners) {
+	if color.IsNone() {
+		return
+	}
+	p.Draw.SetBrushColor(uint32(color))
+	p.Draw.FillRoundRectEx(rc, c.TopLeft, c.TopRight, c.BottomRight, c.BottomLeft)
+}
+
+// StrokeRoundCorners 绘制四角半径可不同的圆角矩形边框(裁剪/线宽语义同 StrokeRound)。
+func (p *Painter) StrokeRoundCorners(rc *xc.RECT, color Color, c Corners, lineWidth int32) {
+	if color.IsNone() {
+		return
+	}
+	p.Draw.SetLineWidth(lineWidth)
+	p.Draw.SetBrushColor(uint32(color))
+	p.Draw.DrawRoundRectEx(rc, c.TopLeft, c.TopRight, c.BottomRight, c.BottomLeft)
+}
+
 // FocusFrame 绘制 shadcn v4 风格的聚焦态(focus-visible:ring-3 ring-ring/50):
 // 先把元素边缘 [0,3] 区域填 50% 透明焦点色, 调用方随后把正常填充画在
 // 内缩 3px 的矩形上——焦点环完全替代边框。
@@ -95,10 +138,20 @@ func (p *Painter) FocusFrame(ring Color, fill Color, radius int32) {
 // shadcn 的 aria-invalid 环改成 destructive/20(暗色 /40), 与 focus-visible 的
 // ring-ring/50 不是同一个透明度, 所以需要一个能自定义环带色的入口。
 func (p *Painter) RingFrame(ring Color, fill Color, radius int32) {
+	p.RingFrameCorners(ring, fill, UniformCorners(radius))
+}
+
+// FocusFrameCorners 是四角独立的 FocusFrame(按钮组的外角圆/内角方)。
+func (p *Painter) FocusFrameCorners(ring Color, fill Color, c Corners) {
+	p.RingFrameCorners(ring.WithAlpha(128), fill, c)
+}
+
+// RingFrameCorners 是四角独立的 RingFrame。
+func (p *Painter) RingFrameCorners(ring Color, fill Color, c Corners) {
 	if ring.IsNone() {
 		return
 	}
-	p.FillRound(&p.Rc, ring, radius)
+	p.FillRoundCorners(&p.Rc, ring, c)
 	if fill.IsNone() {
 		return
 	}
@@ -112,7 +165,7 @@ func (p *Painter) RingFrame(ring Color, fill Color, radius int32) {
 	if inner.Right-inner.Left < 4 || inner.Bottom-inner.Top < 4 {
 		return
 	}
-	p.FillRound(&inner, fill, radius-inset)
+	p.FillRoundCorners(&inner, fill, c.Inset(inset))
 }
 
 // Line 绘制一条线段。
@@ -139,6 +192,17 @@ func (p *Painter) Text(str string, rc *xc.RECT, color Color, align xcc.TextForma
 // TextCenter 在元素中央绘制文字。
 func (p *Painter) TextCenter(str string, color Color) {
 	p.Text(str, &p.Rc, color, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+}
+
+// TextF 是 Text 的浮点矩形版本, 用于高 DPI 下需要亚逻辑像素位移的场合
+// (例如按钮按压时让文字与图标对齐到同一个物理像素, 见 DESIGN 第八节 88)。
+func (p *Painter) TextF(str string, rc *xc.RECTF, color Color, align xcc.TextFormatFlag_) {
+	if color.IsNone() || str == "" {
+		return
+	}
+	p.Draw.SetBrushColor(uint32(color))
+	p.Draw.SetTextAlign(align)
+	p.Draw.DrawTextF(str, rc)
 }
 
 // State 是组件绘制的统一状态输入。

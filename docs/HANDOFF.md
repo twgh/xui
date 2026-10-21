@@ -8,7 +8,7 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-19)
+## 当前状态(截至 2026-10-21)
 
 **阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
@@ -400,6 +400,49 @@
     ②**带计数的输入框字体/字距异常** —— `BeginPaint` 的建图对象在回调之后还给原生文字用,
     `paintAddons` 里为计数换的 12px 字体没还原, 正文就跟着变小、字距走样; 现在 `onPaint` 结尾统一
     `p.Draw.SetFont(主题字体)` 还原。验收: 搜索/密码/计数三行正文字形与字距一致, 计数 "15/120" 仍为 12px 灰字。
+
+- ✅ **Button 补齐 shadcn 剩余可落地特性 + ButtonGroup**(2026-10-21, 参 shadcn button / button-group 文档):
+  - Button 新增: **行内图标+文字** `WithButtonLeadingIcon` / `WithButtonTrailingIcon`(对应 `data-icon=inline-start/end`,
+    gap 4/6、图标侧内边距收窄 6/8; 图标尺寸按档 14/16/18);**胶囊** `WithButtonRounded`;**弹层触发区态**
+    `WithButtonExpanded`(aria-expanded: outline/ghost 换 bg-muted、secondary 保持 secondary 底)与
+    `WithButtonHasPopup`(aria-haspopup: 按下不再整体下沉);暗色 outline/ghost/destructive 底色按上游
+    `dark:bg-input/30` 等规则补齐。`cx=0` 的文字按钮现在按 `TextWidth` 自动量宽(纯图标仍用方形预设),
+    `FitWidth()` 可手动重算。
+  - 新增 `components/buttongroup.go`: `ButtonGroup`(横向/纵向、宽高按内容自撑、首尾外角、相邻边直角、
+    嵌套组自动 8px 间距)+ `ButtonGroupText`(bg-muted 文本块)+ `ButtonGroupSeparator`(bg-input 分隔条,
+    跟随组高);纵向组用逐项 -1 上边距消掉按钮 1px 按压预留缝。输入框/下拉框壳体也接入了同一套组内圆角
+    (含焦点环/校验环),可直接放进组里。公共组语义抽到 `components/group.go`。非显然的布局语义记在 DESIGN 第八节 86。
+  - `registry.json`: 新增 `buttongroup`(依赖 button);`button`/`input`/`combobox` 的文件清单都带上 `group.go`,
+    并已在临时模块里逐组件拷贝编译验证(button / input / combobox / buttongroup 四种闭包均通过)。
+  - 2026-10-21 追加修复: **暗色主题下禁用按钮看起来像可用** —— 旧实现只把壳体乘 50%, 文字/图标仍是全色
+    (旧结论"文字保持原色"只在白底+白字时成立)。现在按钮文字/图标按宿主 `Card` 对半预混;暗色 outline
+    禁用底用 `input/30 × 50%`、destructive 用 `/20 × 50%`, 亮色实心钮白字仍是白色。验收: 暗色探针里
+    secondary/outline/primary/destructive 的禁用态与正常/展开态一眼可分;禁用示例是"Generating"。
+  - 2026-10-21 demo 修正: "筛选" 之前用 `WithButtonExpanded` 永久展开、却没绑点击事件 —— 点击无效,
+    浅底也一直挂着。现改成真实筛选菜单: 点击时 `SetExpanded(true)` + `Redraw(true)`(菜单是阻塞式原生弹窗,
+    不立即重绘看不到展开色), 菜单关闭后 `SetExpanded(false)`;展开时的 bg-muted 是 shadcn `aria-expanded`
+    的正常表现, 不应一直存在。
+  - 2026-10-21 追加: **加载图标原来只是静态 lucide 图标**。新增 Button `WithButtonLoading()` / `SetLoading()`
+    (行内前置位置绘制 1s/圈 linear 旋转的 loader;纯图标按钮替换图标;只负责视觉,禁用仍可转);运行时新增
+    `xui.Spin(hOwner, active)`(复用每元素动画定时器,按墙钟算相位,`SetAnimationScale(0)` 可冻结截图)与
+    `Painter.IconRotated`(旋转走 D2D 渲染变换,不重建几何;GDI 回落也旋转)。demo "Generating" 已改用。
+    详见 DESIGN 第八节 87。
+  - 2026-10-21 追加: **150% DPI 下按钮的文字/图标/壳体按下位移不同步**(用户主观感受"没一起下沉",
+    sm 的 New Branch 一度正常)。60fps 逐帧质心实测: 壳体和文字可能移 2 物理像素、图标只移 1, 且
+    **同一 DPI 换一个 y 位置, 文字也可能只移 1** —— 所以第一版"按 round(1×scale) 给图标补偿"是错的,
+    会把原本正常的 New Branch 顶过头(用户录屏复现: 文字 +1、图标 +2)。
+  - 最终修法: 按下时先用 `XDraw_ConvRect` 量**壳体自身**的实际物理位移 N(1 或 2), 然后让内容统一
+    跟随 N: 文字用 `TextF` 的浮点矩形加 `N/scale` 逻辑偏移, 图标用 `Painter.IconRotatedOffset` 加
+    N 物理偏移; 壳体保持原整数逻辑位移。四种组合(sm/default × 前导/尾随)逐帧验证壳体、文字、图标
+    位移完全一致。详见 DESIGN 第八节 88。
+  - demo 基础页新增"按钮组"卡片(横向/文本块/嵌套/纵向/尺寸档/行内图标/展开/胶囊/加载态),菜单触发钮改用
+    `WithButtonHasPopup` + `SetExpanded`; `registry.json` 增加 `buttongroup`(依赖 button),README 组件表同步。
+    按钮组行末的"…"也接了真实菜单(导出/归档/删除), 标记 `WithButtonHasPopup` —— 弹层触发区按下**不下沉**,
+    打开期间只显示展开底色; 组内普通按钮仍照常下沉。
+  - 验收: 探针断言组/文本块/分隔条矩形(嵌套组外框 120 = 56+8+56、纵向组 65 = 33+33−1、文本块 32 高、
+    sm 文本组高 29(按钮元素高 29, 文本块压到 28));
+    亮/暗主题整窗截图 + 4× 放大核对首尾圆角、无缝边框、文本块/分隔条对齐;hover/按压态截图确认组内按钮
+    仍整体下沉、背景过渡正常;`go build` / `go vet` / `go test ./...` 通过。
 
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
 

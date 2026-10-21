@@ -58,6 +58,8 @@ func main() {
 	app.InitOrExit()
 	a := app.New(true)
 	a.EnableAutoDPI(true).EnableDPI(true)
+	// 安装 xcgui.dll 内部错误弹窗的拦截钩子
+	xc.InstallErrorHook()
 	// 重绘节流默认 30ms(hover 过渡只有约 5 帧); 设 10ms 让过渡/动画跑到 ~60fps。
 	// 10 而不是 16: 节流按两次绘制的间隔算, 与运行时 16ms 的过渡定时器会周期性 beat 掉帧;
 	// 低于 16 也不再涨(实测 ~16.6ms 硬地板)。见 DESIGN.md 第八节 46。
@@ -379,7 +381,125 @@ func buildBasePage(body *widget.LayoutEle) {
 	xui.ItemWidth(disLabel, 96)
 	disLabel.Enable(false)
 
-	// ---- 第二行: 卡片本身(直接以真卡片呈现, 不套外壳) ----
+	// ---- 第二行: 按钮组 ----
+	// 组是宽高自撑的 LayoutEle: 子按钮 cx 传 0 时按文字量宽, 组自动拼成一条,
+	// 首尾保留外圆角、相邻边收成直角, 相邻边框自然并成 1px(见 buttongroup.go)。
+	_, vbg := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "按钮组", vbg.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"ButtonGroup 横向/纵向、首尾外角、自动量宽; 文本块与分隔条跟随组高; 嵌套组自动 8px 间距", vbg.Handle))
+
+	xui.ItemFill(hint(vbg.Handle, "横向 · 分隔条 · 图标按钮"))
+	rbg1 := xui.HStack(vbg.Handle, 40, 16)
+	bg1 := ui.NewButtonGroup(rbg1.Handle)
+	ui.NewButton(0, 0, 0, 0, "Archive", bg1.Handle, ui.WithVariant(ui.ButtonOutline))
+	ui.NewButton(0, 0, 0, 0, "Report", bg1.Handle, ui.WithVariant(ui.ButtonOutline))
+	ui.NewButton(0, 0, 0, 0, "Snooze", bg1.Handle, ui.WithVariant(ui.ButtonOutline))
+	ui.NewButtonGroupSeparator(bg1.Handle)
+	moreBtn := ui.NewButton(0, 0, 0, 0, "", bg1.Handle,
+		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconMoreHorizontal),
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonHasPopup())
+	tip.Bind(moreBtn.Handle, "更多操作 · 弹层触发区(按下不下沉)")
+	moreBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		moreBtn.SetExpanded(true)
+		moreBtn.Redraw(true) // 菜单阻塞, 先立即重绘出展开色
+		defer moreBtn.SetExpanded(false)
+		m := ui.NewMenu()
+		m.Width(176)
+		m.Item("导出", ui.MenuShortcut("Ctrl+E"))
+		m.Item("归档")
+		m.Separator()
+		m.Item("删除", ui.MenuDestructive())
+		m.PopupAtElement(hEle)
+		return 0
+	})
+
+	xui.ItemFill(hint(vbg.Handle, "文本块 · 分隔条 · 行内图标"))
+	rbg2 := xui.HStack(vbg.Handle, 40, 16)
+	bg2 := ui.NewButtonGroup(rbg2.Handle)
+	ui.NewButtonGroupText("https://", bg2.Handle)
+	ui.NewButton(0, 0, 0, 0, "Copy", bg2.Handle,
+		ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline))
+	ui.NewButtonGroupSeparator(bg2.Handle)
+	ui.NewButton(0, 0, 0, 0, "", bg2.Handle,
+		ui.WithSize(ui.ButtonSizeIconSm), ui.WithIcon(icons.IconArrowUp), ui.WithVariant(ui.ButtonOutline))
+
+	xui.ItemFill(hint(vbg.Handle, "嵌套组(组间距 8)"))
+	rbg3 := xui.HStack(vbg.Handle, 40, 16)
+	bg3 := ui.NewButtonGroup(rbg3.Handle)
+	bg31 := ui.NewButtonGroup(bg3.Handle)
+	for _, s := range []string{"1", "2", "3", "4", "5"} {
+		ui.NewButton(0, 0, 0, 0, s, bg31.Handle,
+			ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline))
+	}
+	bg32 := ui.NewButtonGroup(bg3.Handle)
+	ui.NewButton(0, 0, 0, 0, "", bg32.Handle,
+		ui.WithSize(ui.ButtonSizeIconSm), ui.WithIcon(icons.IconArrowLeft), ui.WithVariant(ui.ButtonOutline))
+	ui.NewButton(0, 0, 0, 0, "", bg32.Handle,
+		ui.WithSize(ui.ButtonSizeIconSm), ui.WithIcon(icons.IconArrowRight), ui.WithVariant(ui.ButtonOutline))
+
+	xui.ItemFill(hint(vbg.Handle, "纵向组 · 尺寸档(组内统一 rounded-lg)"))
+	rbg4 := xui.HStack(vbg.Handle, 80, 16)
+	bg4 := ui.NewButtonGroup(rbg4.Handle, ui.WithButtonGroupOrientation(ui.ButtonGroupVertical))
+	ui.NewButton(0, 0, 0, 0, "", bg4.Handle,
+		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconPlus), ui.WithVariant(ui.ButtonOutline))
+	ui.NewButton(0, 0, 0, 0, "", bg4.Handle,
+		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconMinus), ui.WithVariant(ui.ButtonOutline))
+
+	bg5 := ui.NewButtonGroup(rbg4.Handle)
+	ui.NewButton(0, 0, 0, 0, "Xs", bg5.Handle,
+		ui.WithSize(ui.ButtonSizeXs), ui.WithVariant(ui.ButtonOutline))
+	ui.NewButton(0, 0, 0, 0, "Sm", bg5.Handle,
+		ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline))
+	ui.NewButton(0, 0, 0, 0, "Default", bg5.Handle, ui.WithVariant(ui.ButtonOutline))
+
+	xui.ItemFill(hint(vbg.Handle, "行内图标 · 展开态 · 胶囊 · 加载态"))
+	rbg6 := xui.HStack(vbg.Handle, 40, 12)
+	ui.NewButton(0, 0, 0, 0, "New Branch", rbg6.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm), ui.WithButtonLeadingIcon(icons.IconGitBranch))
+	ui.NewButton(0, 0, 0, 0, "下一步", rbg6.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonTrailingIcon(icons.IconChevronRight))
+	filterUnread, filterAttach := false, false
+	filterBtn := ui.NewButton(0, 0, 0, 0, "筛选", rbg6.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonTrailingIcon(icons.IconChevronDown),
+		ui.WithButtonHasPopup())
+	tip.Bind(filterBtn.Handle, "展开态: 点击打开筛选菜单")
+	filterBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		filterBtn.SetExpanded(true)
+		filterBtn.Redraw(true)             // 菜单是阻塞式原生弹窗, 不立即重绘就看不到展开色
+		defer filterBtn.SetExpanded(false) // 菜单阻塞到关闭, 返回后恢复非展开色
+		m := ui.NewMenu()
+		m.Width(176)
+		m.Label("筛选")
+		m.Check("仅未读", filterUnread, ui.MenuOnCheck(func(on bool) { filterUnread = on }))
+		m.Check("含附件", filterAttach, ui.MenuOnCheck(func(on bool) { filterAttach = on }))
+		m.Separator()
+		m.Item("清除筛选", ui.MenuOnSelect(func() { filterUnread, filterAttach = false, false }))
+		m.PopupAtElement(hEle)
+		return 0
+	})
+	genBtn := ui.NewButton(0, 0, 0, 0, "Generating", rbg6.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm), ui.WithButtonLoading())
+	genBtn.Enable(false)
+	ui.NewButton(0, 0, 0, 0, "", rbg6.Handle,
+		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconArrowUp), ui.WithVariant(ui.ButtonOutline), ui.WithButtonRounded())
+
+	xui.ItemFill(hint(vbg.Handle, "输入框 / 下拉框直接入组(壳体跟随首尾圆角)"))
+	rbg7 := xui.HStack(vbg.Handle, 40, 16)
+	bg7 := ui.NewButtonGroup(rbg7.Handle)
+	search := ui.NewInput(0, 0, 0, 0, bg7.Handle, ui.WithPlaceholder("Search..."))
+	xui.ItemWidth(search, 220)
+	ui.NewButton(0, 0, 0, 0, "", bg7.Handle,
+		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconSearch), ui.WithVariant(ui.ButtonOutline))
+
+	bg8 := ui.NewButtonGroup(rbg7.Handle)
+	combo := ui.NewComboBox(0, 0, 0, 0, bg8.Handle,
+		[]string{"开发环境", "测试环境", "预发环境"}, ui.WithComboPlaceholder("选择环境"))
+	xui.ItemWidth(combo, 180)
+	ui.NewButton(0, 0, 0, 0, "", bg8.Handle,
+		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconSettings), ui.WithVariant(ui.ButtonOutline))
+
+	// ---- 第三行: 卡片本身(直接以真卡片呈现, 不套外壳) ----
 	cardDemo, vd := autoCard(body.Handle, 10)
 	// 卡片头: 左列标题+说明, 右列动作区(CardAction) —— 动作贴右上、跨标题与说明两行。
 	ch := ui.NewCardHeader(0, 0, 0, vd.Handle, 4)
@@ -627,10 +747,15 @@ func buildNavPage(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0,
 		"条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 分组标签 / 禁用 / 破坏性", v2.Handle).SetMuted())
 	rm := xui.HStack(v2.Handle, 36, 8)
-	menuBtn := ui.NewButton(0, 0, 0, 0, "打开菜单", rm.Handle, ui.WithVariant(ui.ButtonOutline))
-	xui.ItemWidth(menuBtn, 104)
+	menuBtn := ui.NewButton(0, 0, 0, 0, "打开菜单", rm.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonHasPopup(),
+		ui.WithButtonTrailingIcon(icons.IconChevronDown))
+	xui.ItemWidth(menuBtn, 120)
 	menuBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		// PopupAtElement 阻塞到菜单关闭; 期间保持 aria-expanded 的底色, 且不整体下沉。
+		menuBtn.SetExpanded(true)
 		showDemoMenu(hEle)
+		menuBtn.SetExpanded(false)
 		return 0
 	})
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "条目 hover 走 bg-accent, 与表格行 / 树行同一口径", v2.Handle).SetMuted())

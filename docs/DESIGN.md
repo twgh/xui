@@ -270,7 +270,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | 文本输入框点击聚焦也显示环(浏览器对文本控件恒匹配 focus-visible);禁用 = `bg-input/50`(暗色另有 `dark:bg-input/80`)再按组级乘 50%, 字色预混变淡 | input.tsx + 第八节 61 |
 | disabled:opacity-50 原色半透明 | 各组件 disabled:* |
 | **禁用/未选态的半透明令牌要"乘"不要"覆盖", 且先铺宿主底色**(暗色 input/border 令牌自带 alpha) | checkbox/radio/switch/input.tsx + 第八节 61 |
-| active:translate-y-px 按下整体下沉 1px(含文字→文字手动绘制) | button.tsx 基类 |
+| active:translate-y-px 按下整体下沉 1px(含文字→文字手动绘制);**aria-haspopup 触发区(菜单/下拉)不下沉**;aria-expanded 展开时 outline/ghost 换 bg-muted、secondary 保持 secondary 底 | button.tsx 基类 + aria-expanded 变体 |
+| **button group**: 首尾保留外圆角、相邻边收直角;xs/sm/icon-xs/icon-sm 在组内圆角统一成 rounded-lg;直系子项相邻边框自然并成 1px;组内嵌组时直接子项间距 8(gap-2);文本块/分隔条拉伸到按钮视觉高 | button-group.tsx + button.tsx 的 `in-data-[slot=button-group]` 规则 + 第八节 86 |
+| **button 加载态**: 行内前置图标位置换成 lucide loader-circle(纯图标按钮替换图标), 1s/圈 linear 持续旋转, 常配 `disabled`;只负责视觉, 是否禁用由调用方决定 | shadcn button 文档的 spinner 示例(`LoaderCircleIcon animate-spin` + disabled)+ 第八节 87 |
 | destructive 软色调(bg-destructive/10 + 红字) | button.tsx / badge.tsx |
 | radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground) | radio-group.tsx |
 | checkbox size-4 rounded-[4px] border-input;未选**亮色无底色 / 暗色 dark:bg-input/30**;选中 bg-primary + 白勾;禁用 = 上面每个图层各乘 50% | checkbox.tsx + 第八节 61 |
@@ -292,7 +294,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | scroll area: 页面/长内容滚动用 `ui.ScrollArea`(原生 LayoutFrame 载体, 见第八节 66): **只做纵向**(内容区恒铺满视口宽); 滚动条**鼠标移入容器才显示、离开淡出**(同 radix 的 `type=hover`, 150ms; 用元素透明度实现, 不改变布局宽度)、10px 轨道 + 8px 圆头滑块(`rounded-full bg-border`)、轨道透明; 滑块悬停**不换色**; 滚轮悬停任意子元素都滚动(原生控件如 List 自吃 —— 嵌套滚动常态); 该规格统一在 `ui/scrollbar.go` 的 `styleScrollBar` + `showScrollBarOnHover`, Table / Tree / ComboBox 弹层 / 多行 Input 同用(**滑块配色与容器不同**: 这四个载体在原版里是浏览器原生滚动条, 用"前景色淡化 + 悬停加深", 见第八节 21) | scroll-area.tsx(w-2.5 p-px `rounded-full bg-border`; radix `type` 默认 hover 淡入 —— 本实现的差异见"已知差异"表) |
-| **disabled:opacity-50 是组级透明**:组件自绘的**形状**(壳体/轨道/勾/滑块/圆点)**逐层各乘 50%**(`ScaleAlpha`, 见第八节 61);**原生文字**不吃 alpha —— 按钮文字/复选框与单选框的标签保持原色(实测浏览器禁用实心钮白字核心=255,给文字加 50% alpha 只有 194),输入框禁用文字用"前景色×卡片色对半混"预混后发给原生 Edit。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider/input.tsx |
+| **disabled:opacity-50 是组级透明**:组件自绘的**形状**(壳体/轨道/勾/滑块/圆点)**逐层各乘 50%**(`ScaleAlpha`, 见第八节 61);**按钮文字/图标用"前景色×卡片色对半混"预混后绘制**(等于整组 50% 合成; 亮色页上禁用实心钮白字仍=255, 暗色下才会正确变暗);不要直接给文字加 alpha —— 文字叠在已半透明的壳体上会二次透出按钮底色。复选框/单选框的标签保持原色, 输入框禁用文字同样预混后交给原生 Edit。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider/input.tsx |
 | **input 内嵌附加件**(input-group): 前置图标 size-4(16) / 前后缀文字(muted, 与输入同字号) / 清除钮(×)与密码显隐钮(眼睛) size-6(24) 幽灵钮 + 圆角 radius-5 + hover:bg-accent / 计数 `n/max` text-xs(12), 超上限变 destructive; 全部**自绘在壳体内部**, 不建子元素(子元素会被原生 Edit 的绘制盖住), 文字区左右内边距按附加件实际宽度算(`syncPadding`), 内容为空时清除钮不画但**留位**(打字过程中文字不左右跳) | input-group 示例 + 第八节 78/79 |
 | input 步进器: 右侧 −/+ 内嵌按钮(size-6) + ↑/↓ 键 ±1 步 + 回车提交 + 失焦校正; 输入过程中允许任意文本(含负号/小数点), 只有步进/回车/失焦才解析 —— 超出值域夹取、不在刻度上吸附到最近刻度、解析失败回退最近一次有效值; 步长小数位决定显示精度(0.1 → "1.2", 不出现浮点尾巴); 到边界时对应按钮画成不可点 | 社区通行 stepper 语义(shadcn 无官方 stepper), 见 78 |
 | input 密码遮挡沿用浏览器口径: 遮挡符是**实心圆点 (U+25CF)**, 明文/密文切换后焦点与光标留在末尾 | input.tsx(type=password) + 第八节 79 |
@@ -318,7 +320,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | 组件 | 映射 / 实现 | 说明 |
 |---|---|---|
 | Button variant | `ButtonPrimary` = shadcn 的 `default`(用 primary 色), 另有 `ButtonDefault` 别名 | 上游把这个变体叫 `default`; 其余 secondary/outline/ghost/destructive/link 同名 |
-| Button size | `ButtonSizeXs/Sm/Default/Lg` = h-6/h-7/h-8/h-9(24/28/32/36); `ButtonSizeIcon/IconXs/IconSm/IconLg` = size-6/7/8/9 方形 | 与上游 8 档一一对应(像素实测吻合); 方形档 cx 传 0 即用预设边长 |
+| Button size | `ButtonSizeXs/Sm/Default/Lg` = h-6/h-7/h-8/h-9(24/28/32/36); `ButtonSizeIcon/IconXs/IconSm/IconLg` = size-6/7/8/9 方形 | 与上游 8 档一一对应(像素实测吻合); 方形档 cx 传 0 即用预设边长; xs/sm/icon-xs/icon-sm 在按钮组内统一成 rounded-lg(见 86) |
+| Button 行内图标/触发区态/加载 | `WithButtonLeadingIcon` / `WithButtonTrailingIcon`(对应 `data-icon=inline-start/end`, 间距 4/6、图标侧内边距收窄为 6/8); `WithButtonRounded` = rounded-full; `WithButtonExpanded` = aria-expanded; `WithButtonHasPopup` = aria-haspopup(按下不下沉); `WithButtonLoading` = LoaderCircleIcon + animate-spin(1s linear) | 上游的 `has-data-[icon=...]` / `aria-expanded` / `active:not-aria-[haspopup]` / spinner 示例;Go 侧无 asChild/Slot |
+| ButtonGroup | `NewButtonGroup(hParent, WithButtonGroupOrientation(...))` + `NewButtonGroupText` + `NewButtonGroupSeparator`; 组宽高按内容自撑, 首尾外角、嵌套组 8px 间距 | 对应 button-group.tsx 的 `ButtonGroup/ButtonGroupText/ButtonGroupSeparator`(role=group);不适用部分同下表的 Slot/data-* 钩子 |
 | Badge variant | default/secondary/outline/destructive/ghost/link 六档齐全 | 悬停样式恒生效(**shadcn 写作 `[a]:hover:*`, 只有包在链接里才生效**; Go 侧没有链接概念) |
 | Badge 悬停 | `ghost` = hover 出 bg-muted, `link` = hover 加下划线 | 下划线手绘(无下划线标志位, 见下方"下划线") |
 | Card | `WithCardSize(CardSizeSm)` = `--card-spacing` 4→3(16→12) | 标题字号上游是 `text-base` + `font-medium`, 中文下 500 回落常规 → `NewCardTitle` 用 16 常规(不是粗体); sm 卡片标题自己 `SetFontSize(14)` |
@@ -1041,7 +1045,7 @@ ui/
     - **修法(三条一起立规矩)**:
       1. **先铺宿主底色**: 组件按"放在 `Card` 上"设计, `onPaint` 第一步 `p.FillRound(&p.Rc, t.Card, 0)` —— 既擦掉上一帧(透明元素重绘不擦底, 见 28:焦点环消失后的灰环、上一个状态的实心形状都会留在画布上), 又给半透明令牌一个正确的底。
       2. **未选/未勾的底**: 亮色不铺(露卡片), 暗色才叠 `t.Input.ScaleAlpha(0.30)`(= `dark:bg-input/30`);开关轨道暗色未选是 `t.Input.ScaleAlpha(0.8)`(= `dark:data-unchecked:bg-input/80`)。
-      3. **禁用 = 每个图层各乘 50%**(`ScaleAlpha(0.5)`, 不是 `WithAlpha`): 不透明色乘完再叠到宿主上就等价于"整组半透明合成", 半透明令牌乘完也不会被拉亮。**形状**全部跟随(框/勾/轨道/滑块/圆点);**原生文字**不吃 alpha, 保持原色(见第四节末汇总表), 输入框禁用文字则改成"前景色 × 卡片色对半混"预混后下发(`Input.syncTextColor`)。
+      3. **禁用 = 每个图层各乘 50%**(`ScaleAlpha(0.5)`, 不是 `WithAlpha`): 不透明色乘完再叠到宿主上就等价于"整组半透明合成", 半透明令牌乘完也不会被拉亮。**形状**全部跟随(框/勾/轨道/滑块/圆点);**文字**也要跟随 —— 自绘按钮的文字/图标与输入框禁用文字一样, 用"前景色 × 卡片色对半混"预混后绘制(直接加 alpha 会二次透出壳体底色);只有纯原生绘制的复选框/单选框标签保持原色(见第四节末汇总表)。
     - **实测(暗色, 与 shadcn 逐像素核对; 基底 `card=#171717`)**: 未选框底 `#212121`(白 4.5% 叠卡)/框线 `#424242`(白 15% 叠在框底上);禁用未选底 `#1c1c1c`/线 `#2d2d2d`(各再乘 50%);禁用已勾框 `#7e7e7e`(白 90% 实色乘 50%)+ 勾 `#4a4a4a`;开关禁用滑块 `#8f8f8f`(白 98% 乘 50% 叠轨道)。全部与"整组 50% 合成"的理论值一致。
     - **测试注意**: 程序化改状态**不会自动重绘**(原生 `SetCheck` 不失效重绘, 所以要 `Checkbox.SetChecked` 显式 `Redraw`); 验证状态切换时, 把"切换后"与"直接建成目标状态"的画面逐像素比对, 差异为 0 才算无残留。
 
@@ -1226,6 +1230,32 @@ ui/
     - **修法**: 尾部按钮的内缩取 **6**(= 环宽 3 + 余量 3, 正好也是 shadcn input-group add-on 的 `pr-1.5`), 悬停方块与环之间稳定留 3px。规律: 只要组件在"带内描边环"的容器里画控件, 内缩都别小于环宽 + 2~3。
     - **验收**: 深色主题下聚焦 + 悬停截图放大, 悬停方块右缘与环内描边之间有可见间隙。
 
+86. **按钮组(ButtonGroup)的布局/绘制语义**(`ui/buttongroup.go`, 实测):
+    - **Auto 宽高不会因为 `SetSpace` 自动重算**: `LayoutEle` 的 `Auto` 宽是按已有子项量出来的;在尺寸事件里改了间距后只调**组自己**的 `AdjustLayout` 只会重排子项, 组的外框仍是旧宽(嵌套组第二个组的右缘直接溢出外框)。修法: 改完间距/子项尺寸后调**父元素**的 `XEle_AdjustLayout(parent)`, 父级才会按新的 Auto 尺寸重新给组分配矩形。尺寸事件里调父级会再触发本组的 Size 事件, 用 `fitting` 布尔量防止递归。
+    - **Auto 高不会随子项变小而缩回**: 横向 sm 组里文本块初始 32 高, 组 Auto 高先被顶到 32;之后把文本压到 28, 即使重声明 Auto + 调父级, 组高仍停在 32(实测)。修法: 在尺寸事件里按**本轮计划**的子项高(按钮取元素高、文本/分隔条取目标高、嵌套组取元素高)自己算一次组高:横向取最大值、纵向求和(含外边距与间距), 再 `SetHeight` 写回;`LayoutItem` 保持 Auto, 用户显式指定的 Fixed/Fill/Weight 高不接管。
+    - **竖向组的 1px 按压预留要逐项消缝**: Button 的元素高 = 视觉高 + `pressShift(1)`, 横向并排时多出的 1px 落在底边不影响邻项;竖向堆叠时就会在每两个按钮之间留 1px 透明缝。`SetSpace(-1)` 能消缝但会作用到**所有**子项(文本块/分隔条也会被叠 1px), 正确做法是给"前一个是按钮"的子项设 `LayoutItem` 上外边距 `-pressShift`, 其余保持 0。
+    - **元素没有 Go 类型信息**: 按钮组靠 `XEle_SetUserData` 标记角色(button/groupH/groupV/text/separator), 子项绘制时用 `XWidget_GetParentEle` 找到父级、读标记判断是否在组内, 再用 `XEle_GetChildByIndex` 的序号判断首/中/尾。`DrawRoundRectEx/FillRoundRectEx` 接受四个独立圆角, 正好表达"外角圆、内角方";相邻边框各画一半(描边沿路径居中、贴边被元素裁剪)会拼成 1px, 不需要额外删边。输入框与下拉框的壳体也调用同一套 `groupCorners`(焦点环/校验环用 `RingFrameCorners`), 因此可以直接作为组子项;这些组语义的公共代码在 `components/group.go`, 注册表里随 button/input/combobox/buttongroup 一起拷贝。
+    - **Auto 宽要求子项有确定宽度**: 布局量不到文字宽度, 过去按钮 `cx=0` 只有图标档有宽、文字按钮会塌成 0。现在 Button 在 `cx=0` 时用 `xui.TextWidth` 量 `内边距 + 行内图标 + 文字 + 间距`(纯图标用方形预设), 组才能"按内容拼成一条"。
+    - **只有文本/分隔条的组**: 文本块初始高度按 32 建, 才能把 Auto 高的组撑起来;横向组里若按钮更矮(sm/xs), 组尺寸事件再按**最高按钮的视觉高**把它压到 28/24 —— 目标高取按钮视觉高而不是组高, 否则初始文本的 32 会把目标算错一档。
+
+87. **持续旋转动画(spinner)与图标旋转**(`anim.go` 的 `Spin` + `icons.go` 的 `IconRotated`, 实测):
+    - **不要为每个 spinner 起定时器**: 复用 hover 的"每元素一个炫彩定时器"(`animTimerID`)。`xui.Spin(hEle, true)` 登记一个旋转项并返回相位(0..1, 按**墙钟**算, 1s 一圈; 掉帧不会走慢), `Spin(hEle,false)` 删除它并在没有其它过渡时立刻关定时器。组件在 paint 里加载中调用即可;停止加载时 `SetLoading(false)` 主动调 `Spin(false)`, 不用等下一帧。
+    - **相位只在绘制时读取**: `hoverTick` 看到旋转项就立即重绘(约 30ms/帧), 不保存逐帧累加值;`SetAnimationScale(0)` 会冻结在相位 0, 便于截图对比。
+    - **旋转不能重建几何**: 图标几何按 path+size 缓存, 把角度烘进 key 会每帧重建(23fps 以下)。`Painter.IconRotated` 把旋转放进渲染目标变换矩阵, 以绘制方块中心为基准;D2D 矩阵 `x'=x·M11+y·M21+DX, y'=x·M12+y·M22+DY`, 旋转 + 缩放合成后:
+      `M11=s·cos, M12=s·sin, M21=-s·sin, M22=s·cos, DX=ox+c-s·cos·c+s·sin·c, DY=oy+c-s·sin·c-s·cos·c`(c=size/2)。矩阵必须成对恢复(见第八节 43)。
+    - **GDI 回落也转**: 折线回落在点坐标上绕方块中心做同样的旋转;D2D 主路径与 GDI 兜底的观感一致。
+    - **禁用不影响旋转**: 加载按钮通常 `Enable(false)`, 但 spinner 仍应转;禁用只把图标颜色按 50% 透明度预混(见 61)。
+
+88. **高 DPI 下"文字/图标/壳体按下位移不一致"**(`button.go` 的 `shellPressShift` + `TextF` + `Painter.IconRotatedOffset`, 150% DPI 实测):
+    - **现象**: 默认尺寸按钮按下/松开时, 文字和行内图标看起来不是一起下沉; sm 尺寸的按钮有时又正常。前后导、尺寸档都可能影响, 逐帧测量才能定位。
+    - **根因**: `active:translate-y-px` 的 1 **逻辑**像素在 150% DPI 下是 1.5 物理像素。壳体、文字排版、图标盒分别经自己的坐标取整, 最终位移可能是 1 或 2 物理像素, 而且**取决于该元素所在的物理位置/排版相位**。例如同一次按下, 壳体与文字移 2 物理、默认图标移 1; 换一个窗口位置, 壳体/文字移 1、图标可能移 2。不要假设"文字位移 = round(1×scale)": 实测同一 DPI 下不同 y 位置会得到 1 或 2。
+    - **修法**: 内容不再各自按逻辑坐标平移。先让壳体按原逻辑量移动, 用 `XDraw_ConvRect` 量**壳体自身**的未按下/按下物理 top, 得到实际位移 N(1 或 2 物理像素); 然后:
+      - 文字按**未按下矩形**排版, 用 `TextF` 的浮点矩形加上 `N / DPI scale` 逻辑偏移(实测浮点矩形会精确落到 N 个物理像素);
+      - 图标按**未按下位置**画, 用 `IconRotatedOffset(..., dy=N)` 直接加物理像素;
+      - 壳体继续按整数逻辑位移。三者都走同一个 N, 不再有相位差。
+    - **范围**: 纯图标按钮没有文字, 但图标也跟随壳体 N; 行内图标(前导/尾随/加载 spinner)同理。GDI 折线回落忽略 `IconRotatedOffset` 的物理偏移。
+    - **验收**: 60fps 录屏 + 逐帧墨迹质心。sm/default × 前导/尾随 四种组合的壳体、文字、图标位移完全一致(本机该行均为 +2 物理); 换到壳体只取整 1 物理的位置时三者应同时为 +1。不能只验证"图标自己移动了", 必须验证与壳体、文字的**相对位移**一致。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.2)
@@ -1233,13 +1263,15 @@ ui/
 - `Element.AddEvent_Paint / AddEvent_MouseStay / AddEvent_MouseLeave`(widget/element.go:1192, 1288, 1336)
 - `Element.AddEvent_Menu_Draw_Background / AddEvent_Menu_DrawItem`(widget/element.go:2056, 2080)
 - `drawx.NewByHandle / EnableSmoothingMode / SetBrushColor / FillRoundRect(Ex) / DrawRoundRect(Ex) / GradientFill2/4 / DrawText / TextOut* / Image* / DrawSvg* / SetClipRect / SetLineWidth`
+- 持续旋转/高 DPI 位移(见第八节 87/88):`xui.Spin(hOwner, active) float64`(相位 0..1, 1s/圈, 复用元素/窗口的动画定时器;`SetAnimationScale(0)` 冻结)、`Painter.IconRotated(data, rc, color, strokeWidth, angleRadians, scale...)`、`Painter.IconRotatedOffset(..., dx, dy int32)`(按画布物理像素微调)、`Painter.TextF(str, *xc.RECTF, color, align)`(浮点矩形文字, 用于亚逻辑像素位移;整数矩形下与 `Painter.Text` 一致)
 - **自绘"非 lucide"小图形走图标管线**, 别手算多边形: svgp 的子路径前加 `!` 就是填充形状(走 FillGeometry), 配 `Painter.Icon(path, rc, color, 0)` 直接出图, D2D 几何按 path+size 缓存。步进器的上下微调箭头就是两条 24 网格 path(三角占满 24 宽、Q 曲线倒角), 每枚箭头给一个**正方形**绘制块(管线按短边铺满)。曾手写"削角 + FillPolygonF 逼近圆弧", 10px 尺寸下不是歪就是糊、底角圆弧还会把墨迹洇到底边外, 全部弃用
 - `xc.XBtn_GetStateEx`、`xcc.Button_State_*` 状态
 - `xc.RGBA / xc.ParseRGBA / xc.HexRGB2RGBA`(Web 十六进制色直转)
 - `svg.NewByString / SetUserFillColor / SetUserStrokeColor / SetSize`
 - `ani.NewAnima / AnimaGroup`、`ease` 缓动
 - `XWnd_Redraw / XWnd_GetDPI`、`XC_EnableAutoDPI / XC_EnableDPI`
-- LayoutEle:`EnableLayout / IsEnableLayout / EnableHorizon / EnableAutoWrap / EnableOverflowHide / SetAlignH(V) / SetSpace / SetSpaceRow / ShowLayoutFrame / GetWidthIn(HeightIn)`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin/SetMinSize`、尺寸类型 `xcc.Layout_Size_{Fixed,Fill,Auto,Weight,Percent,Disable}` 与对齐 `xcc.Layout_Align_*`(语义与"Fill≠剩余空间 / Weight 需父级确定尺寸"见第八节 29/41/55;Go 包装无 AdjustLayout, 用 `XEle_AdjustLayout`);`EnableLayout/EnableHorizon/EnableAutoWrap` **只有 LayoutEle 与窗口有**(普通 Element 只能当布局项)
+- LayoutEle:`EnableLayout / IsEnableLayout / EnableHorizon / EnableAutoWrap / EnableOverflowHide / SetAlignH(V) / SetSpace / SetSpaceRow / ShowLayoutFrame / GetWidthIn(HeightIn)`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin/SetMinSize`、`xc.XWidget_LayoutItem_GetWidth/Height/GetMargin`、尺寸类型 `xcc.Layout_Size_{Fixed,Fill,Auto,Weight,Percent,Disable}` 与对齐 `xcc.Layout_Align_*`(语义与"Fill≠剩余空间 / Weight 需父级确定尺寸"见第八节 29/41/55;Go 包装无 AdjustLayout, 用 `XEle_AdjustLayout`);`EnableLayout/EnableHorizon/EnableAutoWrap` **只有 LayoutEle 与窗口有**(普通 Element 只能当布局项);**负外边距可用**(竖向按钮组消 1px 按压缝, 见 86)
+- 按钮组(见第八节 86): `xc.XDraw_FillRoundRectEx/DrawRoundRectEx`(四角独立半径)、`xc.XEle_SetUserData/GetUserData`(组件角色标记)、`XWidget_GetParentEle` + `XEle_GetChildByIndex/GetChildCount`(首尾判定)、`XEle_GetHeight`(按按钮视觉高定文本/分隔条高度)
 - 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距), 本库暂用子项外边距替代, 未实测
 - 滚动容器(`LayoutFrame`, 见第八节 66):`widget.NewLayoutFrame`(布局盒子 + 滚动视图, 内容总大小自动撑开) + `XLayoutBox_*`(与 LayoutEle 同一套 EnableHorizon/AutoWrap/OverflowHide/Align/Space) + `XSView_SetTotalSize/GetTotalSize/SetScrollBarSize/EnableAutoShowScrollBar/ShowSBarH(V)/GetViewWidth/GetViewHeight/GetViewRect/GetViewPosH(V)/ScrollPosYV(像素)/ScrollPosV(行)/ScrollTop(Bottom)/GetScrollBarH(V)Obj`、`ScrollBar.ShowButton/SetSliderPadding/GetButtonSliderObj` + `AddEvent_Size(xc.XE_SIZE1)`(自愈补排)
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`

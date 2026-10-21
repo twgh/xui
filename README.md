@@ -103,7 +103,8 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 
 | 组件 | 说明 |
 |---|---|
-| Button | 6 变体(Primary/Secondary/Outline/Ghost/Destructive/Link)× 8 尺寸档(xs/sm/default/lg + 4 个方形图标档),hover/按下/禁用/焦点环/校验失败(`WithButtonInvalid`);`WithIcon` 做图标按钮 |
+| Button | 6 变体(Primary/Secondary/Outline/Ghost/Destructive/Link)× 8 尺寸档(xs/sm/default/lg + 4 个方形图标档),hover/按下/禁用/焦点环/校验失败(`WithButtonInvalid`);`WithIcon` 做图标按钮,`WithButtonLeadingIcon` / `WithButtonTrailingIcon` 做"图标+文字",`WithButtonRounded` 胶囊、`WithButtonExpanded` / `WithButtonHasPopup` 对应弹层触发区、`WithButtonLoading` 显示 1s/圈旋转的加载图标;`cx` 传 0 时按文字自动量宽 |
+| ButtonGroup | 按钮组(`components/buttongroup.go`):横向/纵向(`WithButtonGroupOrientation`)、首尾外角 + 相邻边直角、宽高按内容自撑;可放 Button / Input / ComboBox;`NewButtonGroupText` 文本块、`NewButtonGroupSeparator` 分隔条跟随组高;组里嵌组自动 8px 间距 |
 | Checkbox / Radio | 自绘指示器 + 原生状态管理 |
 | Input | 原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环,占位符随主题;校验失败态 `WithInputInvalid`;内嵌附加件:`WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible` / `PasswordVisible`) / `WithCounter`;步进器 `WithStepper(min,max,step)` + `SetNumber` / `Number` / `OnStep`(支持 −/+ 按钮与 ↑/↓ 键,失焦自动夹取吸附;`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态,`WithStepperAutoHide` 让按钮只在悬停/聚焦时出现) |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块;滑块支持自定义值域与步进(`WithSliderRange` / `WithSliderStep`) |

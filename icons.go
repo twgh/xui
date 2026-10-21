@@ -47,6 +47,27 @@ import (
 // scale(可选, 默认 1)是以绘制方块中心为基准的缩放, 用于"按下变小"这类按压反馈 ——
 // 缩放走渲染目标变换矩阵, 不会击穿几何缓存。折线回落路径忽略它(GDI 侧没有变换)。
 func (p *Painter) Icon(data string, rc *xc.RECT, color Color, strokeWidth float32, scale ...float32) {
+	p.icon(data, rc, color, strokeWidth, 0, 0, 0, scale...)
+}
+
+// IconRotated 是 Icon 的旋转版本: angle 为弧度, 以绘制方块中心为基准顺时针旋转
+// (屏幕坐标 y 向下, 正角即顺时针), 适合加载 spinner。scale 语义同 Icon。
+// D2D 与 GDI 折线回落都支持旋转。
+func (p *Painter) IconRotated(data string, rc *xc.RECT, color Color, strokeWidth float32,
+	angle float64, scale ...float32) {
+	p.icon(data, rc, color, strokeWidth, angle, 0, 0, scale...)
+}
+
+// IconRotatedOffset 在 IconRotated 基础上把图标在**画布物理像素**上再平移 (dx,dy)。
+// 用于高 DPI 下把图标与文字的按下位移对齐到同一物理像素取整(见 DESIGN 第八节 88);
+// GDI 折线回落忽略这两个偏移。
+func (p *Painter) IconRotatedOffset(data string, rc *xc.RECT, color Color, strokeWidth float32,
+	angle float64, dx, dy int32, scale ...float32) {
+	p.icon(data, rc, color, strokeWidth, angle, dx, dy, scale...)
+}
+
+func (p *Painter) icon(data string, rc *xc.RECT, color Color, strokeWidth float32,
+	angle float64, dx, dy int32, scale ...float32) {
 	sc := float32(1)
 	if len(scale) > 0 && scale[0] > 0 {
 		sc = scale[0]
@@ -65,7 +86,7 @@ func (p *Painter) Icon(data string, rc *xc.RECT, color Color, strokeWidth float3
 	if strokeWidth <= 0 {
 		strokeWidth = 2
 	}
-	if p.d2dIcon(paths, rc, color, strokeWidth, func() []svgp.SubPath {
+	if p.d2dIcon(paths, rc, color, strokeWidth, angle, dx, dy, func() []svgp.SubPath {
 		return parseIconPaths(paths)
 	}, sc) {
 		return
@@ -81,19 +102,29 @@ func (p *Painter) Icon(data string, rc *xc.RECT, color Color, strokeWidth float3
 	s := float32(size) / 24
 	p.Draw.SetLineWidth(iconLineWidth(strokeWidth, s))
 	p.Draw.SetBrushColor(uint32(color))
+	cs, sn := math.Cos(angle), math.Sin(angle)
+	half := float64(size) / 2
+	pt := func(q svgp.Point) (int32, int32) {
+		x := float64(q.X)*float64(s) - half
+		y := float64(q.Y)*float64(s) - half
+		if angle != 0 {
+			x, y = x*cs-y*sn, x*sn+y*cs
+		}
+		return ox + round32(float32(x+half)), oy + round32(float32(y+half))
+	}
 	for _, sub := range parseIconPaths(paths) {
 		n := len(sub.Points)
 		for i := 1; i < n; i++ {
-			ax, ay := ox+round32(sub.Points[i-1].X*s), oy+round32(sub.Points[i-1].Y*s)
-			bx, by := ox+round32(sub.Points[i].X*s), oy+round32(sub.Points[i].Y*s)
+			ax, ay := pt(sub.Points[i-1])
+			bx, by := pt(sub.Points[i])
 			if ax == bx && ay == by {
 				continue
 			}
 			p.Draw.DrawLine(ax, ay, bx, by)
 		}
 		if sub.Closed && n >= 2 { // Z 收尾: 补一条首尾连线(svgp 不往点集里塞重复点)
-			ax, ay := ox+round32(sub.Points[n-1].X*s), oy+round32(sub.Points[n-1].Y*s)
-			bx, by := ox+round32(sub.Points[0].X*s), oy+round32(sub.Points[0].Y*s)
+			ax, ay := pt(sub.Points[n-1])
+			bx, by := pt(sub.Points[0])
 			if ax != bx || ay != by {
 				p.Draw.DrawLine(ax, ay, bx, by)
 			}

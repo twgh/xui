@@ -1,6 +1,8 @@
 package xui
 
 import (
+	"math"
+
 	"github.com/twgh/xcgui/svgp"
 	"github.com/twgh/xcgui/wapi/d2d"
 	"github.com/twgh/xcgui/xc"
@@ -78,7 +80,7 @@ func d2dResources(factory *d2d.ID2D1Factory) *d2d.ID2D1StrokeStyle {
 // d2dIcon 尝试用 D2D 几何绘制管线把图标画在 rc(元素客户区坐标)内,
 // 返回 false 表示不可用(GDI 渲染 / 资源创建失败 / 参数无效), 调用方回落折线。
 func (p *Painter) d2dIcon(paths string, rc *xc.RECT, color Color, strokeWidth float32,
-	build func() []svgp.SubPath, scale float32) bool {
+	angle float64, dx, dy int32, build func() []svgp.SubPath, scale float32) bool {
 
 	if p == nil || p.Draw == nil || p.Draw.Handle <= 0 || rc == nil || color.IsNone() ||
 		rc.Right <= rc.Left || rc.Bottom <= rc.Top {
@@ -95,7 +97,7 @@ func (p *Painter) d2dIcon(paths string, rc *xc.RECT, color Color, strokeWidth fl
 		return false
 	}
 	return p.d2dStroke(d2dGeomKey{paths: paths, size: size},
-		color, ox, oy, size, strokeWidth, build, scale)
+		color, ox+dx, oy+dy, size, strokeWidth, angle, build, scale)
 }
 
 // d2dStroke 给图标出图: 描边子路径走 DrawGeometry(线宽 + 圆角样式), 填充子路径走 FillGeometry。
@@ -104,7 +106,7 @@ func (p *Painter) d2dIcon(paths string, rc *xc.RECT, color Color, strokeWidth fl
 // 返回 false 表示当前环境不可用(GDI 渲染 / 资源创建失败), 调用方回落折线渲染。
 // build 只在几何缓存未命中时调用, 避免每帧重复解析 path。
 func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, strokeWidth float32,
-	build func() []svgp.SubPath, scale float32) bool {
+	angle float64, build func() []svgp.SubPath, scale float32) bool {
 
 	if p == nil || p.Draw == nil || p.Draw.Handle <= 0 {
 		return false
@@ -129,20 +131,26 @@ func (p *Painter) d2dStroke(key d2dGeomKey, color Color, ox, oy, size int32, str
 		return false
 	}
 
-	// 位置/缩放不烘进几何(见 d2dGeomKey): 用渲染目标的变换矩阵把几何摆到目标位置。
+	// 位置/缩放/旋转不烘进几何(见 d2dGeomKey): 用渲染目标的变换矩阵把几何摆到目标位置。
 	// **必须成对恢复** —— 实测炫彩自己的绘制(XDraw_*)在绘制时用的是
 	// 当前变换, 残留的矩阵会把页面内容一起平移; 成对设置/恢复后不受影响。
-	// 缩放以方块中心为基准: x' = x·scale + ox + size/2·(1-scale)。
-	if ox != 0 || oy != 0 || scale != 1 {
+	// 缩放/旋转都以方块中心为基准: 几何本地坐标 [0,size] → 中心 c=size/2。
+	// D2D 矩阵: x' = x·M11 + y·M21 + DX; y' = x·M12 + y·M22 + DY。
+	if ox != 0 || oy != 0 || scale != 1 || angle != 0 {
 		prev, err := rt.GetTransform()
 		if err != nil {
 			return false
 		}
+		c := float64(size) / 2
+		s := float64(scale)
+		cs, sn := math.Cos(angle), math.Sin(angle)
 		tm := d2d.D2D1_MATRIX_3X2_F{
-			M11: scale,
-			M22: scale,
-			DX:  float32(ox) + float32(size)/2*(1-scale),
-			DY:  float32(oy) + float32(size)/2*(1-scale),
+			M11: float32(s * cs),
+			M12: float32(s * sn),
+			M21: float32(-s * sn),
+			M22: float32(s * cs),
+			DX:  float32(float64(ox) + c - s*cs*c + s*sn*c),
+			DY:  float32(float64(oy) + c - s*sn*c - s*cs*c),
 		}
 		rt.SetTransform(&tm)
 		defer rt.SetTransform(&prev)

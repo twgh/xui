@@ -202,6 +202,8 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		}
 	}
 	// aria-invalid 与 focus-visible 共用"环带 + 内芯"画法, 红色优先(见 button.go 的说明)。
+	// 圆角按按钮组位置收角, 下拉框也能直接作为 ButtonGroup 的子项。
+	corners := groupCorners(hEle, radius)
 	const inset = int32(3)
 	switch {
 	case c.invalid && !st.Disabled:
@@ -209,7 +211,7 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		if t.IsDark() {
 			halo, borderColor = t.Destructive.WithAlpha(102), t.Destructive.WithAlpha(128)
 		}
-		p.RingFrame(halo, bg, radius)
+		p.RingFrameCorners(halo, bg, corners)
 		inner := xc.RECT{
 			Left:   p.Rc.Left + inset,
 			Top:    p.Rc.Top + inset,
@@ -217,14 +219,14 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			Bottom: p.Rc.Bottom - inset,
 		}
 		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
-			p.StrokeRound(&inner, borderColor, radius-inset, 1)
+			p.StrokeRoundCorners(&inner, borderColor, corners.Inset(inset), 1)
 		}
 	case st.Focused && !st.Disabled && xui.FocusedByKeyboard():
 		// focus-visible:border-ring + ring-3 ring-ring/50
-		p.FocusFrame(t.Ring, bg, radius)
+		p.FocusFrameCorners(t.Ring, bg, corners)
 	default:
-		p.FillRound(&p.Rc, bg, radius)
-		p.StrokeRound(&p.Rc, border, radius, 1)
+		p.FillRoundCorners(&p.Rc, bg, corners)
+		p.StrokeRoundCorners(&p.Rc, border, corners, 1)
 	}
 
 	// 文字交给原生绘制(自己再画一遍会与原生文字重叠成重影), 这里只按状态同步颜色。
@@ -475,8 +477,8 @@ func applyComboPopupStyle() {
 	lb.ClearBkInfo()
 	lb.SetItemHeightDefault(comboItemH, comboItemH)
 	lb.SetPadding(comboPad, comboPad, comboPad, comboPad) // p-1: 条目距弹层边缘 4px(加固有 3px 内缩 = 视觉 7px)
-	lb.SetDrawItemBkFlags(0)  // 原生项背景(方角灰块)全弃, 交给 DrawItem 自绘
-	lb.SetScrollBarSize(scrollBarW) // shadcn 规格的细滚动条(见 scrollbar.go)
+	lb.SetDrawItemBkFlags(0)                              // 原生项背景(方角灰块)全弃, 交给 DrawItem 自绘
+	lb.SetScrollBarSize(scrollBarW)                       // shadcn 规格的细滚动条(见 scrollbar.go)
 	lb.EnableAutoShowScrollBar(true)
 	// 滚动条显隐: 原生的显示判定在打开时用旧条目高算好, 我们把条目调矮后它不会
 	// 自己收起(实测残影), 用滚动视级开关显式控制。≤10 项内容必然装得下; 单列文本

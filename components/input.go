@@ -948,6 +948,8 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 
 	// aria-invalid 与 focus-visible 共用"环带 + 内芯"画法, 红色优先(见 button.go 的说明)。
+	// 圆角按按钮组位置收角: 输入框也能直接作为 ButtonGroup 的子项(见 buttongroup.go)。
+	corners := groupCorners(hEle, t.RadiusLg())
 	const inset = int32(3)
 	invalid := i.invalid && !st.Disabled
 	switch {
@@ -956,7 +958,7 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		if t.IsDark() {
 			halo, borderColor = t.Destructive.WithAlpha(102), t.Destructive.WithAlpha(128)
 		}
-		p.RingFrame(halo, bg, t.RadiusLg())
+		p.RingFrameCorners(halo, bg, corners)
 		inner := xc.RECT{
 			Left:   p.Rc.Left + inset,
 			Top:    p.Rc.Top + inset,
@@ -964,13 +966,13 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			Bottom: p.Rc.Bottom - inset,
 		}
 		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
-			p.StrokeRound(&inner, borderColor, t.RadiusLg()-inset, 1)
+			p.StrokeRoundCorners(&inner, borderColor, corners.Inset(inset), 1)
 		}
 	case st.Focused && !st.Disabled:
 		// focus-visible:border-ring + ring-3 ring-ring/50: FocusFrame 画 3px 半透明
 		// ring 带(填充式, 会盖掉原来的 border-input), 实色的 border-ring 边框
 		// 再描在 ring 带内缘 —— 与浏览器一致: 聚焦后边框从 input 色换成 ring 色。
-		p.FocusFrame(t.Ring, bg, t.RadiusLg())
+		p.FocusFrameCorners(t.Ring, bg, corners)
 		inner := xc.RECT{
 			Left:   p.Rc.Left + inset,
 			Top:    p.Rc.Top + inset,
@@ -978,11 +980,11 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			Bottom: p.Rc.Bottom - inset,
 		}
 		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
-			p.StrokeRound(&inner, t.Ring, t.RadiusLg()-inset, 1)
+			p.StrokeRoundCorners(&inner, t.Ring, corners.Inset(inset), 1)
 		}
 	default:
-		p.FillRound(&p.Rc, bg, t.RadiusLg())
-		p.StrokeRound(&p.Rc, border, t.RadiusLg(), 1)
+		p.FillRoundCorners(&p.Rc, bg, corners)
+		p.StrokeRoundCorners(&p.Rc, border, corners, 1)
 	}
 
 	// 壳体内部的附加件(图标/前后缀/计数/按钮)。原生 Edit 的文字在本回调之后绘制,
