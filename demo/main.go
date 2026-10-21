@@ -808,7 +808,55 @@ func buildFeedPage(body *widget.LayoutEle, hWindow int) {
 	tip.Bind(hoverBtn.Handle, "我是提示气泡")
 	xui.ItemFill(desc(v2.Handle, "绑定的元素自身有弹层时(如 ComboBox), 弹层打开要主动 HideTooltip。"))
 
-	// ---- 第二行: 通知 + 进度 ----
+	// ---- 第二行: 提示条 ----
+	rAlert := row(body.Handle, 0, gap)
+
+	_, va := autoCard(col(rAlert.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "提示条", va.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"图标 + 标题 + 描述 + 右上动作槽; 标题/描述随宽度折行, 高度按内容自撑", va.Handle))
+	xui.ItemFill(ui.NewAlert(0, 0, 0, 0, va.Handle,
+		ui.WithAlertIcon(icons.IconCircleCheck),
+		ui.WithAlertTitle("Success! Your changes have been saved"),
+		ui.WithAlertDescription("This is an alert with icon, title and description.")))
+	xui.ItemFill(ui.NewAlert(0, 0, 0, 0, va.Handle,
+		ui.WithAlertIcon(icons.IconInfo),
+		ui.WithAlertTitle("This Alert has a title and an icon. No description.")))
+	xui.ItemFill(ui.NewAlert(0, 0, 0, 0, va.Handle,
+		ui.WithAlertDescription("This one has a description only. No title. No icon.")))
+	xui.ItemFill(ui.NewAlert(0, 0, 0, 0, va.Handle,
+		ui.WithAlertIcon(icons.IconCircleAlert),
+		ui.WithAlertTitle("This is a very long alert title that demonstrates how the component handles extended text content and potentially wraps across multiple lines"),
+		ui.WithAlertDescription("This is an equally long description that contains detailed information about the alert. It wraps at the alert width, and the alert grows with it instead of clipping.")))
+	xui.ItemFill(desc(va.Handle, "标题与描述用当前宽度量高: 窗口拉宽/收窄时会重新折行。"))
+
+	_, vb := autoCard(col(rAlert.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "破坏性 / 动作", vb.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"destructive: 标题与图标用破坏性色, 描述 90%; 动作贴右上", vb.Handle))
+	xui.ItemFill(ui.NewAlert(0, 0, 0, 0, vb.Handle,
+		ui.WithAlertVariant(ui.AlertDestructive),
+		ui.WithAlertIcon(icons.IconCircleAlert),
+		ui.WithAlertTitle("Unable to process your payment."),
+		ui.WithAlertDescription("Please verify your billing information and try again.")))
+	withAction := ui.NewAlert(0, 0, 0, 0, vb.Handle,
+		ui.WithAlertIcon(icons.IconCircleAlert),
+		ui.WithAlertTitle("The selected emails have been marked as spam."),
+		ui.WithAlertDescription("This is a very long alert title that demonstrates how the component handles extended text content."))
+	xui.ItemFill(withAction)
+	ui.NewButton(0, 0, 0, 0, "Undo", withAction.Action().Handle,
+		ui.WithSize(ui.ButtonSizeXs))
+	withBadge := ui.NewAlert(0, 0, 0, 0, vb.Handle,
+		ui.WithAlertIcon(icons.IconInfo),
+		ui.WithAlertTitle("A new version is available."),
+		ui.WithAlertDescription("Restart the app to apply the update."))
+	xui.ItemFill(withBadge)
+	badge := ui.NewBadge(0, 0, 0, 0, "New", withBadge.Action().Handle,
+		ui.WithBadgeVariant(ui.BadgeSecondary))
+	xui.ItemWidth(badge, 44)
+	xui.ItemFill(desc(vb.Handle, "动作槽用 Action() 取; 可放 Button / Badge, 顶端对齐、内容自量宽。"))
+
+	// ---- 第三行: 通知 + 进度 ----
 	r2 := row(body.Handle, 0, gap)
 
 	// 通知: 右下角堆叠, 4s 自动关闭, 悬停暂停

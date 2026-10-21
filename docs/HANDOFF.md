@@ -69,7 +69,7 @@
   (离线 / 锁组件版本; **写什么用什么, 不套镜像/代理**)、全不通时降级 `moduleRoot()` 内嵌源码树
   (显式设了 `XUI_REGISTRY` 则报错不降级);`update` 无 manifest
   语义 = 缺则建 / 一致跳过 / 用户改过警告跳过(`-o/--overwrite` 覆盖),省略组件名 = 更新 `ui/` 里已装的全部;
-  新增 `-o/--overwrite` / `--all` 两个旗标。方案与验收清单见 [REGISTRY_V2.md](REGISTRY_V2.md);离线验收全绿
+  新增 `-o/--overwrite` / `--all` 两个旗标。验收全绿
   (本地路径 / 本地 HTTP / 404 / 不可达 / 降级 / update 四态 / 逐组件单独安装后编译 / init 后编译),
   行为已固化为 `cmd/xui/main_test.go`(候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出 / GitCode API 解码 / 单文件换源)。
   **顺带修掉 registry.json 的依赖缺陷**:`dialog` 漏 `backdrop.go`、`combobox`/`menu` 漏 `tooltip` 依赖
@@ -444,6 +444,16 @@
     亮/暗主题整窗截图 + 4× 放大核对首尾圆角、无缝边框、文本块/分隔条对齐;hover/按压态截图确认组内按钮
     仍整体下沉、背景过渡正常;`go build` / `go vet` / `go test ./...` 通过。
 
+- ✅ **Alert 提示条**(2026-10-21): `components/alert.go` 对齐 shadcn alert.tsx(radix-nova):
+  图标(16, 下移 2)+ 标题/描述 + 右上动作槽;`AlertDefault` / `AlertDestructive`(标题/图标 destructive、
+  描述 destructive/90);标题/描述随宽度自动折行, 高度按内容自撑, 动作槽可放 Button / Badge。
+  折行高度不在 Layout 的 Auto 里自撑, 组件按"元素宽−12"量高、多行 +4, 改高后逐级重排祖先;
+  ScrollArea 里要调 LayoutFrame 而不是它的内容区(否则 Alert 宽度被打成 0)。详见 DESIGN 第八节 90。
+  Label 新增 `WrappedHeight(width)` 与 `SetColorFunc(fn)`(语义色实时解析)。demo 反馈页新增
+  "提示条 / 破坏性·动作"两张卡片(仅标题、仅描述、长文本、动作、Badge);`registry.json` 增加
+  `alert`(依赖 label), README 组件表同步。验收: 亮/暗、1200/960/1500 三种宽度, 长文本完整折行无省略号,
+  动作贴右上; 运行时切换主题颜色实时跟随; `go test ./components` 通过(alert 纯计算/配色断言)。
+
 - ✅ **Tooltip 淡入/淡出时"倒三角上方多一个正三角"**(2026-10-21, 用户逐帧录屏):
   - 现象: 气泡经过半透明阶段时, 下缘箭头上方浮出一个更深的三角鬼影; 不透明时几乎不可见。
   - 根因: `XEle_SetAlpha` 是**逐图元**混合, 不是整层合成。箭头画的是完整菱形, 再用气泡盖住内侧一半 ——
@@ -461,7 +471,6 @@
 
 ## 待办
 
-- ⬜ **每加组件/跨文件助手就跑「逐组件单独安装 + 编译」**(方法见 REGISTRY_V2.md 五 末尾;2026-10-17 全量 21 项、2026-10-18 新增 calendar/datepicker/timepicker + add --all 通过; 注意 `xui init` 前临时项目必须已有 go.mod, 否则 `go run` 起不来)
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
 
 ## 仓库结构
@@ -472,7 +481,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 draw(Painter) / icons(图标几何+D2D 直通出图) / focus / font / state
 │                                 anim(hover 过渡) / presence(进出场) / container·layout(布局骨架)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
-│                                 button checkbox radio input label separator(含 Badge) card
+│                                 button checkbox radio input label separator(含 Badge) card alert
 │                                 switch progress slider tabs tooltip toast window combobox dialog
 │                                 menu table tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
@@ -512,7 +521,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 想验远程链路(无需 GitHub): 仓库根起 python -m http.server 8123,
 # 再 XUI_REGISTRY=http://127.0.0.1:8123 go run ./cmd/xui add dialog
 # 数据源也可指本地目录(完全离线): XUI_REGISTRY=D:\GOProject\src\ui\xui
-# 依赖回归: 逐组件单独装到临时项目再 go build ./ui(方法见 REGISTRY_V2.md 五)
+# 依赖回归(每加组件/跨文件助手必跑): 逐组件单独装到临时项目再 go build ./ui(步骤见下面「依赖回归」小节)
 
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
@@ -522,6 +531,38 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
 go test ./...
 ```
+
+### 依赖回归(逐组件安装 + 编译)
+
+**每加组件/跨文件助手就跑一遍「逐组件单独安装 + 编译」**——这不是发布前检查, 而是每次改动后的固定流程。临时项目**必须先有 go.mod**, 否则 `go run` 起不来。
+
+```bash
+# 1. 构建本地 CLI, 并让临时项目指向本仓库(离线验收; 联网时可改用 go mod tidy)
+go build -o "$TEMP/xui-cli.exe" ./cmd/xui
+rm -rf "$TEMP/xui-check" && mkdir -p "$TEMP/xui-check" && cd "$TEMP/xui-check"
+go mod init check
+go mod edit -require=github.com/twgh/xui@v0.0.0
+go mod edit -replace=github.com/twgh/xui=D:/GOProject/src/ui/xui
+go mod edit -require=github.com/twgh/xcgui@v1.4.3
+go mod edit -replace=github.com/twgh/xcgui=D:/GOProject/src/github.com/twgh/xcgui
+
+# 2. 单组件闭包 + 全量(改 registry 时两者都跑)
+XUI_REGISTRY=D:/GOProject/src/ui/xui "$TEMP/xui-cli.exe" add alert -p ui
+go build ./ui
+rm -rf ui
+XUI_REGISTRY=D:/GOProject/src/ui/xui "$TEMP/xui-cli.exe" add --all -p ui
+go build ./ui
+```
+
+- 本地 xcgui 工作副本路径按本机调整; 没接工作副本时删掉 xcgui 的 replace, 走模块代理。
+- 重跑前清空 `ui/`(或换临时目录), 避免上次拷贝的文件掩盖依赖漏登记(如跨文件助手)。
+
+### CLI registry 维护注意
+
+- **默认源顺序与单文件换源由 `cmd/xui/main_test.go` 固化**:直连 → Gitee → GitCode(v5 API, JSON+base64) → ghfast → gh-proxy;改选路先改测试。
+- 显式 `XUI_REGISTRY` **一律原样使用**(不套镜像、失败直接报错);只有未设置且全部候选不通时才降级 `moduleRoot()` 内嵌源 —— 别动 `moduleRoot`,它是离线回退的根。
+- `registry.json` 的 `files` 是 `components/` 下的**扁平文件名**;`theme.go` 永不进清单;用户的 ui 目录名是 `init`/`-p` 参数,不要硬编码 `ui`。
+- CLI 本体按 Go 模块版本锁(`go run ...@vX.Y.Z`),组件跟 `main`;`@latest` 可能被模块代理缓存拖旧,组件更新不受影响。
 
 ## 关键设计决策(一句话版, 详见 DESIGN.md)
 
@@ -540,7 +581,7 @@ go test ./...
 | 架构原理、分层边界、主题令牌、组件解剖 | DESIGN.md 一~四节 |
 | **交互语义(改交互前必看)** | DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」+ 本地 shadcn 源码 |
 | **我们与 shadcn 的差异 / 变体尺寸映射** | DESIGN.md 第四节末「变体/尺寸与上游的映射、已知差异」 |
-| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节(按编号, 1~70) |
+| 某个 xcgui 行为 / 为什么这么写(踩坑) | DESIGN.md 第八节 |
 | 界面布局怎么写(容器/尺寸/随窗口自适应/滚动) | DESIGN.md 第八节 55(尺寸语义) + 56(Card) + 66(滚动容器), 样板在 `demo/main.go` |
 | 用到的 xcgui API 清单 | DESIGN.md 第九节 |
 | agent 会话硬规则 | AGENTS.md |

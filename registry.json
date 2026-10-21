@@ -37,6 +37,10 @@
       "files": ["card.go"],
       "deps": ["label"]
     },
+    "alert": {
+      "files": ["alert.go"],
+      "deps": ["label"]
+    },
     "switch": {
       "files": ["switch.go"],
       "deps": []

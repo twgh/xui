@@ -238,6 +238,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | AppWindow | 原生 window.Window 封装 | 无系统标题栏(样式不含 Icon/Btn_*): 阴影圆角 + 自绘 `[图标][标题 Weight][自定义按钮区][最小化/最大化/关闭]`; 双击标题栏最大化/还原; 内容区 = 纵向流式 Weight 1(第八节 76) | demo 窗口 |
 | Button | embed Button | paint 壳, 原生文字(WithIcon 时自绘图标) | BeautifyButton 示例 |
 | Card | LayoutEle(布局容器) | 圆角面板 + ring 描边; 内容区是 Fill 子项、内边距用外边距表达(随卡片缩放), 高度可按内容自撑(Auto), 见第八节 56 | — |
+| Alert | LayoutEle + Label/Element | 卡片底 + 1px border; 图标/文本列横向流式, 标题/描述按宽度量高后写回, 动作槽按内容自撑; 见第八节 90 | alert.tsx(radix-nova) |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
 | Input | embed Edit | 只画边框+焦点环, 原生光标/IME | BeautifyEdit 示例 |
 | Switch | 纯自绘 Element | 轨道+滑块, 尺寸预设; hover 过渡走运行时 `anim.go`(第八节 45) | — |
@@ -277,6 +278,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground) | radio-group.tsx |
 | checkbox size-4 rounded-[4px] border-input;未选**亮色无底色 / 暗色 dark:bg-input/30**;选中 bg-primary + 白勾;禁用 = 上面每个图层各乘 50% | checkbox.tsx + 第八节 61 |
 | card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl;卡片头 = 一行两列(左列标题+说明 `1fr`, 右列动作 `auto`), 动作区贴右上、跨标题与说明两行顶端对齐(gap-1 = 4) | card.tsx + `ui/card.go` 的 `CardHeader` |
+| alert = bg-card + 1px border + rounded-lg(内边距 10/8); 可选图标 size-4 下移 2、与文本列间距 8; 标题 text-sm 中等字重、描述 text-sm muted, 行间 2; destructive = 标题/图标 destructive、描述 destructive/90; 动作槽贴右上, **无图标/无动作时对应列不占位**; 标题/描述按宽度折行、高度随内容自撑 | alert.tsx(radix-nova) + 第八节 90 |
 | **aria-invalid**(表单校验失败): 边框变 destructive + ring-3 destructive/20(暗色 border /50、ring /40), **常驻不要求焦点**;与 focus-visible 同时成立时红色优先(变体顺序里 aria-invalid 在后) | button.tsx / input.tsx / select.tsx + 第八节 69 |
 | badge h-5 胶囊(rounded-4xl) | badge.tsx |
 | switch 轨道 32x18(选中 bg-primary/未选 bg-input, **暗色未选是 dark:bg-input/80**),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground;**禁用时轨道与滑块一起乘 50%**(滑块不跟班会剩一颗全亮白圆) | switch.tsx(radix-nova) + 第八节 61 |
@@ -326,6 +328,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Badge variant | default/secondary/outline/destructive/ghost/link 六档齐全 | 悬停样式恒生效(**shadcn 写作 `[a]:hover:*`, 只有包在链接里才生效**; Go 侧没有链接概念) |
 | Badge 悬停 | `ghost` = hover 出 bg-muted, `link` = hover 加下划线 | 下划线手绘(无下划线标志位, 见下方"下划线") |
 | Card | `WithCardSize(CardSizeSm)` = `--card-spacing` 4→3(16→12) | 标题字号上游是 `text-base` + `font-medium`, 中文下 500 回落常规 → `NewCardTitle` 用 16 常规(不是粗体); sm 卡片标题自己 `SetFontSize(14)` |
+| Alert | `NewAlert(..., WithAlertVariant/WithAlertIcon/WithAlertTitle/WithAlertDescription)` + `Action()`; 标题/描述由组件内部持有 | 对应 alert.tsx 的 `Alert` + `AlertTitle/AlertDescription/AlertAction`; Go 侧是整体自撑高度的组件; 需要自定义文字样式时用 `Title()` / `Description()` 改字体后 `Refresh()`; 动作槽按内容宽(上游固定预留 pr-18=72, 本实现由动作实际宽度缩短文本列) |
 | Separator | `WithSeparatorVertical` 支持垂直 | 上游 `data-vertical:w-px` |
 | Tabs | `WithTabsVertical` 支持垂直(标签堆叠、左对齐、指示条在右侧) | 上游 `group-data-vertical/tabs:*` |
 | Slider | `WithSliderRange(min,max)` / `WithSliderStep(step)` | 对应 radix 的 min/max/step; 默认仍是 0~100 连续 |
@@ -408,6 +411,7 @@ ui/
 |---|---|
 | Input 的文字/光标/选区/IME 由原生 Edit 绘制 | 都在 DLL 内;只开放字体/字色/占位符色/插入符色/文字内边距。要完全控制就得自绘文字并接管光标闪烁、选区命中、IME 组合窗 |
 | Toast 只支持四角堆叠, 无 `richColors` | 顶部/底部居中与"按类型给卡面上底色"未做(第八节 75) |
+| 英文长文本折行按字符断行(可能在单词中间换行) | Label 载体是原生 Button, 折行算法在 DLL 内, 不按单词边界; 中文不受影响(第八节 90) |
 | 没有 `asChild` / `data-slot` / `data-state` | React/DOM 概念, Go 侧没有对应物 |
 | `--chart-*` / `--sidebar-*` 令牌只提供取值 | 组件库自身不用, 供你的应用取用 |
 
@@ -1262,6 +1266,15 @@ ui/
     - **修法**: 拼轮廓的图元**不要重叠**, 只画轮廓外露的部分。Tooltip 现在只画露在气泡外的三角形, 底边与气泡边线共线, 不再画被盖住的那一半; 文字画在气泡上不受影响(颜色不同, 本来就是覆盖关系)。不要用"把底边压进气泡 1px"来防缝 —— 那会留下一条更深的 1px 线; 共线即可, 同一次绘制里相邻边的抗锯齿不会产生透底缝。
     - **验收**: 用 `xui.SetAnimationScale(20~200)` 把进出场放慢(参数是**时长倍率**, 20 = 慢 20 倍; 0 = 立即到位), 在 alpha≈0.3/0.5 的中段帧截图放大检查; 正常速度下只有约 9 帧, 截图脚本很难稳定命中, 也看不出叠加。亮/暗主题各验一轮。
 
+90. **折行文本的高度与 Auto 布局重排**(`components/alert.go` + `components/label.go`, 实测):
+    - **现象**: Alert 的长标题/描述只显示一两行就被省略号截断;把 Label 的布局项高度声明成 `Auto` 也不会自撑。
+    - **根因**: Label 载体是原生 Button, Layout 的 `Auto` 只取元素**现有高度**, 不会按文本折行结果量高;必须量出高度后 `SetHeight` + 布局项 `Fixed`。
+    - **量高口径**: `app.GetTextShowRect` 的 CY 略小于"行数×行高"(14px 三行返回 59 而非 60), 且 Button 的文字区比元素窄/矮一圈(默认内边距) —— 直接按元素宽度量会少算一行, 只按整行取整又会裁掉最后一行。修法:按 `宽度−12` 量, 多行高度取整到 20 后 **+4**;单行保持 20(数值在 `alert.go` 的 `alertTextInsetX` / `alertTextPadY`)。
+    - **重排链**: 改完文字高度只调自己/直接父级不够, Auto 高的卡片/行仍按旧高度排版, 要逐级 `XEle_AdjustLayout` 到祖先。遇到 ScrollArea 的 `LayoutFrame` 时**不能**调它的内容区(实测会把 Alert 宽度打成 0), 要调框架本身(`XEle_AdjustLayout(frame)`), 由框架重排内容区并重算滚动范围。
+    - **重绘**: 高度变化后要重绘标题/描述和窗口;只重绘 Alert 背景不会触发子元素重绘。
+    - **触发时机**: 布局赋予宽度时尺寸事件不一定触发;在 Alert 的 paint 里比较文本列当前宽与上次量高宽度, 变化时预约一次 `AfterFunc(0)` 重排。不要在尺寸/paint 回调里直接改布局(会重入)。
+    - **验收**: demo 反馈页 1200/960/1500 三种宽度、亮/暗主题下长标题与长描述完整显示、无省略号, 动作按钮始终贴右上;亮/暗运行时切换颜色实时跟随。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1287,6 +1300,7 @@ ui/
 - backdrop-blur(见第八节 47):`xc.XImage_LoadFromGoImage`、`xc.XBkM_AddImage(hBkM, state, hImage, id)`、`xc.XBkM_GetObject`、`xc.XEle_GetBkManager`、`xc.XEle_ClearBkInfo`、`xcc.Element_State_Flag_Leave`(元素态, ≠ Window_State_Flag_Leave)、`XWnd_GetChildCount/GetChildByIndex`、`XEle_GetAlpha/GetBkInfoCount`、`wapi.GetWindowRect` + `PrintWindow(PW_RENDERFULLCONTENT)` 抓窗、`XWnd_SetTimer/KillTimer + AddEvent_Timer`(程序化验证)
 - 排查"窗口可见但屏幕上看不见"(见 57):`user32!EnumWindows` + `GetWindowThreadProcessId` 枚举进程窗口(⚠️ 别用 `Process.MainWindowHandle`, 弹层小窗存在时它会返回小窗)、`IsWindowVisible`、`user32!GetLayeredWindowAttributes`(读 layered alpha/颜色键)、`PrintWindow` 与 `CopyFromScreen` 对照(画了 vs 屏幕上没有)
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽;返回的 CY **已含行距** —— 13px 字体单行 18 / 两行 36, 见第八节 75)
+- 折行文本(见第八节 90):`Label.WrappedHeight(width)`(当前字体下按宽度折行的高度)、`Label.SetColorFunc(fn)`(语义字色按当前主题实时解析)、`xc.XC_IsHXCGUI(h, xcc.XC_LAYOUT_FRAME)`(识别滚动容器框架)、`xc.XWnd_AdjustLayout`(窗口级重排;`XEle_AdjustLayout` 不能直接作用于 LayoutFrame 的内容区)
 - `Element.SetBorderSize(左, 上, 右, 下)`:原生 Edit/ComboBox 的**文字内边距**, 传**逻辑像素**、由框架随 DPI 自动缩放(实测 150% DPI: Input 传 10, 文字起点距边框 20 物理 ≈ 13.3 逻辑 = 10 + 字形左侧留白) —— 别再乘 `dpi/96`, 会重复放大
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55);**对原生自建弹窗**(ComboBox 下拉, 只有窗口句柄)同样可用: `xc.XWnd_SetTransparentType / XWnd_SetTransparentAlpha`, 在弹出回调里(显示前)设置, 见第八节 69
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)

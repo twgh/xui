@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 )
@@ -10,11 +12,12 @@ import (
 // 原生 ShapeText 无事件且换肤不便, 用 Button 载体统一管理。
 type Label struct {
 	*widget.Button
-	muted  bool   // 弱化文字(说明性文本)
-	bold   bool   // 粗体(标题, 字号 +1)
-	medium bool   // 中等字重(粗体字形但不加字号)
-	size   int32  // 字号覆盖(逻辑像素; 0 = 主题默认)
-	textC  uint32 // 上次下发给原生的字色(避免在 paint 里反复设置)
+	muted   bool                       // 弱化文字(说明性文本)
+	bold    bool                       // 粗体(标题, 字号 +1)
+	medium  bool                       // 中等字重(粗体字形但不加字号)
+	size    int32                      // 字号覆盖(逻辑像素; 0 = 主题默认)
+	colorFn func(*xui.Theme) xui.Color // 语义字色解析器(实时取令牌; nil = 默认规则)
+	textC   uint32                     // 上次下发给原生的字色(避免在 paint 里反复设置)
 }
 
 // NewLabel 创建文本标签。h 为行高(逻辑像素), 可传 0 使用默认 24。
@@ -76,8 +79,36 @@ func (l *Label) SetFontSize(px int32) *Label {
 	return l
 }
 
+// SetColorFunc 指定语义字色解析器: 每次同步字色(换主题/绘制)时按当前主题实时求值,
+// 所以不要在 fn 里缓存颜色。传 nil 恢复默认规则(常规 = Foreground, SetMuted = MutedForeground)。
+// 用于 Alert 这类文字颜色跟变体走、又不是简单的弱化/常规的场景。
+func (l *Label) SetColorFunc(fn func(*xui.Theme) xui.Color) *Label {
+	l.colorFn = fn
+	l.applyTheme(xui.Current())
+	return l
+}
+
+// WrappedHeight 量测当前文本在当前字体下、按 width 限宽折行后的高度(逻辑像素, 已含行距)。
+//
+// 换行文本的元素高度**不会**随内容自撑(Layout 的 Auto 只取元素现有高度), 需要多行时
+// 用本方法量出高度再 SetHeight + 布局项 Fixed。绘制与量测共用同一字体与限宽, 别自己按行数补行距。
+func (l *Label) WrappedHeight(width int32) int32 {
+	if l == nil || width <= 0 {
+		return 0
+	}
+	text := l.GetText()
+	font := l.GetFont()
+	if text == "" || font == 0 {
+		return 0
+	}
+	var sz xc.SIZE
+	app.GetTextShowRect(text, -1, font, xcc.TextAlignFlag_Left, width, &sz)
+	return sz.CY
+}
+
 // SetWrap 允许文字在宽度内自动换行(默认 NoWrap, 超宽截断为省略号)。
-// 换行需要调用方给足高度:**在构造参数里给**(如 NewLabel(0,0,0,48,…) 的多行说明),
+// 换行需要调用方给足高度:可以在构造参数里给固定高度, 也可以在宽度确定后用
+// WrappedHeight 量出折行高度再 SetHeight + 布局项 Fixed。
 // 高度不足时溢出行被裁剪; 布局里只声明宽度(见 xui/layout.go 的布局约定)。
 // 对齐保持左对齐/垂直居中。
 func (l *Label) SetWrap() *Label {
@@ -110,7 +141,9 @@ func (l *Label) applyTheme(t *xui.Theme) {
 func (l *Label) syncTextColor() {
 	t := xui.Current()
 	c := t.Foreground
-	if l.muted {
+	if l.colorFn != nil {
+		c = l.colorFn(t)
+	} else if l.muted {
 		c = t.MutedForeground
 	}
 	if !l.IsEnable() {
