@@ -143,7 +143,7 @@ func (t *Tooltip) Hide() {
 // 异型透明窗(Window_Transparent_Shaped)的整窗透明度**只认第一次调用**, 之后再设什么
 // 值、再怎么重绘(本窗 / 元素 / 宿主窗)都不再变化 —— 实测现象是"窗口位置在动、
 // layered alpha 恒为首次那个值", 于是气泡整块几乎是全透明的, 屏幕上根本看不到它。
-// 元素 alpha 是框架在合成阶段乘上去的, 每帧都生效(对话框整组淡入同理, 见 47/57)。
+// 元素 alpha 是框架在合成阶段乘上去的, 每帧都生效(对话框整组淡入同理, 见 DESIGN 第八节 47/57)。
 func (t *Tooltip) fade(v float64) {
 	if t.win == nil || t.ele == nil {
 		return

@@ -313,7 +313,7 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 	// 立即重绘 hOwner —— 挂宿主窗 = 淡入的 100ms 里每帧全量重绘整个主窗口(demo 表单页
 	// 上千个元素), 快速点击时重绘排队, UI 线程卡到出现系统忙碌光标, 弹层开关肉眼可见
 	// 地"抖动/掉帧"(录屏逐帧可见)。整窗 alpha 时代挂宿主窗是被迫的
-	// (DWM 合成要宿主带动, 见 47/73), 改元素 alpha 后弹窗自己重绘就落地,
+	// (DWM 合成要宿主带动, 见 DESIGN 第八节 47/73), 改元素 alpha 后弹窗自己重绘就落地,
 	// 弹窗只有 400×500 物理像素, 每 tick 重绘毫无压力。
 	hBody := p.body.Handle
 	hw := p.win.Handle
