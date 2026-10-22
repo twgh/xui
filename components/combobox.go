@@ -128,7 +128,9 @@ func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboB
 		HideTooltip(hEle) // 弹层窗口接管鼠标后触发元素收不到 MouseLeave, 提示不会自己消失
 		styleComboPopup(hEle, hWindow, hListBox)
 		alignComboPopup(hEle, hWindow)
-		fadeInComboPopup(hEle, hWindow)
+		// 这里**不做** shadcn 的 100ms 进场淡入: 弹层是异型透明窗, 整窗 alpha 只认头两次
+		// 调用之后就冻结(见 DESIGN 第八节 57/69), 淡入会概率性停在 alpha≈3/255 —— 弹层看不见
+		// 却照样吞点击, 表现为"点触发器没反应"(快速连续选择几次后必现, 比没有淡入糟得多)。
 		return 0
 	})
 	// 弹层退出后窗口句柄即失效(实测: 关闭后切主题, 用旧句柄调 XWnd_GetDPI 会弹
@@ -321,45 +323,6 @@ func alignComboPopup(hCombo, hWindow int) {
 	}
 	wapi.SetWindowPos(hwnd, 0, left, desired, 0, 0,
 		wapi.SWP_NOSIZE|wapi.SWP_NOZORDER|wapi.SWP_NOACTIVATE)
-}
-
-// fadeInComboPopup 给下拉弹层播进场淡入(select.tsx 的 data-open:fade-in-0, duration-100)。
-//
-// 弹层是原生创建的普通窗口, 整窗 alpha 对普通窗口无效(探针实测: SetTransparentAlpha
-// 之后抓图仍是全白) —— 必须先把透明类型转成异型透明窗。转折点就在本回调:
-// 此刻窗口**还没显示**(探针实测 IsWindowVisible=false), 所以能先把 alpha 压到下限,
-// 第一帧就不会闪白。
-//
-// 与 tooltip 的异型窗不同, 这个弹层上连续改 alpha **是生效的**(探针 shaped-seq:
-// alpha 64/160/255 三帧抓图依次 #40A0FF / #A0D0FF / #FFFFFF), 因此可以直接用整窗
-// alpha 做淡入; 不需要(也无法)走元素 alpha —— 弹层里的内容全是原生 ListBox。
-//
-// 过渡挂**宿主窗口**驱动: 弹层小窗自己做重绘目标时定时器掉帧(见 DESIGN 47)。apply
-// 每帧先验证弹层还活着 —— 弹层会在鼠标点击外部/选择条目时立刻销毁, 拿失效句柄调
-// X API 会静默崩进程(与 menu.go 的菜单淡入同一个坑)。
-func fadeInComboPopup(hCombo, hWindow int) {
-	if hWindow <= 0 {
-		return
-	}
-	xc.XWnd_SetTransparentType(hWindow, xcc.Window_Transparent_Shaped)
-	xui.SetWindowAlpha(hWindow, xui.AlphaFloor())
-	xc.XWnd_Redraw(hWindow, true)
-
-	host := xc.XWidget_GetHWINDOW(hCombo)
-	if host <= 0 {
-		host = hWindow
-	}
-	hw := hWindow
-	// 键取全局唯一: 与菜单/对话框共用宿主窗口的键空间, 各组件自己的计数器会撞车
-	// (撞上已完成的过渡 → 新弹层停在 alpha 下限 = 全透明但仍在吞点击, 见 NextPresenceKey)。
-	key := xui.NextPresenceKey()
-	xui.Presence(host, key, true, xui.PopupDuration, func(v float64) {
-		if !xc.XC_IsHXCGUI(hw, xcc.XC_WINDOW) {
-			return
-		}
-		xui.SetWindowAlpha(hw, v)
-		xc.XWnd_Redraw(hw, true)
-	}, nil)
 }
 
 // comboItemH 是弹层条目高度: shadcn SelectItem = text-sm(20) + py-1(4×2)。
