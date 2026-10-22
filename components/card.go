@@ -2,7 +2,6 @@ package ui
 
 import (
 	"github.com/twgh/xcgui/widget"
-	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 )
@@ -328,12 +327,9 @@ func (f *CardFooter) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// bg-muted/50(半透明底叠在卡片上), 底两角随卡片 rounded-xl
 	bg := t.Muted.ScaleAlpha(0.5)
 	r := t.RadiusXl()
-	p.FillRound(&p.Rc, bg, r)
-	// 上两角补方: shadcn 的页脚只有下两角圆角(整块圆角矩形会把上两角也削掉)
-	if h := p.Rc.Bottom - p.Rc.Top; h > r {
-		top := xc.RECT{Left: p.Rc.Left, Top: p.Rc.Top, Right: p.Rc.Right, Bottom: p.Rc.Top + r}
-		p.FillRound(&top, bg, 0)
-	}
+	// 一次画出"上平下圆"的整块: 先画整块圆角再用方角块补上沿, 会让半透明色在
+	// 交叠区合成两次(顶部一条深一档, 同 dialog.go 的页脚带, 见 DESIGN 第八节)。
+	p.FillRoundCorners(&p.Rc, bg, xui.Corners{BottomRight: r, BottomLeft: r})
 	// border-t
 	p.Line(p.Rc.Left, p.Rc.Top, p.Rc.Right, p.Rc.Top, t.Border, 1)
 	return 0
