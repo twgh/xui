@@ -68,6 +68,37 @@ func (c *Card) ContentLeft() int32 { return c.Padding }
 // ContentTop 内容区上边界(相对卡片) —— 即内边距。
 func (c *Card) ContentTop() int32 { return c.Padding }
 
+// Size 返回卡片尺寸预设(sm 卡片的内边距/页脚内边距都是 12)。
+func (c *Card) Size() CardSize {
+	if c == nil {
+		return CardSizeDefault
+	}
+	return c.size
+}
+
+// TitleSize 返回卡片标题字号(对应上游 `text-base` / sm 卡片的 `text-sm`):
+// default 16, sm 14。标题创建后用它设置字号, 与卡片尺寸保持一致。
+func (c *Card) TitleSize() int32 {
+	if c != nil && c.size == CardSizeSm {
+		return 14
+	}
+	return 16
+}
+
+// Footer 创建与卡片尺寸匹配的页脚(内边距跟随卡片: default 16 / sm 12),
+// 并以 Fill 宽作为卡片的布局项 —— 通常直接用它, 不必再算 NewCardFooter 的参数。
+func (c *Card) Footer(cy int32) *CardFooter {
+	if c == nil {
+		return nil
+	}
+	f := NewCardFooter(0, 0, 0, cy, c.Handle, WithCardFooterPadding(c.Padding))
+	if f == nil {
+		return nil
+	}
+	xui.ItemFill(f)
+	return f
+}
+
 // ContentWidth 内容区当前宽度(卡片宽 - 两侧内边距)。
 func (c *Card) ContentWidth() int32 { return c.GetWidth() - c.Padding*2 }
 
@@ -111,7 +142,7 @@ func (c *Card) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 // NewCardTitle 卡片标题。
 // 与 shadcn card.tsx 对齐: `text-base`(16) + `font-medium`(中文下 500 回落到常规字重,
 // 所以不开粗体 —— 用粗体字形会明显偏粗)。size=sm 的卡片标题应为 text-sm(14),
-// 传 `SetFontSize(14)` 即可。
+// 用 `card.TitleSize()` 取字号后 `SetFontSize`(构造器拿不到所属卡片, 无法自动判断)。
 func NewCardTitle(x, y, cx int32, text string, hParent int) *Label {
 	return NewLabel(x, y, cx, 24, text, hParent).SetFontSize(16)
 }
@@ -202,29 +233,89 @@ func (h *CardHeader) ActionStack() *widget.LayoutEle {
 	return h.action
 }
 
-// CardFooter 卡片页脚容器: 顶边一条 border-t + bg-muted/50, 只有**下两角**随卡片圆角
-// (shadcn card.tsx 的 CardFooter)。
-//
-// 用法: 在 ContentStack 之后创建, 以**卡片**为父句柄(不是内容区), 再声明宽度铺满 ——
-// 它是卡片的布局项, 自己占满宽度并贴在卡片底边; 内容区若声明 Fill 高度会自动让出这一段。
-type CardFooter struct {
-	*widget.Element
+// CardFooterOption 页脚配置项。
+type CardFooterOption func(*CardFooter)
+
+// WithCardFooterPadding 设置页脚四边内边距(对应 shadcn 的 p-(--card-spacing))。
+// 默认 16; size=sm 的卡片传 12(用 Card.Footer 时自动跟随)。
+func WithCardFooterPadding(p int32) CardFooterOption {
+	return func(f *CardFooter) { f.Padding = p }
 }
 
-// NewCardFooter 创建页脚容器。cy 传 0 时用 44(与 dialog 页脚同量级)。
-func NewCardFooter(x, y, cx, cy int32, hParent int) *CardFooter {
-	if cy <= 0 {
-		cy = 44
-	}
-	ele := widget.NewElement(x, y, cx, cy, hParent)
+// CardFooter 卡片页脚: 顶边一条 border-t + bg-muted/50, 只有**下两角**随卡片圆角
+// (shadcn card.tsx 的 CardFooter: `flex items-center rounded-b-xl border-t bg-muted/50 p-4`)。
+//
+// 页脚自己是横向布局容器(子项垂直居中、高度按内容自撑), 内容放在 Content() 返回的
+// 内层容器里 —— 那一层带四边内边距, 所以按钮/文字不会贴边。直接挂到页脚上的子项
+// 会跳过内边距, 只有确实要贴边的内容(自定义背景/分隔线)才那样用。
+//
+// 用法: `footer := card.Footer(0)`(推荐, 内边距跟随卡片尺寸), 或
+// `ui.NewCardFooter(0, 0, 0, 0, card.Handle)` 后声明 `xui.ItemFill(footer)`;
+// 再往 `footer.Content()` 里放控件。
+type CardFooter struct {
+	*widget.LayoutEle
+	Padding int32             // 四边内边距(逻辑像素)
+	content *widget.LayoutEle // 内层内容区(带内边距外边距)
+}
+
+// NewCardFooter 创建页脚容器。cy 传 0 = 高度按内容自撑(含上下内边距);
+// 传固定值则锁高, 内容在页脚内垂直居中。
+func NewCardFooter(x, y, cx, cy int32, hParent int, opts ...CardFooterOption) *CardFooter {
+	ele := widget.NewLayoutEle(x, y, cx, cy, hParent)
 	if ele == nil {
 		return nil
 	}
-	f := &CardFooter{Element: ele}
+	f := &CardFooter{LayoutEle: ele, Padding: 16}
+	for _, o := range opts {
+		o(f)
+	}
+	ele.EnableHorizon(true)
+	ele.EnableLayout(true)
+	ele.EnableAutoWrap(false) // 页脚一行放不下时别把子项甩到下一行(见 DESIGN 41)
 	ele.EnableBkTransparent(true)
+	ele.SetAlignV(xcc.Layout_Align_Center) // items-center
+	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	if cy > 0 {
+		ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, cy)
+	} else {
+		ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	}
+
+	// 内层内容区: 宽铺满, 高按内容自撑, 四边外边距 = 页脚内边距。
+	// 用子项外边距而不是元素内边距: xcgui 的 XEle_SetPadding 对布局子项的影响未实测,
+	// 外边距是与卡片内容区一致的既有做法(见 card.ContentStack)。
+	inner := widget.NewLayoutEle(0, 0, 0, 0, ele.Handle)
+	inner.EnableHorizon(true)
+	inner.EnableLayout(true)
+	inner.EnableAutoWrap(false)
+	inner.EnableBkTransparent(true)
+	inner.SetAlignV(xcc.Layout_Align_Center)
+	inner.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	inner.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	inner.LayoutItem_SetMargin(f.Padding, f.Padding, f.Padding, f.Padding)
+	f.content = inner
+
 	ele.AddEvent_Paint(f.onPaint)
 	xui.AttachWindow(ele.Handle)
 	return f
+}
+
+// Content 返回页脚的内层内容区(横向流式、子项垂直居中、四边已留出内边距)。
+// 页脚要竖排(如登录卡的两个整宽按钮)时对返回值调 `EnableHorizon(false)`。
+func (f *CardFooter) Content() *widget.LayoutEle {
+	if f == nil {
+		return nil
+	}
+	return f.content
+}
+
+// ContentStack 设置内容区子项间距并返回它(与 Card.ContentStack 同名同义)。
+func (f *CardFooter) ContentStack(space int32) *widget.LayoutEle {
+	if f == nil || f.content == nil {
+		return nil
+	}
+	f.content.SetSpace(space)
+	return f.content
 }
 
 func (f *CardFooter) onPaint(hEle int, hDraw int, pbHandled *bool) int {

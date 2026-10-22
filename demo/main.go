@@ -220,6 +220,36 @@ func desc(parent int, text string) *ui.Label {
 	return ui.NewLabel(0, 0, 0, 36, text, parent).SetMuted().SetWrap()
 }
 
+// ratioPreview 建一个比例演示块: AspectRatio 的内容区里放自绘占位块
+// (muted 底 + 图片图标 + 比例文字); 宽度按权重分, 高度由宽度推导。
+func ratioPreview(parent int, weight int32, ratio float64, label string) *ui.AspectRatio {
+	ar := ui.NewAspectRatio(0, 0, 0, 0, ratio, parent)
+	xui.ItemWeight(ar, weight)
+	ph := widget.NewElement(0, 0, 0, 0, ar.Content().Handle)
+	ph.EnableBkTransparent(true)
+	xui.ItemFill(ph)
+	ph.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
+	ph.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		t := xui.Current()
+		p.FillRound(&p.Rc, t.Muted, t.RadiusLg())
+		cx, cy := (p.Rc.Left+p.Rc.Right)/2, (p.Rc.Top+p.Rc.Bottom)/2
+		const iconSize int32 = 28
+		icon := xc.RECT{Left: cx - iconSize/2, Top: cy - iconSize - 8, Right: cx + iconSize/2, Bottom: cy - 8}
+		p.Icon(icons.IconImage, &icon, t.MutedForeground, 2)
+		p.Draw.SetFont(xui.FontHandle(t.FontDefault))
+		text := xc.RECT{Left: p.Rc.Left, Top: cy + 6, Right: p.Rc.Right, Bottom: cy + 30}
+		p.Text(label, &text, t.MutedForeground,
+			xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
+		return 0
+	})
+	return ar
+}
+
 // envHomePage 读启动页环境变量并夹取到合法范围。
 func envHomePage() int {
 	i, _ := strconv.Atoi(os.Getenv("XUI_HOME_PAGE"))
@@ -512,11 +542,34 @@ func buildBasePage(body *widget.LayoutEle) {
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "了解详情", rd.Handle, ui.WithVariant(ui.ButtonOutline)), 104)
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "开始使用", rd.Handle), 104)
 
-	footer := ui.NewCardFooter(0, 0, 0, 0, cardDemo.Handle)
-	xui.ItemFill(footer)
-	ui.NewLabel(16, 10, 0, 24, "CardFooter · border-t + bg-muted/50, 只随卡片下两角圆角", footer.Handle)
+	footer := cardDemo.Footer(0)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0,
+		"CardFooter · p-4 + items-center + border-t + bg-muted/50, 只随卡片下两角圆角", footer.Content().Handle))
 
-	// ---- 第三行: 滚动容器(组件形态; 页面本身也是它, 见 newPage) ----
+	// ---- 第四行: 比例容器(AspectRatio) + sm 卡片 ----
+	rr := row(body.Handle, 0, gap)
+	_, vr := autoCard(col(rr.Handle, 2, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "比例容器", vr.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"AspectRatio: 宽度由布局/布局项决定, 高度 = 宽度 / ratio; 内容放 Content() 里铺满比例框", vr.Handle))
+	ritems := row(vr.Handle, 0, 16)
+	ratioPreview(ritems.Handle, 2, 16.0/9.0, "16 : 9")
+	ratioPreview(ritems.Handle, 1, 1, "1 : 1")
+	ratioPreview(ritems.Handle, 1, 9.0/16.0, "9 : 16")
+
+	// sm 卡片: 内边距与页脚都是 p-3(12), 标题 text-sm(14)
+	smCard := ui.NewCard(0, 0, 0, 0, col(rr.Handle, 1, gap).Handle, ui.WithCardSize(ui.CardSizeSm))
+	xui.ItemFill(smCard)
+	smCard.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	vsm := smCard.ContentStack(12)
+	chsm := ui.NewCardHeader(0, 0, 0, vsm.Handle, 4)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "小卡片", chsm.TitleStack().Handle).SetFontSize(smCard.TitleSize()))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "size=sm: 内边距与页脚都是 12, 标题 14", chsm.TitleStack().Handle))
+	xui.ItemFill(ui.NewButton(0, 0, 0, 0, "操作", vsm.Handle, ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline)))
+	smFooter := smCard.Footer(0)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "CardFooter · p-3", smFooter.Content().Handle).SetMuted())
+
+	// ---- 第五行: 滚动容器(组件形态; 页面本身也是它, 见 newPage) ----
 	_, vs := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "滚动容器", vs.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,

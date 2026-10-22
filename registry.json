@@ -37,6 +37,10 @@
       "files": ["card.go"],
       "deps": ["label"]
     },
+    "aspectratio": {
+      "files": ["aspectratio.go"],
+      "deps": []
+    },
     "alert": {
       "files": ["alert.go"],
       "deps": ["label"]

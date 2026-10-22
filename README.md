@@ -124,7 +124,8 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Tree | 树形视图(原生 `Tree` 载体 + 全自绘皮肤):缩进参考线/旋转 chevron/行悬浮选中;叶节点留空槽位文字全树对齐,点击 chevron 展开收起 |
 | Pagination | 分页(纯自绘单元素,鼠标驱动):上一页/下一页 + 页码 + 省略号折叠(>7 页),内容居中、当前页为描边态;`SetTotal/SetPageSize/SetPage/OnChange` |
 | ScrollArea | 滚动容器(原生 `LayoutFrame` 载体):内容比容器高时纵向滚动,内容总大小按子项自动撑开、滚动条自动显隐;主题化细滚动条,内容区 `ContentStack()` 随便塞;`SetContentFill()` 切"铺满视口 + 面板吃剩余高度"形态 |
-| Label / Card / Badge / Separator | 静态展示组件:Badge 6 变体(含 ghost/link,悬停生效)、Card 支持 `sm` 尺寸与说明/页脚/卡片头(`NewCardHeader` 的标题+说明+右上动作区)、Separator 支持垂直 |
+| AspectRatio | 固定宽高比容器: 宽度由布局/布局项决定,高度 = 宽度 / ratio(16:9、1:1、9:16…),宽度变化时自动重算并逐级重排;内容放 `Content()` 里铺满比例框,`SetRatio` 运行时切换比例 |
+| Label / Card / Badge / Separator | 静态展示组件:Badge 6 变体(含 ghost/link,悬停生效)、Card 支持 `sm` 尺寸与说明/页脚/卡片头(`NewCardHeader` 的标题+说明+右上动作区;`Card.Footer` 页脚内边距随尺寸、内容垂直居中)、Separator 支持垂直 |
 
 交互类组件默认带齐 4 态:正常 / hover / 按下 / 禁用,外加键盘焦点环(静态展示与容器类组件没有按下态)。
 

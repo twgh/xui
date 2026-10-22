@@ -8,7 +8,7 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-21)
+## 当前状态(截至 2026-10-22)
 
 **阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
@@ -496,6 +496,13 @@
   - **不适用**(shadcn 文档里有但 Go/xcgui 侧做不了或无意义): RTL(dir=rtl)、波斯/Jalali 历、timeZone、自然语言解析(chrono-node 无等价物; 常用相对日期已被 `ParseDateText` 覆盖)。已记 DESIGN 第七节。
   - 验收: 亮/暗双主题整卡 + 双月弹层/预设/周数/删除线逐项截图; 交互实测 —— 范围两次点击(第一次保持打开、第二次关闭)、预设"未来 30 天"回写、可输入键入 2026-10-22 回车回写、图标钮打开弹层(年份 1900 起)、ESC/点外部关闭; `go build/vet/test ./...` 通过; calendar/datepicker 纯逻辑单测(范围状态机/ISO 周数/几何基准/ParseDateText/Text)在 `components/calendar_test.go`。
   - **2026-10-21 用户报障两连修 + 一条改判**: ①**点年份无效、点月份弹出年份** —— `headerHit` 的编码(块*2 + 0 年/1 月)被直接当 `calDrop*` 用, `calDropNone=0` 恰好是"年"的编码 → 点年份变成关面板、点月份落到 `calDropYear`; 新增 `calHeadKind(head)` 换算(DESIGN 语义表同条)。②**双月范围出现 3 个"选中"的 10** —— 相邻块的 outside 区按日期判定也会画端点/色带(9 月块拖尾 = 10 月上旬); 改为选中/范围标识只画在本月格上, outside 重复格只画弱化文字(DESIGN 多月并排条目)。③**跨多月范围重开停在起点** —— 曾按报障改成"终点对齐", 后确认上游 `defaultMonth={from}` 本就只认起点(区间比窗口长时终点在窗外、翻页可看), 属预期行为, 已按用户意见改回起点对齐(DESIGN 范围条目注明)。
+
+- ✅ **Card 页脚补齐 + AspectRatio 新组件**(2026-10-22, 参 shadcn card / aspect-ratio 文档):
+  - **CardFooter**(`components/card.go`): 从纯绘制元素改成横向布局容器 —— 内层 `Content()` 承担四边内边距(default 16 / sm 12)、子项垂直居中(`items-center`)、`cy=0` 时高度按内容自撑; 新增 `Card.Footer(cy)` 自动匹配卡片尺寸、`Card.TitleSize()`(16 / sm 14) 与 `ContentStack(space)`。demo 的「卡片」页脚改用新形态(文字垂直居中), 并新增一张 sm 卡片验证 12px 内边距与 14px 标题。
+  - **`ui.AspectRatio`**(`components/aspectratio.go`): 宽度驱动高度(高 = 宽 / ratio), 尺寸事件只比较宽度, `AfterFunc` 延迟重算 + 逐级重排祖先(Auto 高卡片 / ScrollArea 会跟着长, 同 DESIGN 93); `SetRatio` / `Ratio` / `Content()` / `ContentStack(space)`; `cy>0` 或布局项高度被 Fill/Weight/Fixed 接管时比例不生效(同 CSS 宽高都确定时 aspect-ratio 失效)。单测 `aspectratio_test.go`(几何换算 / 非法比例)。
+  - **未做**: Card 的 `overflow-hidden` 与首末图片自动圆角 —— xcgui 没有元素级圆角裁剪 API, 已记 DESIGN 第七节; 需要图片横幅时用 AspectRatio 作卡片的第一个子项、内容自绘圆角。
+  - registry 登记 `aspectratio`; demo 基础页新增「比例容器」(16:9 / 1:1 / 9:16)与 sm 卡片; README / DESIGN(技术路线、语义表、映射表、94/95 条)已更新。
+  - 验收: `go build/vet/test ./...`; 探针 800→600 宽 + `SetRatio(1)` 几何断言 **784×441 → 584×329 → 584×584**, 内容区与比例框逐次等大; 亮/暗主题截图核对页脚内边距/居中与三种比例, 960×660 最小窗口下三块比例仍完整(Weight 宽会重新分配); 逐组件安装编译见下。
 
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
 

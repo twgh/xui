@@ -237,7 +237,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 |---|---|---|---|
 | AppWindow | 原生 window.Window 封装 | 无系统标题栏(样式不含 Icon/Btn_*): 阴影圆角 + 自绘 `[图标][标题 Weight][自定义按钮区][最小化/最大化/关闭]`; 双击标题栏最大化/还原; 内容区 = 纵向流式 Weight 1(第八节 76) | demo 窗口 |
 | Button | embed Button | paint 壳, 原生文字(WithIcon 时自绘图标) | BeautifyButton 示例 |
-| Card | LayoutEle(布局容器) | 圆角面板 + ring 描边; 内容区是 Fill 子项、内边距用外边距表达(随卡片缩放), 高度可按内容自撑(Auto), 见第八节 56 | — |
+| Card | LayoutEle(布局容器) | 圆角面板 + ring 描边; 内容区是 Fill 子项、内边距用外边距表达(随卡片缩放), 高度可按内容自撑(Auto), 见第八节 56; 页脚是横向布局容器(内边距 + items-center), 见第八节 95 | — |
+| AspectRatio | LayoutEle(布局容器) | 宽度驱动高度: 尺寸事件按新宽度算高写回, 延迟到下一轮消息并逐级重排祖先(同第八节 93 的三段式); 内容区随比例框同步尺寸, 见第八节 94 | shadcn/radix aspect-ratio |
 | Alert | LayoutEle + Label/Element | 卡片底 + 1px border; 图标/文本列横向流式, 标题/描述按宽度量高后写回, 动作槽按内容自撑; 见第八节 90 | alert.tsx(radix-nova) |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
 | Input | embed Edit | 只画边框+焦点环, 原生光标/IME | BeautifyEdit 示例 |
@@ -278,7 +279,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | destructive 软色调(bg-destructive/10 + 红字) | button.tsx / badge.tsx |
 | radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground) | radio-group.tsx |
 | checkbox size-4 rounded-[4px] border-input;未选**亮色无底色 / 暗色 dark:bg-input/30**;选中 bg-primary + 白勾;禁用 = 上面每个图层各乘 50% | checkbox.tsx + 第八节 61 |
-| card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl;卡片头 = 一行两列(左列标题+说明 `1fr`, 右列动作 `auto`), 动作区贴右上、跨标题与说明两行顶端对齐(gap-1 = 4) | card.tsx + `ui/card.go` 的 `CardHeader` |
+| card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl;卡片头 = 一行两列(左列标题+说明 `1fr`, 右列动作 `auto`), 动作区贴右上、跨标题与说明两行顶端对齐(gap-1 = 4);页脚 = 全宽 `border-t + bg-muted/50`、内容垂直居中、四边内边距跟随卡片尺寸(default 16 / sm 12)、只有下两角随圆角 | card.tsx + `ui/card.go` 的 `CardHeader` / `CardFooter` |
+| **aspect ratio** = 只有比例一个参数, **宽度驱动高度**(高度 = 宽度 / ratio);宽度变化(窗口缩放、布局分配)时自动重算;内容区铺满比例框, 不裁剪溢出内容 | radix aspect-ratio(`@radix-ui/react-aspect-ratio`, CSS aspect-ratio 语义) + 第八节 94 |
 | alert = bg-card + 1px border + rounded-lg(内边距 10/8); 可选图标 size-4 下移 2、与文本列间距 8; 标题 text-sm 中等字重、描述 text-sm muted, 行间 2; destructive = 标题/图标 destructive、描述 destructive/90; 动作槽贴右上, **无图标/无动作时对应列不占位**; 标题/描述按宽度折行、高度随内容自撑 | alert.tsx(radix-nova) + 第八节 90 |
 | **aria-invalid**(表单校验失败): 边框变 destructive + ring-3 destructive/20(暗色 border /50、ring /40), **常驻不要求焦点**;与 focus-visible 同时成立时红色优先(变体顺序里 aria-invalid 在后) | button.tsx / input.tsx / select.tsx + 第八节 69 |
 | badge h-5 胶囊(rounded-4xl) | badge.tsx |
@@ -338,7 +340,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | ButtonGroup | `NewButtonGroup(hParent, WithButtonGroupOrientation(...))` + `NewButtonGroupText` + `NewButtonGroupSeparator`; 组宽高按内容自撑, 首尾外角、嵌套组 8px 间距 | 对应 button-group.tsx 的 `ButtonGroup/ButtonGroupText/ButtonGroupSeparator`(role=group);不适用部分同下表的 Slot/data-* 钩子 |
 | Badge variant | default/secondary/outline/destructive/ghost/link 六档齐全 | 悬停样式恒生效(**shadcn 写作 `[a]:hover:*`, 只有包在链接里才生效**; Go 侧没有链接概念) |
 | Badge 悬停 | `ghost` = hover 出 bg-muted, `link` = hover 加下划线 | 下划线手绘(无下划线标志位, 见下方"下划线") |
-| Card | `WithCardSize(CardSizeSm)` = `--card-spacing` 4→3(16→12) | 标题字号上游是 `text-base` + `font-medium`, 中文下 500 回落常规 → `NewCardTitle` 用 16 常规(不是粗体); sm 卡片标题自己 `SetFontSize(14)` |
+| Card | `WithCardSize(CardSizeSm)` = `--card-spacing` 4→3(16→12);`card.Footer(0)` 创建内边距跟随尺寸、内容已垂直居中的页脚;`card.TitleSize()` 返回标题字号(16 / sm 14) | 标题字号上游是 `text-base` + `font-medium`, 中文下 500 回落常规 → `NewCardTitle` 用 16 常规(不是粗体); sm 卡片标题要自己 `SetFontSize(card.TitleSize())`(构造器拿不到所属卡片); 页脚内容要放进 `footer.Content()`(那一层才有内边距) |
+| AspectRatio | `NewAspectRatio(x, y, cx, cy, ratio, parent)` + `SetRatio` / `Ratio` / `Content()` / `ContentStack(space)` | ratio = 宽 / 高; `cy > 0` 或布局项高度声明成 Fill/Weight/Fixed 时由调用方管高度, 比例不生效(同 CSS 宽高都确定时 aspect-ratio 失效); 上游的 `className`(圆角/底色)映射为内容区自绘或元素背景, 组件本身不画任何东西 |
 | Alert | `NewAlert(..., WithAlertVariant/WithAlertIcon/WithAlertTitle/WithAlertDescription)` + `Action()`; 标题/描述由组件内部持有 | 对应 alert.tsx 的 `Alert` + `AlertTitle/AlertDescription/AlertAction`; Go 侧是整体自撑高度的组件; 需要自定义文字样式时用 `Title()` / `Description()` 改字体后 `Refresh()`; 动作槽按内容宽(上游固定预留 pr-18=72, 本实现由动作实际宽度缩短文本列) |
 | Dialog | `NewDialog(hWnd, WithDialogWidth/WithDialogCloseButton/WithDialogScroll)` + `SetTitle/SetDescription/AddFooter/BindTrigger/BindClose/Content/ScrollArea/Refresh` | 对应 dialog.tsx 的 `DialogContent` + `DialogHeader/Title/Description/Footer/Close/Trigger`; 无 compound 子组件拆分, 头部/页脚由组件内部持有; `WithDialogScroll` 对应文档的 Scrollable Content / With Sticky Footer; 缩放动画不做(见第八节 47) |
 | AlertDialog | `NewAlertDialog(hWnd, WithAlertDialogSize/WithAlertDialogTitle/WithAlertDialogDescription/WithAlertDialogMedia/WithAlertDialogMediaTone)` + `AddCancel/AddAction/BindTrigger` + `CancelButton/ActionButton` | 对应 alert-dialog.tsx 的 `AlertDialogContent` + `Header/Title/Description/Footer/Media/Action/Cancel/Trigger`; `size` 是枚举 `AlertDialogSizeDefault/Small`; 媒体块由组件自绘(不建子控件); `AddCancel` 固定 outline、`AddAction` 的变体由调用方给(可用 `CancelButton().SetVariant(ButtonGhost)` 改变体) |
@@ -427,6 +430,7 @@ ui/
 | 英文长文本折行按字符断行(可能在单词中间换行) | Label 载体是原生 Button, 折行算法在 DLL 内, 不按单词边界; 中文不受影响(第八节 90/91) |
 | Dialog 没有 zoom-in-95 / AlertDialog 没有 text-balance | 元素级缩放对自绘元素无效(第八节 47); 自绘文字没有平衡排版能力 |
 | 没有 `asChild` / `data-slot` / `data-state` | React/DOM 概念, Go 侧没有对应物 |
+| Card 的 `overflow-hidden` / 首末图片自动圆角、AspectRatio 的内容不裁剪 | xcgui 没有元素级裁剪/圆角裁剪 API(`EnableOverflowHide` 是布局时裁高, 不是视觉裁剪); 圆角与底色由组件或内容自绘, 溢出的子元素需要调用方自己按路径/尺寸裁 |
 | `--chart-*` / `--sidebar-*` 令牌只提供取值 | 组件库自身不用, 供你的应用取用 |
 | Calendar 不做 RTL(dir=rtl)/波斯·Jalali 历/timeZone/自然语言日期(chrono-node) | 文字渲染只有 LTR; 历法换算与时区数据是另一套领域库, Go 侧没有 chrono-node 的等价物 —— 绝对/相对日期的键入用 DatePicker 的可输入形态(`ParseDateText`)覆盖最常用场景; 范围色带跨月时在两个月块之间不连续(上游同样是每月一张独立表格) |
 
@@ -1313,6 +1317,18 @@ ui/
       ② **尺寸事件里不能直接 `SetHeight` + `AdjustLayout`**(重入布局), 用 `app.AfterFunc(0, ...)` 推迟到下一轮消息(同第八节 90 的 scheduleReflow);
       ③ 高度变化后从自己开始逐级对祖先 `AdjustLayout`; 遇到 ScrollArea 的 LayoutFrame(或"父级是框架内容区")交给框架排 —— 只通知直接父级时 Auto 高的卡片仍按旧高排版, 滚动范围也不刷新。
     - 同族坑: **原生 Edit 子元素的宽度不会跟随父元素**。DatePicker 的可输入形态把 Edit 建成触发区的子元素, 触发区被布局拉伸后 Edit 仍是创建时的宽度 —— 右侧一大段点不进输入区; 同样要挂 Size 事件把 Edit 的宽高同步成"父宽 − 图标区"。
+
+94. **AspectRatio(比例容器): xcgui 没有 aspect-ratio, 只能"宽度驱动高度 + 延迟重算"**(`components/aspectratio.go`, 实测):
+    - 布局项只有 Fixed/Fill/Auto/Weight/Percent/Disable 六种尺寸类型, 没有"另一边按比例"的类型; CSS 的 `aspect-ratio` 语义要自己维护。
+    - 落地: 组件**不声明自己的布局项高度**(保持 Disable, 用元素自身高), `AddEvent_Size` 里只比较宽度, 用 `app.AfterFunc(0, ...)` 推迟到下一轮消息再 `SetHeight(宽 / ratio)` + 逐级 `AdjustLayout`(完整三段式同第八节 93)。尺寸事件里直接改高度会重入布局; 高度写回又会再触发尺寸事件, 用 `lastW` 闸门防自激。
+    - **高度由调用方接管时比例不生效**: 构造 `cy > 0`, 或布局项高度被声明成 Fill/Weight/Fixed 时, 布局会用外部值覆盖元素高度(同 CSS 宽高都确定时 `aspect-ratio` 失效); 传 `cy = 0` 且布局项高度不接管时才按宽度联动。
+    - 内容区是 `Content()` 返回的子容器: 每次同步时把它**锁成比例框的实际宽高**(布局项 Fixed), 它内部的 Fill 子项才有正确参照 —— 直接让内容区用 Fill 参加布局时, 父级是 Weight 宽会让内层按祖先宽度算(实测比比例框宽 5~15px, 9:16 那块首帧高度还是 0, 见第八节 59 的同源问题)。圆角/底色/图片裁剪由内容自绘(元素级裁剪见第七节限制)。
+    - **验收(探针)**: 800 宽窗口里 `ItemWeight` 宽的 16:9 容器 → 784×441; 窗口缩到 600 → 584×329; `SetRatio(1)` → 584×584, 外层 Auto 高的行同步长高; demo 的 16:9 / 1:1 / 9:16 三块在亮/暗主题下比例一致, 窗口缩放无残影。
+
+95. **CardFooter 的内边距用"内层内容区的外边距"表达, 子项别直接挂在页脚上**(`components/card.go`):
+    - 页脚是横向布局容器(`items-center` + 高度 Auto 自撑), 内层 `Content()` 宽 Fill、高 Auto、四边外边距 = 内边距(default 16 / sm 12)。这沿用卡片内容区的既有做法 —— `XEle_SetPadding` 对布局子项的影响未实测, 不要拿它当内边距。
+    - 页脚 `cy = 0` 时高度 = 内容高 + 上下外边距; 传固定高时内容在页脚内垂直居中。直接挂到页脚上的子项会跳过内边距, 只有整宽背景/分隔线这类贴边内容才这样用。
+    - 页脚做成布局容器后, 页脚里放按钮/文字用 `footer.Content()` / `ContentStack(space)`; 要竖排(登录卡的两个整宽按钮)对内容区 `EnableHorizon(false)`。
 
 ---
 
