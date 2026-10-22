@@ -13,7 +13,7 @@ import (
 // AspectRatio 固定宽高比的容器(对应 shadcn / radix 的 AspectRatio)。
 //
 // 宽度由父布局或布局项决定, **高度 = 宽度 / ratio**: xcgui 的布局没有 CSS 的
-// aspect-ratio, 组件在尺寸事件里按新宽度算高写回元素, 再逐级通知祖先重排
+// aspect-ratio, 组件在尺寸事件里排队, 下一轮按新宽度算高写回元素并统一重排
 // (Auto 高的卡片/行/滚动范围才会跟着长, 见 DESIGN 第八节 94)。
 //
 // 内容放进 Content(): 宽高铺满比例框(图片占位、图标网格等)。
@@ -24,7 +24,7 @@ type AspectRatio struct {
 	*widget.LayoutEle
 	ratio    float64
 	autoH    bool
-	pending  bool
+	queued   bool
 	lastW    int32
 	lastH    int32
 	contentW int32
@@ -113,13 +113,27 @@ func (a *AspectRatio) SetRatio(ratio float64) *AspectRatio {
 	return a
 }
 
-// onSize 尺寸变化时预约一次同步。尺寸事件里直接改高度会重入布局,
-// 且高度写回后还会再触发一次尺寸事件 —— 用 lastW/lastH 闸门避免自激。
+// 同一帧内可能有多个比例框同时拿到宽度(例如首次显示一个页面)。全局排队后
+// 先统一写高度, 再统一重排/重绘: 每块各自同步会触发多次布局, 屏幕上是
+// "只有前两块 → 前两块变高 → 竖块出现"的逐帧展开(实测)。
+var (
+	arQueue  []*AspectRatio
+	arQueued bool
+)
+
+// onSize 尺寸变化时排队一次同步。高度写回会再触发尺寸事件, 由 queued 去重;
+// 真正写高度放在下一轮消息里, 避免在布局趟里改尺寸造成重入/震荡。
 func (a *AspectRatio) onSize(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
 	if a == nil {
 		return 0
 	}
 	w, h := a.GetWidth(), a.GetHeight()
+	// 布局过渡期会把比例框临时排成 0 宽(ScrollArea 框架重排/滚动条显隐那一帧)。
+	// 这种事件不能回写, 否则 335 ↔ 0 会无限自激; 保留上一次有效宽度, 等真正的
+	// 布局恢复宽度后不会再触发同步。
+	if w <= 0 {
+		return 0
+	}
 	if a.autoH {
 		if w == a.lastW {
 			return 0
@@ -132,38 +146,76 @@ func (a *AspectRatio) onSize(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint3
 }
 
 func (a *AspectRatio) scheduleSync() {
-	if a == nil || a.pending {
+	if a == nil || a.queued {
 		return
 	}
-	a.pending = true
-	app.AfterFunc(0, func() {
-		a.pending = false
-		a.syncSize()
-	})
+	a.queued = true
+	arQueue = append(arQueue, a)
+	if arQueued {
+		return
+	}
+	arQueued = true
+	app.AfterFunc(0, flushAspectRatios)
 }
 
-func (a *AspectRatio) syncSize() {
-	if a == nil || a.LayoutEle == nil || !xc.XC_IsHXCGUI(a.Handle, xcc.XC_ELE) {
+// flushAspectRatios 一轮内先写完全部高度, 再统一重排/重绘, 避免每块比例框
+// 各自触发一次布局造成的逐帧展开。布局过程中新产生的尺寸变化由新的批次处理。
+func flushAspectRatios() {
+	batch := arQueue
+	arQueue = nil
+	arQueued = false
+	if len(batch) == 0 {
 		return
+	}
+	var active []*AspectRatio
+	for _, a := range batch {
+		a.queued = false
+		if a.applySize() {
+			active = append(active, a)
+		}
+	}
+	// 尺寸没变就什么都不做: 布局过渡期会额外触发一轮尺寸事件, 每轮都重排/重绘
+	// 会让 ScrollArea 的 0 宽过渡和恢复互相驱动, 变成无限循环。
+	if len(active) == 0 {
+		return
+	}
+	var windows []int
+	for _, a := range active {
+		a.content.AdjustLayout()
+		a.content.Redraw(false)
+		a.adjustAncestors()
+		windows = append(windows, a.windowHandle())
+	}
+	for _, hw := range windows {
+		if hw != 0 {
+			xc.XWnd_Redraw(hw, false)
+		}
+	}
+}
+
+// applySize 按当前宽度写回高度与内容区尺寸; 只改尺寸, 不重排不重绘。
+func (a *AspectRatio) applySize() bool {
+	if a == nil || a.LayoutEle == nil || !xc.XC_IsHXCGUI(a.Handle, xcc.XC_ELE) {
+		return false
 	}
 	w := a.GetWidth()
 	if w <= 0 {
-		return
+		return false
 	}
 	a.lastW = w
 	h := a.GetHeight()
-	heightChanged := false
+	changed := false
 	if a.autoH {
 		h = aspectRatioHeight(w, a.ratio)
 		if h != a.GetHeight() {
 			a.SetHeight(h)
-			heightChanged = true
+			changed = true
 		}
 	}
-	a.lastH = h
 	if h <= 0 {
-		return
+		return changed
 	}
+	a.lastH = h
 	// 内容区不能用 Fill 参加布局: 父级是 Weight 宽时, xcgui 的量算趟会让 Fill 子项
 	// 按祖先宽度算(实测比比例框宽 5~15px, 9:16 那块首帧高度还是 0)。这里把内容区
 	// 锁成比例框的实际尺寸, 它内部的 Fill 子项才有正确的参照。
@@ -173,42 +225,66 @@ func (a *AspectRatio) syncSize() {
 		a.content.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
 		a.content.SetWidth(w)
 		a.content.SetHeight(h)
-		a.content.AdjustLayout()
-		a.content.Redraw(false)
+		changed = true
 	}
-	if heightChanged {
-		a.adjustAncestors()
-		a.Redraw(false)
-	}
+	return changed
 }
 
-// adjustAncestors 从自己开始逐级对祖先调用 AdjustLayout。只通知直接父级时,
-// Auto 高的卡片/行仍按旧高度排版, ScrollArea 也不会重算滚动范围(同第八节 90/93)。
+// syncSize 用于 SetRatio 这类不在尺寸事件里的即时变更。
+func (a *AspectRatio) syncSize() {
+	if a == nil || a.LayoutEle == nil || !xc.XC_IsHXCGUI(a.Handle, xcc.XC_ELE) {
+		return
+	}
+	if a.GetWidth() <= 0 {
+		return
+	}
+	if !a.applySize() {
+		return
+	}
+	a.content.AdjustLayout()
+	a.content.Redraw(false)
+	a.adjustAncestors()
+	if hw := a.windowHandle(); hw != 0 {
+		xc.XWnd_Redraw(hw, false)
+	}
+	a.Redraw(false)
+}
+
+// windowHandle 返回宿主窗口的 xcgui 句柄(0 = 尚未附加窗口)。
+func (a *AspectRatio) windowHandle() int {
+	if a == nil || a.LayoutEle == nil {
+		return 0
+	}
+	hwnd := xc.XWidget_GetHWND(a.Handle)
+	if hwnd == 0 {
+		return 0
+	}
+	return xc.XC_hWindowFromHWnd(hwnd)
+}
+
+// adjustAncestors 只把最近的 ScrollArea 框架(或窗口)重排一次。
+// 不要在父链上逐级 AdjustLayout / 重新声明 Auto: 中间层的 Weight 布局会在
+// 量算趟里把比例框临时排成 0 宽, 再被下一次布局恢复, 尺寸事件因此无限自激
+// (实测: 335 ↔ 0 反复)。框架级重排会统一更新内容区高度、兄弟位置与滚动范围。
 func (a *AspectRatio) adjustAncestors() {
 	if a == nil || a.LayoutEle == nil {
 		return
 	}
-	xc.XEle_AdjustLayout(a.Handle)
 	for p := xc.XWidget_GetParentEle(a.Handle); p != 0; p = xc.XWidget_GetParentEle(p) {
 		if xc.XC_IsHXCGUI(p, xcc.XC_LAYOUT_FRAME) {
-			// ScrollArea 的框架自己会重排内容区并重算滚动范围。
 			xc.XEle_AdjustLayout(p)
-			break
+			return
 		}
 		if pp := xc.XWidget_GetParentEle(p); pp != 0 && xc.XC_IsHXCGUI(pp, xcc.XC_LAYOUT_FRAME) {
 			// p 是框架的内容区: 直接对内容区 AdjustLayout 会把子项宽度打成 0(实测),
 			// 必须交给框架排。
 			xc.XEle_AdjustLayout(pp)
-			break
-		}
-		if xc.XC_IsHXCGUI(p, xcc.XC_ELE) {
-			xc.XEle_AdjustLayout(p)
-			continue
+			return
 		}
 		if xc.XC_IsHXCGUI(p, xcc.XC_WINDOW) {
 			xc.XWnd_AdjustLayout(p)
+			return
 		}
-		break
 	}
 }
 

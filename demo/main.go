@@ -7,7 +7,7 @@
 //   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
 //
 // 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
-// 启动页 XUI_HOME_PAGE = 0..5 = 基础 / 表单 / 导航 / 反馈 / 数据 / 图标。
+// 启动页 XUI_HOME_PAGE = 0..7 = 基础1 / 基础2 / 表单1 / 表单2 / 导航 / 反馈 / 数据 / 图标。
 package main
 
 import (
@@ -30,8 +30,10 @@ import (
 
 // 页面序号, 与 pageTitles 一一对应。
 const (
-	pageBase  = iota // 基础: 按钮 / 徽章 / 分隔线 / 标签 / 卡片
-	pageForm         // 表单: 输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框
+	pageBase1 = iota // 基础1: 按钮 / 徽章 / 分隔线 / 标签 / 按钮组
+	pageBase2        // 基础2: 卡片 / 比例容器 / 滚动容器
+	pageForm1        // 表单1: 输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框
+	pageForm2        // 表单2: 日期与时间 / 月历 / 范围与预设
 	pageNav          // 导航: 标签页 / 分页 / 菜单
 	pageFeed         // 反馈: 对话框 / 提示气泡 / 进度
 	pageData         // 数据: 表格 / 树
@@ -40,7 +42,7 @@ const (
 )
 
 // pageTitles 的个数必须与 pageCount 一致(页签与页一一对应)。
-var pageTitles = [...]string{"基础", "表单", "导航", "反馈", "数据", "图标"}
+var pageTitles = [...]string{"基础1", "基础2", "表单1", "表单2", "导航", "反馈", "数据", "图标"}
 
 var (
 	tip         *ui.Tooltip
@@ -269,8 +271,8 @@ func envHomePage() int {
 func buildPages(hWindow, host int) {
 	home := envHomePage()
 
-	// 页签行: 左右与窗口留白对齐
-	tabs := ui.NewTabs(0, 0, 520, host, pageTitles[:])
+	// 页签行: 左右与窗口留白对齐。8 个页签, 每个 80 宽。
+	tabs := ui.NewTabs(0, 0, 640, host, pageTitles[:])
 	xui.ItemMargin(tabs, pagePad, 8, 0, 6)
 
 	pageHost := widget.NewLayoutEle(0, 0, 0, 0, host)
@@ -292,8 +294,10 @@ func buildPages(hWindow, host int) {
 	// 不需要滚动)。其余页是自撑型: 内容比窗口高时滚动。
 	pages[pageData].SetContentFill()
 
-	buildBasePage(bodies[pageBase])
-	buildFormPage(bodies[pageForm])
+	buildBase1Page(bodies[pageBase1])
+	buildBase2Page(bodies[pageBase2])
+	buildForm1Page(bodies[pageForm1])
+	buildForm2Page(bodies[pageForm2])
 	buildNavPage(bodies[pageNav])
 	buildFeedPage(bodies[pageFeed], hWindow)
 	buildDataPage(bodies[pageData])
@@ -302,12 +306,24 @@ func buildPages(hWindow, host int) {
 	show := func(i int) {
 		for j, p := range pages {
 			p.Show(j == i)
+
+			if j == i {
+				// 隐藏页首次显示时, ScrollArea 的命中区域可能还停在旧滚动位置 ——
+				// 表现为点日期框/时间框没反应, 滚一下滚轮才正常。延迟等页面真正上屏后
+				// 再调整一次布局。
+				page := pages[i]
+				app.AfterFunc(2*16*time.Millisecond, func() {
+					if !page.IsShow() {
+						return
+					}
+					page.AdjustLayout()
+					page.Redraw(false)
+				})
+			}
 		}
 		// 可见性变了必须重排宿主: 隐藏的页不参与排版, 显示的那页才会拿到整个高度。
-		// 页面自身也要重排(布局元素在父容器隐藏期间不排版, 恢复可见后不重排就是空白)。
 		pageHost.AdjustLayout()
-		pages[i].AdjustLayout()
-		pages[i].Redraw(false)
+		pageHost.Redraw(false)
 	}
 
 	// 首页在**所有页面建完之后**才显示: 树的启动选中态在隐藏页上会丢(见 DESIGN 第八节 42)。
@@ -335,9 +351,9 @@ func newPage(host int) (page *ui.ScrollArea, body *widget.LayoutEle) {
 	return page, body
 }
 
-// ===== 页 1: 基础(按钮 / 徽章 / 分隔线 / 标签 / 卡片) =====
+// ===== 页 1: 基础1(按钮 / 徽章 / 分隔线 / 标签 / 按钮组) =====
 
-func buildBasePage(body *widget.LayoutEle) {
+func buildBase1Page(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
 
 	// ---- 列 1: 按钮 ----
@@ -528,8 +544,12 @@ func buildBasePage(body *widget.LayoutEle) {
 	xui.ItemWidth(combo, 180)
 	ui.NewButton(0, 0, 0, 0, "", bg8.Handle,
 		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconSettings), ui.WithVariant(ui.ButtonOutline))
+}
 
-	// ---- 第三行: 卡片本身(直接以真卡片呈现, 不套外壳) ----
+// ===== 页 2: 基础2(卡片 / 比例容器 / 滚动容器) =====
+
+func buildBase2Page(body *widget.LayoutEle) {
+	// ---- 卡片本身(直接以真卡片呈现, 不套外壳) ----
 	cardDemo, vd := autoCard(body.Handle, 10)
 	// 卡片头: 左列标题+说明, 右列动作区(CardAction) —— 动作贴右上、跨标题与说明两行。
 	ch := ui.NewCardHeader(0, 0, 0, vd.Handle, 4)
@@ -546,7 +566,7 @@ func buildBasePage(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0,
 		"CardFooter · p-4 + items-center + border-t + bg-muted/50, 只随卡片下两角圆角", footer.Content().Handle))
 
-	// ---- 第四行: 比例容器(AspectRatio) + sm 卡片 ----
+	// ---- 比例容器(AspectRatio) + sm 卡片 ----
 	rr := row(body.Handle, 0, gap)
 	_, vr := autoCard(col(rr.Handle, 2, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "比例容器", vr.Handle))
@@ -569,7 +589,7 @@ func buildBasePage(body *widget.LayoutEle) {
 	smFooter := smCard.Footer(0)
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "CardFooter · p-3", smFooter.Content().Handle).SetMuted())
 
-	// ---- 第五行: 滚动容器(组件形态; 页面本身也是它, 见 newPage) ----
+	// ---- 滚动容器(组件形态; 页面本身也是它, 见 newPage) ----
 	_, vs := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "滚动容器", vs.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
@@ -584,13 +604,13 @@ func buildBasePage(body *widget.LayoutEle) {
 	box.Content().SetSpace(6)
 }
 
-// ===== 页 2: 表单(输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框) =====
+// ===== 页 3: 表单1(输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框) =====
 
 // 骨架是"一行两列、每列把两张卡竖着排", 不是"两行各两列":
 // 行高只有 Weight(按剩余空间等分)可用, 卡片比行高时下一行就会压到上一行的卡片上
 // (实测: 输入框卡 430 高, 行只分到 363, 第二行的卡片上沿 379 直接盖住它 —— 用户报的
 // "下方两个卡片盖住上方卡片")。竖排在同一列里则天然按内容顺序往下走, 不重叠。
-func buildFormPage(body *widget.LayoutEle) {
+func buildForm1Page(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
 	colL := col(r.Handle, 1, gap)
 	colR := col(r.Handle, 1, gap)
@@ -722,7 +742,16 @@ func buildFormPage(body *widget.LayoutEle) {
 		[]string{"开发环境", "测试环境", "生产环境"},
 		ui.WithComboSize(ui.ComboSizeSm), ui.WithComboPlaceholder("sm 尺寸")))
 
-	// ---- 左列 3: 日期与时间 ----
+}
+
+// ===== 页 4: 表单2(日期与时间 / 月历 / 范围与预设) =====
+
+func buildForm2Page(body *widget.LayoutEle) {
+	r := row(body.Handle, 0, gap)
+	colL := col(r.Handle, 1, gap)
+	colR := col(r.Handle, 1, gap)
+
+	// ---- 左列 1: 日期与时间 ----
 	_, v5 := autoCard(colL.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "日期与时间", v5.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "触发区自绘(outline 按钮), 弹层是自建阴影窗: 月历全自绘, 时间框两列滚动列表", v5.Handle))
@@ -738,16 +767,13 @@ func buildFormPage(body *widget.LayoutEle) {
 	})
 
 	xui.ItemFill(hint(v5.Handle, "时间框(两列列表: 时 / 分)"))
-	rowT := xui.HStack(v5.Handle, 32, 8)
-	tp := ui.NewTimePicker(0, 0, 0, 0, rowT.Handle, ui.WithTimePickerValue(9, 30))
-	xui.ItemWidth(tp, 160)
-	tpVal := ui.NewLabel(0, 0, 0, 0, "09:30", rowT.Handle).SetMuted()
-	xui.ItemWidth(tpVal, 80)
-	tp.OnChange(func(h, m int) {
-		tpVal.SetText(tp.Text()).Redraw()
-	})
+	// 直接挂在卡片内容区, 不再套 HStack: 隐藏页首次显示时, 嵌套水平容器的
+	// 元素矩形会停在旧位置, 时间框的命中区与画面错位(需滚一下滚轮才恢复)。
+	tp := ui.NewTimePicker(0, 0, 0, 0, v5.Handle, ui.WithTimePickerValue(9, 30))
+	xui.ItemFill(tp)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "时间框为两列滚动列表, 选择即生效", v5.Handle).SetMuted())
 
-	// ---- 右列 3: 月历卡片 ----
+	// ---- 右列 1: 月历卡片 ----
 	_, v6 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "月历卡片", v6.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
@@ -867,7 +893,7 @@ func dateRangeText(from, to time.Time) string {
 	return from.Format("2006年1月2日") + " - " + to.Format("2006年1月2日")
 }
 
-// ===== 页 3: 导航(标签页 / 分页 / 菜单) =====
+// ===== 页 5: 导航(标签页 / 分页 / 菜单) =====
 
 func buildNavPage(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
@@ -937,7 +963,7 @@ func buildNavPage(body *widget.LayoutEle) {
 	})
 }
 
-// ===== 页 4: 反馈(对话框 / 提示气泡 / 进度) =====
+// ===== 页 6: 反馈(对话框 / 提示气泡 / 进度) =====
 
 func buildFeedPage(body *widget.LayoutEle, hWindow int) {
 	r := row(body.Handle, 0, gap)
@@ -1110,7 +1136,7 @@ func buildFeedPage(body *widget.LayoutEle, hWindow int) {
 	}
 }
 
-// ===== 页 5: 数据(表格 / 树) =====
+// ===== 页 7: 数据(表格 / 树) =====
 
 func buildDataPage(body *widget.LayoutEle) {
 	r := rowStretch(body.Handle, gap) // 铺满型页面: 表格/树跟随窗口长高(内容区已 SetContentFill)
@@ -1165,7 +1191,7 @@ func buildDataPage(body *widget.LayoutEle) {
 	})
 }
 
-// ===== 页 6: 图标(icons 资源子包) =====
+// ===== 页 8: 图标(icons 资源子包) =====
 // 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
 // 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
 // 点击把名字复制到剪贴板。

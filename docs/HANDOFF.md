@@ -499,10 +499,18 @@
 
 - ✅ **Card 页脚补齐 + AspectRatio 新组件**(2026-10-22, 参 shadcn card / aspect-ratio 文档):
   - **CardFooter**(`components/card.go`): 从纯绘制元素改成横向布局容器 —— 内层 `Content()` 承担四边内边距(default 16 / sm 12)、子项垂直居中(`items-center`)、`cy=0` 时高度按内容自撑; 新增 `Card.Footer(cy)` 自动匹配卡片尺寸、`Card.TitleSize()`(16 / sm 14) 与 `ContentStack(space)`。demo 的「卡片」页脚改用新形态(文字垂直居中), 并新增一张 sm 卡片验证 12px 内边距与 14px 标题。
-  - **`ui.AspectRatio`**(`components/aspectratio.go`): 宽度驱动高度(高 = 宽 / ratio), 尺寸事件只比较宽度, `AfterFunc` 延迟重算 + 逐级重排祖先(Auto 高卡片 / ScrollArea 会跟着长, 同 DESIGN 93); `SetRatio` / `Ratio` / `Content()` / `ContentStack(space)`; `cy>0` 或布局项高度被 Fill/Weight/Fixed 接管时比例不生效(同 CSS 宽高都确定时 aspect-ratio 失效)。单测 `aspectratio_test.go`(几何换算 / 非法比例)。
+  - **`ui.AspectRatio`**(`components/aspectratio.go`): 宽度驱动高度(高 = 宽 / ratio); 尺寸事件只排队, 下一轮把所有待处理比例框的高度/内容尺寸**批量**写回, 再统一框架重排 + 整窗重绘(Auto 高卡片 / ScrollArea 会跟着长); `SetRatio` / `Ratio` / `Content()` / `ContentStack(space)`; `cy>0` 或布局项高度被 Fill/Weight/Fixed 接管时比例不生效(同 CSS 宽高都确定时 aspect-ratio 失效)。单测 `aspectratio_test.go`(几何换算 / 非法比例)。
   - **未做**: Card 的 `overflow-hidden` 与首末图片自动圆角 —— xcgui 没有元素级圆角裁剪 API, 已记 DESIGN 第七节; 需要图片横幅时用 AspectRatio 作卡片的第一个子项、内容自绘圆角。
   - registry 登记 `aspectratio`; demo 基础页新增「比例容器」(16:9 / 1:1 / 9:16)与 sm 卡片; README / DESIGN(技术路线、语义表、映射表、94/95 条)已更新。
   - 验收: `go build/vet/test ./...`; 探针 800→600 宽 + `SetRatio(1)` 几何断言 **784×441 → 584×329 → 584×584**, 内容区与比例框逐次等大; 亮/暗主题截图核对页脚内边距/居中与三种比例, 960×660 最小窗口下三块比例仍完整(Weight 宽会重新分配); 逐组件安装编译见下。
+
+- ✅ **demo 导航页拆分**(2026-10-22, 部分页内容过长):
+  - **基础 → 基础1 / 基础2**: 基础1 = 按钮 / 徽章·分隔线·标签 / 按钮组; 基础2 = 卡片 / 比例容器 / 滚动容器。
+  - **表单 → 表单1 / 表单2**: 表单1 = 输入 / 选择控件 / 滑动条 / 下拉框; 表单2 = 日期与时间 / 月历 / 日期范围 / 可输入日期 / 范围月历 / 周数与预订。
+  - 页签 **8 个、总宽 640**(每个 80); `XUI_HOME_PAGE` 映射改为 **0..7 = 基础1/基础2/表单1/表单2/导航/反馈/数据/图标**; 页面构建函数拆成 `buildBase1Page/buildBase2Page/buildForm1Page/buildForm2Page`, 页面序号与注释同步。
+  - **拆分后暴露并修复的 AspectRatio 问题**: ①隐藏页首次显示时卡片重叠(9:16 比例框画到下一张卡片上) —— 根因是重排后没有重绘被推走的兄弟; 现在批量写高后统一 `XWnd_Redraw`。②首次进入时比例块**逐帧展开**(先 16:9/1:1、再变高、最后 9:16 弹出) —— 根因是每块比例框各自跑一轮延迟布局; 改成**全局批量**(先写完所有高度, 再统一框架重排/整窗重绘), PrintWindow 逐帧抓页签切换首帧即最终布局。③中间一版把 `SetHeight` 放进尺寸事件里导致宽度 335↔0 布局震荡、**点基础2直接卡死**; 最终版不在布局趟里改尺寸, 只调最近的 ScrollArea 框架, 尺寸未变不重排, 切换后 CPU 稳定。见 DESIGN 94。验收: 基础2/表单2 首帧不再重叠/展开, 8 个页签逐页切换正常, 960×660 下比例块仍按宽重算。
+  - **隐藏页首次显示后命中区域未刷新**(用户报"点日期框/时间框没反应, 滚一下鼠标滚轮才行"): ScrollView 的命中映射停在旧滚动位置, 画面却是对的; demo 切页显示后延迟 32ms 对页面调一次 `AdjustLayout` + `Redraw` 即可恢复。时间框也从 HStack 挪成卡片内容区的直接子项(嵌套水平容器同样有命中矩形滞后风险)。中途加过一个 `ScrollArea.RefreshHitTest()`(滚动位置往返), 实测页面级重排已够, 不需要额外 API, 已删。见 DESIGN 66。验收: 切到表单2 后不滚轮直接点日期框/时间框, 弹层均能打开。
+  - **切页后 Toast 跑到左下角**(用户报): 页签 `show` 里为刷新命中区调了 `XWnd_AdjustLayout`, 窗口级布局把绝对定位的 Toast 卡片当布局项排到左侧; 已移除, 只保留页面级 `AdjustLayout` + `XWnd_Redraw`。见 DESIGN 96。验收: 反馈页右下角弹通知, 切到基础1后仍在右下角。
 
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
 
@@ -568,7 +576,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
-# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..5 = 基础/表单/导航/反馈/数据/图标
+# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..7 = 基础1/基础2/表单1/表单2/导航/反馈/数据/图标
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
 go test ./...

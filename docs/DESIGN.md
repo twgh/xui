@@ -354,7 +354,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | 校验失败态(aria-invalid) | `WithButtonInvalid` / `WithInputInvalid` / `WithComboInvalid` + 运行时 `SetInvalid(bool)` | 选项名带组件前缀, 因为组件同在 `package ui`(Button/Input/ComboBox 三处语义相同); 详见语义表 |
 | Input 内嵌附加件 | `WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible(bool)` / `PasswordVisible()`) / `WithCounter(max)`; 步进器 `WithStepper(min,max,step)` + `SetNumber/Number/OnStep`(`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态, `WithStepperAutoHide` 让按钮只在悬停/聚焦时出现; 悬停底色/按下保持底色 + 箭头下沉 1px, 与 −/+ 一致) | shadcn 的 input-group 是"输入框 + 兄弟 addon"的复合结构(`InputGroupAddon` 里还能放按钮), 我们是**壳体内部自绘**的简化形态(不建子元素): 前置图标 + 前后缀文字 + 两个 ghost 钮(清除/眼睛) + 计数; 计数放在壳内右侧(上游示例是输入框**下方**右对齐的一行); stepper 上游没有官方组件, 语义取社区通行形态; 显隐切换需重排(见第八节 84) |
 | Card 头 | `ui.NewCardHeader(parent, space)` + `TitleStack` / `ActionStack` | 对应 `CardHeader` + `CardAction`(上游是 grid 1fr_auto); 动作区跨两行贴右上 |
-| ScrollArea | **本库形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档) | 页面滚动容器; 语义与踩坑见第八节 66 |
+| ScrollArea | **本库形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档); 隐藏页恢复可见后要延迟重排一次页面, 否则子控件命中区停在旧滚动位置 | 页面滚动容器; 语义与踩坑见第八节 66 |
 | Menu 条目缩进 | `MenuInset` = shadcn 的 `inset` prop(`data-inset:pl-7`, 文字左缘 28) | 用于让普通条目与带前置图标/勾选的条目文字对齐;高亮底仍是整行 |
 | Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长) + `Success/Error/Warning/Info` 快捷方法; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置只做四角(上游另有 top-center/bottom-center), `richColors` 不做 |
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
@@ -1109,6 +1109,7 @@ ui/
      - **`EnableOverflowHide` 不是"裁剪显示"、是"布局时把超出视口的子项高度裁掉"**: 400 高的子项被压成 10(实测 400→10)。滚动页面要的是前者, 而**视口裁剪 ScrollView 自带**(滚出视口的子项本来就不画出来), 所以这个开关**不要开** —— 开了卡片会被切短。
    - **首帧(以及滚动条显隐翻转的那一帧)内容宽度会少一个滚动条宽**: 视口 772 时 Fill 子项只有 760(右侧多 12px 空白), 原因疑似该趟排版先按"无滚动条"排子项、随后视口才被滚动条占去; **再排一次就正确**(`AdjustLayout`)。`ui.ScrollArea` 用元素尺寸事件 + (frame宽, 视口宽) 闸门自愈一次, 调用方不必管(窗口 resize 导致滚动条显隐翻转时会再自愈一次)。
    - **滚轮**: 悬停在**子元素上**也会冒泡到框架并滚动(子元素的 `XE_MOUSEWHEEL` 默认禁用, "禁用则事件传给父元素"); 悬停原生控件(如 List)会被它自己吃掉 —— 嵌套滚动的正常行为。注入真实滚轮时**窗口必须在后台有焦点**(工具进程还要 per-monitor DPI-aware, 否则坐标虚拟化)。
+   - **隐藏页恢复可见后, 子控件命中区域还停在旧滚动位置**: 视觉上布局是对的, 但点日期框/时间框/输入框没反应, 重排一次页面才正常(实测)。ScrollView 的命中映射在页面隐藏期间不刷新, 显示后再延迟约 32ms(等页面真正上屏)对页面调一次 `AdjustLayout` + `Redraw`, 才能可靠重算整棵内容树的命中区。嵌套的水平容器同样有滞后风险 —— 卡片里的日期/时间框直接挂到内容区, 不要再套一层 `HStack`。
    - **滚动条滑块拖动: 合成输入下未复现**(探针实测: 裸 LayoutFrame 与 `ui.ScrollArea` 的滑块都拖不动, 而同一脚本拖**表格 List 的**(同款皮肤)能滚 —— 不是组件引入的差异, 疑与 ScrollView 自带滚动条的命中/拖拽实现有关, 未深究); 滚轮、代码滚动、点选/输入等常用路径都正常。真实鼠标下是否可拖未验证。
    - **代码滚动**: `ScrollPosYV(像素)` 是像素语义(滚到 100 就是 100); **`ScrollPosV(pos)` 的参数是"行"单位**(默认 20px/行, `GetScrollBarVObj.GetRange` 也按行算) —— 拿像素喂它会直接滚到底(实测 100 → range 17 全用掉)。
    - **滚动条几何/配色/显隐**(统一规格见 `ui/scrollbar.go`): 元素占宽 = `SetScrollBarSize` 的值(10 就是 10), `SetSliderPadding(1)` 把**滑块**在轨道里缩成 8px 宽(`w-2.5` + `p-px` 的 shadcn 规格); 轨道要真透明得 `ClearBkInfo` 后垫一层 alpha=0 的填充(否则回退系统默认内容, 同 30); 圆角 / 两级配色 / 悬停显隐的完整机制见第 21 条。Table 的自适应列按 14 让宽(`tableSBW`), 多行 Input 在 `applyTheme` 里刷这条皮肤。⚠️ **"自动显隐"模式下滚动条的 `XEle_GetRect` 返回的是隐藏位置**(实测: 表格滚动条 raw x = -12..-2, 而渲染/命中在内容区右缘)—— 别拿它做命中或定位计算; 判定鼠标是否在滚动条上要用 `XWnd_GetStayEle`(渲染与命中的坐标系一致)。
@@ -1315,20 +1316,27 @@ ui/
     - 修法(三半缺一不可):
       ① 元素挂 `AddEvent_Size`, 宽度变化时按新宽度重算自然高度(格子/内边距/字号全随宽度等比, 页脚换行的行数也重算);
       ② **尺寸事件里不能直接 `SetHeight` + `AdjustLayout`**(重入布局), 用 `app.AfterFunc(0, ...)` 推迟到下一轮消息(同第八节 90 的 scheduleReflow);
-      ③ 高度变化后从自己开始逐级对祖先 `AdjustLayout`; 遇到 ScrollArea 的 LayoutFrame(或"父级是框架内容区")交给框架排 —— 只通知直接父级时 Auto 高的卡片仍按旧高排版, 滚动范围也不刷新。
+      ③ 高度变化后从自己开始逐级对祖先 `AdjustLayout`; 遇到 ScrollArea 的 LayoutFrame(或"父级是框架内容区")交给框架排 —— 只通知直接父级时 Auto 高的卡片仍按旧高排版, 滚动范围也不刷新。(宽度驱动高度的组件不要照抄这一条: 逐级重排会让中间层的量算趟把组件临时排成 0 宽再恢复, 尺寸事件无限自激, 见第八节 94。)
     - 同族坑: **原生 Edit 子元素的宽度不会跟随父元素**。DatePicker 的可输入形态把 Edit 建成触发区的子元素, 触发区被布局拉伸后 Edit 仍是创建时的宽度 —— 右侧一大段点不进输入区; 同样要挂 Size 事件把 Edit 的宽高同步成"父宽 − 图标区"。
 
-94. **AspectRatio(比例容器): xcgui 没有 aspect-ratio, 只能"宽度驱动高度 + 延迟重算"**(`components/aspectratio.go`, 实测):
+94. **AspectRatio(比例容器): xcgui 没有 aspect-ratio, 只能"宽度驱动高度 + 批量重算"**(`components/aspectratio.go`, 实测):
     - 布局项只有 Fixed/Fill/Auto/Weight/Percent/Disable 六种尺寸类型, 没有"另一边按比例"的类型; CSS 的 `aspect-ratio` 语义要自己维护。
-    - 落地: 组件**不声明自己的布局项高度**(保持 Disable, 用元素自身高), `AddEvent_Size` 里只比较宽度, 用 `app.AfterFunc(0, ...)` 推迟到下一轮消息再 `SetHeight(宽 / ratio)` + 逐级 `AdjustLayout`(完整三段式同第八节 93)。尺寸事件里直接改高度会重入布局; 高度写回又会再触发尺寸事件, 用 `lastW` 闸门防自激。
+    - 落地: 组件**不声明自己的布局项高度**(保持 Disable, 用元素自身高)。`AddEvent_Size` 只排队, **不在布局趟里 `SetHeight`**(同步改高会触发宽度 335↔0 的布局震荡并卡死); 下一轮把本帧所有比例框的高度/内容尺寸一次写完, 再只对最近的 ScrollArea 框架(或窗口)调一次 `AdjustLayout`, 最后整窗重绘一次。全部延迟会让首次显示逐帧展开(先两块 → 前两块变高 → 竖块出现), 所以必须**批量**而不是每块各跑一轮; 尺寸没变就完全不动(布局过渡期的额外尺寸事件不能回写, 否则自激)。
     - **高度由调用方接管时比例不生效**: 构造 `cy > 0`, 或布局项高度被声明成 Fill/Weight/Fixed 时, 布局会用外部值覆盖元素高度(同 CSS 宽高都确定时 `aspect-ratio` 失效); 传 `cy = 0` 且布局项高度不接管时才按宽度联动。
     - 内容区是 `Content()` 返回的子容器: 每次同步时把它**锁成比例框的实际宽高**(布局项 Fixed), 它内部的 Fill 子项才有正确参照 —— 直接让内容区用 Fill 参加布局时, 父级是 Weight 宽会让内层按祖先宽度算(实测比比例框宽 5~15px, 9:16 那块首帧高度还是 0, 见第八节 59 的同源问题)。圆角/底色/图片裁剪由内容自绘(元素级裁剪见第七节限制)。
-    - **验收(探针)**: 800 宽窗口里 `ItemWeight` 宽的 16:9 容器 → 784×441; 窗口缩到 600 → 584×329; `SetRatio(1)` → 584×584, 外层 Auto 高的行同步长高; demo 的 16:9 / 1:1 / 9:16 三块在亮/暗主题下比例一致, 窗口缩放无残影。
+    - **重排只改坐标, 不重绘被推走的兄弟**: 批量写完高度后要统一 `XWnd_Redraw`, 否则隐藏页首次显示时后面的卡片仍画在旧位置(看起来像重叠)。不要在父链上逐级 `AdjustLayout` / 重新声明 `Auto` —— 框架的量算趟会把比例框临时排成 0 宽、下一轮再恢复, 尺寸事件因此无限自激(实测 CPU 跑满、窗口卡死); 只调最近的 ScrollArea 框架即可, 框架重排会统一更新内容高、兄弟位置与滚动范围。
+    - **验收(探针/逐帧)**: 800 宽窗口里 `ItemWeight` 宽的 16:9 容器 → 784×441; 窗口缩到 600 → 584×329; `SetRatio(1)` → 584×584, 外层 Auto 高的行同步长高; PrintWindow 逐帧抓页签切换, **首帧三块比例框就是最终尺寸**, 无展开; 切换后 CPU 稳定(不再跑满), 窗口缩放后比例跟随且无残影。
 
 95. **CardFooter 的内边距用"内层内容区的外边距"表达, 子项别直接挂在页脚上**(`components/card.go`):
     - 页脚是横向布局容器(`items-center` + 高度 Auto 自撑), 内层 `Content()` 宽 Fill、高 Auto、四边外边距 = 内边距(default 16 / sm 12)。这沿用卡片内容区的既有做法 —— `XEle_SetPadding` 对布局子项的影响未实测, 不要拿它当内边距。
     - 页脚 `cy = 0` 时高度 = 内容高 + 上下外边距; 传固定高时内容在页脚内垂直居中。直接挂到页脚上的子项会跳过内边距, 只有整宽背景/分隔线这类贴边内容才这样用。
     - 页脚做成布局容器后, 页脚里放按钮/文字用 `footer.Content()` / `ContentStack(space)`; 要竖排(登录卡的两个整宽按钮)对内容区 `EnableHorizon(false)`。
+
+96. **窗口级 `AdjustLayout` 会重排窗口直属的绝对定位覆盖层(Toast), 不能拿它当"全局重绘"**(页签切换, 实测):
+    - **现象**: 反馈页右下角的通知, 切换到其他页后跑到左下角(或左上角)。
+    - **根因**: Toast 卡片是窗口直属的普通 Element, 用 `XEle_SetRect` 绝对定位; `XWnd_AdjustLayout` 会把窗口的所有子元素当布局项重排, 没有布局项声明的卡片就按默认位置排到左侧。
+    - **修法**: 页面切换只调页面(ScrollArea)/滚动框架的 `AdjustLayout` + `XWnd_Redraw`(重绘只刷画面, 不动坐标); 不要调 `XWnd_AdjustLayout`。隐藏页的命中区刷新同样用页面级 `AdjustLayout` 延迟一次(见 66), 不需要窗口级布局。
+    - **通用**: 任何窗口直属的绝对定位浮层(Toast / 自绘遮罩 / 自定义 HUD)都怕窗口级布局; 组件自己重排时用元素级/框架级 AdjustLayout。
 
 ---
 
