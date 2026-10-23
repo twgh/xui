@@ -23,11 +23,10 @@ import (
 //     载体是阴影弹窗(Window_Transparent_Shadow, 官方 DrawMenu 示例同款路线):
 //     圆角(ShadowInfo 的 nAngeleSize)与投影一次解决, 不再用 Win32 区域裁剪;
 //     p-1 用菜单 SetBorderSize(4) 落实(默认 3);
-//   - 进场动画: data-open:fade-in-0(duration-100) = 100ms **内容淡入**(文字/
-//     图标/分隔线由 xui.Presence 挂宿主窗口驱动); 面板与阴影从第一帧起不透明 ——
-//     不用整窗 alpha, 否则 popover 底色一起半透明, 后面的页面文字会透上来;
-//     无位移(slide-in 会让 demo 崩溃, 见 menuOnPopupWnd 注释);
-//     退场原生即关即销毁, 无退场动画;
+//   - 进场动画: **不做**(radix 的 fade-in-0 + zoom-in-95 在桌面分层窗口上两种做法
+//     都会闪烁 —— 整窗 alpha 会透出背景文字, 只淡内容会先出一帧空白面板; 位移/缩放
+//     会崩进程, 见 DESIGN 64/99)。菜单与原生菜单一样即时全内容出现, 衔接交给触发区
+//     的 hover / 展开态; 退场原生即关即销毁;
 //   - 条目: h-7(28) rounded-md px-1.5, hover/focus 高亮 bg-accent + 文字变
 //     accent-foreground; destructive 文字红、高亮 bg-destructive/10(dark /20);
 //   - 禁用: opacity-50(组级透明 → 文字用 50% alpha 合成, 且不响应);
@@ -368,9 +367,9 @@ func (m *Menu) popup(hWindow int) {
 	// 初始位置即锚点(元素矩形是精确的)。
 	// ⚠️ 不要在这里做任何位置校正: XMenu_Popup 是阻塞的(菜单关闭后才返回),
 	// 校正会拿到已销毁的弹窗句柄(报「输入句柄可能无效」)。
-	// Menu_PopupWnd 回调里的窗口矩形外扩/进场动画位移是官方 DrawMenu 示例
+	// Menu_PopupWnd 回调里的窗口矩形四周外扩(阴影带补偿)是官方 DrawMenu 示例
 	// 同款模式, 探针实测不影响子菜单锚点; 但"把弹窗挪去别的位置"这类校正
-	// 仍然不要做(历史踩坑: 二级菜单弹到父菜单原点盖住它)。
+	// 仍然不要做(历史踩坑: 二级菜单弹到父菜单原点盖住它, 且单独的位移会崩进程)。
 	// 翻转/夹紧/子菜单定位原生自带, 锚点给对即可。
 	m.m.Popup(xc.XWnd_GetHWND(hWindow), m.ax, m.yBelow, 0, xcc.Menu_Popup_Position_Left_Top)
 }
@@ -522,15 +521,7 @@ func (m *Menu) dispatch(nID int32) {
 var menuSkin = struct {
 	windows map[int]bool
 	active  *Menu
-	// 顶级弹层的内容淡入进度(0..1)与所属弹窗。面板/阴影始终不透明, 只淡文字/图标,
-	// 避免整窗 alpha 把底色也变透明(后面的页面文字会透上来, 看起来像闪烁)。
-	fade    float64
-	fadeWin int
-	// fadeToken 防止"上一次弹层的淡入 apply"在窗口句柄被复用后继续写新弹层的值;
-	// 每次弹出取新 token, 旧过渡的 apply/done 发现 token 不匹配就直接退出。
-	fadeToken uint64
-	fadeSeq   uint64
-}{windows: map[int]bool{}, fade: 1}
+}{windows: map[int]bool{}}
 
 // ensureMenuSkin 在承载窗口上注册菜单绘制事件(每窗口一次)。
 // 绘制回调全部实时取令牌, 换主题后下一次弹出自动是新皮肤。
@@ -565,14 +556,14 @@ const menuShadowSizeSub int32 = 8
 // (阴影引擎在白底上的边缘浓度约 depth/1000)。
 const menuShadowDepth int32 = 50
 
-// menuOnPopupWnd 弹窗出现: 转阴影弹窗(圆角+投影), 顶级弹窗播内容淡入,
-// 子菜单即时出现(见下方说明)。
+// menuOnPopupWnd 弹窗出现: 转阴影弹窗(圆角 + 投影)并把窗口矩形四周外扩补回阴影带。
+// 菜单与子菜单都即时全内容出现, 这里不做进场动画(原因见函数末尾说明与 DESIGN 99)。
 // 窗口矩形外扩在本回调里做(官方 DrawMenu 示例同款), 探针实测子菜单锚点不受影响。
 //
-// ⚠️ 只有淡入, 没有 radix 的 slide-in 位移: 对菜单弹窗做 SetWindowPos 移动
+// ⚠️ 不要给菜单弹窗做位移: 对菜单弹窗做 SetWindowPos 移动
 // (哪怕只在进场那一瞬、SWP_NOSIZE|NOZORDER|NOACTIVATE)会让 demo 直接崩溃
 // (DLL 内部访问违例, 静默退出; 官方示例的 SetRect 外扩没事, 单独的"移动"不行,
-// 探针+demo 双向验证)。100ms 的内容淡入与 radix fade-in-0 观感一致, 位移省略。
+// 探针+demo 双向验证)。radix 的 slide-in-from-* 与 zoom-in-95 因此都不可实现。
 func menuOnPopupWnd(hWindow, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *bool) int {
 	if pInfo == nil || pInfo.HWindow <= 0 {
 		return 0
@@ -602,51 +593,17 @@ func menuOnPopupWnd(hWindow, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *boo
 		Bottom: rc.Bottom + band,
 	})
 
-	// 进场(100ms): 只淡**内容**(文字/图标/快捷键/分隔线), 面板与阴影从第一帧起
-	// 就不透明。
+	// 进场**不做任何淡入**(录屏实测后的结论):
+	//   - 整窗 alpha: popover 底色一起半透明, 淡入过程中后面的页面文字透到菜单上,
+	//     alpha 到 255 才被盖住 —— 观感是"菜单上闪过背景字";
+	//   - 只淡内容(文字/图标, 面板保持不透明): 第一帧就是一块**空白面板**(或极淡
+	//     的文字), 录屏里清楚可见, 同样是闪烁;
+	//   - 位移/缩放做不到: 对菜单弹窗 SetWindowPos 会直接崩进程(见 DESIGN 64)。
+	// 原生菜单本来就是即时出现, 这里保持一致; 交互上的"衔接"交给触发区的
+	// hover / 展开态(见 ContextMenu 与 demo 的 contextTrigger)。
 	//
-	// ⚠️ 不要用整窗 alpha 做菜单进场: 整窗 alpha 会把 popover 底色一起变半透明,
-	// 底下的页面文字在淡入过程中会透到菜单上, 到 alpha=255 才被"突然"盖住 ——
-	// 观感是菜单上闪过后面的文字。内容淡入只是自绘颜色的 alpha, 不经过窗口合成层,
-	// 没有这种穿透, 也没有整窗重合成的帧抖动。
-	//
-	// 过渡挂宿主窗口驱动 —— 弹层小窗自己做重绘目标时定时器掉帧(DESIGN 47);
-	// ⚠️ apply 每帧必须先验证弹窗还活着(菜单可能在过渡途中被关闭、弹窗随之销毁),
-	// 拿失效句柄调 X API 会让整个进程静默崩溃(官方 DrawMenu 示例在 KillFocus 里
-	// 同样用 XC_IsHXCGUI 做守卫)。
-	//
-	// 子菜单(NParentID != 0)不做淡入: 悬停到展开本身有 xcgui 固化的 ~330ms
-	// 内部延迟(纯净菜单探针实测同值, 无配置 API, 输入注入也无法提前触发),
-	// 再叠 100ms 动画会明显比 shadcn 慢一截 —— 子菜单直接全内容出现。
-	if pInfo.NParentID == 0 {
-		// ⚠️ 必须拷贝句柄值而不是捕获 pInfo 指针: 该结构体是原生栈对象, 回调返回后
-		// 会被复用/清空, 过渡帧里再解引用拿到的是 0 或垃圾(0 → 淡入永远不动,
-		// 垃圾 → 拿无效句柄调 X API 直接崩进程, demo 实测)。
-		hw := pInfo.HWindow
-		// 首帧先让内容透明(面板已经是不透明底), 避免"全亮一帧再变暗"。
-		menuSkin.fadeSeq++
-		token := menuSkin.fadeSeq
-		menuSkin.fadeToken = token
-		menuSkin.fade = 0
-		menuSkin.fadeWin = hw
-		// 键取全局唯一(不要用本组件自己的计数器: 各组件都从 1 开始会撞车, 见
-		// xui.NextPresenceKey 的说明)。
-		key := xui.NextPresenceKey()
-		xui.Presence(hWindow, key, true, xui.PopupDuration, func(v float64) {
-			if menuSkin.fadeToken != token || !xc.XC_IsHXCGUI(hw, xcc.XC_WINDOW) {
-				return
-			}
-			menuSkin.fade = v
-			menuSkin.fadeWin = hw
-			xc.XWnd_Redraw(hw, true)
-		}, func(float64) {
-			// 到位后恢复"不参与淡入"的默认值; 下次弹出会重新置 0。
-			if menuSkin.fadeToken == token {
-				menuSkin.fade = 1
-				menuSkin.fadeWin = 0
-			}
-		})
-	}
+	// 子菜单同样即时出现: 悬停到展开本身有 xcgui 固化的 ~330ms 内部延迟(纯净菜单
+	// 探针实测同值, 无配置 API, 输入注入也无法提前触发), 再叠动画会明显比 shadcn 慢。
 	return 0
 }
 
@@ -696,22 +653,12 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 	if am := menuSkin.active; am != nil {
 		it = am.byID[pInfo.NID]
 	}
-	// 进场内容淡入: 只有顶级弹窗参与(面板/阴影始终不透明, 见 menuOnPopupWnd)。
-	fv := 1.0
-	if pInfo.HWindow == menuSkin.fadeWin {
-		fv = menuSkin.fade
-		if fv < 0 {
-			fv = 0
-		} else if fv > 1 {
-			fv = 1
-		}
-	}
 
 	// 分隔栏: 1px bg-border 全宽(shadcn -mx-1: 越过 p-1 边距铺满弹层),
 	// 居中画在原生固定的 4px 槽内
 	if st&xcc.MenuItem_State_Flag_Separator > 0 {
 		d.SetLineWidth(1)
-		d.SetBrushColor(uint32(t.Border.ScaleAlpha(fv)))
+		d.SetBrushColor(uint32(t.Border))
 		d.DrawLine(rc.Left-4, rc.Top+2, rc.Right+4, rc.Top+2)
 		return 0
 	}
@@ -745,12 +692,11 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 	// 间移动时原生自己会重绘, 过渡值由 xui 按"窗口 + 条目 ID"保管并驱动补帧。
 	hv := xui.HoverItem(pInfo.HWindow, pInfo.NID, hot && !isLabel)
 	if hv > 0 {
-		p.FillRound(&rc, hotBg.ScaleAlpha(hv*fv), t.RadiusSm())
+		p.FillRound(&rc, hotBg.ScaleAlpha(hv), t.RadiusSm())
 		if !isDestructive {
 			fore = xui.Fade(fore, t.AccentForeground, hv)
 		}
 	}
-	fore = fore.ScaleAlpha(fv)
 
 	name, shortcut := menuItemText(it, pInfo)
 	// Checkbox/Radio 无论是否勾选都按 pr-8 给右侧指示器留位(shadcn 的固定 pr-8),
@@ -775,7 +721,6 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 		if disabled && !isLabel { // Label 借用禁用态只是不可点, 视觉仍是 muted 全色
 			ic = ic.WithAlpha(128)
 		}
-		ic = ic.ScaleAlpha(fv)
 		iconRc := xc.RECT{
 			Left:   rc.Left + 6,
 			Top:    rc.Top + (rc.Bottom-rc.Top-16)/2,
@@ -801,7 +746,7 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 			Family: t.FontDefault.Family,
 			Size:   t.FontDefault.Size - 2, // text-xs
 		}))
-		d.SetBrushColor(uint32(t.MutedForeground.ScaleAlpha(fv)))
+		d.SetBrushColor(uint32(t.MutedForeground))
 	} else {
 		d.SetFont(xui.FontHandle(t.FontDefault))
 		d.SetBrushColor(uint32(fore))
@@ -823,7 +768,6 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 		if disabled {
 			sc = sc.WithAlpha(128)
 		}
-		sc = sc.ScaleAlpha(fv)
 		sr := rc
 		sr.Right -= 6
 		if reserveTrailing {
