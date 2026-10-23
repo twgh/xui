@@ -294,7 +294,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条);**弹层不做进场淡入**(上游是 fade-in-0 100ms, 整窗 alpha 在这个异型窗上会概率性冻结 → 弹层看不见还吞点击, 见第八节 30/69);**aria-invalid** = 红边框 + ring-3 destructive/20(暗色 /40), 见上表 | select.tsx + combobox.go(弹层接管路线见第八节 30) |
-| menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场 fade-in 100ms(整窗 alpha, 无位移 —— 位移会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; 勾选/单选选中项右侧 Check 图标(right-2 size-4), 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; `MenuInset` 条目文字左缩进到 28(pl-7); 弹层宽 = `Width(w)` 显式指定, 否则 max(触发区宽, 128)(shadcn 的 `w-(--radix-dropdown-menu-trigger-width) min-w-32`, 经 `XMenu_SetItemWidth` 逐条目设"目标宽 − 开销"实现, 长文本硬裁剪, 见第八节 64); 右键菜单(PopupAtCursor)无触发区, 退化为内容自适应 + 128 下限; 子菜单条目不跟宽(shadcn SubContent 内容自适应 + min-w-96) | dropdown-menu.tsx + menu.go(原生菜单皮肤, 见第八节 36/64) |
+| menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场 100ms **内容淡入**(文字/图标/分隔线; 面板与阴影**始终不透明** —— 整窗 alpha 会让后面的页面文字透上来, 见 99; 无位移, 位移会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; **前置图标 `MenuIcon`**(16px, left-6, 文字从 28 起, 同 shadcn 条目内联 SVG); 勾选/单选选中项右侧 Check 图标(right-2 size-4), **未选中也保留右侧 24(pr-8)**, 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; `MenuInset` 对普通条目 / `Label` / `Sub` 都可用(pl-7, 文字左缘 28); 弹层宽 = `Width(w)` 显式指定, 否则 max(触发区宽, 128)(shadcn `w-(--radix-dropdown-menu-trigger-width) min-w-32`); 无触发区的右键菜单 = 内容自适应 + 128 下限; 子菜单 = 内容自适应 + min-w-96; **所有条目宽度按自绘字体显式算**(原生菜单字体与自绘 14px 不一致, 留自然宽会裁长文本, 见第八节 99); **右键触发区 `NewContextMenu`** = 窗口级右键事件 + 触发区矩形命中(含子元素), `SetEnabled` / `OnOpenChange` | dropdown-menu.tsx + context-menu.tsx + menu.go(原生菜单皮肤, 见第八节 36/64/99) |
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx + table.go(原生 List 接管路线见第八节 40) |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本库令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
@@ -358,7 +358,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Input 内嵌附加件 | `WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible(bool)` / `PasswordVisible()`) / `WithCounter(max)`; 步进器 `WithStepper(min,max,step)` + `SetNumber/Number/OnStep`(`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态, `WithStepperAutoHide` 让按钮只在悬停/聚焦时出现; 悬停底色/按下保持底色 + 箭头下沉 1px, 与 −/+ 一致) | shadcn 的 input-group 是"输入框 + 兄弟 addon"的复合结构(`InputGroupAddon` 里还能放按钮), 我们是**壳体内部自绘**的简化形态(不建子元素): 前置图标 + 前后缀文字 + 两个 ghost 钮(清除/眼睛) + 计数; 计数放在壳内右侧(上游示例是输入框**下方**右对齐的一行); stepper 上游没有官方组件, 语义取社区通行形态; 显隐切换需重排(见第八节 84) |
 | Card 头 | `ui.NewCardHeader(parent, space)` + `TitleStack` / `ActionStack` | 对应 `CardHeader` + `CardAction`(上游是 grid 1fr_auto); 动作区跨两行贴右上 |
 | ScrollArea | **本库形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档); 隐藏页恢复可见后要延迟重排一次页面, 否则子控件命中区停在旧滚动位置 | 页面滚动容器; 语义与踩坑见第八节 66 |
-| Menu 条目缩进 | `MenuInset` = shadcn 的 `inset` prop(`data-inset:pl-7`, 文字左缘 28) | 用于让普通条目与带前置图标/勾选的条目文字对齐;高亮底仍是整行 |
+| Menu 条目缩进 / 图标 / 右键触发 | `MenuInset` = shadcn 的 `inset` prop(`data-inset:pl-7`, 文字左缘 28; 条目/Label/Sub 都支持); `MenuIcon(path)` = 条目内联前置图标(16px, left-6); `NewContextMenu(hEle, build)` = `ContextMenu` + `ContextMenuTrigger`(右键触发区, 每次右键重建菜单, `SetEnabled`/`OnOpenChange`) | inset 用于和带前置图标的条目文字对齐; 高亮底仍是整行; 右键触发走窗口事件做区域命中(元素右键不冒泡), 见第八节 99 |
 | Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长) + `Success/Error/Warning/Info` 快捷方法; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置只做四角(上游另有 top-center/bottom-center), `richColors` 不做 |
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
@@ -574,16 +574,16 @@ ui/
     - ⚠️ **截图坑: 全屏缩略截图里暗色弹层窗口会显示成亮底**(截图管线对弹层窗口的合成/缩放问题), 区域放大看才是真实效果 —— 弹层类组件的暗色判断一律以 zoom/像素测量为准, 不要凭全屏缩略图下结论。
     - ⚠️ **别给弹出菜单手动校正位置**: `XMenu_Popup` 是**阻塞**的(菜单关闭后才返回), 且 `Menu_PopupWnd` 事件对每个弹窗触发一次。两条死路: ① 在 PopupWnd 回调里 `SetWindowPos` 移动顶级弹窗 → 子菜单锚点失效, 二级菜单弹到父菜单**原点**盖住父菜单; ② 等 `Popup` 返回后再校正 → 弹窗已销毁, `XWnd_GetHWND` 报「输入句柄可能无效」。结论: 初始锚点给对(元素矩形换算), 其余(顶部放不下翻到上方、左右夹紧、子菜单贴父菜单右侧行对齐)原生全包, **不要动**。(补充: PopupWnd 里的 `SetRect` 四周对称外扩**不影响**子菜单锚点, 阴影路线依赖它; 但单独的 `SetWindowPos` 位移会直接崩进程, 见 64。)
 
-64. **菜单弹窗转阴影窗 + 进场淡入的一批实测结论**(`ui/menu.go`):
+64. **菜单弹窗转阴影窗 + 进场动画的一批实测结论**(`ui/menu.go`):
     - **阴影弹窗 = 官方 DrawMenu 示例同款三步**: `SetTransparentType(Window_Transparent_Shadow)` → `SetShadowInfo(nSize, nDepth, nAngeleSize=RadiusLg, false, 黑/128)` → `SetRect` 窗口矩形四周外扩 nSize(逻辑像素, 客户区会收缩出同尺寸阴影带, 必须外扩补偿, Body 才回到原生给定的菜单位置)。nAngeleSize 一次把圆角(逐像素 alpha, 无区域裁剪锯齿)和投影都做了。**参数对齐 shadcn shadow-md**(0 4px 6px -1px black/10%): nSize=5(官方示例的 8 比shadow-md 大一圈)、nDepth=50(阴影引擎边缘浓度≈depth/1000, 50 时白底上边缘约 5%, 与 shadow-md 侧缘观感一致; DLL 阴影是均匀环带, 做不出 shadow-md 上 2px/下 10px 的不对称);
     - **子菜单锚点不受外扩影响**(探针实测: 子菜单仍贴父条目右侧、行对齐); 子菜单窗口走同样的 PopupWnd 事件, 阴影自动全命中;
-    - **整窗 alpha 淡入可用**: 阴影窗是透明类型, `XWnd_SetTransparentAlpha` 有效 —— 第八节 47 条 5 "native 弹层做不了淡入"的结论只适用于**非透明类型**弹窗(menu/combobox 的下拉窗默认不是 WS_EX_LAYERED, `GetLayeredWindowAttributes` 直接失败), **转 Shadow 后可淡入**; 依然遵守"alpha 永远不能精确 = 0"(47), 进场前压到 `xui.AlphaFloor`;
+    - **整窗 alpha 淡入可用, 但菜单已不用它做进场**(见 99): 阴影窗是透明类型, `XWnd_SetTransparentAlpha` 有效 —— 第八节 47 条 5 "native 弹层做不了淡入"的结论只适用于**非透明类型**弹窗(menu/combobox 的下拉窗默认不是 WS_EX_LAYERED, `GetLayeredWindowAttributes` 直接失败), **转 Shadow 后可淡入**; 依然遵守"alpha 永远不能精确 = 0"(47), 进场前压到 `xui.AlphaFloor`。⚠️ 菜单弹层若用整窗 alpha 做进场, popover 底色会跟着半透明, 底下的页面文字在过渡中透到菜单上; 现在改为**面板/阴影不透明 + 文字/图标内容 alpha 淡入**(见 99);
     - ⚠️ **过渡闭包绝对不能捕获事件结构体指针**: `Menu_PopupWnd_` 是原生栈对象, 回调返回后被复用/清空 —— Presence 的 apply 帧里再解引用, 读到 0(淡入永远不动, 弹窗 alpha 卡在下限"隐形")或垃圾值(拿无效句柄调 X API → **整个进程静默崩溃**)。必须先把 `hw := pInfo.HWindow` **拷贝值**再进闭包;
     - ⚠️ **apply 每帧要 `XC_IsHXCGUI(hw, XC_WINDOW)` 守卫**: 菜单可能在过渡途中被关闭(弹窗随之销毁), 官方 DrawMenu 示例在 KillFocus 里同款用法;
-    - ⚠️ **对菜单弹窗做 `SetWindowPos` 位移会直接崩进程**(`SWP_NOSIZE|NOZORDER|NOACTIVATE` 也不行, 进场那一瞬移 8px 就崩; `SetRect` 对称外扩没事) → radix 的 slide-in-from-top-2 **不可实现**, 进场只做 fade-in(100ms, 与 radix fade-in-0 观感一致);
+    - ⚠️ **对菜单弹窗做 `SetWindowPos` 位移会直接崩进程**(`SWP_NOSIZE|NOZORDER|NOACTIVATE` 也不行, 进场那一瞬移 8px 就崩; `SetRect` 对称外扩没事) → radix 的 slide-in-from-top-2 **不可实现**, 进场只做 100ms 内容淡入;
     - 像素表现(144 DPI): 条目高亮距弹层左右边缘各 6 物理像素 = 4 逻辑(= p-1, 左右对称); 分隔栏全宽;体色暗色 (23,23,23); 阴影带梯度柔和无黑边;
     - **菜单弹窗的绘制坐标系**(色块标定实验实测): `Menu_DrawBackground/DrawItem` 的绘制上下文**原点 = 弹窗窗口左上角(逻辑像素)**; `XWnd_GetClientRect` 返回的 {8,8,168,276} 就是阴影窗 Body(可见白区)在窗口内的矩形(= 窗口矩形 ± 阴影带) —— fill/ring 都画在它上面即可; **画进 Body 之外(阴影带里)的任何像素都会被阴影 alpha 蒙版压暗至不可见**(opaque 色块画进带里直接"消失"); ring 画在 Body 矩形边界上(线宽外半被蒙版裁掉), 肉眼就是一条贴着窗口边缘的线, 圆角用 RadiusLg 与 Body 一致, 四角才不脱开 —— ring 若内缩或半径不匹配, 视觉上就是"矩形线条浮在弹层里不贴边"。
-    - **子菜单悬停延迟 ~330ms 是 xcgui DLL 固化的**(纯净菜单探针实测同值 324ms): 与系统 MenuShowDelay 无关(SPI 置 0 复测仍 343ms), 无配置 API, VK_RIGHT / SendInput 真实点击 / PostMessage 鼠标消息都无法提前触发。xui 侧唯一能省的是自己的 100ms 进场淡入 —— 子菜单(NParentID != 0)直接全 alpha 出现, 不做动画。要达到 shadcn 的即时展开只能改 DLL 或等作者提供 API。
+    - **子菜单悬停延迟 ~330ms 是 xcgui DLL 固化的**(纯净菜单探针实测同值 324ms): 与系统 MenuShowDelay 无关(SPI 置 0 复测仍 343ms), 无配置 API, VK_RIGHT / SendInput 真实点击 / PostMessage 鼠标消息都无法提前触发。xui 侧唯一能省的是自己的 100ms 内容淡入 —— 子菜单(NParentID != 0)直接全内容出现, 不参与淡入。要达到 shadcn 的即时展开只能改 DLL 或等作者提供 API。
 
 37. **页面容器 Show(false)→Show(true) 后内容空白**:
     - 现象: 隐藏期间创建好的布局子树(LayoutEle 流式布局)在页面恢复显示后只有壳在渲染, 内部控件全空白;
@@ -856,7 +856,8 @@ ui/
          淡入; 要淡入只能自己给 HWND 加 WS_EX_LAYERED + SetLayeredWindowAttributes
          (代价: ClearType 变灰度 AA + 合成开销), 未做。**但把弹窗转成
          `Window_Transparent_Shadow`(官方 DrawMenu 菜单阴影同款)后就是透明类型, 整窗 alpha
-         可用 —— menu 弹层的进场淡入已按此实现(见 64); 位移滑动不可行(会崩, 见 64)。**
+         可用 —— 但菜单进场**没有**用它: 整窗 alpha 会让底色一起半透明、后面的页面文字透上来,
+         现改为面板不透明 + 内容淡入(见 64/99); 位移滑动不可行(会崩, 见 64)。**
       6. 首帧闪现: `SWP_SHOWWINDOW` 后的首次绘制带着上一次的 alpha(255) → 进场前先
          `SetWindowAlpha(1/255)`(见 3, 不能是 0)。
     - **验证**(探针 + `SetAnimationScale(12)` 放慢 + 外部逐帧像素实测):气泡淡入
@@ -1354,12 +1355,28 @@ ui/
     - **修法**: ① 运行时新增 `xui.SetSubtreeAlphaSkipScrollBars`(遍历时跳过 `xcc.XC_SCROLLBAR` 及其子树), 对话框**打开**时的初始归零与淡入改用它; **关闭**时的淡出仍用普通 `SetSubtreeAlpha`, 让滚动条跟着面板一起淡出(否则半透明面板上会留一条亮条)。② `showScrollBarOnHover` 在宿主 `XE_SHOW(false)` 时把滚动条 alpha 归零并 `DropTransitions`, 页面切换/弹窗关闭/最小化后不会带着上次的显隐状态回来; `Dialog.Show` 再主动 `resetScrollBarHover(d.scroll.Handle)`, 覆盖"淡出中途快速重开"这种宿主没收到隐藏事件的情况。
     - **验证**: 可滚动对话框打开(鼠标移开)→ 滚动条不显示; 移入内容区 → 淡入; 在滚动条可见时关闭再打开 → 仍从隐藏开始。`resetScrollBarHover` 的闭包按宿主句柄登记, 宿主销毁时一并清理。
 
+99. **右键触发区与菜单自适应宽度的一批实测结论**(`components/menu.go`, 探针 + 截图):
+    - **元素右键事件不冒泡**: 在父元素里的子控件上右键, 只有子控件和**窗口**收到 `RButtonUp`, 父元素收不到(探针: 子按钮回调 `CHILD` + 窗口 `WIN`, 没有 `PARENT`)。所以 `NewContextMenu` 绑在**窗口**上, 再用 `XEle_GetWndClientRect` 做矩形命中 —— 触发区内的子元素、文字区域都能弹; 代价是触发区里吃右键的原生控件(Edit/List 等)不会触发(窗口收不到那条消息)。
+    - **窗口 `RButtonUp` 的 pPt 是逻辑像素, 原点 = 窗口矩形原点**(含标题栏/阴影边距), 与 `XEle_GetWndClientRect` 同口径, 可直接比较, 不要乘 DPI。多个触发区重叠时后创建的先处理(窗口事件按注册逆序执行), 处理后置 `pbHandled`。
+    - **菜单宽度不能依赖原生自然宽**: 原生菜单用自己的字体(与自绘 14px 不一致)量文本; 只给第一个条目垫 min 宽、其余留自然宽时, 长中文会被自绘裁剪吃掉(探针截图: 尾部少字)。修法是**逐条用 `xui.TextWidth` 按自绘字体算文本区宽**: `inset/图标 +22`、`Check/Radio/Sub 右侧恒 +24`、快捷键 `+12 + 小字宽`; 弹窗宽 = max(条目宽)+48, 条目盒内文本区另有 28px 余量, 足够容纳。
+    - **未勾选的 Checkbox/Radio 也要留右侧 24**(shadcn 的固定 `pr-8`): 只在"勾选时"才让位的话, 同组条目在勾/不勾之间文字右缘会跳。
+    - **`MenuItem_State_Flag_Popup` 是"该项有子菜单"的静态标记, 不是"子菜单已展开"**: 把它并进 hot 会让每个 Sub 触发行常亮(截图复现)。子菜单展开时原生会保持父项的 `Stay`(真实鼠标滑入验证), 不需要额外状态。
+    - **ContextMenu 的 OnOpenChange 时序**: 菜单 `Popup` 是阻塞的; true 在弹出前触发(可在回调里给触发区置展开态并 `Redraw`), false 在关闭后触发。菜单是一次性对象, 每次右键在 build 里重建, 勾选等状态由调用方持有。
+    - **进场不要淡整窗 alpha, 只淡内容**: 整窗 alpha 会让 popover 底色一起半透明, 淡入过程中后面的页面文字明显透到菜单上, alpha 到 255 才被盖住(观感像"文字在菜单上闪一下"); 现改为面板/阴影从第一帧起不透明, 仅文字/图标/分隔线按 `menuSkin.fade` 做 alpha 淡入(逐帧 `XWnd_Redraw` 弹窗)。验证: `XUI_ANIM_SCALE=10` 抓中间帧, 面板始终实心、只内容变淡。
+    - **右键触发区要有 hover / 展开反馈**: 同样的菜单动画, 按钮触发区先变 hover/aria-expanded 再淡入, 右键区域如果什么都不变, 菜单就像凭空出现(与左侧按钮菜单对比时尤其明显)。做法: 触发区 `MouseStay/Leave` 里 `Redraw(true)` 启动 `xui.Hover`, 绘制 `t.Accent` 一轮; 打开态用 `OnOpenChange` + `xui.HoverItem` 再叠一档, 虚线边框按 hover/展开插值到 `t.Ring`。透明题字区必须先铺 `t.Card` 再叠悬停色, 否则淡出会留旧像素(见 28)。
+
+100. **`XDraw_SetFont` 会重置文本对齐状态**(探针实测):
+    - **现象**: 同一段绘制里先 `SetTextAlign(中心)` 再 `SetFont(...)`, 这一行文字退回**默认左对齐**; 先 `SetFont` 再 `SetTextAlign` 才是居中的。
+    - **探针**: 同一元素三行同宽矩形 —— A = 先对齐后字体(左对齐)、B = 先字体后对齐(居中)、C = 先对齐后小字体(左对齐), 截图边界清晰。字体切换(含换字号)都会重置, 不是只对第一次生效。
+    - **修法**: 顺序固定为 **先 `SetFont`, 再 `SetTextAlign`, 再 `DrawText`**; 用 `xui.Painter.Text` 时它内部就是"颜色 → 对齐 → 绘制", 只要别把 `SetFont` 放在它之后即可(绘制多行不同字号的文字时, 每换一次字体都要重新调 `p.Text`, 或在 `SetFont` 后补一次 `SetTextAlign`)。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 
 - `Element.AddEvent_Paint / AddEvent_MouseStay / AddEvent_MouseLeave`(widget/element.go:1192, 1288, 1336)
 - `Element.AddEvent_Menu_Draw_Background / AddEvent_Menu_DrawItem`(widget/element.go:2056, 2080)
+- Menu / ContextMenu(见第八节 36/64/99):`Menu.AddItem / SetItemWidth / SetItemHeight / SetLeftWidth / SetBorderSize / EnableDrawBackground / EnableDrawItem / AddEvent_Menu_Select / AddEvent_Menu_Exit / AddEvent_Menu_PopupWnd`;右键触发用 `Window.AddEvent_RButtonUp`(pPt = 逻辑像素, 原点 = 窗口矩形原点)+ `xc.XEle_GetWndClientRect` + `XC_IsHXCGUI / XEle_IsEnable / XWidget_IsShow`;`xui.TextWidth` 按自绘字体自行给菜单条目定宽(原生字体与自绘不一致)
 - `drawx.NewByHandle / EnableSmoothingMode / SetBrushColor / FillRoundRect(Ex) / DrawRoundRect(Ex) / GradientFill2/4 / DrawText / TextOut* / Image* / DrawSvg* / SetClipRect / SetLineWidth`
 - 持续旋转/高 DPI 位移(见第八节 87/88):`xui.Spin(hOwner, active) float64`(相位 0..1, 1s/圈, 复用元素/窗口的动画定时器;`SetAnimationScale(0)` 冻结)、`Painter.IconRotated(data, rc, color, strokeWidth, angleRadians, scale...)`、`Painter.IconRotatedOffset(..., dx, dy int32)`(按画布物理像素微调)、`Painter.TextF(str, *xc.RECTF, color, align)`(浮点矩形文字, 用于亚逻辑像素位移;整数矩形下与 `Painter.Text` 一致)
 - **自绘"非 lucide"小图形走图标管线**, 别手算多边形: svgp 的子路径前加 `!` 就是填充形状(走 FillGeometry), 配 `Painter.Icon(path, rc, color, 0)` 直接出图, D2D 几何按 path+size 缓存。步进器的上下微调箭头就是两条 24 网格 path(三角占满 24 宽、Q 曲线倒角), 每枚箭头给一个**正方形**绘制块(管线按短边铺满)。曾手写"削角 + FillPolygonF 逼近圆弧", 10px 尺寸下不是歪就是糊、底角圆弧还会把墨迹洇到底边外, 全部弃用

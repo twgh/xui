@@ -948,15 +948,23 @@ func buildNavPage(body *widget.LayoutEle) {
 	})
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "条目 hover 走 bg-accent, 与表格行 / 树行同一口径", v2.Handle).SetMuted())
 
-	// ---- 第二行: 分页 ----
-	_, v3 := autoCard(body.Handle, 10)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "分页", v3.Handle))
+	// ---- 列 3: 右键菜单 ----
+	_, v3 := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "右键菜单", v3.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"折叠采用恒定 7 槽位: 首段/中段/末段占位宽度一致, 连点同一坐标不会点空", v3.Handle))
+		"右键触发区: 含子元素, 每次弹出按状态重建", v3.Handle))
+	contextTrigger(v3.Handle)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "前置图标 / inset / 子菜单 / 勾选 / 单选 / 破坏性", v3.Handle).SetMuted())
 
-	pagInfo := ui.NewLabel(0, 0, 0, 0, "", v3.Handle).SetMuted()
+	// ---- 第二行: 分页 ----
+	_, v5 := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "分页", v5.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"折叠采用恒定 7 槽位: 首段/中段/末段占位宽度一致, 连点同一坐标不会点空", v5.Handle))
+
+	pagInfo := ui.NewLabel(0, 0, 0, 0, "", v5.Handle).SetMuted()
 	xui.ItemFill(pagInfo)
-	pag := ui.NewPagination(0, 0, 0, 0, v3.Handle,
+	pag := ui.NewPagination(0, 0, 0, 0, v5.Handle,
 		ui.WithPrevText("上一页"), ui.WithNextText("下一页"))
 	xui.ItemFill(pag)
 	pagInfo.SetText("共 120 条 · 每页 10 条 · 当前第 5 页")
@@ -1620,9 +1628,12 @@ func buildDemoTree(t *ui.Tree) int32 {
 
 // demo 菜单状态(菜单是一次性对象, 状态由调用方持有, 每次弹出重建)
 var (
-	demoLineNo  = true
-	demoThemeG1 = true  // 单选组: 浅色
-	demoThemeG2 = false // 单选组: 深色
+	demoLineNo    = true
+	demoThemeG1   = true  // 单选组: 浅色
+	demoThemeG2   = false // 单选组: 深色
+	demoBookmarks = true
+	demoURLs      = false
+	demoPerson    = int32(1) // 右键菜单单选组: 1 张伟 / 2 李娜
 )
 
 // showDemoMenu 弹出演示菜单, 覆盖全部条目类型。
@@ -1654,6 +1665,130 @@ func showDemoMenu(hEle int) {
 	m.Item("删除项目", ui.MenuDestructive())
 	m.Item("灰掉的选项", ui.MenuDisabled())
 	m.PopupAtElement(hEle)
+}
+
+// contextTrigger 建右键触发区: border-dashed 虚线框 + 居中两行提示
+// (对应 shadcn ContextMenuDemo 的 "Right click here" 虚线区域)。
+func contextTrigger(parent int) *widget.Element {
+	var hovered, opened bool
+	box := widget.NewElement(0, 0, 0, 150, parent)
+	box.EnableBkTransparent(true)
+	xui.ItemFill(box)
+	xui.ItemHeight(box, 150)
+	box.AddEvent_MouseStay(func(hEle int, pbHandled *bool) int {
+		hovered = true
+		box.Redraw(true) // 立即重绘一次, 让 xui.Hover 在 paint 里启动过渡(同 Badge/Slider)
+		return 0
+	})
+	box.AddEvent_MouseLeave(func(hEle, hEleStay int, pbHandled *bool) int {
+		hovered = false
+		box.Redraw(true)
+		return 0
+	})
+	box.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		t := xui.Current()
+		// 触发区给 hover / 展开两档反馈(对应按钮的 hover / aria-expanded):
+		// 右键本身就是"点在一个区域上", 没有反馈的话菜单像凭空出现。
+		hv := xui.Hover(hEle, hovered)
+		ov := xui.HoverItem(hEle, 0, opened)
+		// 透明元素重绘不擦底(见 DESIGN 28): 先铺宿主卡片底色, 否则悬停淡出会留旧像素。
+		p.FillRound(&p.Rc, t.Card, t.RadiusMd())
+		// hover = bg-accent(与 ghost 按钮同一档); 打开态继续满色, 靠边框变 Ring 区分。
+		p.FillRound(&p.Rc, t.Accent.ScaleAlpha(hv+(1-hv)*ov), t.RadiusMd())
+		rc := p.Rc
+		// 边框线宽 1, 沿路径居中; 内缩 1px 让虚线完整落在客户区内(同 borderedBox)。
+		rc.Left++
+		rc.Top++
+		rc.Right--
+		rc.Bottom--
+		d := p.Draw
+		// 4px 线 + 3px 间隔的短划线(shadcn border-dashed 的观感;
+		// xcgui 的 Dottedline 是 1px 点线, 在这个尺寸下几乎看不见)。
+		d.SetLineWidth(1)
+		mix := hv
+		if ov > mix {
+			mix = ov
+		}
+		d.SetBrushColor(uint32(xui.Fade(t.Border, t.Ring, mix)))
+		for x := rc.Left; x < rc.Right; x += 7 {
+			x2 := x + 4
+			if x2 > rc.Right {
+				x2 = rc.Right
+			}
+			d.DrawLine(x, rc.Top, x2, rc.Top)
+			d.DrawLine(x, rc.Bottom, x2, rc.Bottom)
+		}
+		for y := rc.Top; y < rc.Bottom; y += 7 {
+			y2 := y + 4
+			if y2 > rc.Bottom {
+				y2 = rc.Bottom
+			}
+			d.DrawLine(rc.Left, y, rc.Left, y2)
+			d.DrawLine(rc.Right, y, rc.Right, y2)
+		}
+
+		mid := (rc.Top + rc.Bottom) / 2
+		line1 := xc.RECT{Left: rc.Left, Top: mid - 22, Right: rc.Right, Bottom: mid}
+		// 对齐必须在 SetFont 之后设置: XDraw_SetFont 会重置文本对齐状态,
+		// 先设 align 再换字体会让这一行退回默认的左对齐(实测)。
+		d.SetFont(xui.FontHandle(t.FontDefault))
+		p.Text("在此处右键", &line1, t.Foreground,
+			xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
+		d.SetFont(xui.FontHandle(xui.FontSpec{
+			Family: t.FontDefault.Family,
+			Size:   t.FontDefault.Size - 2, // text-xs
+		}))
+		line2 := xc.RECT{Left: rc.Left, Top: mid + 2, Right: rc.Right, Bottom: mid + 20}
+		p.Text("ContextMenuTrigger · right click", &line2, t.MutedForeground,
+			xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
+		return 0
+	})
+	cm := ui.NewContextMenu(box.Handle, showDemoContextMenu)
+	cm.OnOpenChange(func(open bool) {
+		opened = open
+		box.Redraw(true) // 阻塞式弹层: 先把这个展开态画出来
+	})
+	return box
+}
+
+// showDemoContextMenu 右键菜单示例, 与 shadcn ContextMenuDemo 同构:
+// 条目 + 快捷键 + 前置图标 + SubTrigger inset + 勾选 + 单选组 + 破坏性。
+func showDemoContextMenu(m *ui.Menu) {
+	m.Width(208) // w-52
+	m.Item("后退", ui.MenuShortcut("Ctrl+["), ui.MenuIcon(icons.IconArrowLeft))
+	m.Item("前进", ui.MenuShortcut("Ctrl+]"), ui.MenuIcon(icons.IconArrowRight), ui.MenuDisabled())
+	m.Item("重新加载", ui.MenuShortcut("Ctrl+R"), ui.MenuIcon(icons.IconRotateCw))
+	m.Sub("更多工具", func(s *ui.Menu) {
+		s.Item("保存页面…")
+		s.Item("创建快捷方式…")
+		s.Item("重命名窗口…")
+		s.Separator()
+		s.Item("开发者工具")
+		s.Separator()
+		s.Item("删除", ui.MenuDestructive())
+	}, ui.MenuInset(), ui.MenuIcon(icons.IconWrench))
+	m.Separator()
+	m.Check("显示书签", demoBookmarks, ui.MenuOnCheck(func(on bool) { demoBookmarks = on }))
+	m.Check("显示完整 URL", demoURLs, ui.MenuOnCheck(func(on bool) { demoURLs = on }))
+	m.Separator()
+	// 分组标签与条目文字同列(不 inset): 本菜单的 Check/Radio 勾选在右侧、条目文字
+	// 从 6 起, 再给 Label 加 inset 会把它单独推出 22px, 看起来像没对齐。
+	m.Label("人员")
+	m.Radio("张伟", demoPerson == 1, ui.MenuGroup(2), ui.MenuOnCheck(func(on bool) {
+		if on {
+			demoPerson = 1
+		}
+	}))
+	m.Radio("李娜", demoPerson == 2, ui.MenuGroup(2), ui.MenuOnCheck(func(on bool) {
+		if on {
+			demoPerson = 2
+		}
+	}))
 }
 
 // buildDialogs 三个对话框: 表单型(编辑资料)、确认型(删除项目) 与可滚动内容。

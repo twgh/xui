@@ -115,7 +115,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Calendar | 月历卡片(全自绘):6×7 固定网格、周起始日可调(`WithCalendarWeekStart`)、选中实心/今天浅底/悬停过渡;**范围选择**(`WithCalendarRange` + `WithCalendarOnRangeSelect`, 两次点击落区间、端点交换/中段色带, 同 react-day-picker)、**多月并排**(`WithCalendarMonths(1~4)`)、**ISO 周数列**(`WithCalendarWeekNumbers`)、禁用(`WithCalendarDisabled` + Before/After/Weekend/Dates helper)与预订划线(`WithCalendarStrike`)、年月可下拉(`WithCalendarYearRange`)、页脚/预设(`WithCalendarFooter` / `WithCalendarPresets`, 自动换行);可独立摆放, 弹层内用 `WithCalendarFlat` 免双层边框; 尺寸 helper `CalWidthFor` / `CalWidthForWeekNumbers` / `CalHeightForMonths` |
 | DatePicker | 日期框:outline 触发区 + 自建阴影弹层(内含 Calendar),下方放不下自动翻到上方;点外部/ESC 关闭,`OnChange` 回调;**范围模式**(`WithDatePickerRange`, 弹层并排两个月, 起点未落终点时保持打开, `Range/SetRange/OnRangeChange`)、预设按钮(`WithDatePickerPresets`)、年份范围与禁用日期、**可输入形态**(`WithDatePickerEditable`: 可键入 2026-10-22 / 今天 / 3天后, Enter/失焦回写, 右侧日历钮打开弹层) |
 | TimePicker | 时间框:outline 触发区 + 弹层内"时/分"两列滚动列表(原生 ListBox 行为,条目自绘);选择即生效,弹层保持打开 |
-| Menu | 下拉菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 / 文字缩进(`MenuInset`) |
+| Menu | 下拉菜单 / 右键菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 / 文字缩进(`MenuInset`, 条目/Label/Sub 都可用) / 前置图标(`MenuIcon`);`NewContextMenu(触发区元素, build)` 右键触发(每次右键重建菜单, 支持 `SetEnabled` / `OnOpenChange`);弹层宽支持 `Width` 固定、触发区对齐、内容自适应 + 128 下限 |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点) |
 | Toast | 通知(窗口内覆盖元素,右下角堆叠):4 种语义类型(success/error/warning/info)+ 动作按钮 + 可选关闭按钮;自动关闭(默认 4s)、悬停暂停、进出场滑入淡入;`NewToaster(w.Handle).Success("标题","描述")` |
 | AppWindow | 主窗口封装:圆角阴影 + 自绘标题栏(最小化/最大化/关闭,双击标题栏最大化/还原,拖动,最大化图标自动切换) + 主题化底色;`NewAppWindow("标题", 640, 480)` 后往 `Content()` 里放内容,`AddCaptionButton` 加标题栏按钮(如切换主题),`WithAppWindowNoMinMax` 只留关闭 |
