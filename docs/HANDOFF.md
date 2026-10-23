@@ -8,9 +8,9 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-22)
+## 当前状态(截至 2026-10-23)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
@@ -458,7 +458,7 @@
     还给下层最近聚焦控件; 最小化还原时只有栈顶抢焦点。demo 反馈页加了「警示对话框」四例 +
     「对话框变体」(无关闭钮 / 嵌套警示 / 滚动内容), registry 新增 alertdialog(依赖 dialog)。
   - 验收: 探针亮/暗双主题逐例截图 —— default 左对齐 + 右对齐按钮、sm 居中 + 等宽双列、media 并排/堆叠、
-    destructive 红底图标 + ghost Cancel、滚动内容头部/页脚固定且可滚、嵌套 Alert 在 Dialog 之上、
+    destructive 红底图标 + 默认 outline Cancel(有边框)、滚动内容头部/页脚固定且可滚、嵌套 Alert 在 Dialog 之上、
     ESC 第一次只关上层第二次关下层、关闭上层后焦点回到下层按钮、连点两次遮罩不关闭; 真实鼠标从触发钮打开时
     焦点落在 Cancel 且不显示焦点环; 对话框打开时滚轮被遮罩吞掉、页面不滚; `go build/vet/test` 与
     dialog/alertdialog/`add --all` 三种安装闭包编译全部通过。
@@ -521,6 +521,19 @@
   - **排查手法(值得复用)**: 用 `EnumWindows`(空标题 + 尺寸阈值)判"弹层在不在", 用 `GetLayeredWindowAttributes` 判"看不看得见", 两者一合就能区分"没弹出"和"弹出了但透明"; 组件侧再挂 `AddEvent_Combobox_Popup_List/Exit_List/Select` 日志对时间戳。合成点击要用**客户端坐标**(窗口枚举给的是屏幕坐标, 差一个 `ClientToScreen` 原点, 混用会把"点不中项"误判成组件 bug)。
   - **验收**: 40 轮复现脚本在修复前 3/40 轮 alpha=3, 修复后 **70 轮"开→立刻选不同项"全部正常**(每轮都读到弹出窗口、无低 alpha、无残留窗); 弹层样式(item-aligned、ring、勾、圆角)截图与修复前一致。见 DESIGN 30/69。
 
+- ✅ **Collapsible 可折叠面板(2026-10-23, 参 shadcn collapsible 文档)**:
+  - `components/collapsible.go`: 根容器(竖向流)+ `Content()` / `ContentStack()` + `BindTrigger(*Button)`; `Open/SetOpen/Toggle/OnOpenChange/SetDisabled`; 展开态同步触发按钮的 aria-expanded 视觉(`Button.SetExpanded`), 禁用时触发按钮一起禁用; `WithCollapsibleOpen/Disabled/Duration`。
+  - 内容收起时隐藏且不占布局; 展开/收起 200ms 高度过渡走 `xui.Presence`: 展开先 `Auto` 量高 → `Fixed 0` 起步逐帧长高, 每帧从根向上 `AdjustLayout` 并整窗立即重绘, 到位后恢复 `Auto`; 收起动画结束才 `Show(false)`。探针确认 xcgui 会按父矩形裁剪子元素(新增 DESIGN 97), 动画不需要额外遮罩。
+  - Button 新增 `WithButtonAlign(ButtonAlignStart/Between)` + `SetAlign`: 整宽触发区文字靠左、尾随图标贴右(对齐 shadcn 示例里的 justify-start/justify-between)。
+  - demo 导航页新增「可折叠面板」卡: 订单详情(图标触发区)+ 嵌套文件树; 本地 shadcn `App.tsx` 同步对照卡 + `src/components/ui/collapsible.tsx`(registry 原样); 新增 `XUI_ANIM_SCALE=5` 把动画慢放 5 倍, 便于抓中间帧。
+  - **验收**: 订单(图标按钮)/ 文件树(整宽文字触发 + 嵌套)的展开、收起、慢放中间帧逐帧截图; 中间帧内容被内容区矩形裁切, 卡片高度与页面滚动范围同步长高/回缩; 状态行文字完整。`go test ./...`、`go vet`、demo build、本地 shadcn `pnpm build` 通过; registry 加 collapsible 后逐组件安装(`xui add collapsible` → `go build ./ui`)与 `add --all` 均编译通过。
+
+- ✅ **修复: 可滚动对话框"有时候打开就显示滚动条"**(2026-10-23, 用户截图):
+  - **现象**: 可滚动对话框打开时, 滚动条有时候一开始就是亮的; 鼠标不动就一直亮, 移出去才淡出。
+  - **根因**: 对话框进出场用 `SetSubtreeAlpha` 给整棵子树逐个设 alpha, 把滚动条也一起设成了 1 —— 但滚动条的 alpha 是 `showScrollBarOnHover` 的悬停显隐状态(初始 0, 移入宿主才 1), 被整组淡入覆盖后就常亮了。
+  - **修法**: 运行时新增 `xui.SetSubtreeAlphaSkipScrollBars`(遍历跳过 `XC_SCROLLBAR` 子树); 对话框**打开**的初始归零/淡入/最小化还原改用它, **关闭**淡出仍用普通 `SetSubtreeAlpha`(滚动条跟着淡出); `showScrollBarOnHover` 在宿主 `XE_SHOW(false)` 时归零并 `DropTransitions`, `Dialog.Show` 主动 `resetScrollBarHover` 覆盖淡出中途快速重开。见 DESIGN 98。
+  - **验收**: 打开时鼠标移开 → 滚动条隐藏; 移入内容区 → 淡入; 滚动条亮着时关闭再打开 → 仍从隐藏开始; 页面切换/最小化恢复不残留亮条。
+
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
 
 
@@ -541,7 +554,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 anim(hover 过渡) / presence(进出场) / container·layout(布局骨架)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │                                 button checkbox radio input label separator(含 Badge) card alert
-│                                 switch progress slider tabs tooltip toast window combobox dialog alertdialog
+│                                 switch progress slider tabs collapsible tooltip toast window combobox dialog alertdialog
 │                                 menu table tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
@@ -586,6 +599,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
 # 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..7 = 基础1/基础2/表单1/表单2/导航/反馈/数据/图标
+#     XUI_ANIM_SCALE=5 把 hover / 弹层 / Collapsible 的过渡慢放 5 倍(抓中间帧用)
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
 go test ./...

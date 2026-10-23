@@ -238,6 +238,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | AppWindow | 原生 window.Window 封装 | 无系统标题栏(样式不含 Icon/Btn_*): 阴影圆角 + 自绘 `[图标][标题 Weight][自定义按钮区][最小化/最大化/关闭]`; 双击标题栏最大化/还原; 内容区 = 纵向流式 Weight 1(第八节 76) | demo 窗口 |
 | Button | embed Button | paint 壳, 原生文字(WithIcon 时自绘图标) | BeautifyButton 示例 |
 | Card | LayoutEle(布局容器) | 圆角面板 + ring 描边; 内容区是 Fill 子项、内边距用外边距表达(随卡片缩放), 高度可按内容自撑(Auto), 见第八节 56; 页脚是横向布局容器(内边距 + items-center), 见第八节 95 | — |
+| Collapsible | LayoutEle(根 + 内容) + Button(触发区) | 竖向流容器: 触发区由调用方创建 Button 后 `BindTrigger` 绑定(展开态同步 Button 的 aria-expanded 视觉); 内容高度收起 0 / 展开 Auto, 切换时 200ms 逐帧重排祖先并整窗重绘(第八节 97) | collapsible.tsx + radix collapsible(高度 CSS 变量动画示例) |
 | AspectRatio | LayoutEle(布局容器) | 宽度驱动高度: 尺寸事件按新宽度算高写回, 延迟到下一轮消息并逐级重排祖先(同第八节 93 的三段式); 内容区随比例框同步尺寸, 见第八节 94 | shadcn/radix aspect-ratio |
 | Alert | LayoutEle + Label/Element | 卡片底 + 1px border; 图标/文本列横向流式, 标题/描述按宽度量高后写回, 动作槽按内容自撑; 见第八节 90 | alert.tsx(radix-nova) |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
@@ -297,6 +298,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx + table.go(原生 List 接管路线见第八节 40) |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本库令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
+| collapsible: 根容器竖向流(触发区 + 内容区); 触发区是普通按钮(可绑定任意 Button), 点击切换, 展开态走 Button 的 aria-expanded 视觉(bg-muted); 内容收起时隐藏且不占布局, 展开时高度按内容自撑; **本实现**展开/收起带 200ms 高度过渡, 收起动画结束后才隐藏内容(radix presence 语义) | collapsible.tsx + radix CollapsibleContent 的 `--radix-collapsible-content-height` 动画示例 + 第八节 97 |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | scroll area: 页面/长内容滚动用 `ui.ScrollArea`(原生 LayoutFrame 载体, 见第八节 66): **只做纵向**(内容区恒铺满视口宽); 滚动条**鼠标移入容器才显示、离开淡出**(同 radix 的 `type=hover`, 150ms; 用元素透明度实现, 不改变布局宽度)、10px 轨道 + 8px 圆头滑块(`rounded-full bg-border`)、轨道透明; 滑块悬停**不换色**; 滚轮悬停任意子元素都滚动(原生控件如 List 自吃 —— 嵌套滚动常态); 该规格统一在 `ui/scrollbar.go` 的 `styleScrollBar` + `showScrollBarOnHover`, Table / Tree / ComboBox 弹层 / 多行 Input 同用(**滑块配色与容器不同**: 这四个载体在原版里是浏览器原生滚动条, 用"前景色淡化 + 悬停加深", 见第八节 21) | scroll-area.tsx(w-2.5 p-px `rounded-full bg-border`; radix `type` 默认 hover 淡入 —— 本实现的差异见"已知差异"表) |
 | **disabled:opacity-50 是组级透明**:组件自绘的**形状**(壳体/轨道/勾/滑块/圆点)**逐层各乘 50%**(`ScaleAlpha`, 见第八节 61);**按钮文字/图标用"前景色×卡片色对半混"预混后绘制**(等于整组 50% 合成; 亮色页上禁用实心钮白字仍=255, 暗色下才会正确变暗);不要直接给文字加 alpha —— 文字叠在已半透明的壳体上会二次透出按钮底色。复选框/单选框的标签保持原色, 输入框禁用文字同样预混后交给原生 Edit。radio 的 Label 不跟随禁用 | button/checkbox/radio/tabs/switch/slider/input.tsx |
@@ -336,11 +338,12 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 |---|---|---|
 | Button variant | `ButtonPrimary` = shadcn 的 `default`(用 primary 色), 另有 `ButtonDefault` 别名 | 上游把这个变体叫 `default`; 其余 secondary/outline/ghost/destructive/link 同名 |
 | Button size | `ButtonSizeXs/Sm/Default/Lg` = h-6/h-7/h-8/h-9(24/28/32/36); `ButtonSizeIcon/IconXs/IconSm/IconLg` = size-6/7/8/9 方形 | 与上游 8 档一一对应(像素实测吻合); 方形档 cx 传 0 即用预设边长; xs/sm/icon-xs/icon-sm 在按钮组内统一成 rounded-lg(见 86) |
-| Button 行内图标/触发区态/加载 | `WithButtonLeadingIcon` / `WithButtonTrailingIcon`(对应 `data-icon=inline-start/end`, 间距 4/6、图标侧内边距收窄为 6/8); `WithButtonRounded` = rounded-full; `WithButtonExpanded` = aria-expanded; `WithButtonHasPopup` = aria-haspopup(按下不下沉); `WithButtonLoading` = LoaderCircleIcon + animate-spin(1s linear) | 上游的 `has-data-[icon=...]` / `aria-expanded` / `active:not-aria-[haspopup]` / spinner 示例;Go 侧无 asChild/Slot |
+| Button 行内图标/触发区态/加载 | `WithButtonLeadingIcon` / `WithButtonTrailingIcon`(对应 `data-icon=inline-start/end`, 间距 4/6、图标侧内边距收窄为 6/8); `WithButtonAlign(ButtonAlignStart/Between)` 对应示例里加在 Button 上的 justify-start / justify-between(整宽触发区文字靠左、尾随图标贴右); `WithButtonRounded` = rounded-full; `WithButtonExpanded` = aria-expanded; `WithButtonHasPopup` = aria-haspopup(按下不下沉); `WithButtonLoading` = LoaderCircleIcon + animate-spin(1s linear) | 上游的 `has-data-[icon=...]` / `aria-expanded` / `active:not-aria-[haspopup]` / spinner 示例;Go 侧无 asChild/Slot |
 | ButtonGroup | `NewButtonGroup(hParent, WithButtonGroupOrientation(...))` + `NewButtonGroupText` + `NewButtonGroupSeparator`; 组宽高按内容自撑, 首尾外角、嵌套组 8px 间距 | 对应 button-group.tsx 的 `ButtonGroup/ButtonGroupText/ButtonGroupSeparator`(role=group);不适用部分同下表的 Slot/data-* 钩子 |
 | Badge variant | default/secondary/outline/destructive/ghost/link 六档齐全 | 悬停样式恒生效(**shadcn 写作 `[a]:hover:*`, 只有包在链接里才生效**; Go 侧没有链接概念) |
 | Badge 悬停 | `ghost` = hover 出 bg-muted, `link` = hover 加下划线 | 下划线手绘(无下划线标志位, 见下方"下划线") |
 | Card | `WithCardSize(CardSizeSm)` = `--card-spacing` 4→3(16→12);`card.Footer(0)` 创建内边距跟随尺寸、内容已垂直居中的页脚;`card.TitleSize()` 返回标题字号(16 / sm 14) | 标题字号上游是 `text-base` + `font-medium`, 中文下 500 回落常规 → `NewCardTitle` 用 16 常规(不是粗体); sm 卡片标题要自己 `SetFontSize(card.TitleSize())`(构造器拿不到所属卡片); 页脚内容要放进 `footer.Content()`(那一层才有内边距) |
+| Collapsible | `NewCollapsible(x, y, cx, cy, parent, WithCollapsibleOpen/Disabled/Duration)` + `Content()` / `ContentStack(space)` + `BindTrigger(*Button)`; 状态 `Open/SetOpen/Toggle/OnOpenChange` | 对应 collapsible.tsx 的 `Collapsible/CollapsibleTrigger/CollapsibleContent`; 根容器固定竖向流(上游根是任意 div); 内容高度带 200ms 过渡(上游只暴露 CSS 变量, 动画要自己加类); 示例根节点上的 `data-[state=open]:bg-muted` 未内置, 需要时在外面包一层带底色的容器 |
 | AspectRatio | `NewAspectRatio(x, y, cx, cy, ratio, parent)` + `SetRatio` / `Ratio` / `Content()` / `ContentStack(space)` | ratio = 宽 / 高; `cy > 0` 或布局项高度声明成 Fill/Weight/Fixed 时由调用方管高度, 比例不生效(同 CSS 宽高都确定时 aspect-ratio 失效); 上游的 `className`(圆角/底色)映射为内容区自绘或元素背景, 组件本身不画任何东西 |
 | Alert | `NewAlert(..., WithAlertVariant/WithAlertIcon/WithAlertTitle/WithAlertDescription)` + `Action()`; 标题/描述由组件内部持有 | 对应 alert.tsx 的 `Alert` + `AlertTitle/AlertDescription/AlertAction`; Go 侧是整体自撑高度的组件; 需要自定义文字样式时用 `Title()` / `Description()` 改字体后 `Refresh()`; 动作槽按内容宽(上游固定预留 pr-18=72, 本实现由动作实际宽度缩短文本列) |
 | Dialog | `NewDialog(hWnd, WithDialogWidth/WithDialogCloseButton/WithDialogScroll)` + `SetTitle/SetDescription/AddFooter/BindTrigger/BindClose/Content/ScrollArea/Refresh` | 对应 dialog.tsx 的 `DialogContent` + `DialogHeader/Title/Description/Footer/Close/Trigger`; 无 compound 子组件拆分, 头部/页脚由组件内部持有; `WithDialogScroll` 对应文档的 Scrollable Content / With Sticky Footer; 缩放动画不做(见第八节 47) |
@@ -430,7 +433,7 @@ ui/
 | 英文长文本折行按字符断行(可能在单词中间换行) | Label 载体是原生 Button, 折行算法在 DLL 内, 不按单词边界; 中文不受影响(第八节 90/91) |
 | Dialog 没有 zoom-in-95 / AlertDialog 没有 text-balance | 元素级缩放对自绘元素无效(第八节 47); 自绘文字没有平衡排版能力 |
 | 没有 `asChild` / `data-slot` / `data-state` | React/DOM 概念, Go 侧没有对应物 |
-| Card 的 `overflow-hidden` / 首末图片自动圆角、AspectRatio 的内容不裁剪 | xcgui 没有元素级裁剪/圆角裁剪 API(`EnableOverflowHide` 是布局时裁高, 不是视觉裁剪); 圆角与底色由组件或内容自绘, 溢出的子元素需要调用方自己按路径/尺寸裁 |
+| Card 的 `overflow-hidden` / 首末图片自动圆角、AspectRatio 的圆角裁剪 | xcgui **会按父元素矩形裁剪子元素**(探针实测, 见第八节 97), 但没有圆角裁剪/overflow-hidden 语义: 超出圆角的四角区域仍会画出来; 需要圆角裁剪的图片/内容请自己按路径裁 |
 | `--chart-*` / `--sidebar-*` 令牌只提供取值 | 组件库自身不用, 供你的应用取用 |
 | Calendar 不做 RTL(dir=rtl)/波斯·Jalali 历/timeZone/自然语言日期(chrono-node) | 文字渲染只有 LTR; 历法换算与时区数据是另一套领域库, Go 侧没有 chrono-node 的等价物 —— 绝对/相对日期的键入用 DatePicker 的可输入形态(`ParseDateText`)覆盖最常用场景; 范围色带跨月时在两个月块之间不连续(上游同样是每月一张独立表格) |
 
@@ -1082,7 +1085,7 @@ ui/
     - **现象(实测)**: 弹窗打开后点任务栏最小化, 再还原 —— 弹窗消失(只剩 backdrop 的模糊快照), 点遮罩/页面全无反应。
     - **诊断**: 还原后元素树状态**全部正常**(`IsShow=true`、alpha=255、矩形正确、z 序 overlay>backdrop>页面), 绘制回调**照常触发**且 `p.Rc` 正确 —— 但绘制输出不上屏、鼠标事件不到达任何元素(含页面原生控件); 无弹窗可见时还原完全正常。结论是 xcgui 异型阴影窗口(`Window_Transparent_Shadow`)还原后合成/命中管线对"对话框遮罩子树可见期间"的状态损坏, **引擎级, 组件层无法事后根治**。
     - **无效方案(勿试)**: 还原时重抬 z 序 + backdrop 压回 overlay 之下、`XWnd_Redraw(true)` 整窗重绘、重新显隐整棵子树、延迟到消息循环里整套重物化(重拍快照 + 重新 Show) —— 全部无效; 在 WM_ACTIVATE 里直接操作元素更会把整窗合成打断(全窗白屏)。
-    - **修法 = 挂起/恢复**(对话框状态保留, 不触发 onClose): `AddEvent_WindProc` 拦 `WM_SIZE` —— `wParam==SIZE_MINIMIZED(1)` 时**同步**隐藏整组(清焦点 + `showEleTree(false)` + backdrop 隐藏; 不能走 Hide, 其淡出完成回调是异步的)置 suspended; `wParam==SIZE_RESTORED(0)/SIZE_MAXIMIZED(2)` 且 suspended 时用 `app.AfterFunc(0, ...)`(= `time.AfterFunc` + `XC_CallUT`, 回调被投递到 UI 线程执行)做 `materialize` + `SetSubtreeAlpha(1)` 无动画直接显示。引擎全程只见"隐藏状态的还原", 与已验证可靠的路径一致。
+    - **修法 = 挂起/恢复**(对话框状态保留, 不触发 onClose): `AddEvent_WindProc` 拦 `WM_SIZE` —— `wParam==SIZE_MINIMIZED(1)` 时**同步**隐藏整组(清焦点 + `showEleTree(false)` + backdrop 隐藏; 不能走 Hide, 其淡出完成回调是异步的)置 suspended; `wParam==SIZE_RESTORED(0)/SIZE_MAXIMIZED(2)` 且 suspended 时用 `app.AfterFunc(0, ...)`(= `time.AfterFunc` + `XC_CallUT`, 回调被投递到 UI 线程执行)做 `materialize` + `SetSubtreeAlphaSkipScrollBars(1)` 无动画直接显示(滚动条不跟着拉亮, 见 98)。引擎全程只见"隐藏状态的还原", 与已验证可靠的路径一致。
     - **三个时序/机制坑**: ①`XE_SIZE` 在还原时不保证触发, 程序化最小化**不发 WM_ACTIVATE(WA_INACTIVE)** —— 抓"最小化"只能拦 `WM_SIZE/SIZE_MINIMIZED`; ②WM_ACTIVATE/WM_SIZE 里直接操作元素会把还原流程的合成打断(实测全窗白屏), 恢复动作必须延迟出消息处理(用 `XC_CallUT` 类机制投递到消息循环); ③**炫彩定时器是独立命名空间**: `AddEvent_XC_Timer` 只接收 `XWnd_SetXCTimer` 启动的定时器, 用 Win32 的 `XWnd_SetTimer` 启动时回调**永远不会被派发**(与 anim.go 的 animTimerID 机制同源, 自用 ID 避开 0x7875); 恢复动作用 AfterFunc 可绕开这套机制; ④**还原后立即启动的 Presence 过渡帧不会被驱动**(整组 alpha 卡 0, SetSubtreeAlpha(0) 之后全组隐身) —— 恢复显示必须无动画, 之后用户再打开仍走正常淡入。
 
 65. **COM 直通的参数传递(386 / amd64) + "浮点形参"的完整解法**(`wapi/com` 与 `d2d`):
@@ -1339,6 +1342,18 @@ ui/
     - **修法**: 页面切换只调页面(ScrollArea)/滚动框架的 `AdjustLayout` + `XWnd_Redraw`(重绘只刷画面, 不动坐标); 不要调 `XWnd_AdjustLayout`。隐藏页的命中区刷新同样用页面级 `AdjustLayout` 延迟一次(见 66), 不需要窗口级布局。
     - **通用**: 任何窗口直属的绝对定位浮层(Toast / 自绘遮罩 / 自定义 HUD)都怕窗口级布局; 组件自己重排时用元素级/框架级 AdjustLayout。
 
+97. **父元素按矩形裁剪子元素; Collapsible 的高度动画可以直接靠它遮罩**(`components/collapsible.go`, 探针 + 展开/收起中间帧):
+    - **实测**: 子元素绘制被裁在**父元素客户区矩形**内(不只是"自身绘制被自身裁", 见 10)。80 高的父元素里, y=100 的子元素完全不画; x=250、宽 100 的子元素只画到父元素右缘。**圆角不参与裁剪** —— 圆角外的四角区域仍会画出来, 需要圆角裁剪时请自己按路径裁(第七节)。
+    - **用途**: 收起内容只需要把内容容器的高度逐帧改小, 超出部分自动被父矩形裁掉, 不需要额外遮罩或 `XDraw_SetClipRect`; 这也意味着内容里的原生控件(Edit 等)在动画中间帧不会溢出到下方。
+    - **高度动画的落地**: 先把内容布局项设 `Auto` 量出自然高度, 再锁定 `Fixed` 并从 0 开始; `xui.Presence` 每帧把 `target × v` 写回内容高度; 每帧从根容器向上 `AdjustLayout`(遇到 ScrollArea 的 LayoutFrame 交给框架排, 见 90/94), 再**整窗立即重绘**。展开到位后恢复 `Auto`(之后内容增减仍跟随布局), 收起到位后才 `Show(false)`。
+    - **别把 Presence 的 owner 当唯一重绘目标**: `Presence` 的 tick 只立即重绘 owner(根元素)自己的矩形; 内容高度变化会把下面的兄弟项整体推走, 只刷根元素会留下旧位置的像素, 所以 apply 里要自己 `XWnd_Redraw(hw, true)`。
+
+98. **滚动条的 alpha 是"悬停显隐"状态, 不能跟着弹窗整组淡入一起设置**(`components/scrollbar.go` + `components/dialog.go`, 用户截图):
+    - **现象**: 可滚动对话框打开时, 有时候滚动条一开始就是亮的; 鼠标不动它就一直亮着, 移出去才淡出。
+    - **根因**: 对话框的进出场用 `SetSubtreeAlpha` 给整棵子树逐个设 alpha(见 47); 滚动条也是子树元素, 被一起设成了 1。但滚动条的 alpha 本来是 `showScrollBarOnHover` 的显隐状态(初始 0, 鼠标移入宿主才 1), 被整组淡入覆盖后就"常亮"了 —— 是否看到取决于淡入后鼠标有没有移动到别处。
+    - **修法**: ① 运行时新增 `xui.SetSubtreeAlphaSkipScrollBars`(遍历时跳过 `xcc.XC_SCROLLBAR` 及其子树), 对话框**打开**时的初始归零与淡入改用它; **关闭**时的淡出仍用普通 `SetSubtreeAlpha`, 让滚动条跟着面板一起淡出(否则半透明面板上会留一条亮条)。② `showScrollBarOnHover` 在宿主 `XE_SHOW(false)` 时把滚动条 alpha 归零并 `DropTransitions`, 页面切换/弹窗关闭/最小化后不会带着上次的显隐状态回来; `Dialog.Show` 再主动 `resetScrollBarHover(d.scroll.Handle)`, 覆盖"淡出中途快速重开"这种宿主没收到隐藏事件的情况。
+    - **验证**: 可滚动对话框打开(鼠标移开)→ 滚动条不显示; 移入内容区 → 淡入; 在滚动条可见时关闭再打开 → 仍从隐藏开始。`resetScrollBarHover` 的闭包按宿主句柄登记, 宿主销毁时一并清理。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1369,6 +1384,7 @@ ui/
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55);**对原生自建弹窗**(ComboBox 下拉, 只有窗口句柄)同样可用: `xc.XWnd_SetTransparentType / XWnd_SetTransparentAlpha`, 在弹出回调里(显示前)设置, 见第八节 69 —— **单次设置可信, 逐帧改会概率性冻结**(57/69), 原生弹层不做整窗 alpha 动画
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)
 - Dialog:`XEle_SetZOrderEx(h, 0, xcc.Zorder_Top)`、`XEle_AdjustLayout`、`XEle_Redraw`、`XEle_GetChildCount/GetChildByIndex`、`XObj_GetType`(→ `xcc.XC_*`)、`XWidget_GetParentEle`、`XWnd_GetRect/Redraw`、`XWnd_SetFocusEle/GetFocusEle`、`xcc.AdjustLayout_No`、`wapi.GetAsyncKeyState`
+- 整组透明度:`xui.SetSubtreeAlpha(v, roots...)`(逐个子元素设 alpha, 不级联)、`xui.SetSubtreeAlphaSkipScrollBars(v, roots...)`(跳过滚动条子树, 弹窗打开时的淡入用, 见 98)、`Element.AddEvent_Show(fn(hEle, bShow, pbHandled))`(元素显示/隐藏事件; 滚动条在宿主隐藏时归零自己的显隐状态)
 - Toast(见第八节 75): `XWnd_GetBodyRect`(Body 矩形, 阴影窗口有 band 偏移)、`XWnd_GetStayEle`(窗口级悬停判定)、`XEle_SetXCTimer/KillXCTimer + AddEvent_XC_Timer`(每条通知自己的倒计时)、`XEle_Destroy`、`Element.AddEvent_Destroy_End`、`Window.AddEvent_Size/MouseMove/MouseLeave`、`XEle_SetZOrderEx`
 - Table(原生 List 载体):`CreateAdapterHeader/CreateAdapter/AddColumnText/SetHeaderHeight/SetRowHeightDefault/SetRowSpace/SetColumnWidth/SetSplitLineColor/SetDrawRowBkFlags/AddRowText/SetItemText/GetCount_AD/SetSelectRow/GetSelectRow/GetVisibleRowRange/RefreshRow/RefreshData/AddEvent_List_DrawItem/AddEvent_List_Header_DrawItem/AddEvent_List_Temp_Create_End/AddEvent_List_Header_Temp_Create_End/AddEvent_List_Select/GetTemplateObject/GetHeaderTemplateObject/GetHeaderHELE/GetScrollBarVObj`
 - ⚠️ `TabBar.SetPadding` 在 xcgui.dll 4.0.0.0 中不存在(调用 panic)

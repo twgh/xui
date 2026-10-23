@@ -73,6 +73,12 @@ func main() {
 	if dark {
 		xui.SetTheme(xui.Dark())
 	}
+	// 动画慢放倍率(截图抓中间帧用): XUI_ANIM_SCALE=5 把 hover/展开收起放慢 5 倍。
+	if v := os.Getenv("XUI_ANIM_SCALE"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			xui.SetAnimationScale(f)
+		}
+	}
 
 	// 窗口 = ui.NewAppWindow: 阴影/圆角/自绘标题栏(三键)/双击最大化/拖动/主题化底色全部内置。
 	// 内容区是窗口的 Weight 布局项(纵向流式), 页面构建见 buildPages。
@@ -961,6 +967,182 @@ func buildNavPage(body *widget.LayoutEle) {
 		pagInfo.SetText(fmt.Sprintf("共 120 条 · 每页 10 条 · 当前第 %d 页", p))
 		pagInfo.Redraw(false)
 	})
+
+	// ---- 第三行: 可折叠面板 ----
+	_, v4 := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可折叠面板", v4.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"radix Collapsible: 触发区 + 内容区两种组合; 内容高度 200ms 过渡, 收起后不占布局", v4.Handle))
+	ex := row(v4.Handle, 0, 24)
+	left := col(ex.Handle, 1, 8)
+	buildCollapsibleOrder(left.Handle)
+	buildCollapsibleTextTrigger(left.Handle)
+	buildCollapsibleTree(col(ex.Handle, 1, 8).Handle)
+}
+
+// buildCollapsibleTextTrigger 演示整宽文字触发区(justify-between: 文字靠左、箭头贴右)。
+func buildCollapsibleTextTrigger(parent int) {
+	xui.ItemFill(hint(parent, "整宽触发区 · 文字靠左 / 箭头贴右"))
+	panel := ui.NewCollapsible(0, 0, 0, 0, parent)
+	panel.SetSpace(8)
+	xui.ItemFill(panel)
+	btn := ui.NewButton(0, 0, 0, 0, "高级设置", panel.Handle,
+		ui.WithVariant(ui.ButtonGhost),
+		ui.WithButtonAlign(ui.ButtonAlignBetween),
+		ui.WithButtonTrailingIcon(icons.IconChevronDown))
+	xui.ItemFill(btn)
+	panel.BindTrigger(btn)
+	panel.OnOpenChange(func(open bool) {
+		btn.SetTrailingIcon(common.Choose(open, icons.IconChevronUp, icons.IconChevronDown))
+	})
+	body := panel.ContentStack(8)
+	desc := ui.NewLabel(0, 0, 0, 20, "通知与隐私相关的开关都放在这里; 展开/收起走同一个高度过渡。",
+		body.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(desc)
+	xui.ItemMargin(desc, 10, 0, 10, 0)
+}
+
+// buildCollapsibleOrder 是 shadcn collapsible-demo 的订单详情: 图标触发区 + 常显状态行 + 可折叠明细。
+func buildCollapsibleOrder(parent int) {
+	xui.ItemFill(hint(parent, "订单详情 · 图标触发区"))
+
+	panel := ui.NewCollapsible(0, 0, 0, 0, parent)
+	panel.SetSpace(8)
+	xui.ItemFill(panel)
+
+	head := widget.NewLayoutEle(0, 0, 0, 33, panel.Handle)
+	head.EnableHorizon(true)
+	head.EnableLayout(true)
+	head.EnableBkTransparent(true)
+	head.EnableAutoWrap(false)
+	head.SetSpace(8)
+	head.SetAlignV(xcc.Layout_Align_Center)
+	head.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	head.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 33)
+	xui.ItemMargin(head, 10, 0, 10, 0)
+	title := ui.NewLabel(0, 0, 0, 20, "订单 #4189", head.Handle).SetFontSize(14).SetMedium()
+	xui.ItemWeight(title, 1)
+	toggle := ui.NewButton(0, 0, 0, 0, "", head.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithSize(ui.ButtonSizeIcon),
+		ui.WithIcon(icons.IconChevronsUpDown))
+	xui.ItemWidth(toggle, 32)
+	panel.BindTrigger(toggle)
+
+	status := borderedBox(panel.Handle, 36, true)
+	left := ui.NewLabel(0, 0, 0, 20, "状态", status.Handle).SetFontSize(14).SetMuted()
+	xui.ItemWeight(left, 1)
+	xui.ItemMarginLeft(left, 16)
+	right := ui.NewLabel(0, 0, 0, 20, "已发货", status.Handle).SetFontSize(14).SetMedium()
+	xui.ItemWidth(right, 72)
+	xui.ItemMarginRight(right, 16)
+
+	body := panel.ContentStack(8)
+	addr := borderedBox(body.Handle, 56, false)
+	addrTitle := ui.NewLabel(0, 0, 0, 20, "收货地址", addr.Handle).SetFontSize(14).SetMedium()
+	xui.ItemFill(addrTitle)
+	xui.ItemMargin(addrTitle, 16, 8, 16, 0)
+	addrText := ui.NewLabel(0, 0, 0, 20, "100 Market St, San Francisco", addr.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(addrText)
+	xui.ItemMargin(addrText, 16, 0, 16, 8)
+	xui.ItemMargin(addr, 10, 0, 10, 0)
+
+	items := borderedBox(body.Handle, 56, false)
+	itemsTitle := ui.NewLabel(0, 0, 0, 20, "商品", items.Handle).SetFontSize(14).SetMedium()
+	xui.ItemFill(itemsTitle)
+	xui.ItemMargin(itemsTitle, 16, 8, 16, 0)
+	itemsText := ui.NewLabel(0, 0, 0, 20, "2x 头戴式耳机", items.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(itemsText)
+	xui.ItemMargin(itemsText, 16, 0, 16, 8)
+	xui.ItemMargin(items, 10, 0, 10, 10)
+}
+
+// buildCollapsibleTree 演示嵌套折叠(文件夹树)与整宽触发区(文字靠左、图标靠右)。
+func buildCollapsibleTree(parent int) {
+	xui.ItemFill(hint(parent, "文件树 · 嵌套折叠"))
+
+	tree := ui.NewCollapsible(0, 0, 0, 0, parent)
+	tree.SetSpace(2)
+	xui.ItemFill(tree)
+	compBtn := folderTrigger(tree.Handle, "components")
+	tree.BindTrigger(compBtn)
+	tree.OnOpenChange(func(open bool) {
+		compBtn.SetTrailingIcon(common.Choose(open, icons.IconChevronDown, icons.IconChevronRight))
+	})
+
+	compBody := tree.ContentStack(1)
+	xui.ItemMarginLeft(compBody, 20)
+
+	uiRoot := ui.NewCollapsible(0, 0, 0, 0, compBody.Handle)
+	uiRoot.SetSpace(2)
+	xui.ItemFill(uiRoot)
+	uiBtn := folderTrigger(uiRoot.Handle, "ui")
+	uiRoot.BindTrigger(uiBtn)
+	uiRoot.OnOpenChange(func(open bool) {
+		uiBtn.SetTrailingIcon(common.Choose(open, icons.IconChevronDown, icons.IconChevronRight))
+	})
+	uiBody := uiRoot.ContentStack(1)
+	xui.ItemMarginLeft(uiBody, 20)
+	fileRow(uiBody.Handle, "button.tsx")
+	fileRow(uiBody.Handle, "card.tsx")
+	fileRow(uiBody.Handle, "dialog.tsx")
+
+	fileRow(compBody.Handle, "login-form.tsx")
+	fileRow(compBody.Handle, "register-form.tsx")
+}
+
+// folderTrigger 建文件树的文件夹触发区: 幽灵按钮、整宽、内容靠左, 尾随方向箭头。
+func folderTrigger(parent int, name string) *ui.Button {
+	b := ui.NewButton(0, 0, 0, 0, name, parent,
+		ui.WithVariant(ui.ButtonGhost), ui.WithSize(ui.ButtonSizeSm),
+		ui.WithButtonAlign(ui.ButtonAlignStart),
+		ui.WithButtonLeadingIcon(icons.IconFolder),
+		ui.WithButtonTrailingIcon(icons.IconChevronRight))
+	xui.ItemFill(b)
+	return b
+}
+
+// fileRow 建文件树里的文件行(幽灵按钮, 内容靠左 + 文件图标)。
+func fileRow(parent int, name string) *ui.Button {
+	b := ui.NewButton(0, 0, 0, 0, name, parent,
+		ui.WithVariant(ui.ButtonGhost), ui.WithSize(ui.ButtonSizeSm),
+		ui.WithButtonAlign(ui.ButtonAlignStart),
+		ui.WithButtonLeadingIcon(icons.IconFile))
+	xui.ItemFill(b)
+	return b
+}
+
+// borderedBox 建一个 1px Border + rounded-md 的盒子(对应 shadcn 示例里的
+// `rounded-md border px-4 py-2`)。horizontal=true 时是横排(内容垂直居中)。
+func borderedBox(parent int, h int32, horizontal bool) *widget.LayoutEle {
+	box := widget.NewLayoutEle(0, 0, 0, h, parent)
+	box.EnableHorizon(horizontal)
+	box.EnableLayout(true)
+	box.EnableBkTransparent(true)
+	box.EnableAutoWrap(false)
+	box.SetAlignV(xcc.Layout_Align_Center)
+	if horizontal {
+		// 横排(状态行)的左右项之间才需要间距; 竖向盒的上下内边距由子项 margin 表达,
+		// 再叠一项间距会把底部内边距挤出盒子(文字贴到底边)。
+		box.SetSpace(8)
+	}
+	box.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	box.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
+	box.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		// 描边沿路径居中, 贴边会被元素裁剪掉一半; 内缩 1px 让 1px 边框完整落在客户区内。
+		rc := p.Rc
+		rc.Left++
+		rc.Top++
+		rc.Right--
+		rc.Bottom--
+		p.StrokeRound(&rc, xui.Current().Border, xui.Current().RadiusMd(), 1)
+		return 0
+	})
+	return box
 }
 
 // ===== 页 6: 反馈(对话框 / 提示气泡 / 进度) =====
@@ -1550,8 +1732,7 @@ func buildAlertDialogs(hWindow int, defaultTrigger, smallTrigger, mediaTrigger, 
 		ui.WithAlertDialogMediaTone(ui.AlertDialogMediaDestructive),
 		ui.WithAlertDialogTitle("Delete chat?"),
 		ui.WithAlertDialogDescription("This will permanently delete this chat conversation. You can delete any memories saved during this chat in Settings."))
-	destructive.AddCancel("Cancel", nil)
-	destructive.CancelButton().SetVariant(ui.ButtonGhost)
+	destructive.AddCancel("Cancel", nil) // AlertDialogCancel 默认就是 outline(有边框)样式
 	destructive.AddAction("Delete", ui.ButtonDestructive, nil)
 	destructive.BindTrigger(destructiveTrigger)
 }

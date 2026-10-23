@@ -61,6 +61,10 @@
       "files": ["tabs.go"],
       "deps": []
     },
+    "collapsible": {
+      "files": ["collapsible.go"],
+      "deps": ["button"]
+    },
     "tooltip": {
       "files": ["tooltip.go"],
       "deps": []

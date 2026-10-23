@@ -132,7 +132,36 @@ func SetSubtreeAlpha(v float64, hRoots ...int) {
 	}
 }
 
+// SetSubtreeAlphaSkipScrollBars 同 SetSubtreeAlpha, 但跳过滚动条及其子树。
+//
+// 滚动条的 alpha 是它自己的"悬停显隐"状态(见 components/scrollbar.go 的
+// showScrollBarOnHover), 不是内容淡入的一部分。弹窗/对话框的整组淡入若把它
+// 一起设成 1, 滚动条会在打开瞬间亮出来, 直到下一次鼠标移动才被显隐逻辑藏掉
+// —— 表现为"有时候打开就显示滚动条"。滚动条需要淡出时用普通 SetSubtreeAlpha
+// (例如关闭弹窗), 打开时的淡入用本函数。
+func SetSubtreeAlphaSkipScrollBars(v float64, hRoots ...int) {
+	if v < 0 {
+		v = 0
+	} else if v > 1 {
+		v = 1
+	}
+	a := byte(v*255 + 0.5)
+	for _, h := range hRoots {
+		if h != 0 {
+			setAlphaTreeSkipScrollBars(h, a)
+		}
+	}
+}
+
 func setAlphaTree(hEle int, a byte) {
+	setAlphaTreeOpt(hEle, a, false)
+}
+
+func setAlphaTreeSkipScrollBars(hEle int, a byte) {
+	setAlphaTreeOpt(hEle, a, true)
+}
+
+func setAlphaTreeOpt(hEle int, a byte, skipScrollBars bool) {
 	// ⚠️ 句柄有效性守卫: 子元素(原生控件的滚动条/滑块按钮等)在所属窗口**显示之前**
 	// 可能尚未初始化, GetChildByIndex 会返回非 0 但无效的句柄; 对它调 XEle_SetAlpha
 	// 会触发 xcgui 的 DLL 错误弹窗("SetAlpha 输入句柄无效"), 该错误不产生 Go panic
@@ -141,11 +170,14 @@ func setAlphaTree(hEle int, a byte) {
 	if !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
 		return
 	}
+	if skipScrollBars && xc.XObj_GetType(hEle) == xcc.XC_SCROLLBAR {
+		return
+	}
 	xc.XEle_SetAlpha(hEle, a)
 	n := xc.XEle_GetChildCount(hEle)
 	for i := int32(0); i < n; i++ {
 		if h := xc.XEle_GetChildByIndex(hEle, i); h != 0 {
-			setAlphaTree(h, a)
+			setAlphaTreeOpt(h, a, skipScrollBars)
 		}
 	}
 }

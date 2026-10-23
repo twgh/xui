@@ -295,7 +295,11 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 							// 帧不会被驱动(整组 alpha 卡在 0, 什么都看不见), 先无动画直接显示;
 							// 之后用户再打开仍走正常淡入路径
 							d.materialize()
-							xui.SetSubtreeAlpha(1, d.overlay.Handle, d.backdropHandle())
+							// 滚动条的 alpha 是它自己的悬停显隐状态, 不能被整组还原拉亮
+							xui.SetSubtreeAlphaSkipScrollBars(1, d.overlay.Handle, d.backdropHandle())
+							if d.scroll != nil {
+								resetScrollBarHover(d.scroll.Handle)
+							}
 							d.overlay.Redraw(false)
 							xc.XWnd_Redraw(d.hWnd, true)
 							d.focusIdx = 0
@@ -567,7 +571,12 @@ func (d *Dialog) Show() *Dialog {
 	// (元素级 ani 对自绘元素无效, 见 DESIGN 第八节 47), 这里只做淡入。
 	// 注意必须整棵子树逐个设 alpha: 元素透明度不级联, 只设 overlay 的话标题/输入框
 	// 等子元素会全不透明压在还没模糊的背景上(实测踩坑)
-	xui.SetSubtreeAlpha(0, d.overlay.Handle, d.backdropHandle())
+	// 滚动条不参与整组淡入(它的 alpha 是悬停显隐状态); 每次打开先归零,
+	// 否则上次关闭时亮着的滚动条会带到这次(快速重开时宿主可能没收到 Show(false))。
+	xui.SetSubtreeAlphaSkipScrollBars(0, d.overlay.Handle, d.backdropHandle())
+	if d.scroll != nil {
+		resetScrollBarHover(d.scroll.Handle)
+	}
 	d.overlay.Redraw(false)
 	xc.XWnd_Redraw(d.hWnd, true)
 	d.focusIdx = 0
@@ -627,12 +636,19 @@ func (d *Dialog) backdropHandle() int {
 }
 
 // applyFade 把进出场进度落到对话框整组元素的透明度上(元素透明度会向下作用于自绘内容,
-// 实测有效; 但**不级联到子元素**, 所以用 SetSubtreeAlpha 对整棵子树逐个设置 ——
-// 遮罩、面板、模糊层与标题/输入框等内容一起淡; 焦点环也因此从第一帧就随整组淡入,
-// 不会在最后闪一下, 对齐 shadcn)。
+// 实测有效; 但**不级联到子元素**, 所以对整棵子树逐个设置 —— 遮罩、面板、模糊层与
+// 标题/输入框等内容一起淡; 焦点环也因此从第一帧就随整组淡入, 不会在最后闪一下,
+// 对齐 shadcn)。打开时跳过滚动条: 滚动条的 alpha 是"悬停显隐"状态, 由
+// showScrollBarOnHover 自理, 跟整组淡入一起设 1 会让它打开即亮(见 DESIGN 98)。
 // 输入框插入符竖条不随元素 alpha 淡(原生绘制, 实测) —— 由 setCaretWidth 在进出场
 // 期间置 0 隐身, 不在这里处理。
 func (d *Dialog) applyFade(v float64) {
+	if d.open {
+		// 打开: 跳过滚动条, 等鼠标真正移入内容区再由 showScrollBarOnHover 淡入。
+		xui.SetSubtreeAlphaSkipScrollBars(v, d.overlay.Handle, d.backdropHandle())
+		return
+	}
+	// 关闭: 滚动条跟着一起淡出(不做例外, 否则半透明的面板上会留一条亮滚动条)。
 	xui.SetSubtreeAlpha(v, d.overlay.Handle, d.backdropHandle())
 }
 

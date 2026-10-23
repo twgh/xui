@@ -103,13 +103,14 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 
 | 组件 | 说明 |
 |---|---|
-| Button | 6 变体(Primary/Secondary/Outline/Ghost/Destructive/Link)× 8 尺寸档(xs/sm/default/lg + 4 个方形图标档),hover/按下/禁用/焦点环/校验失败(`WithButtonInvalid`);`WithIcon` 做图标按钮,`WithButtonLeadingIcon` / `WithButtonTrailingIcon` 做"图标+文字",`WithButtonRounded` 胶囊、`WithButtonExpanded` / `WithButtonHasPopup` 对应弹层触发区、`WithButtonLoading` 显示 1s/圈旋转的加载图标;`cx` 传 0 时按文字自动量宽 |
+| Button | 6 变体(Primary/Secondary/Outline/Ghost/Destructive/Link)× 8 尺寸档(xs/sm/default/lg + 4 个方形图标档),hover/按下/禁用/焦点环/校验失败(`WithButtonInvalid`);`WithIcon` 做图标按钮,`WithButtonLeadingIcon` / `WithButtonTrailingIcon` 做"图标+文字",`WithButtonAlign(Start/Between)` 控制整宽按钮的内容对齐(示例里的 justify-start/justify-between)、`WithButtonRounded` 胶囊、`WithButtonExpanded` / `WithButtonHasPopup` 对应弹层触发区、`WithButtonLoading` 显示 1s/圈旋转的加载图标;`cx` 传 0 时按文字自动量宽 |
 | ButtonGroup | 按钮组(`components/buttongroup.go`):横向/纵向(`WithButtonGroupOrientation`)、首尾外角 + 相邻边直角、宽高按内容自撑;可放 Button / Input / ComboBox;`NewButtonGroupText` 文本块、`NewButtonGroupSeparator` 分隔条跟随组高;组里嵌组自动 8px 间距 |
 | Alert | 提示条:图标 + 标题 + 描述 + 右上动作槽;`AlertDefault` / `AlertDestructive` 两变体,标题/描述随宽度自动折行、高度按内容自撑;`Action()` 里放 Button / Badge |
 | Checkbox / Radio | 自绘指示器 + 原生状态管理 |
 | Input | 原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环,占位符随主题;校验失败态 `WithInputInvalid`;内嵌附加件:`WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible` / `PasswordVisible`) / `WithCounter`;步进器 `WithStepper(min,max,step)` + `SetNumber` / `Number` / `OnStep`(支持 −/+ 按钮与 ↑/↓ 键,失焦自动夹取吸附;`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态,`WithStepperAutoHide` 让按钮只在悬停/聚焦时出现) |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块;滑块支持自定义值域与步进(`WithSliderRange` / `WithSliderStep`) |
 | Tabs | 标签页(下划线指示条随活动页滑动),支持纵向堆叠(`WithTabsVertical`) |
+| Collapsible | 可折叠面板(触发区 + 内容区):`NewCollapsible` 建根容器,`BindTrigger` 绑定任意 Button 作触发区,内容放进 `Content()`/`ContentStack()`;展开/收起带 200ms 高度过渡(收起后不占布局),支持初始展开(`WithCollapsibleOpen`)、禁用与 `OnOpenChange` |
 | ComboBox | 下拉框(列表由独立透明弹出窗口承载, 打开时 100ms 淡入);触发区支持 sm 尺寸(`WithComboSize`)与校验失败态(`WithComboInvalid`) |
 | Calendar | 月历卡片(全自绘):6×7 固定网格、周起始日可调(`WithCalendarWeekStart`)、选中实心/今天浅底/悬停过渡;**范围选择**(`WithCalendarRange` + `WithCalendarOnRangeSelect`, 两次点击落区间、端点交换/中段色带, 同 react-day-picker)、**多月并排**(`WithCalendarMonths(1~4)`)、**ISO 周数列**(`WithCalendarWeekNumbers`)、禁用(`WithCalendarDisabled` + Before/After/Weekend/Dates helper)与预订划线(`WithCalendarStrike`)、年月可下拉(`WithCalendarYearRange`)、页脚/预设(`WithCalendarFooter` / `WithCalendarPresets`, 自动换行);可独立摆放, 弹层内用 `WithCalendarFlat` 免双层边框; 尺寸 helper `CalWidthFor` / `CalWidthForWeekNumbers` / `CalHeightForMonths` |
 | DatePicker | 日期框:outline 触发区 + 自建阴影弹层(内含 Calendar),下方放不下自动翻到上方;点外部/ESC 关闭,`OnChange` 回调;**范围模式**(`WithDatePickerRange`, 弹层并排两个月, 起点未落终点时保持打开, `Range/SetRange/OnRangeChange`)、预设按钮(`WithDatePickerPresets`)、年份范围与禁用日期、**可输入形态**(`WithDatePickerEditable`: 可键入 2026-10-22 / 今天 / 3天后, Enter/失焦回写, 右侧日历钮打开弹层) |

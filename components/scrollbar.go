@@ -20,9 +20,9 @@ import (
 // SetScrollBarSize(scrollBarW), 外观统一走 styleScrollBar, 显隐统一走
 // showScrollBarOnHover。
 const (
-	scrollBarW     int32 = 10
-	scrollBarInset int32 = 1
-	scrollBarThumbR      = int32(4)
+	scrollBarW      int32 = 10
+	scrollBarInset  int32 = 1
+	scrollBarThumbR       = int32(4)
 )
 
 // scrollBarFadeDur 是滚动条"随宿主悬停淡入 / 离开淡出"的时长(与 hover 过渡同速)。
@@ -48,6 +48,18 @@ const (
 // thumbSkinReg 记录每条滚动条当前生效的皮肤(hover 换色时按它取两级色)。
 // 键是滚动条元素句柄; 都是 UI 线程读写(样式刷新与鼠标事件同线程), 不需要加锁。
 var thumbSkinReg = map[int]scrollBarSkin{}
+
+// scrollBarHoverResets 按宿主句柄登记"把滚动条恢复到未悬停初始态"的闭包,
+// 供弹窗在每次打开时主动归零(快速重开时宿主未必触发过 Show(false))。
+var scrollBarHoverResets = map[int]func(){}
+
+// resetScrollBarHover 把某个宿主上的滚动条恢复成"未悬停"初始态:
+// 清掉显隐过渡、alpha 归零、滑块换回静止色。宿主隐藏时由 Show 事件自动调用。
+func resetScrollBarHover(hHost int) {
+	if fn := scrollBarHoverResets[hHost]; fn != nil {
+		fn()
+	}
+}
 
 // containerScrollBarSkin 是"容器型"滚动条的皮肤(ScrollArea 的页面与卡片内滚动容器):
 // 对齐 shadcn scroll-area.tsx —— 滑块 bg-border、悬停不换色。
@@ -227,6 +239,30 @@ func showScrollBarOnHover(hHost int, sb *widget.ScrollBar) {
 		return 0
 	})
 
+	// reset 把滚动条回到"未悬停"初始态。宿主隐藏(页面切换/弹窗关闭/最小化)时调用:
+	// 滚动条的 alpha 是显隐状态, 不归零的话下次显示会带着上一次的可见状态出现
+	// (弹窗的整组淡入已跳过滚动条, 更依赖这里复位)。
+	reset := func() {
+		xui.DropTransitions(hSB)
+		xui.SetSubtreeAlpha(0, hSB)
+		onBar = false
+		setThumbSkinColor(sb, thumbSkinReg[hSB].thumb)
+		xc.XEle_Redraw(hSB, true)
+	}
+	scrollBarHoverResets[hHost] = reset
+	if host := widget.NewElementByHandle(hHost); host != nil {
+		host.AddEvent_Show(func(hEle int, bShow bool, pbHandled *bool) int {
+			if !bShow {
+				reset()
+			}
+			return 0
+		})
+		host.AddEvent_Destroy_End(func(hEle int, pbHandled *bool) int {
+			delete(scrollBarHoverResets, hHost)
+			return 0
+		})
+	}
+
 	// 滚动条销毁(弹层 ListBox 每次都新建)时清掉登记, 句柄会被复用。
 	if bar := widget.NewElementByHandle(hSB); bar != nil {
 		bar.AddEvent_Destroy_End(func(hEle int, pbHandled *bool) int {
@@ -235,5 +271,3 @@ func showScrollBarOnHover(hHost int, sb *widget.ScrollBar) {
 		})
 	}
 }
-
-

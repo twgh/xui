@@ -37,6 +37,17 @@ const (
 // 两个名字等价, 想跟着上游叫法时用它。
 const ButtonDefault = ButtonPrimary
 
+// ButtonAlign 是按钮内容(行内图标 + 文字 + 尾随图标)的水平对齐方式,
+// 对应 shadcn 示例里给 Button 加的 justify-center / justify-start / justify-between。
+// 默认居中; 触发区这类整宽按钮常用 Between(文字靠左、尾随图标贴右)。
+type ButtonAlign int
+
+const (
+	ButtonAlignCenter  ButtonAlign = iota // justify-center(默认)
+	ButtonAlignStart                      // justify-start: 内容从左侧内边距开始
+	ButtonAlignBetween                    // justify-between: 前置内容靠左, 尾随图标贴右
+)
+
 // ButtonSize 按钮尺寸预设, 对应 shadcn button.tsx 的 size(换算成逻辑像素):
 // default=h-8 / xs=h-6 / sm=h-7 / lg=h-9; icon 系是方形(size-8 / size-6 / size-7 / size-9)。
 type ButtonSize int
@@ -91,16 +102,17 @@ type Button struct {
 	*widget.Button
 	variant      ButtonVariant
 	size         ButtonSize
-	icon         string // 非空时绘制图标替代文字
-	leadingIcon  string // 文字前的行内图标(data-icon=inline-start)
-	trailingIcon string // 文字后的行内图标(data-icon=inline-end)
-	iconSize     int32  // 图标绘制边长(逻辑像素); 0 = 按尺寸预设
-	invalid      bool   // aria-invalid: 表单校验失败态(红色边框 + 红色 ring)
-	rounded      bool   // rounded-full(胶囊)
-	expanded     bool   // aria-expanded: 弹层触发区展开态
-	hasPopup     bool   // aria-haspopup: 按下不整体下沉(菜单/下拉触发区)
-	loading      bool   // 加载态: 行内/纯图标位置绘制持续旋转的 loader
-	autoWidth    bool   // cx 传 0 时为 true: 宽度按文字/图标量出
+	icon         string      // 非空时绘制图标替代文字
+	leadingIcon  string      // 文字前的行内图标(data-icon=inline-start)
+	trailingIcon string      // 文字后的行内图标(data-icon=inline-end)
+	iconSize     int32       // 图标绘制边长(逻辑像素); 0 = 按尺寸预设
+	align        ButtonAlign // 内容水平对齐(默认居中)
+	invalid      bool        // aria-invalid: 表单校验失败态(红色边框 + 红色 ring)
+	rounded      bool        // rounded-full(胶囊)
+	expanded     bool        // aria-expanded: 弹层触发区展开态
+	hasPopup     bool        // aria-haspopup: 按下不整体下沉(菜单/下拉触发区)
+	loading      bool        // 加载态: 行内/纯图标位置绘制持续旋转的 loader
+	autoWidth    bool        // cx 传 0 时为 true: 宽度按文字/图标量出
 }
 
 // ButtonOption 组件配置项, 构造时传入。
@@ -141,6 +153,10 @@ func WithButtonLeadingIcon(path string) ButtonOption {
 func WithButtonTrailingIcon(path string) ButtonOption {
 	return func(b *Button) { b.trailingIcon = path }
 }
+
+// WithButtonAlign 设置内容水平对齐(默认居中)。整宽触发区用 Between 时,
+// 文字靠左、尾随图标贴右, 等价 shadcn 示例里的 justify-between 类。
+func WithButtonAlign(a ButtonAlign) ButtonOption { return func(b *Button) { b.align = a } }
 
 // WithButtonRounded 让按钮使用胶囊圆角(rounded-full), 适用于方形图标按钮或短文本。
 func WithButtonRounded() ButtonOption { return func(b *Button) { b.rounded = true } }
@@ -322,6 +338,16 @@ func (b *Button) SetTrailingIcon(path string) *Button {
 // SetRounded 切换胶囊圆角(rounded-full)。
 func (b *Button) SetRounded(v bool) *Button {
 	b.rounded = v
+	b.Redraw(false)
+	return b
+}
+
+// SetAlign 设置内容水平对齐(见 WithButtonAlign)。
+func (b *Button) SetAlign(a ButtonAlign) *Button {
+	if b.align == a {
+		return b
+	}
+	b.align = a
 	b.Redraw(false)
 	return b
 }
@@ -670,20 +696,29 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		// DrawText 的 Vcenter 按字体行高(含降部空间)居中, 字形整体偏下(实测 14pt 下
 		// 上留白 8.6px / 下留白 3.7px), 文字矩形上移 1px 回补; 上移 2px 会明显偏上。
 		// TextF 用浮点矩形承载按下时的物理像素位移(见 DESIGN 第八节 88)。
+		left, align := textRc.Left, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter
+		if b.align != ButtonAlignCenter {
+			// justify-start / justify-between 只有一个子项时, 文字都靠左(同 flex 语义)
+			left += b.Spec().padX
+			align = xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter
+		}
 		rcF := xc.RECTF{
-			Left:   float32(textRc.Left),
+			Left:   float32(left),
 			Top:    float32(textRc.Top-1) + textDy,
 			Right:  float32(textRc.Right),
 			Bottom: float32(textRc.Bottom-1) + textDy,
 		}
-		p.TextF(text, &rcF, fore, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+		p.TextF(text, &rcF, fore, align)
 		// link 变体: hover:underline + underline-offset-4。xcgui 没有下划线标志位, 手工画 1px 线:
 		// 宽度取量测的文字宽, y = 基线下方 4px(基线 ≈ 行盒中心 + 0.3em, 见 xui.TextWidth 的坑)。
 		if b.variant == ButtonLink && !st.Disabled && (st.Hover || st.Pressed) {
 			if w := xui.TextWidth(text, f); w > 0 {
 				cy := float64(textRc.Top+textRc.Bottom)/2 - 1 + float64(textDy)
 				y := int32(math.Round(cy + float64(b.Spec().font)*0.3 + 4))
-				x0 := (textRc.Left+textRc.Right)/2 - w/2
+				x0 := left
+				if b.align == ButtonAlignCenter {
+					x0 = (textRc.Left+textRc.Right)/2 - w/2
+				}
 				p.Line(x0, y, x0+w, y, fore, 1)
 			}
 		}
@@ -693,6 +728,7 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 行内图标 + 文字: 图标与文字作为一整块居中, 间距 gap, 对齐 shadcn 的 flex gap。
 	isz := b.inlineIconSize()
 	gap := b.Spec().gap
+	sp := b.Spec()
 	tw := xui.TextWidth(text, f)
 	content := int32(0)
 	if lead != "" {
@@ -710,7 +746,13 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		}
 		content += isz
 	}
-	x := (textRc.Left+textRc.Right)/2 - content/2
+	x := textRc.Left + sp.padX
+	if lead != "" {
+		x = textRc.Left + sp.iconPadX
+	}
+	if b.align == ButtonAlignCenter {
+		x = (textRc.Left+textRc.Right)/2 - content/2
+	}
 	cy := (textRc.Top + textRc.Bottom) / 2
 	drawIcon := func(path string, left int32, angle float64) {
 		rc := xc.RECT{
@@ -748,7 +790,12 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		}
 	}
 	if trail != "" {
-		drawIcon(trail, x, 0)
+		tx := x
+		// justify-between: 有前置内容时尾随图标贴住右侧内边距(同 flex 的 space-between)
+		if b.align == ButtonAlignBetween && (lead != "" || text != "") {
+			tx = textRc.Right - sp.iconPadX - isz
+		}
+		drawIcon(trail, tx, 0)
 	}
 	if b.variant == ButtonLink && text != "" && !st.Disabled && (st.Hover || st.Pressed) && tw > 0 {
 		y := int32(math.Round(float64(cy) - 1 + float64(textDy) + float64(b.Spec().font)*0.3 + 4))
