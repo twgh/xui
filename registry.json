@@ -120,6 +120,14 @@
     "scrollarea": {
       "files": ["scrollarea.go", "scrollbar.go"],
       "deps": []
+    },
+    "empty": {
+      "files": ["empty.go"],
+      "deps": ["label"]
+    },
+    "field": {
+      "files": ["field.go"],
+      "deps": ["label"]
     }
   }
 }

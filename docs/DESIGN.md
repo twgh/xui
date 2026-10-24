@@ -241,6 +241,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Collapsible | LayoutEle(根 + 内容) + Button(触发区) | 竖向流容器: 触发区由调用方创建 Button 后 `BindTrigger` 绑定(展开态同步 Button 的 aria-expanded 视觉); 内容高度收起 0 / 展开 Auto, 切换时 200ms 逐帧重排祖先并整窗重绘(第八节 97) | collapsible.tsx + radix collapsible(高度 CSS 变量动画示例) |
 | AspectRatio | LayoutEle(布局容器) | 宽度驱动高度: 尺寸事件按新宽度算高写回, 延迟到下一轮消息并逐级重排祖先(同第八节 93 的三段式); 内容区随比例框同步尺寸, 见第八节 94 | shadcn/radix aspect-ratio |
 | Alert | LayoutEle + Label/Element | 卡片底 + 1px border; 图标/文本列横向流式, 标题/描述按宽度量高后写回, 动作槽按内容自撑; 见第八节 90 | alert.tsx(radix-nova) |
+| Empty | LayoutEle + Label/Element | 竖向居中的空状态: Body(p-6/gap-6) + Header(gap-2) + Content(gap-4); 媒体是自绘图标块(icon 变体 size-10 圆角 bg-muted); 不画边框(上游 `border-dashed` 无宽度), 需要边框放进 Card | empty.tsx(radix-nova) |
+| Field | LayoutEle + Label/Element | 表单字段组合: Field/Set/Group 全是流式布局容器; Label/Description 走 Label, Separator 自绘线 + 背景压字, Error 多条 Label 去重; 横向 Content 固定 240(第八节 101) | field.tsx(radix-nova) |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
 | Input | embed Edit | 只画边框+焦点环, 原生光标/IME | BeautifyEdit 示例 |
 | Switch | 纯自绘 Element | 轨道+滑块, 尺寸预设; hover 过渡走运行时 `anim.go`(第八节 45) | — |
@@ -346,6 +348,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Collapsible | `NewCollapsible(x, y, cx, cy, parent, WithCollapsibleOpen/Disabled/Duration)` + `Content()` / `ContentStack(space)` + `BindTrigger(*Button)`; 状态 `Open/SetOpen/Toggle/OnOpenChange` | 对应 collapsible.tsx 的 `Collapsible/CollapsibleTrigger/CollapsibleContent`; 根容器固定竖向流(上游根是任意 div); 内容高度带 200ms 过渡(上游只暴露 CSS 变量, 动画要自己加类); 示例根节点上的 `data-[state=open]:bg-muted` 未内置, 需要时在外面包一层带底色的容器 |
 | AspectRatio | `NewAspectRatio(x, y, cx, cy, ratio, parent)` + `SetRatio` / `Ratio` / `Content()` / `ContentStack(space)` | ratio = 宽 / 高; `cy > 0` 或布局项高度声明成 Fill/Weight/Fixed 时由调用方管高度, 比例不生效(同 CSS 宽高都确定时 aspect-ratio 失效); 上游的 `className`(圆角/底色)映射为内容区自绘或元素背景, 组件本身不画任何东西 |
 | Alert | `NewAlert(..., WithAlertVariant/WithAlertIcon/WithAlertTitle/WithAlertDescription)` + `Action()`; 标题/描述由组件内部持有 | 对应 alert.tsx 的 `Alert` + `AlertTitle/AlertDescription/AlertAction`; Go 侧是整体自撑高度的组件; 需要自定义文字样式时用 `Title()` / `Description()` 改字体后 `Refresh()`; 动作槽按内容宽(上游固定预留 pr-18=72, 本实现由动作实际宽度缩短文本列) |
+| Empty | `NewEmpty(x,y,cx,cy,parent)` + `Header()` / `Content()` / `Body()`;`NewEmptyMedia(parent, icon, WithEmptyMediaVariant(...))`、`NewEmptyTitle`、`NewEmptyDescription` | 对应 empty.tsx 的 `Empty/EmptyHeader/EmptyMedia/EmptyTitle/EmptyDescription/EmptyContent`; media 变体 default/icon, default 用 24 图标、icon 用 40 圆角 bg-muted + 24 图标; 不画边框(上游默认 `border-dashed` 无宽度, 没有可见边框), 需要边框放进 Card; 上游 md:p-12 响应式内边距未做(统一 p-6) |
+| Field | `NewField(..., WithFieldOrientation/WithFieldInvalid)` + `Label/Title/Description/Content/SetInvalid`;`NewFieldSet/FieldGroup/FieldLegend/FieldSeparator/FieldError` | 对应 field.tsx 的 `Field/FieldSet/FieldGroup/FieldLegend/FieldLabel/FieldTitle/FieldDescription/FieldSeparator/FieldError`; 无 responsive 取向与 DOM 级 label htmlFor; 横向 `Content` 默认 240 宽(嵌套布局只认 Fixed 宽, 见第八节 101), 用 `xui.ItemWidth` 覆盖; `FieldError` 单条错误保持单行(Label 不自撑折行高), 多条去重并用 "•" 列表 |
 | Dialog | `NewDialog(hWnd, WithDialogWidth/WithDialogCloseButton/WithDialogScroll)` + `SetTitle/SetDescription/AddFooter/BindTrigger/BindClose/Content/ScrollArea/Refresh` | 对应 dialog.tsx 的 `DialogContent` + `DialogHeader/Title/Description/Footer/Close/Trigger`; 无 compound 子组件拆分, 头部/页脚由组件内部持有; `WithDialogScroll` 对应文档的 Scrollable Content / With Sticky Footer; 缩放动画不做(见第八节 47) |
 | AlertDialog | `NewAlertDialog(hWnd, WithAlertDialogSize/WithAlertDialogTitle/WithAlertDialogDescription/WithAlertDialogMedia/WithAlertDialogMediaTone)` + `AddCancel/AddAction/BindTrigger` + `CancelButton/ActionButton` | 对应 alert-dialog.tsx 的 `AlertDialogContent` + `Header/Title/Description/Footer/Media/Action/Cancel/Trigger`; `size` 是枚举 `AlertDialogSizeDefault/Small`; 媒体块由组件自绘(不建子控件); `AddCancel` 固定 outline、`AddAction` 的变体由调用方给(可用 `CancelButton().SetVariant(ButtonGhost)` 改变体) |
 | Separator | `WithSeparatorVertical` 支持垂直 | 上游 `data-vertical:w-px` |
@@ -436,6 +440,8 @@ ui/
 | Card 的 `overflow-hidden` / 首末图片自动圆角、AspectRatio 的圆角裁剪 | xcgui **会按父元素矩形裁剪子元素**(探针实测, 见第八节 97), 但没有圆角裁剪/overflow-hidden 语义: 超出圆角的四角区域仍会画出来; 需要圆角裁剪的图片/内容请自己按路径裁 |
 | `--chart-*` / `--sidebar-*` 令牌只提供取值 | 组件库自身不用, 供你的应用取用 |
 | Calendar 不做 RTL(dir=rtl)/波斯·Jalali 历/timeZone/自然语言日期(chrono-node) | 文字渲染只有 LTR; 历法换算与时区数据是另一套领域库, Go 侧没有 chrono-node 的等价物 —— 绝对/相对日期的键入用 DatePicker 的可输入形态(`ParseDateText`)覆盖最常用场景; 范围色带跨月时在两个月块之间不连续(上游同样是每月一张独立表格) |
+| Field 横向 `Content` 的嵌套列只认 Fixed 宽 | xcgui 不会把 Weight/Percent 宽度传给嵌套布局的 Fill 子项(实测子项宽恒为 0, 内容不显示); 组件默认 Fixed 240, 用 `xui.ItemWidth` 覆盖(第八节 101) |
+| EmptyDescription / FieldDescription / FieldError 不自动折行 | Label 的高度不会随折行自撑; 需要多行时调用方用 `SetWrap` + `WrappedHeight` 量高后写回高度(同 Alert 的做法) |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1369,6 +1375,17 @@ ui/
     - **现象**: 同一段绘制里先 `SetTextAlign(中心)` 再 `SetFont(...)`, 这一行文字退回**默认左对齐**; 先 `SetFont` 再 `SetTextAlign` 才是居中的。
     - **探针**: 同一元素三行同宽矩形 —— A = 先对齐后字体(左对齐)、B = 先字体后对齐(居中)、C = 先对齐后小字体(左对齐), 截图边界清晰。字体切换(含换字号)都会重置, 不是只对第一次生效。
     - **修法**: 顺序固定为 **先 `SetFont`, 再 `SetTextAlign`, 再 `DrawText`**; 用 `xui.Painter.Text` 时它内部就是"颜色 → 对齐 → 绘制", 只要别把 `SetFont` 放在它之后即可(绘制多行不同字号的文字时, 每换一次字体都要重新调 `p.Text`, 或在 `SetFont` 后补一次 `SetTextAlign`)。
+
+101. **横向布局里的嵌套布局只认 Fixed 宽(Weight/Percent 不会传给 Fill 子项)**(`components/field.go` 的 `Field.Content`, 截图 + 元素矩形实测):
+    - **现象**: `FieldHorizontal` 的 Content 用 `Weight 1` 吃剩余宽度时, Content 里的两个 `xui.ItemFill` Label 位置/高度都对, 但宽度恒为 0, 文字完全不画; 给 Label 设固定宽(300)或给 Content 设固定宽后立即正常。
+    - **根因**: xcgui 的嵌套 LayoutEle 在拿到 Weight/Percent 宽时, 不会把宽度下发给自己的 Fill 子项; 只有父布局项是 **Fixed 宽**时, 内层 Fill 才有确定宽度。直接挂在横向 Field 下的 Weight Label 不受影响(父级就是当前布局)。
+    - **无效的绕法**: 显式 `AdjustLayout`、`AfterFunc` 延迟重排、给 Content 用 Percent 50 都无效(实测子项宽仍为 0); 改 Fixed 宽是唯一稳定解。
+    - **修法**: 横向 `Field.Content()` 默认 `Fixed 240`, 调用方用 `xui.ItemWidth(c, w)` 覆盖; 竖排 Content 走 Fill, 链路正常。同类的"横向嵌套列"布局都按此处理。
+
+102. **元素重排后必须整窗重绘, 否则旧位置文字留下重影**(`components/field.go` 的 `FieldError.SetErrors`, 截图):
+    - **现象**: 隐藏 FieldError 后下面的字段上移, 新位置画对了, 但旧位置的"显示名称 / 团队可见 / 说明"仍留在画布上, 与新位置文字叠在一起(用户截图里同一个"团队可见"出现两次)。
+    - **根因**: xcgui 移动元素时不会自动擦除旧位置像素; 只 `Redraw` 错误区/自身覆盖不到搬走元素占过的矩形(透明布局容器不擦底, 同 28), 只调 `XWnd_AdjustLayout` 也只重排不重绘。
+    - **修法**: 逐级 `XEle_AdjustLayout` 结束后, 从 hEle 取 HWND → `XC_hWindowFromHWnd` → `XWnd_Redraw(hw, false)` 整窗重绘(与 Alert 的 reflow 同口径, 见 90)。显示与隐藏错误区都要走这条链; 若只做布局不做整窗重绘, 重影会一直留到下一次全窗重绘。
 
 ---
 
