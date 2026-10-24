@@ -142,24 +142,25 @@ func (b *Badge) resolve(t *xui.Theme, hv float64) (bg, border, fore xui.Color) {
 	switch b.variant {
 	case BadgeSecondary: // bg-secondary text-secondary-foreground; hover:bg-secondary/80
 		bg, fore = t.Secondary, t.SecondaryForeground
-		bgHV = t.Secondary.WithAlpha(204)
+		// hover 色预混成不透明(over Card): 不铺方底时, 半透明色会叠在上一帧实色上
+		bgHV = t.Card.Mix(t.Secondary, 0.8)
 	case BadgeOutline: // border-border text-foreground; hover:bg-muted hover:text-muted-foreground
 		border, fore = t.Border, t.Foreground
 		bgHV, foreHV = t.Muted, t.MutedForeground
 	case BadgeDestructive: // bg-destructive/10 text-destructive; hover:bg-destructive/20
-		bg, fore = t.Destructive.WithAlpha(26), t.Destructive
-		bgHV = t.Destructive.WithAlpha(51)
+		bg, fore = t.Card.Mix(t.Destructive, 0.1), t.Destructive
+		bgHV = t.Card.Mix(t.Destructive, 0.2)
 	case BadgeGhost: // hover:bg-muted hover:text-muted-foreground (dark:hover:bg-muted/50)
 		fore = t.Foreground
 		bgHV, foreHV = t.Muted, t.MutedForeground
 		if t.IsDark() {
-			bgHV = t.Muted.ScaleAlpha(0.5)
+			bgHV = t.Card.Mix(t.Muted, 0.5)
 		}
 	case BadgeLink: // text-primary hover:underline(下划线在 onPaint 画)
 		fore = t.Primary
 	default: // bg-primary text-primary-foreground; hover:bg-primary/80
 		bg, fore = t.Primary, t.PrimaryForeground
-		bgHV = t.Primary.WithAlpha(204)
+		bgHV = t.Card.Mix(t.Primary, 0.8)
 	}
 	bg = xui.Fade(bg, bgHV, hv)
 	if !foreHV.IsNone() {
@@ -178,10 +179,18 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	hv := xui.Hover(hEle, b.hover)
 	bg, border, fore := b.resolve(t, hv)
 	radius := t.Pill(p.H())
-	// 先铺宿主底色: link / ghost 变体静止态 bg = None(FillRound 对 None 跳过),
-	// 透明元素重绘不擦底(见 DESIGN 第八节 28), 不铺的话上一帧的悬停痕迹会残留。
-	// 组件按"放在 Card 上"设计(同 Checkbox/Slider/Pagination)。
-	p.FillRound(&p.Rc, t.Card, 0)
+	// 需要擦底的变体才铺宿主底色: link / ghost 静止态 bg = None, 透明元素重绘
+	// 不擦底(见 DESIGN 第八节 28), 不铺的话上一帧的悬停痕迹会残留。
+	// default / secondary 的静止色本身不透明, 整块圆角都会被覆盖 —— 再铺一层
+	// Card 方底会在非 Card 背景(如 ItemMuted)上露出一圈深色矩形, 所以跳过。
+	switch b.variant {
+	case BadgeDefault, BadgeSecondary, BadgeDestructive:
+		// 静止/悬停色都是不透明预混色, 整块胶囊每帧被覆盖, 不需要擦底。
+	default:
+		// outline / ghost / link 的静止态没有底色, 用圆角底擦掉上一帧悬停痕迹;
+		// 方底会在 muted 底上露出四角, 必须用与胶囊相同的圆角。
+		p.FillRound(&p.Rc, t.Card, radius)
+	}
 	p.FillRound(&p.Rc, bg, radius)
 	p.StrokeRound(&p.Rc, border, radius, 1)
 

@@ -14,6 +14,7 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Item / Breadcrumb / Kbd / Skeleton / Spinner**(2026-10-24): 补齐 shadcn 批次 1 剩余五项 —— `ui.NewItem`(Media/Content/Actions/Header/Footer + 3 变体 × 2 尺寸 + ItemGroup/Separator/Title/Description/Media)、`ui.NewBreadcrumb`(Item/Link/Page/Separator/Ellipsis, 链接 hover 过渡 + OnClick)、`ui.NewKbd` / `NewKbdGroup`、`ui.NewSkeleton`(2s 脉冲, 运行时新增 `xui.Pulse`)、`ui.NewSpinner`(Loader2 1s/圈, 运行时 `xui.Spin`); demo 基础1页第三行 + 基础2页列表项 + 导航页面包屑, 亮/暗 150% DPI 截图验收, Spinner 逐帧确认旋转、Skeleton 逐帧确认脉冲、Breadcrumb hover 过渡与 OnClick 回调确认; 三处新结论: `XEle_SetPadding` 可替代外边距 pad、Item 内容区要按实测宽度锁 Fixed、Label 精确按 TextWidth 设宽会被原生 Button 内边距截断(见第八节 103~105); 另修暗色 ItemMuted 上徽章露出深色方底(Badge 不再给不透明变体铺 Card 方底), 以及首页多动画掉帧/GPU 高(Spin/Pulse 共享宿主窗口定时器、按动画元素矩形分组局部重绘(XWnd_RedrawRect)、60fps + 前台暂停; 后台/最小化/滚出视口自动停表, app GPU ≈0.5%、DWM 后台 ≈0.03%、前台约 10~14%(30fps 实测仍 ~10%, 已回退 60fps 保证流畅), 见第八节 106); 逐组件安装 spinner / skeleton / kbd / breadcrumb / item 与 `add --all` 均编译通过
 - ✅ **Empty / Field**(2026-10-24): 新增空状态容器 `ui.NewEmpty`(Header/Content/Body 槽位 + 图标底板/无底板媒体 + 标题/描述)与表单字段布局 `ui.NewField`(Label/Title/Description/Content/SetInvalid + FieldSet/Group/Legend/Separator/Error);demo 反馈页 + 表单1页亮暗验收,校验错误区显示/隐藏时卡片高度正确伸缩;横向 Content 的嵌套布局拿不到 Weight/Percent 宽,默认改 Fixed 240(见第八节 101);隐藏错误区后旧位置文字会留重影,重排结束补整窗重绘(见第八节 102);逐组件安装 empty / field 与 `add --all` 均编译通过
 - ✅ **Menu 右键触发 / 前置图标 / inset 扩展**(2026-10-23): 新增 `NewContextMenu(元素, build)`(窗口级右键命中触发区, 子元素上右键也生效; `SetEnabled` / `OnOpenChange`)、`MenuIcon`(条目/Sub 前置图标)、`Label` / `Sub` 支持 `MenuInset`;Check/Radio 未选中也保留右侧 24(`pr-8`); 弹层宽度改为**逐条按自绘字体量宽**(原生字体与自绘不一致, 内容自适应的长中文会被裁, 见第八节 99);demo 导航页新增虚线右键触发区 + shadcn ContextMenuDemo 同构菜单。**菜单进场动画整个去掉**(用户录屏: 整窗 alpha 会透出背景文字, 改成"面板不透明 + 只淡内容"又会先闪一帧空白面板, 两条路都闪; 位移/缩放会崩)—— 现在与原生菜单一样弹出即全内容, 见第八节 99; 顺带修正触发区文字居中对齐(`XDraw_SetFont` 会重置对齐, 顺序必须是先字体后对齐, 见第八节 100), 并去掉 demo 里 `人员` 分组标签的 `MenuInset`(本菜单勾选在右侧, 条目文字从 6 起, 加了 inset 反而错位); 右键触发区补 hover / 展开反馈(`bg-accent` + 虚线变 `Ring`, `OnOpenChange` 驱动, 透明元素先铺 `t.Card` 擦底), 让右键不再像凭空出现, 与左侧按钮菜单的 hover→展开节奏一致。其余验收:亮/暗两主题右键触发、子菜单、勾选/单选状态持久、破坏性样式;独立探针验证自适应长文本不裁 + 短菜单 128 下限;`go test ./components -run Menu` 通过
 - ✅ **P0 运行时**:Color/Theme 令牌、主题管理器(SetTheme 零成本换肤 + OnThemeChange)、Painter、字体缓存(单位坑见 31)、focus-visible 焦点来源跟踪(16)
@@ -546,10 +547,10 @@
 ## 待办
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
-- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components 的 59 项: 32 项已有对应, 5 项部分覆盖, 22 项未实现)。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
+- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components 的 59 项: 37 项已有对应, 4 项部分覆盖, 18 项未实现)。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
   - **已有等价实现(不新增)**: Radio Group = `NewRadio`(原生父容器互斥)、Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
-  - **部分覆盖待补**: Select(弹层皮肤与 item-aligned 定位已在 ComboBox, 缺无过滤独立版)、Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Spinner(只在 Button loading 内联)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
-  - **批次 1 — 纯组合/绘制**: Empty / Field 已完成(2026-10-24);剩下 Item、Breadcrumb、Kbd、Skeleton、Spinner(★~★★)。
+  - **部分覆盖待补**: Select(弹层皮肤与 item-aligned 定位已在 ComboBox, 缺无过滤独立版)、Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
+  - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
   - **批次 2 — 表单闭环**: Toggle、Toggle Group、Native Select、Select、Input OTP(★~★★★); Accordion 复用 Collapsible, 可并行(★★)。
   - **批次 3 — 弹层基座**: Popover(公开 `popoverPanel`, 是后续组件的底座) → Hover Card → Command; Avatar 独立(★★~★★★)。
   - **批次 4 — 窗格/菜单**: Sheet → Drawer、Menubar(★★★)。
@@ -569,6 +570,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 switch progress slider tabs collapsible tooltip toast window combobox dialog alertdialog
 │                                 menu table tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
+│                                 empty field item breadcrumb kbd skeleton spinner
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)

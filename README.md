@@ -108,6 +108,11 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Alert | 提示条:图标 + 标题 + 描述 + 右上动作槽;`AlertDefault` / `AlertDestructive` 两变体,标题/描述随宽度自动折行、高度按内容自撑;`Action()` 里放 Button / Badge |
 | Empty | 空状态容器(`components/empty.go`):图标底板(`EmptyMediaIcon`, 40px bg-muted 圆角)/无底板媒体 + 标题 + 描述 + 动作区;`NewEmpty` 的 `Header()` / `Content()` / `Body()` 三个槽位,内边距 24、间距 24、整块居中;不画边框(与上游默认一致),高度自撑,整页空态可 `xui.ItemFillHeight` 让内容垂直居中 |
 | Field | 表单字段布局(`components/field.go`):`NewField` + `Label` / `Title` / `Description` / `Content` / `SetInvalid`;`FieldSet`(gap 24)/ `FieldGroup`(gap 28)/ `FieldLegend` / `FieldSeparator`(可带居中文字)/ `FieldError`(多条去重);垂直/水平取向,校验失败时标签转 destructive;横向 `Content` 默认 240 宽(嵌套布局只认 Fixed 宽,用 `xui.ItemWidth` 覆盖) |
+| Item | 列表项(`components/item.go`):`NewItem` + `Media()` / `Content()` / `Actions()` / `Header()` / `Footer()` 槽位;`ItemDefault` / `ItemOutline` / `ItemMuted` 三变体,`ItemSizeDefault` / `ItemSizeSm` 两档;`ItemMedia`(icon 变体 32 底板)/ `NewItemTitle` / `NewItemDescription` / `NewItemGroup` / `NewItemSeparator`;Content 宽度按媒体/动作实测自动锁成 Fixed |
+| Breadcrumb | 面包屑(`components/breadcrumb.go`):`NewBreadcrumb` 横向换行列表 + `NewBreadcrumbItem` / `NewBreadcrumbLink`(hover 过渡到前景色、`OnClick`)/ `NewBreadcrumbPage` / `NewBreadcrumbSeparator`(可换图标)/ `NewBreadcrumbEllipsis`;文本自绘、按字体精确量宽 |
+| Kbd | 键帽(`components/kbd.go`):高 20、bg-muted、rounded-sm、text-xs,宽度按文字自适应;`NewKbdGroup` 组合键间距 4 |
+| Skeleton | 骨架屏(`components/skeleton.go`):bg-accent + 主题圆角 + 2s 脉冲;`WithSkeletonCircle` 头像、`WithSkeletonRadius` 自定义圆角、`WithSkeletonStatic` 关闭动画 |
+| Spinner | 加载指示器(`components/spinner.go`):Loader2 图标 1s/圈旋转,`WithSpinnerSize` / `WithSpinnerMuted` / `WithSpinnerColorFunc`,`SetSpinning` 开关 |
 | Checkbox / Radio | 自绘指示器 + 原生状态管理 |
 | Input | 原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环,占位符随主题;校验失败态 `WithInputInvalid`;内嵌附加件:`WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible` / `PasswordVisible`) / `WithCounter`;步进器 `WithStepper(min,max,step)` + `SetNumber` / `Number` / `OnStep`(支持 −/+ 按钮与 ↑/↓ 键,失焦自动夹取吸附;`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态,`WithStepperAutoHide` 让按钮只在悬停/聚焦时出现) |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块;滑块支持自定义值域与步进(`WithSliderRange` / `WithSliderStep`) |

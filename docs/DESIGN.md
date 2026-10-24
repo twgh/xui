@@ -332,6 +332,12 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | time picker = 触发区同 date picker(clock 图标 + "09:30") + 弹层两列滚动列表(时 0-23 / 分 0-59): 每列 64 宽、8 项可见(28×8), p-1 内边距; 载体是**原生 ListBox**(滚动/滚轮/点击都是原生), 条目背景与文字自绘 —— 选中 bg-primary + text-primary-foreground, 悬停 bg-accent(150ms 过渡); **选择即生效但弹层保持打开**(继续改另一列), 点外部/ESC 关闭; 打开时选中项滚到列表中间(行步进 = 项高+1, 见第八节 72) | shadcn 无官方 time-picker, 语义取社区通行形态(Popover + 滚动列表) + timepicker.go |
 | toast(sonner) = 右下角堆叠(新的在最下)、卡宽 356、与内容区边缘 24、卡间距 10; 卡片 bg-popover + border + rounded-lg + shadow-md, 内边距 16, 图标 20(与文字间距 10), 标题 13px font-medium / 描述 13px 可折行, 动作按钮 h-26 bg-muted hover:bg-accent, **关闭按钮默认隐藏**(同 shadcn 的 sonner), 显示时在右上角; 类型(success/error/warning/info)只改图标与图标色, 不给卡面上底色(未开 richColors); 自动关闭 **4s**、**悬停任一条暂停全部倒计时**、超出可见条数(默认 3)移除最旧; 进场淡入 + 从堆叠方向滑入 12px(200ms), 退场淡出 + 向侧边滑出 24px(180ms); 类型快捷入口 `Success/Error/Warning/Info`, `Duration < 0` = 常驻 | sonner 默认值(宽度/offset/gap/4s/pauseTimers/visibleToasts=3) + shadcn 的 sonner.tsx(theme 交给令牌; 不传 closeButton) + 第八节 75 |
 
+| item = 容器 rounded-md + border-transparent、text-sm;default gap-4(16) + p-4(16),sm gap-2.5(10) + px-4(16)/py-3(12);variants = 透明 / border-border / bg-muted/50;中间行 = Media + Content(吃剩余宽) + Actions,Header/Footer 占整宽;Media icon = size-8(32) rounded-sm border bg-muted + 16 图标,Content gap-1(4);**Header/Footer 的 justify-between 用 `xui.ItemWeight` 撑开第一个子项**(布局没有 justify-between);动作之间用 Item 的行间距,不是上游 gap-2 | item.tsx + item.go(Content 宽度见第八节 104) |
+| breadcrumb = 列表 text-sm muted-foreground、桌面间距 sm:gap-2.5(10)、flex-wrap;条目内 gap-1.5(6);当前页 foreground;分隔符 chevron size-3.5(14);省略号 size-9(36) 居中 size-4 图标;链接 hover 过渡到前景色 | breadcrumb.tsx + breadcrumb.go(文本自绘的原因见第八节 105) |
+| kbd = h-5(20) min-w-5(20) rounded-sm bg-muted px-1 text-xs font-medium muted-foreground,宽度随文字;KbdGroup 间距 gap-1(4) | kbd.tsx |
+| skeleton = bg-accent rounded-md + animate-pulse 2s(1 → 0.5 → 1);脉冲相位由 `xui.Pulse` 提供,不自己起定时器 | skeleton.tsx + anim.go |
+| spinner = Loader2 size-4(16) animate-spin 1s/圈;相位由 `xui.Spin` 提供 | spinner.tsx + anim.go |
+
 ### 变体/尺寸与上游的映射、已知差异
 
 对照 `shadcn/src/components/ui/*.tsx`。**令牌名**要求与 CSS 变量逐字符对应(见 3.1),**组件变体名**是 Go API、不参与批量转译, 允许更直白, 但差异必须记在这里:
@@ -420,7 +426,7 @@ ui/
   | `popup.go` | 弹层骨架(定位、阴影、进出场) | datepicker / timepicker |
   | `backdrop.go` | 弹层背景模糊(抓窗快照) | dialog |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在 `ui/` 里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update` 或 `xui update button`(只更新该组件及其依赖)。
 
@@ -442,6 +448,9 @@ ui/
 | Calendar 不做 RTL(dir=rtl)/波斯·Jalali 历/timeZone/自然语言日期(chrono-node) | 文字渲染只有 LTR; 历法换算与时区数据是另一套领域库, Go 侧没有 chrono-node 的等价物 —— 绝对/相对日期的键入用 DatePicker 的可输入形态(`ParseDateText`)覆盖最常用场景; 范围色带跨月时在两个月块之间不连续(上游同样是每月一张独立表格) |
 | Field 横向 `Content` 的嵌套列只认 Fixed 宽 | xcgui 不会把 Weight/Percent 宽度传给嵌套布局的 Fill 子项(实测子项宽恒为 0, 内容不显示); 组件默认 Fixed 240, 用 `xui.ItemWidth` 覆盖(第八节 101) |
 | EmptyDescription / FieldDescription / FieldError 不自动折行 | Label 的高度不会随折行自撑; 需要多行时调用方用 `SetWrap` + `WrappedHeight` 量高后写回高度(同 Alert 的做法) |
+
+| Item 的 Header/Footer 没有自动 space-between, 动作之间用 Item 的行间距 | Go 布局没有 justify-between: 用 `xui.ItemWeight` 给靠左的第一个子项撑开; 行内动作也不再单独套 gap-2 容器(嵌套 Auto 宽不量测原生按钮, 见第八节 104) |
+| Breadcrumb 链接/当前页是单行自绘文本, 且不参与 Tab 焦点 | Label 的原生 Button 载体按 `TextWidth` 精确设宽会被内部文本内边距截断(第八节 105); 自绘后不折行、不支持富文本, 键盘焦点需要每链接一个可聚焦元素(当前为鼠标驱动) |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1031,7 +1040,7 @@ ui/
     - **普通 `widget.Element`(非 LayoutEle)可以当布局项**: 被父布局排版、跟随缩放都正常(探针对照 A/B 一致)。而 `EnableLayout / EnableHorizon / EnableAutoWrap` 这些"**当容器排子项**"的开关只有 LayoutEle(与窗口)有 —— 所以卡片能否排自己的内容取决于它是不是 LayoutEle(见 56)。
     - **`Show(false)` 的子项会被布局跳过**(排成 0x0): 页签式"同位置叠放多页"因此不需要绝对定位 —— 竖向堆叠里隐藏的页不占位。改可见性后**必须重排宿主**(`AdjustLayout`), 否则新显示的那页拿不到尺寸(实测只排那一页时仍是 0x0)。
     - **窗口必须 `Show` 过之后布局才有非零尺寸**: `Show` 之前即使调 `AdjustLayout`, root 恒 0x0。
-    - 另: `xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距); 本库暂用"子项外边距"达到同样效果, 未实测。
+    - 另: `xc.XEle_SetPadding(hEle, l, t, r, b)` 是元素级内边距, **已实测可用于 LayoutEle**(Fill 子项按扣除 padding 后的宽度排版, 见 103); 带外边距的子容器当 padding 时, 内层 Fill 不会跟着缩窄(Item 曾因此丢掉右内边距)。
 
 56. **Card 是布局容器: 内容区随卡片尺寸自动联动**(`ui/card.go`):
     - 卡片底层是 `widget.LayoutEle`(竖直流式 + `EnableAutoWrap(false)`), 内容区 `ContentStack(space)` 是它的 **Fill 宽 + 外边距 = 内边距** 的子项 —— 卡片被父布局拉伸时内容区与其中的控件自动跟随。调用方不要拿 `ContentWidth` 去算宽度: 它取的是**创建那一刻**的宽度, 卡片一缩放就错。
@@ -1339,7 +1348,7 @@ ui/
     - **验收(探针/逐帧)**: 800 宽窗口里 `ItemWeight` 宽的 16:9 容器 → 784×441; 窗口缩到 600 → 584×329; `SetRatio(1)` → 584×584, 外层 Auto 高的行同步长高; PrintWindow 逐帧抓页签切换, **首帧三块比例框就是最终尺寸**, 无展开; 切换后 CPU 稳定(不再跑满), 窗口缩放后比例跟随且无残影。
 
 95. **CardFooter 的内边距用"内层内容区的外边距"表达, 子项别直接挂在页脚上**(`components/card.go`):
-    - 页脚是横向布局容器(`items-center` + 高度 Auto 自撑), 内层 `Content()` 宽 Fill、高 Auto、四边外边距 = 内边距(default 16 / sm 12)。这沿用卡片内容区的既有做法 —— `XEle_SetPadding` 对布局子项的影响未实测, 不要拿它当内边距。
+    - 页脚是横向布局容器(`items-center` + 高度 Auto 自撑), 内层 `Content()` 宽 Fill、高 Auto、四边外边距 = 内边距(default 16 / sm 12)。这沿用卡片内容区的既有做法; `XEle_SetPadding` 已验证可用(见 103), 但页脚/内容区现有写法无需改动。
     - 页脚 `cy = 0` 时高度 = 内容高 + 上下外边距; 传固定高时内容在页脚内垂直居中。直接挂到页脚上的子项会跳过内边距, 只有整宽背景/分隔线这类贴边内容才这样用。
     - 页脚做成布局容器后, 页脚里放按钮/文字用 `footer.Content()` / `ContentStack(space)`; 要竖排(登录卡的两个整宽按钮)对内容区 `EnableHorizon(false)`。
 
@@ -1387,6 +1396,34 @@ ui/
     - **根因**: xcgui 移动元素时不会自动擦除旧位置像素; 只 `Redraw` 错误区/自身覆盖不到搬走元素占过的矩形(透明布局容器不擦底, 同 28), 只调 `XWnd_AdjustLayout` 也只重排不重绘。
     - **修法**: 逐级 `XEle_AdjustLayout` 结束后, 从 hEle 取 HWND → `XC_hWindowFromHWnd` → `XWnd_Redraw(hw, false)` 整窗重绘(与 Alert 的 reflow 同口径, 见 90)。显示与隐藏错误区都要走这条链; 若只做布局不做整窗重绘, 重影会一直留到下一次全窗重绘。
 
+103. **`XEle_SetPadding` 可用于布局元素; 用带外边距的子容器当 padding 会让 Fill 行超宽**(`components/item.go`, 元素矩形实测):
+    - **现象**: Item 原结构是 root → pad(四边 margin 16) → body(Fill 宽)。pad 实际宽 768(16..784), 但 body 仍按 root 宽 800 排版(相对 pad 0..800) —— 行尾动作区被推到卡片右侧外裁掉, 右内边距消失。
+    - **根因**: 子元素的 Fill 宽度按外层布局宽算, 不受中间 pad 自身外边距缩窄。
+    - **修法**: 用 `xc.XEle_SetPadding(hEle, l, t, r, b)` 直接给根元素内边距(实测: 500 宽的 LayoutEle 设 16 后, Fill 子项宽 468); 不再套带 margin 的 pad。此 API 之前只有"存在"记录, 现已验证可替代"子项外边距当 padding"。
+
+104. **横向 Item 的 Content 不能靠 Weight 吃剩余宽度, 要算成 Fixed**(`components/item.go`):
+    - **现象**: body(横排)里 Media(Fixed) + Content(Weight 1) + 动作按钮时, Content 里的 Fill 标题/说明宽度恒为 0; Content 改成 Fixed 后正常。若把动作放进 Auto 宽的子容器, 子容器不会量测原生 Button 宽度, 会塌成 0、按钮被裁到卡片外。
+    - **根因**: 101(嵌套 Weight 不把宽度下发给 Fill 子项)+ Auto 宽容器只量测声明了布局尺寸的子项。
+    - **修法**: 动作元素直接挂 body 行(不套 Auto 子容器); 在 body 的 Size 事件里按"body 宽 - 可见 Media 宽 - 可见动作宽 - 间距"算出 Content 宽, 设 Fixed 后 `body.AdjustLayout()` + `content.AdjustLayout()`。运行中增删动作后, 下一次尺寸变化会重算。
+
+105. **Label 按 `TextWidth` 精确设宽会被省略号截断**(breadcrumb 截图 + 对照探针):
+    - **现象**: `w := xui.TextWidth(text, font)` 后 `NewLabel(..., w, 20, text, ...)`, "首页"(w=30) 显示 "首.."; 宽 38 才完整, "面包屑"(w=45) 同理。
+    - **根因**: Label 的载体是原生 Button, 文本区有内部左右内边距; `TextWidth` 只量字形宽度, 不含这段内边距。
+    - **修法**: 需要"按文字精确宽度"的小元素不要用 Label, 用透明 Element + `Painter.Text` 自绘(Breadcrumb 即此做法); 必须用 Label 时给量测宽加余量(实测再加 8 逻辑像素即可)。
+
+106. **连续动画: 共享宿主窗口定时器 + 局部矩形重绘 + 前台暂停**(`anim.go`, Spinner/Skeleton, CPU/GPU 实测):
+    - **现象**: 首页放 5 个 Spinner + 4 个 Skeleton 后卡顿、DWM 持续占 10%+ GPU; 切走页签/最小化/滚出视口后仍不回落。
+    - **根因**: ① 每个动画元素各起一个 60fps 的 `XEle_SetXCTimer`, N 个动画 = N 份定时器回调; ② 逐元素 `XEle_Redraw` 每次都会触达窗口合成, 多个元素比"一次局部重绘"更贵; ③ DWM 对**每帧整窗重新合成**收费, 大窗口 60fps 的连续动画即使应用侧只花 0.5% GPU, DWM 也会占 10%+(窗口样式/阴影不是主因, 普通窗与阴影窗几乎一样); ④ 页签隐藏后元素自身的 Show 标志不一定是 false, 定时器继续空转。
+    - **修法**: `Spin` / `Pulse` 传元素句柄时, 定时器挂到**宿主窗口**(`XWidget_GetHWND` + `XC_hWindowFromHWND`), 键 = 元素句柄(Spin/Pulse 用最低位区分), 同一窗口的所有动画共用一个定时器; 连续动画保持 60fps(试过 30fps: DWM 仍然 ~10%, 只是旋转变卡, 已回退); 每帧用 `XEle_GetWndClientRect`(已含 ScrollArea 滚动偏移, 实测滚 1200 后 y 1500→300)算出动画元素矩形, 外扩后相近/重叠的合并成组, 每组一次 `XWnd_RedrawRect`(超过 4 组退回总并集 —— 多次局部重绘每次都有固定合成成本, 实测 9 块 11.5%, 1 块 7.5%); 每 tick 沿祖先链 `XWidget_IsShow`、窗口 `IsWindowVisible/IsIconic` 与视口矩形相交检查可见性, 隐藏/滚出视口的动画摘掉并停表; 宿主窗口不在前台时**只跳过重绘、保留定时器与相位**, 切回前台下一帧自动恢复(不能清表, 否则没有重绘事件就不会重启)。
+    - **验收**: 2560×1528 前台动画: app CPU ≈0.5s/3s、app GPU ≈0.5%, DWM ≈10~14%(平台合成最大化窗口的固有成本; 30fps 实测仍在 ~10%, 降帧没有意义); 后台/最小化/滚出视口时 DWM ≈0.03%、app GPU 0; 切回前台 Spinner/Skeleton 自动恢复。不要再用"降帧率"换 DWM, 那只损失流畅度。
+
+
+
+107. **不透明的圆角控件不要先铺方底擦色**(`components/separator.go` 的 Badge, 暗色 ItemMuted 截图):
+    - **现象**: 暗色主题下 ItemMuted 里的 "成功" 徽章背后露出一块比 item 底色更深的矩形。
+    - **根因**: Badge 为了擦掉透明元素上一帧的悬停痕迹, 每帧先铺一层 `t.Card` **方底**; default / secondary 本身是不透明圆角胶囊, 已经覆盖了整个胶囊, 这层方底纯属多余, 而 Card 色与 ItemMuted(混合底)不一致, 四角就露出来。
+    - **修法**: 只给需要擦底的变体(outline / ghost / link)铺底, 且用**圆角底**(radius)而不是方底; default / secondary / destructive 直接画不透明胶囊(destructive 的 10%/20% 底色也预混成 over-Card 的不透明色); 不透明变体的 hover 色同样预混, 否则半透明 hover 会叠在上一帧实色上偏深。透明元素不擦底的根因见 28。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1395,7 +1432,7 @@ ui/
 - `Element.AddEvent_Menu_Draw_Background / AddEvent_Menu_DrawItem`(widget/element.go:2056, 2080)
 - Menu / ContextMenu(见第八节 36/64/99):`Menu.AddItem / SetItemWidth / SetItemHeight / SetLeftWidth / SetBorderSize / EnableDrawBackground / EnableDrawItem / AddEvent_Menu_Select / AddEvent_Menu_Exit / AddEvent_Menu_PopupWnd`;右键触发用 `Window.AddEvent_RButtonUp`(pPt = 逻辑像素, 原点 = 窗口矩形原点)+ `xc.XEle_GetWndClientRect` + `XC_IsHXCGUI / XEle_IsEnable / XWidget_IsShow`;`xui.TextWidth` 按自绘字体自行给菜单条目定宽(原生字体与自绘不一致)
 - `drawx.NewByHandle / EnableSmoothingMode / SetBrushColor / FillRoundRect(Ex) / DrawRoundRect(Ex) / GradientFill2/4 / DrawText / TextOut* / Image* / DrawSvg* / SetClipRect / SetLineWidth`
-- 持续旋转/高 DPI 位移(见第八节 87/88):`xui.Spin(hOwner, active) float64`(相位 0..1, 1s/圈, 复用元素/窗口的动画定时器;`SetAnimationScale(0)` 冻结)、`Painter.IconRotated(data, rc, color, strokeWidth, angleRadians, scale...)`、`Painter.IconRotatedOffset(..., dx, dy int32)`(按画布物理像素微调)、`Painter.TextF(str, *xc.RECTF, color, align)`(浮点矩形文字, 用于亚逻辑像素位移;整数矩形下与 `Painter.Text` 一致)
+- 持续旋转 / 脉冲 / 高 DPI 位移(见第八节 87/88):`xui.Spin(hOwner, active) float64`(相位 0..1, 1s/圈)、`xui.Pulse(hOwner, active) float64`(相位 0..1, 2s/来回, 与 Spin 共用动画定时器、键空间独立;`SetAnimationScale(0)` 冻结)、`Painter.IconRotated(data, rc, color, strokeWidth, angleRadians, scale...)`、`Painter.IconRotatedOffset(..., dx, dy int32)`(按画布物理像素微调)、`Painter.TextF(str, *xc.RECTF, color, align)`(浮点矩形文字, 用于亚逻辑像素位移;整数矩形下与 `Painter.Text` 一致)
 - **自绘"非 lucide"小图形走图标管线**, 别手算多边形: svgp 的子路径前加 `!` 就是填充形状(走 FillGeometry), 配 `Painter.Icon(path, rc, color, 0)` 直接出图, D2D 几何按 path+size 缓存。步进器的上下微调箭头就是两条 24 网格 path(三角占满 24 宽、Q 曲线倒角), 每枚箭头给一个**正方形**绘制块(管线按短边铺满)。曾手写"削角 + FillPolygonF 逼近圆弧", 10px 尺寸下不是歪就是糊、底角圆弧还会把墨迹洇到底边外, 全部弃用
 - `xc.XBtn_GetStateEx`、`xcc.Button_State_*` 状态
 - `xc.RGBA / xc.ParseRGBA / xc.HexRGB2RGBA`(Web 十六进制色直转)
@@ -1404,7 +1441,7 @@ ui/
 - `XWnd_Redraw / XWnd_GetDPI`、`XC_EnableAutoDPI / XC_EnableDPI`
 - LayoutEle:`EnableLayout / IsEnableLayout / EnableHorizon / EnableAutoWrap / EnableOverflowHide / SetAlignH(V) / SetSpace / SetSpaceRow / ShowLayoutFrame / GetWidthIn(HeightIn)`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin/SetMinSize`、`xc.XWidget_LayoutItem_GetWidth/Height/GetMargin`、尺寸类型 `xcc.Layout_Size_{Fixed,Fill,Auto,Weight,Percent,Disable}` 与对齐 `xcc.Layout_Align_*`(语义与"Fill≠剩余空间 / Weight 需父级确定尺寸"见第八节 29/41/55;Go 包装无 AdjustLayout, 用 `XEle_AdjustLayout`);`EnableLayout/EnableHorizon/EnableAutoWrap` **只有 LayoutEle 与窗口有**(普通 Element 只能当布局项);**负外边距可用**(竖向按钮组消 1px 按压缝, 见 86)
 - 按钮组(见第八节 86): `xc.XDraw_FillRoundRectEx/DrawRoundRectEx`(四角独立半径)、`xc.XEle_SetUserData/GetUserData`(组件角色标记)、`XWidget_GetParentEle` + `XEle_GetChildByIndex/GetChildCount`(首尾判定)、`XEle_GetHeight`(按按钮视觉高定文本/分隔条高度)
-- 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)` 存在(元素级内边距), 本库暂用子项外边距替代, 未实测
+- 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)`(元素级内边距, 已实测: Fill 子项按扣除 padding 后的宽度排版, 见 103)
 - 滚动容器(`LayoutFrame`, 见第八节 66):`widget.NewLayoutFrame`(布局盒子 + 滚动视图, 内容总大小自动撑开) + `XLayoutBox_*`(与 LayoutEle 同一套 EnableHorizon/AutoWrap/OverflowHide/Align/Space) + `XSView_SetTotalSize/GetTotalSize/SetScrollBarSize/EnableAutoShowScrollBar/ShowSBarH(V)/GetViewWidth/GetViewHeight/GetViewRect/GetViewPosH(V)/ScrollPosYV(像素)/ScrollPosV(行)/ScrollTop(Bottom)/GetScrollBarH(V)Obj`、`ScrollBar.ShowButton/SetSliderPadding/GetButtonSliderObj` + `AddEvent_Size(xc.XE_SIZE1)`(自愈补排)
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
 - 手动建列表(时间框弹层, 见第八节 72):`ListBox.CreateAdapter/AddItemText/SetItemHeightDefault/SetDrawItemBkFlags/GetItemText(i, 适配器列)/GetTemplateObject(i, 模板itemID)/SetSelectItem(不滚动)/GetCount_AD/AddEvent_ListBox_DrawItem/Temp_Create_End/Select/GetScrollBarVObj`;`XShapeText_SetTextColor(h, 0)` 让模板文字全透明、`XWidget_LayoutItem_SetMargin(h, l, t, r, b)`、`xc.XWidget_LayoutItem_SetWidth(…Fill)` 对项模板文字会算出 0 宽(勿用)

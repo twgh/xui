@@ -4,9 +4,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xc"
+	"github.com/twgh/xcgui/xcc"
 )
 
 // ===== hover 过渡动画 =====
@@ -53,6 +55,8 @@ const (
 	itemKeyBase int32 = 1
 	// spinPeriod 是持续旋转动画一圈的时长, 对齐 tailwind animate-spin 的 1s linear。
 	spinPeriod = time.Second
+	// pulsePeriod 是骨架屏脉冲一个来回的时长, 对齐 tailwind animate-pulse 的 2s。
+	pulsePeriod = 2 * time.Second
 )
 
 // hoverItem 是一个过渡值: 在 from → target 之间按缓动插值。
@@ -72,9 +76,12 @@ type hoverItem struct {
 	done  func(v float64) // 到位一次
 }
 
-// spinItem 是一个持续旋转动画的起始时间(相位由绘制时的墙钟时间算)。
+// spinItem 是一个持续动画的起始时间(相位由绘制时的墙钟时间算)。
+// hEle 非 0 时表示动画属于哪个元素: 帧回调据此检查可见性(隐藏/销毁即停);
+// 0 = 直接挂在窗口上的动画(调用方给的是窗口句柄)。
 type spinItem struct {
 	start time.Time
+	hEle  int
 }
 
 // hoverOwner 是一个重绘目标(元素或窗口)上的全部过渡值与旋转动画。
@@ -149,17 +156,58 @@ func HoverItem(hOwner int, index int32, active bool) float64 {
 // 由运行时同一个重绘定时器约 60fps 驱动 —— 组件在绘制回调里每帧调用即可,
 // **不要自己起定时器或缓存相位**。
 //
+// hOwner 是元素时, 动画帧挂到**宿主窗口**上: 同一窗口里的所有 Spin/Pulse 共用
+// 一个定时器, 每帧只重绘动画元素所在的矩形分组(相近/重叠的合并; 逐个元素
+// XEle_Redraw 会反复触达窗口合成, 更贵, 见 DESIGN 第八节 106); 元素被隐藏
+// (含祖先页签隐藏/滚出视口/窗口最小化)后自动停表。
+// hOwner 是窗口时保持旧行为(整窗重绘)。
+//
 // 相位按墙钟时间算(不是逐帧累加), 掉帧时不会走慢; SetAnimationScale(0) 会
 // 冻结旋转(便于截图对比), 恢复后从当前相位继续。
 func Spin(hOwner int, active bool) float64 {
-	const key int32 = 0
+	return spinPhase(hOwner, active, spinPeriod, false)
+}
+
+// Pulse 返回 hOwner 上脉冲动画的相位(0..1), 周期 2s(对齐 tailwind 的
+// animate-pulse)。active=false 时停止并返回 0。与 Spin 共用同一个重绘定时器,
+// 键空间互不影响(同一个元素可以同时旋转 + 脉冲)。
+//
+// 组件自行把相位映射成透明度: tailwind 的关键帧是 1 → 0.5 → 1, 例如
+//
+//	phase := xui.Pulse(hEle, true)
+//	alpha := 0.75 + 0.25*math.Cos(2*math.Pi*phase)
+func Pulse(hOwner int, active bool) float64 {
+	return spinPhase(hOwner, active, pulsePeriod, true)
+}
+
+// animWindow 返回元素所在窗口的句柄(动画定时器挂窗口); 取不到时退回元素本身。
+func animWindow(hEle int) int {
+	if hwnd := xc.XWidget_GetHWND(hEle); hwnd != 0 {
+		if hw := xc.XC_hWindowFromHWnd(hwnd); hw != 0 {
+			return hw
+		}
+	}
+	return hEle
+}
+
+func spinPhase(hOwner int, active bool, period time.Duration, pulse bool) float64 {
 	if hOwner == 0 {
 		return 0
+	}
+	owner, key, hEle := hOwner, int32(0), 0
+	if xc.XC_IsHELE(hOwner) {
+		hEle = hOwner
+		owner = animWindow(hOwner)
+		// 元素句柄做键: 同一窗口里多个元素互不影响, Spin/Pulse 用最低位区分。
+		key = int32(hOwner) << 1
+		if pulse {
+			key |= 1
+		}
 	}
 	now := time.Now()
 	hovers.mu.Lock()
 	defer hovers.mu.Unlock()
-	o := hovers.owners[hOwner]
+	o := hovers.owners[owner]
 	if !active {
 		if o == nil {
 			return 0
@@ -169,7 +217,7 @@ func Spin(hOwner int, active bool) float64 {
 			// 没有其它过渡时立刻关定时器; 还有 hover 条目就交给下一帧 tick 收尾。
 			if len(o.spins) == 0 && len(o.items) == 0 {
 				o.running = false
-				setHoverTimer(hOwner, false)
+				setHoverTimer(owner, false)
 			}
 		}
 		return 0
@@ -178,12 +226,12 @@ func Spin(hOwner int, active bool) float64 {
 		return 0
 	}
 	if o == nil {
-		o = newHoverOwner(hOwner)
-		hovers.owners[hOwner] = o
+		o = newHoverOwner(owner)
+		hovers.owners[owner] = o
 	}
 	it := o.spins[key]
 	if it == nil {
-		it = &spinItem{start: now}
+		it = &spinItem{start: now, hEle: hEle}
 		o.spins[key] = it
 		o.ensureRunning()
 	}
@@ -191,7 +239,117 @@ func Spin(hOwner int, active bool) float64 {
 	if el < 0 {
 		el = 0
 	}
-	return float64(el%spinPeriod) / float64(spinPeriod)
+	return float64(el%period) / float64(period)
+}
+
+// eleEffectivelyVisible 判断元素及其祖先是否都处于显示状态(页签切走后,
+// 元素自身的 Show 标志可能仍是 true, 必须向上查到宿主)。
+func eleEffectivelyVisible(hEle int) bool {
+	// 窗口最小化/隐藏时也停表: 元素自身与页签的 Show 标志都还是 true。
+	if hwnd := xc.XWidget_GetHWND(hEle); hwnd != 0 {
+		if !wapi.IsWindowVisible(uintptr(hwnd)) || wapi.IsIconic(uintptr(hwnd)) {
+			return false
+		}
+	}
+	for h := hEle; h != 0; h = xc.XWidget_GetParentEle(h) {
+		if !xc.XWidget_IsShow(h) {
+			return false
+		}
+	}
+	// 滚出视口的元素也停表(长页面里滚下去再滚回来时重新启动)。
+	if hw := xc.XWidget_GetHWINDOW(hEle); hw > 0 {
+		var wc, rc xc.RECT
+		xc.XWnd_GetClientRect(hw, &wc)
+		xc.XEle_GetWndClientRect(hEle, &rc)
+		if rc.Right <= wc.Left || rc.Left >= wc.Right || rc.Bottom <= wc.Top || rc.Top >= wc.Bottom {
+			return false
+		}
+	}
+	return true
+}
+
+// animForeground 报告动画宿主窗口是否在前台。后台窗口不重绘连续动画
+// (DWM 合成整扇窗的成本与窗口面积/帧率成正比), 但保留定时器与相位, 切回前台
+// 后的下一帧自动恢复, 不需要额外的激活事件。
+func animForeground(hOwner int, spinEles []int) bool {
+	var hwnd uintptr
+	if xc.XC_IsHXCGUI(hOwner, xcc.XC_WINDOW) {
+		hwnd = xc.XWnd_GetHWND(hOwner)
+	} else if len(spinEles) > 0 {
+		hwnd = uintptr(xc.XWidget_GetHWND(spinEles[0]))
+	}
+	if hwnd == 0 {
+		return true
+	}
+	return hwnd == wapi.GetForegroundWindow()
+}
+
+// spinRedrawRects 把动画元素按窗口矩形分组(相近/重叠的合并), 每组只重绘一次。
+// 分散在不同卡片的动画不会拼成一个几乎整窗的大矩形; 组数过多时退回一个总并集,
+// 避免一帧内太多次立即重绘。
+func spinRedrawRects(elems []int) []xc.RECT {
+	var rects []xc.RECT
+	seen := map[int]bool{}
+	for _, h := range elems {
+		if h == 0 || seen[h] || !xc.XC_IsHXCGUI(h, xcc.XC_ELE) {
+			continue
+		}
+		seen[h] = true
+		var rc xc.RECT
+		xc.XEle_GetWndClientRect(h, &rc)
+		// 外扩 16px: 覆盖描边/抗锯齿边, 并吸收"元素窗口坐标(含阴影带)"与
+		// 局部重绘坐标之间的窗口内边距差(阴影窗约 12 逻辑像素)。
+		rc.Left -= 16
+		rc.Top -= 16
+		rc.Right += 16
+		rc.Bottom += 16
+		rects = append(rects, rc)
+	}
+	// 合成少量分组: 每次 XWnd_RedrawRect 都有固定的窗口合成成本, 把相近的
+	// 动画并成一块比拆成十几次更省(实测 9 个动画: 1 块 7.5%, 9 块 11.5%, /3s)。
+	const gap = 24
+	for i := 0; i < len(rects); i++ {
+		for j := i + 1; j < len(rects); j++ {
+			a, b := rects[i], rects[j]
+			if a.Left-gap < b.Right && b.Left-gap < a.Right &&
+				a.Top-gap < b.Bottom && b.Top-gap < a.Bottom {
+				if b.Left < a.Left {
+					a.Left = b.Left
+				}
+				if b.Top < a.Top {
+					a.Top = b.Top
+				}
+				if b.Right > a.Right {
+					a.Right = b.Right
+				}
+				if b.Bottom > a.Bottom {
+					a.Bottom = b.Bottom
+				}
+				rects[i] = a
+				rects = append(rects[:j], rects[j+1:]...)
+				j = i
+			}
+		}
+	}
+	if len(rects) > 4 {
+		u := rects[0]
+		for _, r := range rects[1:] {
+			if r.Left < u.Left {
+				u.Left = r.Left
+			}
+			if r.Top < u.Top {
+				u.Top = r.Top
+			}
+			if r.Right > u.Right {
+				u.Right = r.Right
+			}
+			if r.Bottom > u.Bottom {
+				u.Bottom = r.Bottom
+			}
+		}
+		return []xc.RECT{u}
+	}
+	return rects
 }
 
 func hoverValue(hOwner int, key int32, active bool) float64 {
@@ -343,7 +501,14 @@ func hoverTick(hOwner int) {
 		return
 	}
 	dur := hovers.duration
-	active := len(o.spins) > 0 // 旋转动画: 每帧都要重绘, 相位由绘制时读墙钟
+	// 元素动画的可见性检查: 切走页签 / 元素销毁后自动摘掉, 不让窗口定时器空转。
+	for k, it := range o.spins {
+		if it.hEle != 0 && (!xc.XC_IsHXCGUI(it.hEle, xcc.XC_ELE) || !eleEffectivelyVisible(it.hEle)) {
+			delete(o.spins, k)
+		}
+	}
+	spinActive := len(o.spins) > 0
+	itemsActive := false
 	type callback struct {
 		fn func(float64)
 		v  float64
@@ -361,7 +526,7 @@ func hoverTick(hOwner int) {
 			applies = append(applies, callback{it.apply, v})
 		}
 		if v != it.target {
-			active = true
+			itemsActive = true
 			continue
 		}
 		if !it.settled {
@@ -375,6 +540,21 @@ func hoverTick(hOwner int) {
 			delete(o.items, k)
 		}
 	}
+	active := spinActive || itemsActive
+	var spinEles []int
+	directSpin := false
+	for _, it := range o.spins {
+		if it.hEle == 0 {
+			directSpin = true
+		} else {
+			spinEles = append(spinEles, it.hEle)
+		}
+	}
+	// 宿主窗口不在前台时只跳过重绘(定时器保留), 切回前台下一帧即恢复。
+	// 连续动画保持 60fps: 降到 30fps 对 DWM 的整窗合成成本几乎没有帮助,
+	// 反而让旋转明显变卡(实测 DWM 仍 ~10%), 见 DESIGN 第八节 106。
+	skipSpinFrame := spinActive && !itemsActive && len(applies) == 0 &&
+		!animForeground(hOwner, spinEles)
 	if !active {
 		o.running = false
 		setHoverTimer(hOwner, false)
@@ -388,12 +568,25 @@ func hoverTick(hOwner int) {
 	// 最后一帧也必须重绘: 到位那一帧 active 已经是 false(定时器也停了), 但 apply
 	// 刚把终态(如 alpha=255)写进属性 —— 不重绘的话屏幕上留的还是倒数第二帧的半透明
 	// 内容, 要等下一次无关重绘才"突然变实"(弹层淡入停在半透明的根因)。
-	if active || len(applies) > 0 {
-		if xc.XC_IsHELE(hOwner) {
+	// 连续动画只重绘动画元素所在的矩形分组; 在场过渡/直接挂窗口的动画才整窗重绘。
+	// 逐个 XEle_Redraw 每次都会触达窗口合成, 多个元素反而更贵(见 DESIGN 第八节 106)。
+	if (active && !skipSpinFrame) || len(applies) > 0 {
+		switch {
+		case xc.XC_IsHELE(hOwner):
 			xc.XEle_Redraw(hOwner, true)
-		} else {
-			// 立即重绘: 走延迟重绘会被合并掉(实测 30ms/帧 → 65ms/帧, 见 DESIGN 第八节 45)
+		case itemsActive || len(applies) > 0 || directSpin || len(spinEles) == 0:
+			// 在场过渡/直接挂窗口的动画: 整窗重绘。
 			xc.XWnd_Redraw(hOwner, true)
+		default:
+			// 元素动画: 只重绘动画元素所在的分组矩形(立即重绘, 见 DESIGN 第八节 45/106)。
+			rects := spinRedrawRects(spinEles)
+			if len(rects) == 0 {
+				xc.XWnd_Redraw(hOwner, true)
+				break
+			}
+			for i := range rects {
+				xc.XWnd_RedrawRect(hOwner, &rects[i], true)
+			}
 		}
 	}
 	for _, c := range dones {

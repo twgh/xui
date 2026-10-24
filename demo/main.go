@@ -550,6 +550,84 @@ func buildBase1Page(body *widget.LayoutEle) {
 	xui.ItemWidth(combo, 180)
 	ui.NewButton(0, 0, 0, 0, "", bg8.Handle,
 		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconSettings), ui.WithVariant(ui.ButtonOutline))
+
+	// ---- 第三行: 快捷键 / 加载指示器 / 骨架屏 ----
+	r3 := row(body.Handle, 0, gap)
+
+	// 快捷键键帽
+	_, vkbd := autoCard(col(r3.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "快捷键", vkbd.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Kbd 键帽: 高 20、宽度按文字量测; KbdGroup 负责组合键间距 4", vkbd.Handle))
+
+	xui.ItemFill(hint(vkbd.Handle, "单键 / 组合键"))
+	rk := xui.HStack(vkbd.Handle, 24, 12)
+	ui.NewKbd(rk.Handle, "Esc")
+	gk := ui.NewKbdGroup(rk.Handle)
+	ui.NewKbd(gk.Handle, "Ctrl")
+	ui.NewKbd(gk.Handle, "K")
+	gk = ui.NewKbdGroup(rk.Handle)
+	ui.NewKbd(gk.Handle, "⌘")
+	ui.NewKbd(gk.Handle, "⇧")
+	ui.NewKbd(gk.Handle, "P")
+	xui.ItemFill(hint(vkbd.Handle, "快捷键紧跟说明文字"))
+	rk2 := xui.HStack(vkbd.Handle, 24, 8)
+	gk2 := ui.NewKbdGroup(rk2.Handle)
+	ui.NewKbd(gk2.Handle, "Ctrl")
+	ui.NewKbd(gk2.Handle, "S")
+	xui.ItemWidth(ui.NewLabel(0, 0, 0, 20, "保存", rk2.Handle).SetFontSize(14), 48)
+
+	// 加载指示器
+	_, vspin := autoCard(col(r3.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "加载指示器", vspin.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Spinner: Loader2 图标持续旋转, 1s/圈; 相位由运行时驱动, 不占组件定时器", vspin.Handle))
+
+	xui.ItemFill(hint(vspin.Handle, "与文字同行"))
+	spRow := xui.HStack(vspin.Handle, 24, 8)
+	ui.NewSpinner(spRow.Handle)
+	spText := ui.NewLabel(0, 0, 0, 20, "正在加载…", spRow.Handle).SetFontSize(14).SetMuted()
+	xui.ItemWeight(spText, 1)
+
+	xui.ItemFill(hint(vspin.Handle, "尺寸 16 / 20 / 24"))
+	spSizes := xui.HStack(vspin.Handle, 32, 16)
+	ui.NewSpinner(spSizes.Handle)
+	ui.NewSpinner(spSizes.Handle, ui.WithSpinnerSize(20))
+	ui.NewSpinner(spSizes.Handle, ui.WithSpinnerSize(24))
+
+	xui.ItemFill(hint(vspin.Handle, "颜色: muted / primary"))
+	spColors := xui.HStack(vspin.Handle, 24, 16)
+	ui.NewSpinner(spColors.Handle, ui.WithSpinnerMuted())
+	ui.NewSpinner(spColors.Handle, ui.WithSpinnerColorFunc(func(t *xui.Theme) xui.Color {
+		return t.Primary
+	}))
+
+	// 骨架屏
+	_, vsk := autoCard(col(r3.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "骨架屏", vsk.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Skeleton: bg-accent + rounded-md, 2s 脉冲(1 → 0.5 → 1)", vsk.Handle))
+
+	xui.ItemFill(hint(vsk.Handle, "头像 + 两行文本"))
+	skRow := xui.HStack(vsk.Handle, 40, 12)
+	ui.NewSkeleton(0, 0, 40, 40, skRow.Handle, ui.WithSkeletonCircle())
+	skCol := widget.NewLayoutEle(0, 0, 0, 0, skRow.Handle)
+	skCol.EnableHorizon(false)
+	skCol.EnableLayout(true)
+	skCol.EnableBkTransparent(true)
+	skCol.EnableAutoWrap(false)
+	skCol.SetSpace(8)
+	skCol.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1)
+	skCol.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	ui.NewSkeleton(0, 0, 180, 12, skCol.Handle)
+	ui.NewSkeleton(0, 0, 120, 12, skCol.Handle)
+
+	xui.ItemFill(hint(vsk.Handle, "卡片占位"))
+	xui.ItemFill(ui.NewSkeleton(0, 0, 0, 72, vsk.Handle))
+	xui.ItemFill(ui.NewSkeleton(0, 0, 0, 12, vsk.Handle))
+	lastSk := ui.NewSkeleton(0, 0, 0, 12, vsk.Handle)
+	xui.ItemFill(lastSk)
+	xui.ItemMarginRight(lastSk, 80)
 }
 
 // ===== 页 2: 基础2(卡片 / 比例容器 / 滚动容器) =====
@@ -608,9 +686,108 @@ func buildBase2Page(body *widget.LayoutEle) {
 		xui.ItemFill(l)
 	}
 	box.Content().SetSpace(6)
-}
 
-// ===== 页 3: 表单1(输入 / 复选 / 单选 / 开关 / 滑条 / 下拉框) =====
+	// ---- 列表项(Item): 媒体 / 内容 / 动作 + 页眉页脚 ----
+	_, vi := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "列表项", vi.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Item: default / outline / muted 三个变体, default / sm 两档尺寸; Media + Content(吃剩余宽度) + Actions, 可选 Header/Footer", vi.Handle))
+
+	ri := row(vi.Handle, 0, 16)
+	itL := col(ri.Handle, 1, 10)
+	itR := col(ri.Handle, 1, 10)
+
+	group := ui.NewItemGroup(0, 0, 0, 0, itL.Handle)
+	xui.ItemFill(group)
+
+	// 1. outline + icon media + 尾部按钮
+	it1 := ui.NewItem(0, 0, 0, 0, group.Handle, ui.WithItemVariant(ui.ItemOutline))
+	xui.ItemFill(it1)
+	ui.NewItemMedia(it1.Media().Handle, icons.IconShieldCheck,
+		ui.WithItemMediaVariant(ui.ItemMediaIcon))
+	c1 := it1.Content()
+	ui.NewItemTitle(c1.Handle, "安全提醒")
+	ui.NewItemDescription(c1.Handle, "检测到一台未识别的设备登录了你的账户。")
+	ui.NewButton(0, 0, 0, 0, "查看", it1.Actions().Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+
+	ui.NewItemSeparator(group.Handle)
+
+	// 2. muted + Header(标题吃权重, 徽章贴右) + Footer
+	it2 := ui.NewItem(0, 0, 0, 0, group.Handle, ui.WithItemVariant(ui.ItemMuted))
+	xui.ItemFill(it2)
+	itHead := it2.Header()
+	headTitle := ui.NewItemTitle(itHead.Handle, "部署完成")
+	xui.ItemWeight(headTitle, 1)
+	okBadge := ui.NewBadge(0, 0, 0, 0, "成功", itHead.Handle, ui.WithBadgeVariant(ui.BadgeSecondary))
+	xui.ItemWidth(okBadge, 56)
+	c2 := it2.Content()
+	ui.NewItemDescription(c2.Handle, "prod-2026.10.24 已发布到生产环境, 共 42 个文件。")
+	itFoot := it2.Footer()
+	footHint := ui.NewItemDescription(itFoot.Handle, "2 分钟前")
+	xui.ItemWeight(footHint, 1)
+	ui.NewButton(0, 0, 0, 0, "查看日志", itFoot.Handle,
+		ui.WithVariant(ui.ButtonGhost), ui.WithSize(ui.ButtonSizeSm))
+
+	ui.NewItemSeparator(group.Handle)
+
+	// 3. default + sm 尺寸, 无动作区
+	it3 := ui.NewItem(0, 0, 0, 0, group.Handle, ui.WithItemSize(ui.ItemSizeSm))
+	xui.ItemFill(it3)
+	ui.NewItemMedia(it3.Media().Handle, icons.IconFolderCode)
+	c3 := it3.Content()
+	ui.NewItemTitle(c3.Handle, "design-system")
+	ui.NewItemDescription(c3.Handle, "昨天更新 · 12 个组件")
+
+	// 右列: 内容 / 动作 / 自定义媒体槽
+	group2 := ui.NewItemGroup(0, 0, 0, 0, itR.Handle)
+	xui.ItemFill(group2)
+
+	it4 := ui.NewItem(0, 0, 0, 0, group2.Handle, ui.WithItemVariant(ui.ItemOutline))
+	xui.ItemFill(it4)
+	c4 := it4.Content()
+	ui.NewItemTitle(c4.Handle, "团队成员")
+	ui.NewItemDescription(c4.Handle, "邀请成员加入当前工作区, 可随时移除。")
+	act4 := it4.Actions()
+	countBadge := ui.NewBadge(0, 0, 0, 0, "3 人", act4.Handle)
+	xui.ItemWidth(countBadge, 52)
+	ui.NewButton(0, 0, 0, 0, "邀请", act4.Handle,
+		ui.WithSize(ui.ButtonSizeSm), ui.WithButtonLeadingIcon(icons.IconPlus))
+
+	ui.NewItemSeparator(group2.Handle)
+
+	it5 := ui.NewItem(0, 0, 0, 0, group2.Handle, ui.WithItemVariant(ui.ItemMuted), ui.WithItemSize(ui.ItemSizeSm))
+	xui.ItemFill(it5)
+	// 自定义媒体槽: 不限于图标, 任何元素都可以放进来。
+	avatar := widget.NewElement(0, 0, 32, 32, it5.Media().Handle)
+	avatar.EnableBkTransparent(true)
+	avatar.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, 32)
+	avatar.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 32)
+	avatar.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		th := xui.Current()
+		p.FillRound(&p.Rc, th.Primary, th.Pill(32))
+		return 0
+	})
+	xui.AttachWindow(avatar.Handle)
+	c5 := it5.Content()
+	ui.NewItemTitle(c5.Handle, "twgh")
+	ui.NewItemDescription(c5.Handle, "工作区管理员")
+
+	ui.NewItemSeparator(group2.Handle)
+
+	it6 := ui.NewItem(0, 0, 0, 0, group2.Handle)
+	xui.ItemFill(it6)
+	h6 := it6.Header()
+	bill := ui.NewLabel(0, 0, 0, 20, "本月账单", h6.Handle).SetFontSize(14).SetMuted()
+	xui.ItemWeight(bill, 1)
+	price := ui.NewLabel(0, 0, 96, 20, "¥ 128.00", h6.Handle).SetFontSize(14).SetMedium()
+	xui.ItemWidth(price, 96)
+}
 
 // 骨架是"一行两列、每列把两张卡竖着排", 不是"两行各两列":
 // 行高只有 Weight(按剩余空间等分)可用, 卡片比行高时下一行就会压到上一行的卡片上
@@ -1066,6 +1243,45 @@ func buildNavPage(body *widget.LayoutEle) {
 		pagInfo.SetText(fmt.Sprintf("共 120 条 · 每页 10 条 · 当前第 %d 页", p))
 		pagInfo.Redraw(false)
 	})
+
+	// ---- 面包屑 ----
+	_, vbc := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "面包屑", vbc.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Breadcrumb: 链接 muted → 悬停过渡到前景色; 分隔符 14, 条目间距 6, 列表间距 10 并自动换行", vbc.Handle))
+
+	bcInfo := ui.NewLabel(0, 0, 0, 20, "点击任意链接查看回调", vbc.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(bcInfo)
+
+	xui.ItemFill(hint(vbc.Handle, "完整路径"))
+	bc := ui.NewBreadcrumb(0, 0, 0, 0, vbc.Handle)
+	xui.ItemFill(bc)
+	addBCLink := func(text string) {
+		it := ui.NewBreadcrumbItem(bc.Handle)
+		ui.NewBreadcrumbLink(it.Handle, text).OnClick(func() {
+			bcInfo.SetText("点击了「" + text + "」").Redraw(false)
+		})
+	}
+	addBCLink("首页")
+	ui.NewBreadcrumbSeparator(bc.Handle)
+	addBCLink("组件")
+	ui.NewBreadcrumbSeparator(bc.Handle)
+	itCur := ui.NewBreadcrumbItem(bc.Handle)
+	ui.NewBreadcrumbPage(itCur.Handle, "面包屑")
+
+	xui.ItemFill(hint(vbc.Handle, "折叠省略号(36×36, 可自行挂菜单事件)"))
+	bc2 := ui.NewBreadcrumb(0, 0, 0, 0, vbc.Handle)
+	xui.ItemFill(bc2)
+	itHome := ui.NewBreadcrumbItem(bc2.Handle)
+	ui.NewBreadcrumbLink(itHome.Handle, "首页")
+	ui.NewBreadcrumbSeparator(bc2.Handle)
+	ui.NewBreadcrumbEllipsis(bc2.Handle)
+	ui.NewBreadcrumbSeparator(bc2.Handle)
+	itSet := ui.NewBreadcrumbItem(bc2.Handle)
+	ui.NewBreadcrumbLink(itSet.Handle, "设置")
+	ui.NewBreadcrumbSeparator(bc2.Handle)
+	itMe := ui.NewBreadcrumbItem(bc2.Handle)
+	ui.NewBreadcrumbPage(itMe.Handle, "个人资料")
 
 	// ---- 第三行: 可折叠面板 ----
 	_, v4 := autoCard(body.Handle, 10)
