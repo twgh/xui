@@ -148,6 +148,14 @@
     "item": {
       "files": ["item.go"],
       "deps": ["label", "separator"]
+    },
+    "toggle": {
+      "files": ["toggle.go", "group.go"],
+      "deps": []
+    },
+    "toggle-group": {
+      "files": ["toggle.go", "group.go"],
+      "deps": []
     }
   }
 }

@@ -628,6 +628,89 @@ func buildBase1Page(body *widget.LayoutEle) {
 	lastSk := ui.NewSkeleton(0, 0, 0, 12, vsk.Handle)
 	xui.ItemFill(lastSk)
 	xui.ItemMarginRight(lastSk, 80)
+
+	// ---- 第四行: 切换按钮 / 切换按钮组 ----
+	r4 := row(body.Handle, 0, gap)
+
+	_, vt := autoCard(col(r4.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "切换按钮", vt.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Toggle: 双状态按钮, 点击/空格/回车切换; 选中 bg-accent、悬停 bg-muted, outline 带 border-input", vt.Handle))
+
+	xui.ItemFill(hint(vt.Handle, "变体与选中态(点击切换)"))
+	rt := xui.HStack(vt.Handle, 40, 12)
+	ui.NewToggle(0, 0, 0, 0, "Bold", rt.Handle, ui.WithTogglePressed(true))
+	ui.NewToggle(0, 0, 0, 0, "Italic", rt.Handle)
+	ui.NewToggle(0, 0, 0, 0, "Underline", rt.Handle,
+		ui.WithToggleVariant(ui.ToggleVariantOutline), ui.WithTogglePressed(true))
+	ui.NewToggle(0, 0, 0, 0, "Strikethrough", rt.Handle, ui.WithToggleVariant(ui.ToggleVariantOutline))
+
+	xui.ItemFill(hint(vt.Handle, "尺寸档(Sm / Default / Lg)"))
+	rsz := xui.HStack(vt.Handle, 48, 12)
+	ui.NewToggle(0, 0, 0, 0, "Sm", rsz.Handle,
+		ui.WithToggleSize(ui.ToggleSizeSm), ui.WithToggleVariant(ui.ToggleVariantOutline))
+	ui.NewToggle(0, 0, 0, 0, "Default", rsz.Handle, ui.WithToggleVariant(ui.ToggleVariantOutline))
+	ui.NewToggle(0, 0, 0, 0, "Lg", rsz.Handle,
+		ui.WithToggleSize(ui.ToggleSizeLg), ui.WithToggleVariant(ui.ToggleVariantOutline))
+
+	xui.ItemFill(hint(vt.Handle, "图标 / 纯图标 / 禁用 / 校验失败"))
+	ric := xui.HStack(vt.Handle, 40, 12)
+	ui.NewToggle(0, 0, 0, 0, "收藏", ric.Handle,
+		ui.WithToggleIcon(icons.IconHeart), ui.WithToggleVariant(ui.ToggleVariantOutline))
+	ui.NewToggle(0, 0, 0, 0, "", ric.Handle,
+		ui.WithToggleIcon(icons.IconBold), ui.WithTogglePressed(true))
+	disToggle := ui.NewToggle(0, 0, 0, 0, "Disabled", ric.Handle, ui.WithTogglePressed(true))
+	disToggle.Enable(false)
+	ui.NewToggle(0, 0, 0, 0, "Invalid", ric.Handle, ui.WithToggleInvalid())
+
+	_, vtg := autoCard(col(r4.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "切换按钮组", vtg.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"ToggleGroup: 单选/多选、spacing=0 首尾外角; 组级 variant/size 统一作用于条目", vtg.Handle))
+
+	valueText := func(values []string) string {
+		if len(values) == 0 {
+			return "无"
+		}
+		return strings.Join(values, ", ")
+	}
+
+	xui.ItemFill(hint(vtg.Handle, "单选 · 无缝(spacing 0)"))
+	gs := ui.NewToggleGroup(vtg.Handle)
+	gs.AddItem("bold", "Bold")
+	gs.AddItem("italic", "Italic")
+	gs.AddItem("underline", "Underline")
+	gs.SetValue("bold")
+	singleLabel := ui.NewLabel(0, 0, 0, 20, "当前: bold", vtg.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(singleLabel)
+	gs.OnChange(func(values []string) {
+		singleLabel.SetText("当前: " + valueText(values))
+		singleLabel.Redraw(false)
+	})
+
+	xui.ItemFill(hint(vtg.Handle, "多选 · 纯图标(outline)"))
+	gm := ui.NewToggleGroup(vtg.Handle,
+		ui.WithToggleGroupMultiple(), ui.WithToggleGroupVariant(ui.ToggleVariantOutline))
+	gm.AddItem("bold", "", ui.WithToggleIcon(icons.IconBold))
+	gm.AddItem("italic", "", ui.WithToggleIcon(icons.IconItalic))
+	gm.AddItem("underline", "", ui.WithToggleIcon(icons.IconUnderline))
+	gm.SetValue("bold", "underline")
+	multiLabel := ui.NewLabel(0, 0, 0, 20, "已选: bold, underline", vtg.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(multiLabel)
+	gm.OnChange(func(values []string) {
+		multiLabel.SetText("已选: " + valueText(values))
+		multiLabel.Redraw(false)
+	})
+
+	xui.ItemFill(hint(vtg.Handle, "有间距(spacing 8)· 组级尺寸 Sm"))
+	gg := ui.NewToggleGroup(vtg.Handle,
+		ui.WithToggleGroupSpacing(8),
+		ui.WithToggleGroupVariant(ui.ToggleVariantOutline),
+		ui.WithToggleGroupSize(ui.ToggleSizeSm))
+	gg.AddItem("left", "左", ui.WithToggleIcon(icons.IconAlignLeft))
+	gg.AddItem("center", "中", ui.WithToggleIcon(icons.IconAlignCenter))
+	gg.AddItem("right", "右", ui.WithToggleIcon(icons.IconAlignRight))
+	gg.SetValue("center")
 }
 
 // ===== 页 2: 基础2(卡片 / 比例容器 / 滚动容器) =====

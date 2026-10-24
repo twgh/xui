@@ -337,6 +337,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | kbd = h-5(20) min-w-5(20) rounded-sm bg-muted px-1 text-xs font-medium muted-foreground,宽度随文字;KbdGroup 间距 gap-1(4) | kbd.tsx |
 | skeleton = bg-accent rounded-md + animate-pulse 2s(1 → 0.5 → 1);脉冲相位由 `xui.Pulse` 提供,不自己起定时器 | skeleton.tsx + anim.go |
 | spinner = Loader2 size-4(16) animate-spin 1s/圈;相位由 `xui.Spin` 提供 | spinner.tsx + anim.go |
+| toggle = inline-flex items-center gap-2(8) rounded-md text-sm;default 透明底, hover bg-muted + muted-foreground, 选中 bg-accent + accent-foreground;outline 加 border-input, hover/选中填充 accent;尺寸 h-9/h-8/h-10(36/32/40) + min-w 同高、px-2/1.5/2.5;focus-visible border-ring + ring-3 ring-ring/50;aria-invalid 红边框 + 红环;disabled opacity-50 | toggle.tsx(radix-nova) |
+| toggle group = 横向 flex w-fit、间距 spacing;spacing=0 时条目 px-3 + min-w-0、首项只保留左外角、末项只保留右外角(分段控件), outline 的相邻边框合并;单选同组互斥且可全部取消, 多选各自独立 | toggle-group.tsx(radix-nova) |
 
 ### 变体/尺寸与上游的映射、已知差异
 
@@ -360,6 +362,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | AlertDialog | `NewAlertDialog(hWnd, WithAlertDialogSize/WithAlertDialogTitle/WithAlertDialogDescription/WithAlertDialogMedia/WithAlertDialogMediaTone)` + `AddCancel/AddAction/BindTrigger` + `CancelButton/ActionButton` | 对应 alert-dialog.tsx 的 `AlertDialogContent` + `Header/Title/Description/Footer/Media/Action/Cancel/Trigger`; `size` 是枚举 `AlertDialogSizeDefault/Small`; 媒体块由组件自绘(不建子控件); `AddCancel` 固定 outline、`AddAction` 的变体由调用方给(可用 `CancelButton().SetVariant(ButtonGhost)` 改变体) |
 | Separator | `WithSeparatorVertical` 支持垂直 | 上游 `data-vertical:w-px` |
 | Tabs | `WithTabsVertical` 支持垂直(标签堆叠、左对齐、指示条在右侧) | 上游 `group-data-vertical/tabs:*` |
+| Toggle | `ToggleVariantDefault/Outline`、`ToggleSizeDefault/Sm/Lg` = h-9/h-8/h-10(36/32/40)、`WithTogglePressed/Icon/Invalid` + `SetPressed/SetIcon/SetInvalid/OnChange` | 对应 toggle.tsx 的 variant/size; 组内条目按 px-3 + min-w-0 量宽(ToggleGroupItem 的覆盖); 原生 Check 按钮不响应空格/回车, 键盘切换由组件在 KeyDown 里补(与鼠标共用 OnChange); shadow-xs 不绘制(同其他自绘壳体) |
+| ToggleGroup | `NewToggleGroup(hParent, WithToggleGroupVariant/Size/Spacing/Multiple)` + `AddItem(value, text, opts...)` + `Value/SetValue/OnChange/SetSpacing` | 对应 toggle-group.tsx; 单选(type=single)允许全部取消(radix 语义), 组级 variant/size 覆盖条目自己的同名选项(context.variant || variant); spacing 用逻辑像素(上游 spacing={2}=8px); 上游当前源码没有 orientation, 只做横向 |
 | Slider | `WithSliderRange(min,max)` / `WithSliderStep(step)` | 对应 radix 的 min/max/step; 默认仍是 0~100 连续 |
 | ComboBox 触发区 | `WithComboSize(ComboSizeSm)` = h-7 + `rounded-[min(--radius-md,10px)]` | 对应 select.tsx 的 `data-[size=sm]` |
 | Calendar | `WithCalendarSelected/WeekStart/OnSelect` + `WithCalendarFlat`(弹层内嵌不画卡片); 尺寸 `CalWidth/CalHeight`(单月 278×325) + `CalFooterHeight`, 自定义宽度时用 `CalHeightFor(width)` / `CalFooterHeightFor(width)` 配高度(或 cy 传 0 自动); 年月下拉 `WithCalendarYearRange(from,to)`; 禁用 `WithCalendarDisabled(fn)` + `SetDisabled` + helper `CalendarDisableBefore/After/Weekend/Dates/Any`; 划线 `WithCalendarStrike(fn)` + `SetStrike` + `CalendarStrikeDates`; 页脚 `WithCalendarFooter(items...)` / `WithCalendarFooterToday` / `WithCalendarPresets(CalPreset(label,days,to)...)` / `AddFooterItem/Button/Text` / `ClearFooter` / `FooterRect`; **范围/多月/周数**: `WithCalendarRange` + `WithCalendarSelectedRange(from,to)` + `WithCalendarOnRangeSelect` + `SelectedRange/SetRange/RangeMode`, `WithCalendarMonths(n)`(1~4), `WithCalendarWeekNumbers`; 尺寸 helper `CalWidthFor(months)` / `CalWidthForWeekNumbers(months)` / `CalHeightForMonths(width,months)` / `CalFooterHeightForMonths` | react-day-picker 的 props(mode/numberOfMonths/showWeekNumber);固定 6 行 + 等比缩放 + 页脚换行是本实现决策 |
@@ -451,6 +455,7 @@ ui/
 
 | Item 的 Header/Footer 没有自动 space-between, 动作之间用 Item 的行间距 | Go 布局没有 justify-between: 用 `xui.ItemWeight` 给靠左的第一个子项撑开; 行内动作也不再单独套 gap-2 容器(嵌套 Auto 宽不量测原生按钮, 见第八节 104) |
 | Breadcrumb 链接/当前页是单行自绘文本, 且不参与 Tab 焦点 | Label 的原生 Button 载体按 `TextWidth` 精确设宽会被内部文本内边距截断(第八节 105); 自绘后不折行、不支持富文本, 键盘焦点需要每链接一个可聚焦元素(当前为鼠标驱动) |
+| Toggle / ToggleGroup 的 outline 不画 shadow-xs | 上游有 1px 浅投影; 本库自绘壳体统一不画阴影(Button/Input 同), 在 Card 底上几乎不可见; `border-input` 与悬停/选中底色完整保留 |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1424,11 +1429,16 @@ ui/
     - **根因**: Badge 为了擦掉透明元素上一帧的悬停痕迹, 每帧先铺一层 `t.Card` **方底**; default / secondary 本身是不透明圆角胶囊, 已经覆盖了整个胶囊, 这层方底纯属多余, 而 Card 色与 ItemMuted(混合底)不一致, 四角就露出来。
     - **修法**: 只给需要擦底的变体(outline / ghost / link)铺底, 且用**圆角底**(radius)而不是方底; default / secondary / destructive 直接画不透明胶囊(destructive 的 10%/20% 底色也预混成 over-Card 的不透明色); 不透明变体的 hover 色同样预混, 否则半透明 hover 会叠在上一帧实色上偏深。透明元素不擦底的根因见 28。
 
+108. **原生 Check 按钮不处理键盘激活**(`components/toggle.go`, 探针实测):
+    - **现象**: `Button_Type_Check` 获得焦点后按空格/回车, 勾选状态不变; 元素自己的 `AddEvent_KeyDown` 能收到 `VK_SPACE`(32) / `VK_RETURN`(13), 窗口级 KeyDown 也能收到。
+    - **根因**: xcgui 的 Check 类型只在鼠标点击时翻转状态, 键盘消息没有浏览器的 `<button>` 激活路径。
+    - **修法**: 组件在元素 `AddEvent_KeyDown` 里自己翻转 `SetCheck` 并触发与鼠标点击相同的回调 —— 不能只 `SetCheck`, 否则组的互斥与 `OnChange` 会漏。回调由组件持有(鼠标的 `XE_BUTTON_CHECK` 与键盘路径统一走 notify), 组监听同一入口。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 
-- `Element.AddEvent_Paint / AddEvent_MouseStay / AddEvent_MouseLeave`(widget/element.go:1192, 1288, 1336)
+- `Element.AddEvent_Paint / AddEvent_MouseStay / AddEvent_MouseLeave / AddEvent_KeyDown`(widget/element.go:1192, 1288, 1336, 1744);键盘激活见第八节 108
 - `Element.AddEvent_Menu_Draw_Background / AddEvent_Menu_DrawItem`(widget/element.go:2056, 2080)
 - Menu / ContextMenu(见第八节 36/64/99):`Menu.AddItem / SetItemWidth / SetItemHeight / SetLeftWidth / SetBorderSize / EnableDrawBackground / EnableDrawItem / AddEvent_Menu_Select / AddEvent_Menu_Exit / AddEvent_Menu_PopupWnd`;右键触发用 `Window.AddEvent_RButtonUp`(pPt = 逻辑像素, 原点 = 窗口矩形原点)+ `xc.XEle_GetWndClientRect` + `XC_IsHXCGUI / XEle_IsEnable / XWidget_IsShow`;`xui.TextWidth` 按自绘字体自行给菜单条目定宽(原生字体与自绘不一致)
 - `drawx.NewByHandle / EnableSmoothingMode / SetBrushColor / FillRoundRect(Ex) / DrawRoundRect(Ex) / GradientFill2/4 / DrawText / TextOut* / Image* / DrawSvg* / SetClipRect / SetLineWidth`

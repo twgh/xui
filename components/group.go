@@ -17,6 +17,10 @@ const (
 	uiRoleGroupV    = uiRoleBase + 3
 	uiRoleGroupText = uiRoleBase + 4
 	uiRoleGroupSep  = uiRoleBase + 5
+	// ToggleGroup 用独立标记: 组内条目要按 spacing 决定首尾外圆角, 但不能被
+	// ButtonGroup 的通用首尾收角规则误伤(两者的边框折叠方式不同)。
+	uiRoleToggleGroupTight  = uiRoleBase + 6 // spacing=0: 相邻边收直角
+	uiRoleToggleGroupSpaced = uiRoleBase + 7 // spacing>0: 每项保留完整圆角
 )
 
 // buttonGroupPlacement 描述元素在按钮组里的位置。绘制时实时读取(不缓存),

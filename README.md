@@ -113,6 +113,8 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Kbd | 键帽(`components/kbd.go`):高 20、bg-muted、rounded-sm、text-xs,宽度按文字自适应;`NewKbdGroup` 组合键间距 4 |
 | Skeleton | 骨架屏(`components/skeleton.go`):bg-accent + 主题圆角 + 2s 脉冲;`WithSkeletonCircle` 头像、`WithSkeletonRadius` 自定义圆角、`WithSkeletonStatic` 关闭动画 |
 | Spinner | 加载指示器(`components/spinner.go`):Loader2 图标 1s/圈旋转,`WithSpinnerSize` / `WithSpinnerMuted` / `WithSpinnerColorFunc`,`SetSpinning` 开关 |
+| Toggle | 双状态按钮(`components/toggle.go`):`ToggleVariantDefault`(透明底)/ `ToggleVariantOutline`(border-input)、`ToggleSizeDefault/Sm/Lg`(h-9/h-8/h-10);`WithTogglePressed` 初始选中、`WithToggleIcon` 行内图标、`WithToggleInvalid` 校验失败;鼠标/空格/回车切换,支持焦点环与 `OnChange` |
+| ToggleGroup | 切换按钮组(`components/toggle.go`):`NewToggleGroup(parent, WithToggleGroupVariant/Size/Spacing/Multiple)` + `AddItem(value, text, ...)`;单选默认同组互斥且可全部取消,`Value` / `SetValue` / `OnChange`,spacing=0 首尾外角(分段控件),spacing 为逻辑像素 |
 | Checkbox / Radio | 自绘指示器 + 原生状态管理 |
 | Input | 原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环,占位符随主题;校验失败态 `WithInputInvalid`;内嵌附加件:`WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible` / `PasswordVisible`) / `WithCounter`;步进器 `WithStepper(min,max,step)` + `SetNumber` / `Number` / `OnStep`(支持 −/+ 按钮与 ↑/↓ 键,失焦自动夹取吸附;`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态,`WithStepperAutoHide` 让按钮只在悬停/聚焦时出现) |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块;滑块支持自定义值域与步进(`WithSliderRange` / `WithSliderStep`) |
