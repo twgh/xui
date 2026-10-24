@@ -1434,6 +1434,11 @@ ui/
     - **根因**: xcgui 的 Check 类型只在鼠标点击时翻转状态, 键盘消息没有浏览器的 `<button>` 激活路径。
     - **修法**: 组件在元素 `AddEvent_KeyDown` 里自己翻转 `SetCheck` 并触发与鼠标点击相同的回调 —— 不能只 `SetCheck`, 否则组的互斥与 `OnChange` 会漏。回调由组件持有(鼠标的 `XE_BUTTON_CHECK` 与键盘路径统一走 notify), 组监听同一入口。
 
+109. **Label 载体的默认上下 border 会裁掉 g/p 的下伸部**(`components/label.go`, CardDescription "ToggleGroup:" 截图):
+    - **现象**: 卡片说明里的拉丁字母 g 尾巴被切平; 探针里 20 高标签的墨迹比 24 高的少 2 行(文字带 22 vs 24 物理像素)。
+    - **根因**: Label 用原生 Button 画单行文字, 而 Button 默认四边 `border=1`, 文字区 = 元素矩形上下各内缩 1px; 20 高的单行标签扣掉后装不下 14px 字体的完整行盒(墨迹只占 ~24 物理像素, 行盒更高), 底部被裁。
+    - **修法**: Label 构造时 `SetBorderSize(1, 0, 1, 0)` —— 只清上下内缩, 左右保留 1px 维持原有水平内缩; **不增加任何布局高度**。探针实测 20 高标签的墨迹行数/像素数与 24 高完全一致。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1461,7 +1466,7 @@ ui/
 - 排查"窗口可见但屏幕上看不见"(见 57):`user32!EnumWindows` + `GetWindowThreadProcessId` 枚举进程窗口(⚠️ 别用 `Process.MainWindowHandle`, 弹层小窗存在时它会返回小窗)、`IsWindowVisible`、`user32!GetLayeredWindowAttributes`(读 layered alpha/颜色键)、`PrintWindow` 与 `CopyFromScreen` 对照(画了 vs 屏幕上没有)
 - `app.GetTextShowRect`(文本测量:限宽换行与绘制共用限宽;返回的 CY **已含行距** —— 13px 字体单行 18 / 两行 36, 见第八节 75)
 - 折行文本(见第八节 90/91):`Label.WrappedHeight(width)`(当前字体下按宽度折行的高度;读的是 Label **当前文本**,先 SetText 再量)、`Label.SetWrap()`、`Label.SetAlignCenter()/SetAlignLeft()`、`Label.SetColorFunc(fn)`(语义字色按当前主题实时解析)、`xui.TextWidth(text, hFont)`(单行真实宽度, dialog 页脚按它定宽)、`xc.XC_IsHXCGUI(h, xcc.XC_LAYOUT_FRAME)`(识别滚动容器框架)、`xc.XWnd_AdjustLayout`(窗口级重排;`XEle_AdjustLayout` 不能直接作用于 LayoutFrame 的内容区)
-- `Element.SetBorderSize(左, 上, 右, 下)`:原生 Edit/ComboBox 的**文字内边距**, 传**逻辑像素**、由框架随 DPI 自动缩放(实测 150% DPI: Input 传 10, 文字起点距边框 20 物理 ≈ 13.3 逻辑 = 10 + 字形左侧留白) —— 别再乘 `dpi/96`, 会重复放大
+- `Element.SetBorderSize(左, 上, 右, 下)`:原生 Edit/ComboBox 的**文字内边距**, 也是原生 Button 载体的文字区内缩(默认四边 1); 传**逻辑像素**、由框架随 DPI 自动缩放(实测 150% DPI: Input 传 10, 文字起点距边框 20 物理 ≈ 13.3 逻辑 = 10 + 字形左侧留白) —— 别再乘 `dpi/96`, 会重复放大; Label 清上下内缩的用法见第八节 109
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55);**对原生自建弹窗**(ComboBox 下拉, 只有窗口句柄)同样可用: `xc.XWnd_SetTransparentType / XWnd_SetTransparentAlpha`, 在弹出回调里(显示前)设置, 见第八节 69 —— **单次设置可信, 逐帧改会概率性冻结**(57/69), 原生弹层不做整窗 alpha 动画
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)
 - Dialog:`XEle_SetZOrderEx(h, 0, xcc.Zorder_Top)`、`XEle_AdjustLayout`、`XEle_Redraw`、`XEle_GetChildCount/GetChildByIndex`、`XObj_GetType`(→ `xcc.XC_*`)、`XWidget_GetParentEle`、`XWnd_GetRect/Redraw`、`XWnd_SetFocusEle/GetFocusEle`、`xcc.AdjustLayout_No`、`wapi.GetAsyncKeyState`

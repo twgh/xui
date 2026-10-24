@@ -38,6 +38,10 @@ func NewLabel(x, y, cx, h int32, text string, hParent int) *Label {
 	btn.SetTextAlign(xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter |
 		xcc.TextFormatFlag_NoWrap | xcc.TextTrimming_EllipsisCharacter)
 	btn.EnableBkTransparent(true)
+	// 原生按钮默认四边 border=1, 会把文字区上下各扣 1px; Label 本身没有边框,
+	// 这 2px 在 20 高单行标签里会把 g/p 的下伸部裁平(见 DESIGN 第八节 109)。
+	// 左右保留 1px 维持原有水平内缩, 只清掉上下。
+	btn.SetBorderSize(1, 0, 1, 0)
 	// 原生按钮的边框/焦点矩形也要灭掉(载体只借事件与文本绘制能力)
 	btn.EnableDrawBorder(false).EnableFocus(false)
 	// Label 不是交互控件: 不参与 Tab 焦点遍历(同 shadcn 的 <label>)。
