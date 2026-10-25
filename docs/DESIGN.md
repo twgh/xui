@@ -267,6 +267,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | HoverCard | popoverPanel(非激活模式) + LayoutEle | 同 Popover, 但窗口带 `WS_EX_NOACTIVATE`、不调用 SetForegroundWindow、不靠 KillFocus 关闭(第八节 116); 700ms 悬停打开 / 300ms 离开关闭, 指针仍在卡片上时关闭检查自动续期 | hover-card.tsx(radix-nova) |
 | Avatar | 纯自绘 Element | 圆形图片用 CPU 居中裁剪 + 抗锯齿圆形蒙版生成 RGBA, `XImage_LoadFromDataRGBA` + `XDraw_ImageEx` 绘制(第八节 117); 无图回落首字母, 右下角徽标; AvatarGroup 用横向布局负间距叠放 | avatar.tsx(radix-nova) |
 | Command | LayoutEle + 原生 Edit + ScrollArea | 搜索行(自绘图标 + 透明 Edit + 下边框) + ScrollArea 列表; 分组/条目是自绘 Element, 输入即过滤(跳过禁用), ↑↓/Home/End/Enter 在 Edit 的 KeyDown 里接管; 选中不自动关闭(交给 Dialog/Popover 组合) | command.tsx(cmdk) |
+| Sheet | 复用 Dialog 覆盖层(模态栈/焦点陷阱/遮罩) | 面板贴边: 左右占满高、上下按内容撑开; 面板与其直接子元素整体平移做滑入(第八节 120), 遮罩 bg-black/50; 页脚按钮纵向铺满; 只画贴边侧 1px 边框 | sheet.tsx(radix-nova) |
+| Drawer | 复用 Sheet | 底部 max-h-80vh + 顶部抓手 + 上方圆角; 抓手按住捕获鼠标, 拖过面板高 1/3 关闭、否则回弹(第八节 121); 方向可改 top/left/right | drawer.tsx(vaul) |
+| Menubar | 自绘根条 + 每个菜单一个 popoverPanel + 自绘条目 Element | 原生 `XMenu_Popup` 阻塞、期间主窗口收不到鼠标移动, 无法做悬停切换, 因此弹层自绘条目(与 Menu 共用 menu_model.go 的条目模型); 打开后鼠标移到其它触发区即切换; ↑↓/Home/End/Enter/←→/ESC/Tab; 子菜单是第二个激活弹层, 父层 `keepOnBlur` 防止失焦关闭(第八节 122~125) | menubar.tsx(radix-nova) |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
@@ -298,6 +301,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | switch 轨道 32x18(选中 bg-primary/未选 bg-input, **暗色未选是 dark:bg-input/80**),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground;**禁用时轨道与滑块一起乘 50%**(滑块不跟班会剩一颗全亮白圆) | switch.tsx(radix-nova) + 第八节 61 |
 | switch 元素比轨道每边大 3px:给 focus-visible 的 ring-3 留绘制空间,同时外扩点击热区(≈ after:-inset-*) | switch.tsx |
 | progress = h-1 rounded-full bg-muted 轨道 + bg-primary 指示器(宽度按百分比) | progress.tsx |
+| **sheet**: 遮罩 bg-black/50; 面板 bg-background, 左右 h-full w-3/4 max-w-sm、上下 w-full h-auto, 贴边侧 1px border; 头部 p-4(gap-1.5)、页脚 p-4(gap-2) 按钮纵向铺满; 右上角关闭钮; 点遮罩/ESC/X 关闭, Tab 焦点陷阱同 Dialog; 进出场从贴边侧滑入/滑出 | sheet.tsx(radix-nova) + 第八节 120 |
+| **drawer**: 底部面板 max-h-[80vh]、上方两角 rounded-lg、border-t; 顶部抓手 w-[100px] h-2 mt-4 rounded-full bg-muted; 抓手按住下拖过 1/3 关闭、未过阈值回弹; 头部/页脚同 Sheet | drawer.tsx(vaul) + 第八节 121 |
+| **menubar**: 根条 h-9 rounded-md border p-1 gap-1; 触发区 rounded-sm px-2 py-1 text-sm, 悬停/展开 bg-accent; 弹层 min-w-[12rem] rounded-md border p-1, sideOffset 8 / alignOffset -4; 条目 px-2 py-1.5 text-sm, 悬停 bg-accent, 勾选/单选指示器在左(pl-8), 快捷键右对齐; **打开后悬停其它触发区即切换**; ←→ 切换顶级、↑↓/Home/End 移动、Enter 选中、ESC 关闭还焦点、Tab 关闭; 子菜单悬停/Enter 向右展开 | menubar.tsx(radix-nova) + 第八节 122~125 |
 | slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),hover/拖动中/focus-visible 显示 ring-3 | slider.tsx |
 | slider 元素比可见轨道左右各宽 9px(滑块半径 6 + ring 3, 给两端 ring 留绘制空间, 见第八节 26);滑块中心在轨道两端之间移动, 位置由 pos 自算 | slider.tsx(radix 滑块中心贴轨道端点) |
 | slider 交互全自实现:点击跳转 + LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ KeyDown 左右 ±5%/Home/End | — |
@@ -447,10 +453,12 @@ ui/
   | 文件 | 作用 | 被谁依赖 |
   |---|---|---|
   | `scrollbar.go` | 细滚动条皮肤 + 悬停显隐 | table / tree / combobox / input(多行) / scrollarea / dialog(可滚动内容) |
-  | `popup.go` | 弹层骨架(定位、阴影、进出场) | datepicker / timepicker |
+  | `popup.go` | 弹层骨架(定位、阴影、进出场) | datepicker / timepicker / select / popover / hovercard / menubar |
   | `backdrop.go` | 弹层背景模糊(抓窗快照) | dialog |
+  | `sheet.go` | 侧边面板(复用 Dialog 的模态基座) | dialog 的文件清单(模态分支) / drawer |
+  | `menu_model.go` | 菜单条目模型与 `MenuOpt` 构造器 | menu / menubar |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在 `ui/` 里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update` 或 `xui update button`(只更新该组件及其依赖)。
 
@@ -482,6 +490,10 @@ ui/
 | HoverCard 内容可鼠标交互, 但非激活窗口不接收键盘焦点 | WS_EX_NOACTIVATE 不抢前台, 这是"悬停预览不打断输入"的前提; 需要键盘操作的内容用 Popover |
 | Command 过滤是包含匹配, 不是 cmdk 的模糊评分; 没有 CommandDialog 类型 | 语义覆盖最常用的搜索/键盘选择; 命令面板弹窗用 `ui.NewDialog` + `Command` 组合 |
 | Avatar 只接受本地图片或 `image.Image`, 不支持远程 URL/动图 | 圆形裁剪在 Go 侧生成 RGBA 蒙版; 远程下载与 GIF 播放属于应用层 |
+| Sheet 面板没有 shadow-lg, 内容超出面板高时裁剪 | 窗口内的元素没有可用的圆角投影; 内容区高度是面板剩余空间, 需要滚动时在 `Content()` 里放 ScrollArea |
+| Drawer 只能从抓手起拖, 且没有 vaul 的橡皮筋阻尼 | 内容区任意位置起拖会与文本选择/按钮点击冲突; 阻尼动画会增加一套每帧缓动, 当前用"跟手 + 松手回弹"覆盖核心手势 |
+| Menubar 弹层超高不滚动 | 位置会夹进工作区, 但菜单本身没有滚动条; 需要滚动得自己控制菜单条目数量 |
+| Menubar 没有 Alt 键访问与 typeahead | 原生 Windows 菜单的 Alt 导航挂在系统菜单栏上; 自绘触发区只覆盖 Tab/方向键这一套可访问路径 |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1523,6 +1535,40 @@ ui/
     - **根因**: `resize` 里把窗口尺寸按 `cw * DPI/96` 算成物理值再传给 `SetWindowPos`, 而 xcgui 的 `XWnd_SetWindowPos` 对 **cx/cy** 会再做一次 DPI 适配 —— 尺寸被缩放了两次; 同一个调用里的 **x/y** 却是按物理像素直接使用的(位置没有二次缩放)。
     - **修法**: 位置仍自己乘 `DPI/96` 后传物理值; 尺寸直接传**逻辑像素**(`cw + shadowBand*2`), 不再乘缩放比。弹层窗口 = 卡片 + 两侧阴影带, 与可见卡片严格贴合。
 
+120. **窗口内的侧边面板滑入 = 平移面板及其直接子元素**(`components/sheet.go`, Sheet/Drawer):
+    - **背景**: Dialog 的面板背景画在遮罩元素的 paint 里, 标题/内容/页脚都是遮罩的兄弟元素, 没有"面板容器"可以整体移动; 元素 alpha 也不会级联(第八节 47)。
+    - **做法**: 记录 `slideX/slideY` 偏移; `layoutSheet` 先按最终位置排好, 再把面板矩形与**第一层子元素**(标题/描述/内容容器/关闭钮/页脚按钮/抓手)逐个 `XEle_GetRect` + `XEle_SetRect` 平移。内容容器里的控件相对容器定位, 自动跟随, 不需要遍历。遮罩自身的元素 alpha 只负责淡入淡出, 面板保持不透明。
+    - **注意**: `XWnd_GetRect` / `XEle_GetRect` / `XEle_SetRect` 都是**逻辑像素**, 与代码里其它坐标同口径; 只有 Win32 `GetWindowRect` 是物理像素(见 125)。拖拽/动画期间每帧只移动偏移量, 不要重跑 `layout`(量高依赖可见布局, 会抖)。
+
+121. **拖拽关闭不能清掉主 presence 过渡**(`components/drawer.go`):
+    - **现象**: 抓手拖拽关闭抽屉后, 抽屉消失了, 但之后整页**点不动** —— 页面还在, 所有点击都被一个看不见的元素吞掉。
+    - **根因**: 起拖时调了 `xui.DropTransitions(hWnd)`(想防止滑入动画和拖拽抢偏移), 它把主 presence 条目也删了; 松手后 `Presence(..., visible=false)` 对一个"从未活跃过"的新键返回 0, 既不跑过渡也不回调 `done` —— `finishSheetHide` 永远不执行, 遮罩停在 alpha=0 但元素仍可见(透明遮罩吞点击)。
+    - **修法**: 起拖不要清过渡; 滑入的 apply 里用 `d.dragging` 跳过(拖拽优先)。回弹用 `NextPresenceKey()` 分配临时键做"当前偏移 → 0"的短过渡, 不碰主键。关闭动画仍用主键的 1→0, `done` 里统一 `finishSheetHide`。
+
+122. **Menubar 不能用原生菜单做弹层**(`components/menubar.go`):
+    - **原因**: `XMenu_Popup` 是**阻塞**的(菜单关闭后才返回), 期间主窗口收不到鼠标移动 —— 而 radix menubar 的核心语义是"打开一个菜单后, 鼠标移到另一个触发区即切换"。原生菜单条(MenuBar)也不提供托管菜单的能力(示例里仍是按钮点击后自己 Popup)。
+    - **做法**: 复用 `popoverPanel` 的阴影窗 + 定位/工作区夹取, 弹层内容是一块自绘 Element: 行高 32, 悬停 bg-accent 走 `xui.HoverItem`, 勾选/单选指示器在左(pl-8), 快捷键右对齐; 条目模型与原生 Menu 共用 `menu_model.go`(`MenuOpt` 构造器原样可用)。
+
+123. **子菜单必须是激活弹层, 父层要在焦点转移期间"免疫失焦"**(`menubar.go` + `popup.go` 的 `keepOnBlur`):
+    - **现象**: 点子菜单条目没有任何回调, 菜单却整体关掉了。
+    - **根因**: 子菜单最初做成非激活窗口(`WS_EX_NOACTIVATE`)。点击子菜单时焦点仍归父弹层, 父弹层随后的失焦处理(或点击激活主窗口)会把父层 `Hide()` 掉 —— 子菜单窗口在 `LButtonUp` 到达前就被隐藏, 点击事件丢失。
+    - **修法**: 子菜单也用激活弹层(会拿焦点); 打开前把父弹层 `keepOnBlur=true`(KillFocus 处理跳过关闭); 子菜单关闭时按**前台窗口**判断: 焦点回到父弹层 → 只清子菜单引用, 焦点去了别的窗口 → 整组菜单关闭。程序化收起用 `hiding` 标记区分, 避免误关。另外父/子弹层各挂 `MouseLeave`: 指针既不在自己也不在另一层矩形内时才收起子菜单(用 `GetCursorPos` 对窗口矩形, 同 116)。
+
+124. **普通 Element 在布局里的 Auto 宽会解析成 0**(`menubar.go` 根条):
+    - **现象**: 菜单栏的触发钮都排好了, 但整条底色/边框完全不显示, 布局里却留出了高度。
+    - **根因**: 根条是普通 `widget.Element`(没有布局能力), `LayoutItem_SetWidth(Auto)` 不会按子元素算宽, 得到 0 宽; 子按钮仍能画在父矩形之外(与本库其它"布局容器才有 Auto 宽"的结论一致)。
+    - **修法**: 按触发钮实际宽度求和后写入 `SetWidth` + `LayoutItem_SetWidth(Fixed)`, 再让父布局 `AdjustLayout`。
+
+125. **`XWnd_GetRect` 返回逻辑像素, `wapi.GetWindowRect` 才是物理像素**(`menubar.go` 弹层定位):
+    - **现象**: 菜单弹层跑到触发区左边约 50 逻辑像素、还压住触发区上方。
+    - **根因**: 定位时用 `XWnd_GetRect` 取窗口矩形后又按 DPI 除了一次 —— 它和 `XEle_GetWndClientRect` / `XEle_SetRect` 是同一套逻辑坐标, 不需要换算。
+    - **修法**: `XWnd_GetRect` 的结果直接与元素 client 矩形相加; 只有 `wapi.GetWindowRect`(Win32, 物理)才乘/除 `DPI/96`。弹层屏幕位置本身按逻辑像素交给 `ShowAt`(它内部再乘缩放, 见 119)。
+
+126. **原生 Edit 的滚动条子元素是"延迟创建"的, 整树 Show(true) 会在第二次显示时把它们点亮**(`components/input.go` + `components/dialog.go` 的 `showEleTree`, Sheet 输入框灰条):
+    - **现象**: 单行输入框放在对话框/侧边面板这类"整棵子树统一显隐"的宿主里, **第一次打开正常, 第二次打开时输入框左上角多出一条带箭头的灰色短条**。
+    - **实测**: 新建的单行 `XEdit` 带着横向与纵向两个滚动条子元素, 矩形是 `(0,0,100,12)` 与 `(0,0,12,100)` —— 起点在**左上角**, 所以点亮后画出来的不是底部/右部的条; 而且这两个子元素是**控件首次真正显示时才补建**的: 第一次 `XWidget_Show` 整棵树时它们还不存在(枚举不到), 于是逃过一劫; 关闭再打开, 子元素已经挂上父链, 就被整树 `Show(true)` 一起点亮了(探针: 第一次 hShow/vShow=false, 第二次=true)。
+    - **修法(两处都要)**: ① 单行输入框构造时 `EnableAutoShowScrollBar(false)` + 两个滚动条 `Show(false)`(多行文本域仍要自动显示, 只在非多行分支处理); ② `showEleTree` 递归时**跳过 `XC_SCROLLBAR` 子树** —— 滚动条的显隐本来就由控件/皮肤自己管(同第八节 98 的 `SetSubtreeAlphaSkipScrollBars` 是同一个道理, 只是这里管的是 Show 标志而不是 alpha)。只做①不做②, 第二次打开照样翻车。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1566,4 +1612,5 @@ ui/
 - 命令面板: 原生 `widget.NewEdit` 透明化(EnableBkTransparent/EnableDrawBorder(false)/EnableDrawFocus(false)/SetBorderSize(0,0,0,0)/EnableAutoSelAll(false)) + `SetDefaultText/SetDefaultTextColor/SetCaretColor/SetTextAlign(Left|Center_V)`; `AddEvent_Edit_Changed` / `AddEvent_KeyDown` 接管 ↑↓/Home/End/Enter/ESC(原生箭头键会先到这里, 标记 handled 即可); 列表滚动用 `ScrollArea` 的 `GetViewHeight/GetViewPosV/ScrollPosYV`
 - 字体:`xui.FontSpec{Family, Size, Bold, Italic}`。**没有下划线字段**: `xcc.FontStyle_Underline` 在本框架的 D2D 文本路径下不渲染(探针: 下划线字体与普通字体像素一致), hover:underline 一律手绘 1px 线 —— 宽度取 `xui.TextWidth`, 落点见 Button 的 link 变体与 Accordion 触发区
 - 弹层键盘钩子(`popoverPanel`, Select 的 ↑↓/Enter 用): `Window.AddEvent_KeyDown`(窗口级, 焦点在子元素上也先于元素分发)、`popoverPanel.OnKeyDown/OnEsc`(popup.go 预留的钩子) + `Element.SetFocus`(焦点即条目高亮)
+- 侧边面板 / 抽屉 / 菜单栏(见第八节 120~125): `XWnd_GetBodyRect`(遮罩铺 Body)、`XEle_SetAlpha`(遮罩淡入, 不级联子元素)、`XEle_GetRect/SetRect`(面板整体平移, 逻辑像素)、`XEle_SetCapture`(抓手拖拽捕获鼠标)、`wapi.GetCursorPos`(拖拽用屏幕坐标算增量)、`wapi.GetForegroundWindow/SetForegroundWindow`(子菜单与父弹层的焦点归属判定)、`app.AfterFunc`(弹层关闭后延迟把焦点还给触发区, 否则被随后的窗口激活覆盖)
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`

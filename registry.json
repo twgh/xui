@@ -94,7 +94,7 @@
       "deps": []
     },
     "dialog": {
-      "files": ["dialog.go", "backdrop.go", "scrollarea.go", "scrollbar.go"],
+      "files": ["dialog.go", "sheet.go", "backdrop.go", "scrollarea.go", "scrollbar.go"],
       "deps": ["button", "label"]
     },
     "alertdialog": {
@@ -102,7 +102,7 @@
       "deps": ["dialog"]
     },
     "menu": {
-      "files": ["menu.go"],
+      "files": ["menu.go", "menu_model.go"],
       "deps": ["tooltip"]
     },
     "table": {
@@ -188,6 +188,18 @@
     "command": {
       "files": ["command.go", "scrollarea.go", "scrollbar.go"],
       "deps": ["label"]
+    },
+    "sheet": {
+      "files": ["sheet.go"],
+      "deps": ["dialog"]
+    },
+    "drawer": {
+      "files": ["drawer.go"],
+      "deps": ["sheet"]
+    },
+    "menubar": {
+      "files": ["menubar.go", "menu_model.go", "popup.go"],
+      "deps": ["button"]
     }
   }
 }

@@ -10,7 +10,7 @@
 
 ## 当前状态(截至 2026-10-25)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签再拆为 **14 页**(基础 4 / 表单 4 / 导航 2 / 反馈 2);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
@@ -33,6 +33,17 @@
   - **验收**: 探针逐项验证 —— Popover 自动高度/锚点居中/翻转; HoverCard 非激活显示、悬停进入卡片保持、移出 300ms + 轮询后续期关闭; Avatar 圆形裁图/徽标/叠放组/负间距; Command 键盘 ↓×2+Enter、输入过滤、空状态、ESC 清空、点击回焦; demo 基础2 页首加弹出层/头像卡、导航页首加命令面板卡(避开长页面滚到底后深层卡片的命中偏移, 见第八节 118)。逐组件安装 avatar / popover / hover-card / command 与 `add --all` 均编译通过; `go test ./...` 全绿。
   - **新结论**: 隐藏窗口里 LayoutEle 的 Auto 高恒为 0, 弹层要离屏显示一次再量(115); 非激活悬停弹层的关闭改用 MouseLeave + 指针位置轮询(116); 圆形头像用 RGBA 蒙版 + XDraw_ImageEx(117); 长页面滚到底后深层嵌套卡片的命中区可能比绘制位置低 20~30 逻辑像素(118, 根因未定位, 交互密集卡片放页首规避)。
   - **复验(阴影过宽, 二轮)**: 用户二次反馈"阴影还是在很外面"且"文字贴到按钮" —— ① 首轮把阴影带从 8/48 收到 5/50 只解决了一半; 探针枚举窗口发现弹层窗口 671×356 物理, 卡片只有 288 逻辑宽 —— `popoverPanel.resize` 把窗口尺寸乘了 DPI 再传给 `SetWindowPos`, 而该 API 的 **cx/cy 是逻辑像素**(x/y 才是物理像素), 尺寸被二次缩放, 多出来的区域就是"阴影"; 改为尺寸传逻辑值后窗口 447×237, 与卡片+5px 阴影带严格贴合(见 DESIGN 第八节 119)。② 内容区子项默认间距 0 导致末行文字贴按钮, Popover/HoverCard 内容宿主改为 gap 8; demo 的说明拆两行。Select / DatePicker / TimePicker 不调用 resize, 不受尺寸 bug 影响, 但共用收紧后的阴影带。
+
+- ✅ **批次 4: Sheet / Drawer / Menubar**(2026-10-25, 上游 tsx 同步):
+  - **前置完成**: 本地 shadcn 参考实现补齐 `sheet.tsx` / `drawer.tsx`(vaul)/ `menubar.tsx`(取自 shadcn.com.cn registry), `pnpm add vaul`, App.tsx 反馈页加「抽屉」对照卡、导航页加「菜单栏」对照卡, `pnpm build` 通过。
+  - **Sheet(★★)**: 复用 Dialog 覆盖层与模态栈(焦点陷阱/ESC/点遮罩/最小化挂起), 面板贴 Body 四边: 左右占满高、宽 min(3/4, 384), 上下宽度铺满、高按内容自撑; 遮罩 bg-black/50(比 Dialog 的 10% 深), 面板 bg-background + 贴边侧 1px border; 头部 p-4、页脚按钮纵向铺满; 打开/关闭从贴边侧滑入/滑出(300/200ms, 可用 WithSheetDuration 覆盖), 面板与直接子元素按偏移整体平移(第八节 120/125)。
+  - **Drawer(★★)**: Sheet 的底部形态 + 顶部抓手(100×8 胶囊, 热区 100×24)、max-h-[80vh]、上方两角圆角; 抓手按住捕获鼠标, 下拖过面板高 1/3 关闭、否则回弹; 方向可改 top/left/right(抓手只在底部)。**踩坑**: 起拖时 DropTransitions 会删掉主 presence 键, 导致关闭动画的 done 永不执行、透明遮罩一直吞点击(第八节 121, 已修)。
+  - **Menubar(★★★)**: 原生 `XMenu_Popup` 阻塞, 期间主窗口收不到鼠标移动, 无法实现 radix 的"打开后悬停其它触发区即切换", 所以弹层改自绘(复用 popoverPanel 阴影窗 + 自绘条目 Element); 条目模型与 Menu 共用 `menu_model.go`(MenuOpt 构造器原样可用), 支持条目/勾选/单选/分组标签/分隔线/快捷键/禁用/破坏性/前置图标/inset/子菜单; ↑↓/Home/End/Enter/←→/ESC/Tab 键盘导航, ESC 关闭后焦点还给触发区; 子菜单是第二个激活弹层, 父层 `keepOnBlur` 防止焦点转移时失焦关闭, 移出父/子矩形才收起(第八节 122~125)。
+  - **demo**: 新增 **导航3**(菜单栏)与 **反馈3**(右侧表单 Sheet / 左侧导航 Sheet / 底部 Sheet + 底部 Drawer), 页签总数 **16**; 交互密集卡片放在页首, 规避第八节 118。
+  - **验收**: `go build/vet/test ./...` 全绿; 逐组件安装 sheet / drawer / menubar 与 `add --all` 均编译通过(dialog / menu / alertdialog 的文件清单变更也一并回归); 150% DPI 亮色实机验证 —— Sheet 四向打开/遮罩/ESC/X/遮罩点击/焦点落输入框, Drawer 抓手拖拽关闭与短拖回弹、关闭后页面仍可点击, Menubar 打开/悬停切换/子菜单点击/勾选/禁用/键盘 ↓↓Enter、ESC 后 ↓ 重新打开同一菜单。
+  - **新结论**: 面板滑入靠平移直接子元素(120); 拖拽关闭不能清主 presence 键(121); 原生菜单无法承载悬停切换, 弹层自绘(122); 子菜单必须激活 + 父层 keepOnBlur(123); 普通 Element 的 Auto 宽在布局里是 0(124); XWnd_GetRect 是逻辑像素(125); 原生 Edit 自带的两个滚动条子元素默认矩形在左上角(126)。
+  - **复验(用户截图三问)**: ① **菜单栏字号没跟上** —— 触发区走 Button sm 预设是 13px, 上游是 text-sm(14): Button 加内部 `fontPx` 覆盖字段(不新增公开 API), Menubar 设 14 后 `FitWidth()` 重量宽, 实测触发区与弹层条目墨迹等高(150% DPI 下都是 11 图像像素), 高度仍按 sm 的 28。② **右侧面板输入框左上角出现两个灰条** —— 150% DPI 下本机未复现, 但探针确认原生 Edit 一创建就带 H/V 两个滚动条子元素, 矩形 (0,0,100,12) / (0,0,12,100) 起点就在左上角, 一旦被"内容超出自动显示"点亮就是截图里那块带箭头的灰条; 单行输入框构造时 `EnableAutoShowScrollBar(false)` + 两个滚动条 `Show(false)`(多行分支不受影响, 表单页文本域回归正常), 见第八节 126。③ **底部面板直角** —— 与上游一致: sheet.tsx 四向都没有圆角, 只有 vaul 的 Drawer 有 rounded-t-lg / rounded-b-lg(我们的 Drawer 有圆角, Sheet 没有)。
+  - **二轮复验(用户再报两点)**: ① **灰条"第二次打开才出现"** —— 探针实测: 单行 Edit 的两个滚动条子元素是**控件首次真正显示时才补建**的, 第一次整树 `Show(true)` 枚举不到它们所以正常, 关闭再开就被 `showEleTree` 一起点亮(矩形 (0,0,100,12)/(0,0,12,100) → 画在输入框左上角)。修两处: 单行输入框构造时关掉自动显示并隐藏滚动条 + `showEleTree` 跳过 `XC_SCROLLBAR` 子树(只做前者仍会翻车), 见第八节 126; 探针复验第二次打开 hShow/vShow 仍为 false, 实机第二次打开截图干净。② **关窗后进程不退** —— 菜单栏的弹层窗口是懒创建、只隐藏不销毁的, 主窗口关了它们还在 → 消息循环不退出(与 Tooltip 同一个坑, 第八节 77); 补 `bar.AddEvent_Destroy` + 宿主窗口 `WM_DESTROY` 两级销毁钩子(递归销毁子菜单弹层)。**A/B 实测**: 两个钩子都停用 → 关窗后枚举到 2 个残留 XCGUI 窗口、进程不退; 装回钩子 → 开过顶级菜单 + 子菜单后关窗, 进程正常退出。
 
 - ✅ **批次 2 收尾: Native Select / Select / Input-OTP / Accordion**(2026-10-24, 上游 tsx + App.tsx 对照卡同步):
   - **前置完成**: 本地 shadcn 参考实现补齐 `native-select.tsx` / `input-otp.tsx` / `accordion.tsx`(`npx shadcn add`), select.tsx 原有; App.tsx 基础页加手风琴对照卡、表单页加「独立 Select / NativeSelect」「验证码输入」对照卡, `pnpm build` 通过。
@@ -581,13 +592,13 @@
 ## 待办
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
-- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components 的 59 项: 39 项已有对应, 4 项部分覆盖, 16 项未实现)。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
+- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~4 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Carousel / Resizable / Navigation Menu / Chart / Sidebar 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
   - **已有等价实现(不新增)**: Radio Group = `NewRadio`(原生父容器互斥)、Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
   - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
   - **批次 2 — 表单闭环**: 已完成(2026-10-24): Toggle / Toggle Group / Native Select / Select / Input OTP / Accordion(复用 Collapsible)。
   - **批次 3 — 弹层基座**: 已完成(2026-10-25): Popover / Hover Card / Avatar / Command。
-  - **批次 4 — 窗格/菜单**: Sheet → Drawer、Menubar(★★★)。
+  - **批次 4 — 窗格/菜单**: 已完成(2026-10-25): Sheet / Drawer / Menubar。
   - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Carousel、Resizable、Navigation Menu、Chart、Sidebar(★★★★~★★★★★)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
   - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义)。
@@ -607,6 +618,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 empty field item breadcrumb kbd skeleton spinner toggle
 │                                 native_select select inputotp accordion
                                  popover hovercard avatar command
+                                 sheet drawer menubar
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
@@ -648,7 +660,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
-# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..13 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/导航1/导航2/反馈1/反馈2/数据/图标
+# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..15 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/导航1/导航2/导航3/反馈1/反馈2/反馈3/数据/图标
 #     XUI_ANIM_SCALE=5 把 hover / 弹层 / Collapsible 的过渡慢放 5 倍(抓中间帧用)
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
@@ -749,5 +761,5 @@ go build ./ui
 - `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), **每图标一个 `IconXxx` 常量**;按名字取用 `icons.Path("eye")`(给"名字来自用户输入/配置"的场合)。数据由 `scripts/gen_icons.py` 生成(默认取最新版, `--version` 可钉版)
 - 出图走**直通 D2D 几何填充**(`d2dicon.go`), GDI 模式(`app.New(false)`)自动回落折线描边
 - 体积(实测, 同基准 `-s -w`): 只用常量 **+0 字节**;调 `Path/Names` 引用整张表 **+426KB**
-- demo 第 6 页「图标」是浏览入口(`XUI_HOME_PAGE=5`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
+- demo 第 16 页「图标」是浏览入口(`XUI_HOME_PAGE=15`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
 - **原理、坑、性能结论见 DESIGN 第八节 43(抗锯齿 / figure 数)与 44(资源预处理 / 名字单射 / arc 标志位)**

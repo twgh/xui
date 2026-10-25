@@ -113,6 +113,9 @@ type Button struct {
 	hasPopup     bool        // aria-haspopup: 按下不整体下沉(菜单/下拉触发区)
 	loading      bool        // 加载态: 行内/纯图标位置绘制持续旋转的 loader
 	autoWidth    bool        // cx 传 0 时为 true: 宽度按文字/图标量出
+	// fontPx 覆盖尺寸档预设的字号(0 = 用预设)。Menubar 的触发区要 text-sm(14)
+	// 但高度仍是 sm 档的 28, 单靠 size 预设表达不了这种组合。
+	fontPx int32
 }
 
 // ButtonOption 组件配置项, 构造时传入。
@@ -252,7 +255,11 @@ func (b *Button) Spec() buttonSpec { return buttonSpecs[b.size] }
 
 // fontHandle 返回与绘制同字体的句柄(正文常规字重)。
 func (b *Button) fontHandle(t *xui.Theme) int {
-	return xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: b.Spec().font})
+	size := b.Spec().font
+	if b.fontPx > 0 {
+		size = b.fontPx
+	}
+	return xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: size})
 }
 
 // inlineIconSize 返回行内图标的默认绘制边长。lucide 的 svg 是 size-3/3.5/4(12/14/16),

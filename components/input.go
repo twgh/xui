@@ -248,6 +248,17 @@ func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
 		in.SetScrollBarSize(scrollBarW)
 		showScrollBarOnHover(in.Handle, in.GetScrollBarVObj())
 	} else {
+		// 单行输入框不需要滚动条。原生 Edit 一创建就带着两个滚动条子元素, 探针实测它们的
+		// 矩形是 (0,0,100,12) 与 (0,0,12,100) —— 起点在**左上角**, 所以一旦被点亮, 画出来的
+		// 不是底部/右部的条, 而是压在输入框左上角的一块带箭头灰条(上下内缩 7/5 之后客户区
+		// 只剩 20 逻辑像素, 行高在部分缩放下会顶到边界)。这里显式关掉"内容超出自动显示"。
+		in.EnableAutoShowScrollBar(false)
+		if h := in.GetScrollBarHObj(); h != nil {
+			h.Show(false)
+		}
+		if v := in.GetScrollBarVObj(); v != nil {
+			v.Show(false)
+		}
 		if in.passToggle {
 			in.EnablePassword(true)
 			// 遮挡符用实心圆点(U+25CF), 与浏览器默认的 -webkit-text-security: disc

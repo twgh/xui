@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
@@ -141,6 +143,24 @@ type Dialog struct {
 	scroll    *ScrollArea
 	scrollOn  bool
 	scrollMax int32
+
+	// sheet/drawer 形态(由 sheet.go 配置): 面板贴边而非居中, 四向侧边 + 滑入。
+	// 面板本身仍是 overlay 的自绘, 子元素按最终位置排好后整体平移(slideX/slideY)。
+	sheet       bool
+	drawer      bool
+	sheetSide   SheetSide
+	sheetW      int32
+	sheetPanelW int32
+	durOpen     time.Duration
+	durClose    time.Duration
+	slideX      int32
+	slideY      int32
+	appliedDX   int32
+	appliedDY   int32
+	dragger     *widget.Element // Drawer 顶部抓手(仅底部形态)
+	dragging    bool
+	dragStartY  int32
+	dragBaseY   int32
 
 	// fadeKey 是本实例的 presence 键(见 xui.NextPresenceKey): 所有对话框共用宿主窗口的
 	// 键空间, 固定键会撞上别的弹层或上一个对话框已完成的过渡(过渡不启动 → 对话框全透明)。
@@ -472,7 +492,9 @@ func (d *Dialog) OnClose(fn func()) *Dialog {
 // 先抓快照再显示再布局: 内容高度量的是"可见子元素"的占位, 隐藏状态下量出来是 0;
 // z 序是模糊层先抬顶、遮罩再抬顶压住它(两者都在其余内容之上)。
 func (d *Dialog) materialize() {
-	d.refreshBackdrop()
+	if !d.sheet {
+		d.refreshBackdrop()
+	}
 	showEleTree(d.overlay.Handle, true)
 	d.layout()
 	raiseModalStack(d.hWnd)
@@ -559,6 +581,9 @@ func (d *Dialog) Show() *Dialog {
 	if d == nil || d.overlay == nil {
 		return d
 	}
+	if d.sheet {
+		return d.showSheet()
+	}
 	d.open = true
 	d.pushModal()
 	d.materialize()
@@ -607,6 +632,9 @@ func (d *Dialog) Show() *Dialog {
 func (d *Dialog) Hide() *Dialog {
 	if d == nil || d.overlay == nil || !d.open {
 		return d
+	}
+	if d.sheet {
+		return d.hideSheet()
 	}
 	d.open = false
 	d.popModal()
@@ -681,6 +709,10 @@ func (d *Dialog) IsOpen() bool {
 // **面板与子元素一律用"遮罩局部坐标"** —— 子元素坐标是相对父元素原点的, 遮罩本体被摆到
 // Body 的 (mx,my) 后, 局部坐标就从 Body 左上角起算, 不要再叠加 mx/my。
 func (d *Dialog) layout() {
+	if d.sheet {
+		d.layoutSheet()
+		return
+	}
 	var wr xc.RECT
 	xc.XWnd_GetRect(d.hWnd, &wr)
 	ow, oh := wr.Right-wr.Left, wr.Bottom-wr.Top
@@ -980,6 +1012,10 @@ func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		return 0
 	}
 	*pbHandled = true
+	if d.sheet {
+		d.paintSheet(p)
+		return 0
+	}
 	t := xui.Current()
 
 	// 遮罩: bg-black/10(shadcn 的遮罩是固定黑色 10%, 不随主题变化)
@@ -1236,6 +1272,15 @@ func showEleTree(hEle int, show bool) {
 	xc.XWidget_Show(hEle, show)
 	n := xc.XEle_GetChildCount(hEle)
 	for i := int32(0); i < n; i++ {
-		showEleTree(xc.XEle_GetChildByIndex(hEle, i), show)
+		h := xc.XEle_GetChildByIndex(hEle, i)
+		// 滚动条不参与整树显隐: 原生 Edit 一显示就会**补建**自己的滚动条子元素,
+		// 第二次整树 Show(true) 会把它们一起点亮 —— 而单行输入框的那两个滚动条是
+		// 被刻意按住的(默认矩形 (0,0,100,12)/(0,0,12,100), 点亮后画在控件左上角,
+		// 表现就是"第一次打开正常, 第二次打开输入框左上角多出一条灰条")。
+		// 滚动条的显隐本来就由控件/皮肤自己管(见 scrollbar.go 与第八节 98)。
+		if h != 0 && xc.XObj_GetType(h) == xcc.XC_SCROLLBAR {
+			continue
+		}
+		showEleTree(h, show)
 	}
 }

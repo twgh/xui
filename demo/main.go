@@ -7,7 +7,7 @@
 //   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
 //
 // 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
-// 启动页 XUI_HOME_PAGE = 0..7 = 基础1 / 基础2 / 表单1 / 表单2 / 导航 / 反馈 / 数据 / 图标。
+// 启动页 XUI_HOME_PAGE = 0..15 = 基础1..4 / 表单1..4 / 导航1..3 / 反馈1..3 / 数据 / 图标。
 package main
 
 import (
@@ -40,8 +40,10 @@ const (
 	pageForm4        // 表单4: 日期与时间 / 月历 / 范围与预设
 	pageNav1         // 导航1: 命令面板 / 下拉菜单 / 右键菜单
 	pageNav2         // 导航2: 标签页 / 面包屑 / 分页 / 可折叠面板
+	pageNav3         // 导航3: 菜单栏(Menubar)
 	pageFeed1        // 反馈1: 对话框 / 提示气泡 / 警示对话框 / 对话框变体
 	pageFeed2        // 反馈2: 提示条 / 通知 / 进度 / 空状态
+	pageFeed3        // 反馈3: 侧边 Sheet / 底部 Drawer
 	pageData         // 数据: 表格 / 树
 	pageIcons        // 图标: 图标总览
 	pageCount
@@ -51,8 +53,8 @@ const (
 var pageTitles = [...]string{
 	"基础1", "基础2", "基础3", "基础4",
 	"表单1", "表单2", "表单3", "表单4",
-	"导航1", "导航2",
-	"反馈1", "反馈2",
+	"导航1", "导航2", "导航3",
+	"反馈1", "反馈2", "反馈3",
 	"数据", "图标",
 }
 
@@ -327,8 +329,10 @@ func buildPages(hWindow, host int) {
 	buildForm4Page(bodies[pageForm4])
 	buildNav1Page(bodies[pageNav1])
 	buildNav2Page(bodies[pageNav2])
+	buildNav3Page(bodies[pageNav3])
 	buildFeed1Page(bodies[pageFeed1], hWindow)
 	buildFeed2Page(bodies[pageFeed2], hWindow)
+	buildFeed3Page(bodies[pageFeed3], hWindow)
 	buildDataPage(bodies[pageData])
 	buildIconPage(bodies[pageIcons])
 
@@ -1806,7 +1810,82 @@ func borderedBox(parent int, h int32, horizontal bool) *widget.LayoutEle {
 	return box
 }
 
-// ===== 页 11: 反馈1(对话框 / 提示气泡 / 警示对话框 / 对话框变体) =====
+// ===== 页 11: 导航3(菜单栏) =====
+
+func buildNav3Page(body *widget.LayoutEle) {
+	_, v := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "菜单栏", v.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Menubar: 打开任一菜单后, 鼠标移到其它触发区即切换; 勾选/单选/子菜单/快捷键", v.Handle))
+
+	status := ui.NewLabel(0, 0, 0, 20, "尚未选择条目", v.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(status)
+	setStatus := func(text string) { status.SetText(text).Redraw(false) }
+
+	mb := ui.NewMenubar(v.Handle)
+
+	file := mb.AddMenu("文件")
+	file.Item("新建标签页", ui.MenuShortcut("Ctrl+T"), ui.MenuOnSelect(func() {
+		setStatus("文件 / 新建标签页")
+	}))
+	file.Item("新建窗口", ui.MenuShortcut("Ctrl+N"), ui.MenuOnSelect(func() {
+		setStatus("文件 / 新建窗口")
+	}))
+	file.Item("新建无痕窗口", ui.MenuDisabled())
+	file.Separator()
+	file.Sub("分享", func(s *ui.MenubarMenu) {
+		s.Item("邮件链接", ui.MenuOnSelect(func() { setStatus("文件 / 分享 / 邮件链接") }))
+		s.Item("消息", ui.MenuOnSelect(func() { setStatus("文件 / 分享 / 消息") }))
+		s.Item("备忘录", ui.MenuOnSelect(func() { setStatus("文件 / 分享 / 备忘录") }))
+	})
+	file.Separator()
+	file.Item("打印…", ui.MenuShortcut("Ctrl+P"), ui.MenuOnSelect(func() {
+		setStatus("文件 / 打印…")
+	}))
+
+	edit := mb.AddMenu("编辑")
+	edit.Item("撤销", ui.MenuShortcut("Ctrl+Z"), ui.MenuOnSelect(func() { setStatus("编辑 / 撤销") }))
+	edit.Item("重做", ui.MenuShortcut("Ctrl+Y"), ui.MenuOnSelect(func() { setStatus("编辑 / 重做") }))
+	edit.Separator()
+	edit.Item("剪切", ui.MenuOnSelect(func() { setStatus("编辑 / 剪切") }))
+	edit.Item("复制", ui.MenuOnSelect(func() { setStatus("编辑 / 复制") }))
+	edit.Item("粘贴", ui.MenuOnSelect(func() { setStatus("编辑 / 粘贴") }))
+
+	view := mb.AddMenu("视图")
+	view.Check("显示行号", true, ui.MenuOnCheck(func(on bool) {
+		if on {
+			setStatus("视图 / 显示行号: 开")
+		} else {
+			setStatus("视图 / 显示行号: 关")
+		}
+	}))
+	view.Check("显示书签栏", false, ui.MenuOnCheck(func(on bool) {
+		if on {
+			setStatus("视图 / 显示书签栏: 开")
+		} else {
+			setStatus("视图 / 显示书签栏: 关")
+		}
+	}))
+	view.Separator()
+	view.Item("重新加载", ui.MenuShortcut("F5"), ui.MenuOnSelect(func() { setStatus("视图 / 重新加载") }))
+	view.Item("强制重新加载", ui.MenuDisabled())
+
+	profile := mb.AddMenu("用户")
+	profile.Label("账号")
+	profile.Radio("浅色主题", true, ui.MenuGroup(1), ui.MenuOnCheck(func(bool) {
+		setStatus("用户 / 主题: 浅色")
+	}))
+	profile.Radio("深色主题", false, ui.MenuGroup(1), ui.MenuOnCheck(func(bool) {
+		setStatus("用户 / 主题: 深色")
+	}))
+	profile.Separator()
+	profile.Item("退出登录", ui.MenuDestructive(), ui.MenuOnSelect(func() { setStatus("用户 / 退出登录") }))
+
+	xui.ItemFill(desc(v.Handle,
+		"↑↓ 移动 · Enter 选中 · ←→ 切换顶级菜单 · ESC 关闭并把焦点还给触发区; 子菜单悬停展开(非激活弹层, 不抢焦点)。"))
+}
+
+// ===== 页 12: 反馈1(对话框 / 提示气泡 / 警示对话框 / 对话框变体) =====
 
 func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	r := row(body.Handle, 0, gap)
@@ -1867,7 +1946,7 @@ func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(desc(vdv.Handle, "嵌套示例: 点「打开警示」在对话框上再叠一层; 连按 ESC 会先关上层。"))
 }
 
-// ===== 页 12: 反馈2(提示条 / 通知 / 进度 / 空状态) =====
+// ===== 页 13: 反馈2(提示条 / 通知 / 进度 / 空状态) =====
 
 func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	// ---- 第一行: 提示条 ----
@@ -2017,7 +2096,106 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	tip.Bind(learn.Handle, "Empty 不画边框(上游默认也没有可见边框); 需要边框时放进 Card")
 }
 
-// ===== 页 13: 数据(表格 / 树) =====
+// ===== 页 14: 反馈3(侧边 Sheet / 底部 Drawer) =====
+
+func buildFeed3Page(body *widget.LayoutEle, hWindow int) {
+	r := row(body.Handle, 0, gap)
+
+	// ---- 列 1: Sheet(四向侧边面板) ----
+	_, v := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "侧边面板", v.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Sheet: 从窗口边缘滑入, bg-black/50 遮罩; 左右占满高, 上/下按内容自撑", v.Handle))
+
+	sheetStatus := ui.NewLabel(0, 0, 0, 20, "点击按钮打开面板", v.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(sheetStatus)
+	rs := xui.HStack(v.Handle, 36, 8)
+	rightBtn := ui.NewButton(0, 0, 0, 0, "右侧面板", rs.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(rightBtn, 100)
+	leftBtn := ui.NewButton(0, 0, 0, 0, "左侧导航", rs.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(leftBtn, 100)
+	bottomBtn := ui.NewButton(0, 0, 0, 0, "底部面板", rs.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(bottomBtn, 100)
+	buildSheetDemos(hWindow, rightBtn, leftBtn, bottomBtn, sheetStatus)
+	xui.ItemFill(desc(v.Handle, "ESC / 遮罩 / X 关闭; Tab 焦点陷阱与 Dialog 一致。"))
+
+	// ---- 列 2: Drawer(底部抽屉 + 抓手拖拽) ----
+	_, v2 := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "底部抽屉", v2.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Drawer: 顶部抓手, 向下拖过面板高 1/3 关闭, 未过阈值回弹; max-h-[80vh]", v2.Handle))
+
+	drawerStatus := ui.NewLabel(0, 0, 0, 20, "尚未打开抽屉", v2.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(drawerStatus)
+	rd := xui.HStack(v2.Handle, 36, 8)
+	drawerBtn := ui.NewButton(0, 0, 0, 0, "打开抽屉", rd.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(drawerBtn, 100)
+	buildDrawerDemo(hWindow, drawerBtn, drawerStatus)
+	xui.ItemFill(desc(v2.Handle,
+		"点遮罩 / ESC 也可关闭; 页脚按钮纵向铺满(与 Sheet 同一套排版)。"))
+}
+
+// buildSheetDemos 建右侧表单 / 左侧导航 / 底部说明三个 Sheet。
+func buildSheetDemos(hWindow int, rightBtn, leftBtn, bottomBtn *ui.Button, status *ui.Label) {
+	set := func(s string) { status.SetText(s).Redraw(false) }
+
+	right := ui.NewSheet(hWindow, ui.WithSheetSide(ui.SheetRight))
+	right.SetTitle("编辑资料")
+	right.SetDescription("修改你的公开资料, 完成后点击保存。")
+	cw := right.ContentWidth()
+	ui.NewLabel(0, 0, cw, 20, "显示名称", right.Content()).SetFontSize(14).SetMedium()
+	ui.NewInput(0, 24, cw, 32, right.Content()).SetValue("twgh")
+	ui.NewLabel(0, 72, cw, 20, "个人主页", right.Content()).SetFontSize(14).SetMedium()
+	ui.NewInput(0, 96, cw, 32, right.Content()).SetValue("https://")
+	right.AddFooter("保存更改", ui.ButtonPrimary, func() {
+		set("右侧面板: 已保存更改")
+		right.Close()
+	})
+	right.AddFooter("取消", ui.ButtonOutline, func() { right.Close() })
+	right.OnClose(func() { set("右侧面板已关闭") })
+	right.BindTrigger(rightBtn)
+
+	left := ui.NewSheet(hWindow, ui.WithSheetSide(ui.SheetLeft))
+	left.SetTitle("导航")
+	left.SetDescription("左侧面板适合放导航 / 筛选。")
+	lw := left.ContentWidth()
+	for i, text := range []string{"账户设置", "通知", "外观", "快捷键", "关于"} {
+		ui.NewLabel(0, int32(i*32), lw, 24, text, left.Content()).SetFontSize(14)
+	}
+	left.AddFooter("关闭", ui.ButtonOutline, func() { left.Close() })
+	left.OnClose(func() { set("左侧面板已关闭") })
+	left.BindTrigger(leftBtn)
+
+	bottom := ui.NewSheet(hWindow, ui.WithSheetSide(ui.SheetBottom))
+	bottom.SetTitle("快捷操作")
+	bottom.SetDescription("上 / 下面板宽度铺满、高度按内容自撑。")
+	ui.NewLabel(0, 0, bottom.ContentWidth(), 24,
+		"这里可以放操作说明或一段短表单。", bottom.Content()).SetFontSize(14).SetMuted()
+	bottom.AddFooter("确认", ui.ButtonPrimary, func() {
+		set("底部面板: 已确认")
+		bottom.Close()
+	})
+	bottom.AddFooter("取消", ui.ButtonOutline, func() { bottom.Close() })
+	bottom.OnClose(func() { set("底部面板已关闭") })
+	bottom.BindTrigger(bottomBtn)
+}
+
+// buildDrawerDemo 建底部抽屉示例。
+func buildDrawerDemo(hWindow int, openBtn *ui.Button, status *ui.Label) {
+	dr := ui.NewDrawer(hWindow)
+	dr.SetTitle("确认离开?")
+	dr.SetDescription("未保存的更改会丢失; 向下拖动顶部抓手也可以关闭。")
+	ui.NewLabel(0, 0, dr.ContentWidth(), 24, "上次保存于 2 分钟前", dr.Content()).SetFontSize(14).SetMuted()
+	dr.AddFooter("保存并离开", ui.ButtonPrimary, func() {
+		dr.Close()
+		status.SetText("已保存并离开").Redraw(false)
+	})
+	dr.AddFooter("取消", ui.ButtonOutline, func() { dr.Close() })
+	dr.OnClose(func() { status.SetText("抽屉已关闭").Redraw(false) })
+	dr.BindTrigger(openBtn)
+}
+
+// ===== 页 15: 数据(表格 / 树) =====
 
 func buildDataPage(body *widget.LayoutEle) {
 	r := rowStretch(body.Handle, gap) // 铺满型页面: 表格/树跟随窗口长高(内容区已 SetContentFill)
@@ -2072,7 +2250,7 @@ func buildDataPage(body *widget.LayoutEle) {
 	})
 }
 
-// ===== 页 14: 图标(icons 资源子包) =====
+// ===== 页 16: 图标(icons 资源子包) =====
 // 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
 // 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
 // 点击把名字复制到剪贴板。

@@ -244,6 +244,13 @@ type popoverPanel struct {
 
 	// activate 为 false 时不抢焦点、不因失焦关闭(悬停卡片这类"鼠标移入内容"的弹层)。
 	activate bool
+	// keepOnBlur 为 true 时暂时忽略失焦关闭: Menubar 打开子菜单时焦点会转移到
+	// 子菜单窗口, 父弹层必须保持打开(否则子菜单在鼠标按下时被父层一起关掉)。
+	keepOnBlur bool
+	// paintRadius / paintBorder 覆盖卡片圆角与描边(0 = 默认 RadiusLg / foreground 10%)。
+	// Menubar 的弹层是 rounded-md + border, 与 Popover 的 rounded-lg + ring 不同。
+	paintRadius int32
+	paintBorder xui.Color
 	// bodyLayout 是启用布局的内容宿主(layoutBody = true 时非空); 公开 Popover /
 	// HoverCard 的内容区建在它上面, 这样才能量出内容的自然高度。
 	bodyLayout *widget.LayoutEle
@@ -328,21 +335,29 @@ func newPopoverPanelEx(cw, ch int32, hAnchor int, layoutBody, activate bool) *po
 		}
 	}
 	body.EnableBkTransparent(true)
+	p := &popoverPanel{win: win, body: body, bodyLayout: bodyLayout, cw: cw, ch: ch, activate: activate}
 	body.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
-		p := xui.BeginPaint(hEle, hDraw)
-		if p == nil {
+		paint := xui.BeginPaint(hEle, hDraw)
+		if paint == nil {
 			return 0
 		}
 		*pbHandled = true
 		t := xui.Current()
-		p.FillRound(&p.Rc, t.Popover, t.RadiusLg())
-		p.StrokeRound(&p.Rc, t.Foreground.WithAlpha(26), t.RadiusLg(), 1)
+		radius := p.paintRadius
+		if radius <= 0 {
+			radius = t.RadiusLg()
+		}
+		border := p.paintBorder
+		if border == 0 {
+			border = t.Foreground.WithAlpha(26)
+		}
+		paint.FillRound(&paint.Rc, t.Popover, radius)
+		paint.StrokeRound(&paint.Rc, border, radius, 1)
 		return 0
 	})
 
-	p := &popoverPanel{win: win, body: body, bodyLayout: bodyLayout, cw: cw, ch: ch, activate: activate}
 	win.AddEvent_KillFocus(func(hWindow int, pbHandled *bool) int {
-		if p.activate && p.open {
+		if p.activate && p.open && !p.keepOnBlur {
 			p.Hide()
 		}
 		return 0
