@@ -27,7 +27,10 @@ const (
 	mbSubMinW    int32 = 128 // MenubarSubContent min-w-[8rem]
 	mbSideOffset int32 = 8   // sideOffset
 	mbAlignOff   int32 = -4  // alignOffset(对齐起点再左移 4)
-	mbSubOffset  int32 = -4  // 子菜单与父面板的重叠量
+	// 子菜单与父面板**重叠** 4(对齐 radix SubContent 的 alignOffset -4):
+	// 两块面板之间不能留缝 —— 鼠标穿过缝隙时两个面板都不再收到 MouseMove,
+	// 收起检查会把子菜单关掉(写成正号就变成 4px 间隙, 实测移不过去)。
+	mbSubOffset int32 = -4
 )
 
 // 键盘键码(只用到这几个)。
@@ -725,7 +728,7 @@ func (v *menubarView) openChild(idx int) {
 	}
 	// 父面板卡片左上角的屏幕逻辑坐标(窗口矩形含阴影带, 要补回来)。
 	px, py := panelScreenPos(v.panel)
-	x := px + v.panelW - mbSubOffset
+	x := px + v.panelW + mbSubOffset
 	y := py + v.rows[idx].y + mbSubOffset
 	child.hover = -1
 	child.body.Redraw(false)
@@ -762,7 +765,10 @@ func (v *menubarView) closeChild() {
 	}
 }
 
-// cursorInPanel 报告光标是否落在某个弹层卡片内(屏幕物理坐标换算到逻辑坐标后比较)。
+// cursorInPanel 报告光标是否落在某个弹层**窗口**内(含四周的阴影带)。
+// 必须按窗口矩形算而不是卡片矩形: 阴影带虽然透明却仍属于弹层窗口, 光标走到那里
+// 时父面板已经收不到 MouseMove 了 —— 按卡片矩形判定会得出"两边都不在", 于是
+// 从父菜单移向子菜单的路上就把子菜单关掉。
 func cursorInPanel(p *popoverPanel) bool {
 	if p == nil || !p.alive() {
 		return false
@@ -779,7 +785,11 @@ func cursorInPanel(p *popoverPanel) bool {
 	cx := int32(math.Round(float64(pt.X) / sc))
 	cy := int32(math.Round(float64(pt.Y) / sc))
 	x, y := panelScreenPos(p)
-	return cx >= x && cx < x+p.cw && cy >= y && cy < y+p.ch
+	x -= popoverShadow
+	y -= popoverShadow
+	w := p.cw + popoverShadow*2
+	h := p.ch + popoverShadow*2
+	return cx >= x && cx < x+w && cy >= y && cy < y+h
 }
 
 // panelScreenPos 返回弹层卡片(不含阴影带)左上角的屏幕逻辑坐标。
