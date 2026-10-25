@@ -172,6 +172,22 @@
     "accordion": {
       "files": ["accordion.go"],
       "deps": ["button", "collapsible", "separator"]
+    },
+    "avatar": {
+      "files": ["avatar.go"],
+      "deps": []
+    },
+    "popover": {
+      "files": ["popover.go", "popup.go"],
+      "deps": ["label"]
+    },
+    "hover-card": {
+      "files": ["hovercard.go", "popup.go"],
+      "deps": []
+    },
+    "command": {
+      "files": ["command.go", "scrollarea.go", "scrollbar.go"],
+      "deps": ["label"]
     }
   }
 }

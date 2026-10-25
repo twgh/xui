@@ -715,7 +715,70 @@ func buildBase1Page(body *widget.LayoutEle) {
 
 // ===== 页 2: 基础2(卡片 / 比例容器 / 滚动容器) =====
 
+// buildOverlayCards 演示弹出层 / 悬停卡片 / 头像。
+// 放在基础2页顶部, 避免长页面滚到底后深层卡片命中区与绘制位置的累计偏移。
+func buildOverlayCards(body *widget.LayoutEle) {
+	r5 := row(body.Handle, 0, gap)
+
+	_, vpop := autoCard(col(r5.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "弹出层", vpop.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Popover: 点击触发、外部/ESC 关闭; HoverCard: 悬停预览且不抢焦点", vpop.Handle))
+
+	popRow := xui.HStack(vpop.Handle, 36, 12)
+	popBtn := ui.NewButton(0, 0, 0, 0, "打开 Popover", popRow.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonHasPopup(),
+		ui.WithButtonTrailingIcon(icons.IconChevronDown))
+	xui.ItemWidth(popBtn, 140)
+	ui.NewPopover(popBtn.Handle, ui.WithPopoverContent(func(c int) {
+		h := ui.PopoverHeader(c)
+		ui.PopoverTitle(h.Handle, "维度设置")
+		ui.PopoverDescription(h.Handle, "调整弹层宽度与内容间距。")
+		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "宽度 288 · 内边距 16", c).SetMuted().SetFontSize(14))
+		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "下方优先, 空间不足自动翻转", c).SetMuted().SetFontSize(14))
+		btns := xui.HStack(c, 32, 8)
+		ui.NewButton(0, 0, 72, 0, "保存", btns.Handle)
+		ui.NewButton(0, 0, 72, 0, "取消", btns.Handle, ui.WithVariant(ui.ButtonOutline))
+	}))
+
+	hoverBtn := ui.NewButton(0, 0, 0, 0, "悬停 @xui 查看资料", vpop.Handle, ui.WithVariant(ui.ButtonLink))
+	xui.ItemWidth(hoverBtn, 160)
+	ui.NewHoverCard(hoverBtn.Handle, ui.WithHoverCardContent(func(c int) {
+		r := xui.HStack(c, 40, 12)
+		ui.NewAvatar(0, 0, 0, 0, r.Handle, "X",
+			ui.WithAvatarSize(ui.AvatarSizeLg), ui.WithAvatarImageData(demoAvatar()))
+		col := xui.VStackWeight(r.Handle, 1, 2)
+		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "@xui", col.Handle).SetMedium().SetFontSize(14))
+		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "shadcn 风格 xcgui 自绘组件库", col.Handle).SetMuted().SetFontSize(14))
+		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "加入于 2026 年 10 月", c).SetMuted().SetFontSize(14))
+	}))
+
+	_, vav := autoCard(col(r5.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "头像", vav.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Avatar: sm 24 / default 32 / lg 40; 圆形裁图 / 首字母回落 / 徽标 / 叠放组", vav.Handle))
+
+	xui.ItemFill(hint(vav.Handle, "尺寸 / 图片 / 徽标"))
+	avRow := xui.HStack(vav.Handle, 40, 14)
+	ui.NewAvatar(0, 0, 0, 0, avRow.Handle, "JD")
+	ui.NewAvatar(0, 0, 0, 0, avRow.Handle, "X",
+		ui.WithAvatarImageData(demoAvatar()), ui.WithAvatarBadge(icons.IconCheck))
+	ui.NewAvatar(0, 0, 0, 0, avRow.Handle, "AB", ui.WithAvatarSize(ui.AvatarSizeSm), ui.WithAvatarRing())
+	ui.NewAvatar(0, 0, 0, 0, avRow.Handle, "L", ui.WithAvatarSize(ui.AvatarSizeLg), ui.WithAvatarBadge(""))
+
+	xui.ItemFill(hint(vav.Handle, "叠放组(-space-x-2) + 计数"))
+	grp := ui.NewAvatarGroup(vav.Handle)
+	grp.Add("A")
+	grp.Add("B")
+	grp.Add("C")
+	grp.AddCount(3)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20,
+		"AvatarGroup 用横向布局的负间距叠放; 组内头像默认带 2px 背景色环", vav.Handle).SetMuted().SetFontSize(14))
+}
+
 func buildBase2Page(body *widget.LayoutEle) {
+	buildOverlayCards(body)
+
 	// ---- 卡片本身(直接以真卡片呈现, 不套外壳) ----
 	cardDemo, vd := autoCard(body.Handle, 10)
 	// 卡片头: 左列标题+说明, 右列动作区(CardAction) —— 动作贴右上、跨标题与说明两行。
@@ -1344,7 +1407,56 @@ func dateRangeText(from, to time.Time) string {
 
 // ===== 页 5: 导航(标签页 / 分页 / 菜单) =====
 
+// buildCommandCard 命令面板演示; 放导航页顶部, 保证输入框/条目的命中区无需滚动即可用。
+func buildCommandCard(body *widget.LayoutEle) {
+	_, vcmd := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "命令面板", vcmd.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Command: 输入即过滤, ↑/↓ 跳过禁用, Enter 选中, ESC 清空; 列表超高自动滚动", vcmd.Handle))
+
+	cmdRow := xui.HStack(vcmd.Handle, 360, 24)
+	cmdStatus := ui.NewLabel(0, 0, 0, 20, "选中: (无)", vcmd.Handle).SetMuted().SetFontSize(14)
+	xui.ItemFill(cmdStatus)
+	cmd := ui.NewCommand(0, 0, 560, 360, cmdRow.Handle,
+		ui.WithCommandOnSelect(func(v string) {
+			cmdStatus.SetText("选中: " + v)
+			cmdStatus.Redraw(false)
+		}))
+	sug := cmd.AddGroup("建议")
+	sug.AddItem("calendar", "日历", ui.WithCommandItemIcon(icons.IconCalendar), ui.WithCommandItemShortcut("Ctrl+C"))
+	sug.AddItem("emoji", "搜索表情", ui.WithCommandItemIcon(icons.IconSmile))
+	sug.AddItem("calculator", "计算器", ui.WithCommandItemIcon(icons.IconCalculator), ui.WithCommandItemShortcut("Ctrl+Shift+C"))
+	sug.AddItem("user", "用户资料", ui.WithCommandItemIcon(icons.IconUser))
+	cmd.AddSeparator()
+	set := cmd.AddGroup("设置")
+	set.AddItem("profile", "个人资料", ui.WithCommandItemIcon(icons.IconUser), ui.WithCommandItemShortcut("Ctrl+P"))
+	set.AddItem("settings", "设置", ui.WithCommandItemIcon(icons.IconSettings), ui.WithCommandItemShortcut("Ctrl+S"))
+	set.AddItem("keyboard", "键盘快捷键", ui.WithCommandItemIcon(icons.IconKeyboard), ui.WithCommandItemKeywords("快捷键 hotkey"))
+	set.AddItem("help", "帮助与反馈", ui.WithCommandItemIcon(icons.IconCircleHelp))
+	set.AddItem("disabled", "禁用条目", ui.WithCommandItemIcon(icons.IconX), ui.WithCommandItemDisabled())
+
+	cmdInfo := xui.VStackWeight(cmdRow.Handle, 1, 10)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "键盘优先", cmdInfo.Handle).SetMedium().SetFontSize(14))
+	for _, text := range []string{
+		"输入即过滤(不区分大小写, 支持 keywords)",
+		"↑/↓ 循环移动, 自动跳过禁用项",
+		"Home / End 跳到首尾",
+		"Enter 选中并回写状态",
+		"ESC 清空搜索词",
+	} {
+		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "· "+text, cmdInfo.Handle).SetMuted().SetFontSize(14))
+	}
+	focusCmd := ui.NewButton(0, 0, 0, 0, "聚焦搜索框", cmdInfo.Handle, ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+	focusCmd.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		cmd.Focus()
+		return 0
+	})
+	xui.ItemFill(focusCmd)
+}
+
 func buildNavPage(body *widget.LayoutEle) {
+	buildCommandCard(body)
+
 	r := row(body.Handle, 0, gap)
 
 	// ---- 列 1: 标签页 ----

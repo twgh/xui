@@ -263,6 +263,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Select | Button(触发区, 全自绘) + popoverPanel + ScrollArea | 触发区与 ComboBox 同一套 paint 规则; 弹层是自建阴影窗(popover.go 骨架, item-aligned 定位见第八节 71/74), 条目是自绘 Button(悬停/焦点 = bg-accent, 选中右侧 check, 禁用置灰), 分组标签/分隔线是自绘 Element; 滚动用 ScrollArea(条目超出高度才出), 键盘 ↑↓/Home/End/Enter 走弹窗 KeyDown 钩子 | select.tsx(radix-nova) |
 | InputOTP | 每格一个原生 Edit(32×32) + 自绘壳 | 文字居中用原生 `SetTextAlign(Center\|Center_V)`(单行 Edit 程序 SetText 同样生效; 不要用 border 挤位置, 会切字, 见第八节 110); 字符一律在 `AddEvent_Char` 拦截后自己落格(替换已填格 + 非法字符不入格 + 自动前进), 粘贴在 KeyDown 拦 Ctrl+V 读剪贴板分发; 相邻格共享边 = 每格画 top/bottom/right、首格加 left、中段格的 left 用底色擦掉(防 2px 叠边); aria-invalid 的组外圈画在容器 PAINT_END(子元素之后, 普通 paint 会被格子盖掉) | input-otp.tsx(input-otp 包) |
 | Accordion | LayoutEle + Button(check, 全自绘) + Collapsible | 每项 = 触发钮(Toggle 式全自绘: 文字 hover 下划线**手绘 1px 线**, 箭头随开合换 ChevronUp/Down, 高度固定 40) + 一个 Collapsible 做高度过渡; 条目间 1px 分隔线(末项没有); single 互斥在 item.setOpen 里关其它项, 只通知一次; 内容区 pb-2.5 用 10px 透明占位(不能用外边距, 见第八节 111) | accordion.tsx(radix-nova) |
+| Popover | popoverPanel(阴影窗) + LayoutEle | 复用 datepicker/select 的弹层底座, 内容区改成布局容器: 离屏显示一次量出 Auto 高(第八节 115), 再按 side/align 摆放并在工作区内翻转/夹取; 点击触发, 失焦/ESC 关闭; 公开 `NewPopover` 与 Header/Title/Description 助手 | popover.tsx(radix-nova) |
+| HoverCard | popoverPanel(非激活模式) + LayoutEle | 同 Popover, 但窗口带 `WS_EX_NOACTIVATE`、不调用 SetForegroundWindow、不靠 KillFocus 关闭(第八节 116); 700ms 悬停打开 / 300ms 离开关闭, 指针仍在卡片上时关闭检查自动续期 | hover-card.tsx(radix-nova) |
+| Avatar | 纯自绘 Element | 圆形图片用 CPU 居中裁剪 + 抗锯齿圆形蒙版生成 RGBA, `XImage_LoadFromDataRGBA` + `XDraw_ImageEx` 绘制(第八节 117); 无图回落首字母, 右下角徽标; AvatarGroup 用横向布局负间距叠放 | avatar.tsx(radix-nova) |
+| Command | LayoutEle + 原生 Edit + ScrollArea | 搜索行(自绘图标 + 透明 Edit + 下边框) + ScrollArea 列表; 分组/条目是自绘 Element, 输入即过滤(跳过禁用), ↑↓/Home/End/Enter 在 Edit 的 KeyDown 里接管; 选中不自动关闭(交给 Dialog/Popover 组合) | command.tsx(cmdk) |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
@@ -343,6 +347,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | spinner = Loader2 size-4(16) animate-spin 1s/圈;相位由 `xui.Spin` 提供 | spinner.tsx + anim.go |
 | toggle = inline-flex items-center gap-2(8) rounded-md text-sm;default 透明底, hover bg-muted + muted-foreground, 选中 bg-accent + accent-foreground;outline 加 border-input, hover/选中填充 accent;尺寸 h-9/h-8/h-10(36/32/40) + min-w 同高、px-2/1.5/2.5;focus-visible border-ring + ring-3 ring-ring/50;aria-invalid 红边框 + 红环;disabled opacity-50 | toggle.tsx(radix-nova) |
 | toggle group = 横向 flex w-fit、间距 spacing;spacing=0 时条目 px-3 + min-w-0、首项只保留左外角、末项只保留右外角(分段控件), outline 的相邻边框合并;单选同组互斥且可全部取消, 多选各自独立 | toggle-group.tsx(radix-nova) |
+| popover = bg-popover + 1px ring(foreground/10) + rounded-lg + shadow-md, 默认 w-72(288) + p-4(16), sideOffset=4; 点击 trigger 开合, 点外部(失焦)/ESC 关闭, ESC 后焦点回触发区; 下方优先, 放不下自动翻到上方/左右, 并夹在显示器工作区内; 内容高度按子项自撑, 也支持固定高; 进场只淡入 | popover.tsx(radix-nova) |
+| hover card = 同 popover 的面板外观但默认 w-64(256) + p-4(16); 悬停 trigger 700ms 打开, 移出 trigger/卡片 300ms 关闭; 卡片可交互且**不抢焦点**(非激活窗口), 指针还在卡片上时关闭检查续期; 不做键盘聚焦打开 | hover-card.tsx(radix-nova) |
+| avatar = 圆形 sm 24 / default 32 / lg 40; 图片居中裁剪, 无图 fallback bg-muted + muted-foreground(默认 14 / sm 12); AvatarBadge 在右下角(size 8/10/12 + 2px 背景色环 + primary 底), AvatarGroup 用 `-space-x-2`(负 8)叠放、组内头像带 2px 背景色环, 计数头像同尺寸 | avatar.tsx(radix-nova) |
+| command = 搜索行 h-9(36) + 下边框 + size-4 搜索图标(opacity-50) + 透明输入框; 条目 h-8(32) px-2 rounded-sm, 选中 bg-accent + accent-foreground; 分组标签 text-xs muted + p-1; 列表 max-h-300; 空状态 py-6 居中; 输入即过滤, ↑↓ 循环并跳过禁用, Home/End, Enter 选中, ESC 清空; 选中不自动关闭(CommandDialog 由 Dialog + Command 组合) | command.tsx(cmdk) |
 
 ### 变体/尺寸与上游的映射、已知差异
 
@@ -381,6 +389,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Select | `NewSelect(..., WithSelectPlaceholder/Size/Items/Groups/Value/Invalid/Disabled)` + `Value/SetValue/Selected/SetItems/SetGroups/OnChange/Open/Close/IsOpen`; 条目 `SelectItem{Value,Text,Icon,Disabled}`、分组 `SelectGroup{Label,Items}` | 对应 select.tsx(radix, item-aligned): 弹层盖住触发区、选中项正对触发区(两种盒子高度按**中心**对齐, 同 ComboBox 弹层的推导); 宽 = max(触发区宽, min-w-36); 键盘 ↑↓(跳过禁用)/Home/End 移动高亮(焦点即高亮 bg-accent), Enter/空格 选中, ESC 关闭并把焦点还给触发区; 打开即把焦点放到选中项(radix 语义); 点击选中同值也通知(同 radix onValueChange); 与 ComboBox 的取舍: 弹层自持(可富条目), 原生弹窗行为不复刻 |
 | InputOTP | `NewInputOTP(..., WithInputOTPLength/Pattern/SeparatorAfter/Value/Invalid/Disabled)` + `Value/SetValue/Clear/Focus/SetInvalid/SetDisabled/OnChange/OnComplete`; 预置过滤 `InputOTPPatternDigit/Alphanumeric/Any` | 对应 input-otp.tsx(底层 input-otp 包): 键入打进已填格 = **替换**并前进一格(同上游), 非法字符不入格; ←/→/Home/End 移动, Backspace 清当前格、空格时退格清前一格, Delete 清当前格; Ctrl+V 从当前格起分发粘贴(非法字符跳过, 焦点停最后写入格); 全满触发 OnComplete; 文字居中由原生 `SetTextAlign(Center|Center_V)` 负责(不要用 border 挤位置, 见第八节 110), 只有空格子用对称 border 把原生 caret 顶到格心; 上游的"跨格拖动选择"没有对应物(每格独立 Edit) |
 | Accordion | `NewAccordion(..., WithAccordionType(AccordionSingle/AccordionMultiple))` + `AddItem(value, title, WithAccordionItemDisabled)` + 条目 `Open/SetOpen/Toggle/SetDisabled/Content/ContentStack/Trigger`; 根 `Value/SetValue/OnChange` | 对应 accordion.tsx(radix): 触发区文字左对齐(上游无水平内边距; 我们留 4px 给内嵌环带, 见第八节 112)、箭头贴右、触发区高 40(py-2.5 + text-sm), hover:underline 手绘 1px 线(无过渡), focus-visible 环 rounded-lg; 箭头是 ChevronUp/Down 两枚图标互换(上游也是互换, 无旋转动画); 条目间 1px 分隔线(Item 的 not-last:border-b, 末项没有); 内容底部 pb-2.5 用末尾的透明占位表达(挂在开合时、高度扣掉行间距, 见第八节 111); single = 单开互斥且允许全部收起(radix type="single" collapsible), multiple 各自独立; disabled 只禁触发区, 已展开内容保留 |
+| Popover | `NewPopover(hTrigger, WithPopoverContent(build)/Width/Height/Padding/Gap/Side/Align/OnOpenChange)` + `Open/Close/SetOpen/IsOpen/Content/Refresh`; `PopoverHeader/Title/Description` 助手 | 对应 popover.tsx 的 `Popover/PopoverTrigger/PopoverContent`(Header/Title/Description); 内容宽铺满、高自撑(空内容保留 p-4); 触发区可以是任意元素(Button 走 BnClick, 普通元素走 LButtonUp); 弹层窗口是自建阴影窗, 无 zoom/slide 动画 |
+| HoverCard | `NewHoverCard(hTrigger, WithHoverCardContent/Width/Padding/Side/Align/Delay/OnOpenChange)` + `Open/Close/SetOpen/IsOpen/Content/Refresh` | 对应 hover-card.tsx; 默认 `openDelay=700ms` / `closeDelay=300ms`; 非激活窗口, 不抢焦点; 内容里的子元素都会挂 MouseLeave, 离开后按指针位置决定是否真正关闭 |
+| Avatar | `NewAvatar(x,y,cx,cy,parent,fallback,WithAvatarSize/Image/ImageData/Ring/Badge)` + `SetImage/SetImageData/SetFallback/SetBadge`; `NewAvatarGroup(parent, WithAvatarGroupSize)` + `Add(fallback, opts...)` / `AddCount(n)` | 对应 avatar.tsx 的 `Avatar/AvatarImage/AvatarFallback/AvatarBadge/AvatarGroup/AvatarGroupCount`; 图片走本地文件或 `image.Image`(png/jpeg/gif), 圆形蒙版在 CPU 侧生成; 徽标画在头像内右下角(圆环内缩 2px, 避免被父元素裁剪) |
+| Command | `NewCommand(x,y,cx,cy,parent, WithCommandPlaceholder/EmptyText/OnSelect/OnChange/OnEscape)` + `AddGroup(label)` / `AddSeparator` + `CommandGroup.AddItem(value,text, WithCommandItemIcon/Shortcut/Keywords/Disabled/OnSelect)` + `Focus/Query/SetQuery/Clear/SetPlaceholder` | 对应 command.tsx(cmdk) 的基础形态; 过滤为不区分大小写的包含匹配(可配 keywords), 不是 cmdk 的 command-score; 列表高度 = cy - 36(cy 传 0 = 336); `CommandDialog` 用 `ui.NewDialog` + `Command` 组合(无单独的 CommandDialog 类型) |
 | Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长) + `Success/Error/Warning/Info` 快捷方法; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置只做四角(上游另有 top-center/bottom-center), `richColors` 不做 |
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
@@ -460,12 +472,16 @@ ui/
 | Calendar 不做 RTL(dir=rtl)/波斯·Jalali 历/timeZone/自然语言日期(chrono-node) | 文字渲染只有 LTR; 历法换算与时区数据是另一套领域库, Go 侧没有 chrono-node 的等价物 —— 绝对/相对日期的键入用 DatePicker 的可输入形态(`ParseDateText`)覆盖最常用场景; 范围色带跨月时在两个月块之间不连续(上游同样是每月一张独立表格) |
 | Field 横向 `Content` 的嵌套列只认 Fixed 宽 | xcgui 不会把 Weight/Percent 宽度传给嵌套布局的 Fill 子项(实测子项宽恒为 0, 内容不显示); 组件默认 Fixed 240, 用 `xui.ItemWidth` 覆盖(第八节 101) |
 | EmptyDescription / FieldDescription / FieldError 不自动折行 | Label 的高度不会随折行自撑; 需要多行时调用方用 `SetWrap` + `WrappedHeight` 量高后写回高度(同 Alert 的做法) |
-
 | Item 的 Header/Footer 没有自动 space-between, 动作之间用 Item 的行间距 | Go 布局没有 justify-between: 用 `xui.ItemWeight` 给靠左的第一个子项撑开; 行内动作也不再单独套 gap-2 容器(嵌套 Auto 宽不量测原生按钮, 见第八节 104) |
 | Breadcrumb 链接/当前页是单行自绘文本, 且不参与 Tab 焦点 | Label 的原生 Button 载体按 `TextWidth` 精确设宽会被内部文本内边距截断(第八节 105); 自绘后不折行、不支持富文本, 键盘焦点需要每链接一个可聚焦元素(当前为鼠标驱动) |
 | Toggle / ToggleGroup 的 outline 不画 shadow-xs | 上游有 1px 浅投影; 本库自绘壳体统一不画阴影(Button/Input 同), 在 Card 底上几乎不可见; `border-input` 与悬停/选中底色完整保留 |
 | InputOTP 没有"跨格拖动选择"/Ctrl+A 全选 | 每格是独立的原生 Edit, 选择语义无法跨格; 复制/剪切整段验证码也未做(粘贴方向完整) |
 | Select 弹层没有 radix 的 scroll-up/down 悬停自动滚按钮与 typeahead(键入跳转) | 自建弹层用 ScrollArea 承载, 滚轮与 ↑↓/Home/End 都可用; typeahead 需要按键聚合计时, 后续有需求再加 |
+| Popover / HoverCard 进场只淡入, 没有 zoom/slide | 自建阴影窗能稳定动画的只有元素 alpha; 整窗位移/缩放会闪或崩(第八节 47/64), 离屏测量与淡入都在第八节 115/116 |
+| HoverCard 不支持键盘聚焦打开 | 非激活窗口不参与 Tab 焦点链; 需要键盘可访问时用 Popover 包一个可聚焦触发区 |
+| HoverCard 内容可鼠标交互, 但非激活窗口不接收键盘焦点 | WS_EX_NOACTIVATE 不抢前台, 这是"悬停预览不打断输入"的前提; 需要键盘操作的内容用 Popover |
+| Command 过滤是包含匹配, 不是 cmdk 的模糊评分; 没有 CommandDialog 类型 | 语义覆盖最常用的搜索/键盘选择; 命令面板弹窗用 `ui.NewDialog` + `Command` 组合 |
+| Avatar 只接受本地图片或 `image.Image`, 不支持远程 URL/动图 | 圆形裁剪在 Go 侧生成 RGBA 蒙版; 远程下载与 GIF 播放属于应用层 |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1483,6 +1499,30 @@ ui/
     - **根因**: xcgui 的 `XEle_Enable` 只关掉输入/交互通路, 鼠标按下仍会走焦点流程; 原生 Win32 的 disabled EDIT 是完全不可聚焦的。自绘的焦点环受 `!disabled` 保护, 所以只剩一个"裸光标"暴露了状态不对。
     - **修法**: 禁用时额外 `XEle_EnableFocus(false)`(启用时再打开), 并把原生 caret 颜色设成格底兜底; `Focus()` 这类程序接口也要在禁用时直接返回。
 
+115. **隐藏窗口里量不出布局的 Auto 高, 要"离屏显示一次"再量**(`components/popup.go` 的 `popoverPanel.MeasureContent`, Popover/HoverCard):
+    - **现象**: 弹层内容区用 LayoutEle 自动高度, 隐藏状态下 `AdjustLayout()` 后 `GetHeight()` 恒为 0, `XEle_GetContentSize` 也返回 0 —— 弹层高度只能靠手算。
+    - **根因**: xcgui 的布局要等元素真正可见后才产出尺寸; 离屏隐藏的窗口里 Auto 高不会计算(探针: 3×40 + 2×10 的内容, 隐藏时 0, 显示后 140)。
+    - **修法**: 把弹层窗口在 `-30000,-30000` 处 `SWP_SHOWWINDOW|SWP_NOACTIVATE` 显示, 调内容宿主的 `AdjustLayout()`, 读 `content.GetHeight()`, 再 `resize` 卡片并隐藏; 内容宿主必须是 LayoutEle 且内容根用 `LayoutItem_SetHeight(Auto)`, 普通 Element 没有布局能力。
+
+116. **不抢焦点的悬停弹层不能走 KillFocus 关闭**(`components/hovercard.go`):
+    - **现象**: HoverCard 如果按普通弹层的做法 `SetForegroundWindow` 拿焦点, 会把用户正在输入的输入框焦点抢走(光标消失); 而不拿焦点时又收不到 KillFocus, 点外部不会自动关。
+    - **修法**: 窗口创建时带 `WS_EX_NOACTIVATE`, 显示用 `ShowWindow(SW_SHOWNOACTIVATE)`(原生 `SW_SHOW` 会激活), 跳过 `SetForegroundWindow`; 关闭改由触发区/内容的 `MouseLeave` + 关闭计时器判断, 计时器到点时用 `GetCursorPos` 对照触发区与弹层窗口矩形, 指针仍在里面就续期(鼠标从子元素移到卡片留白不会再有 MouseLeave)。
+
+117. **圆形头像图片: RGBA 蒙版 + `XDraw_ImageEx` 在 D2D 下可用**(`components/avatar.go`):
+    - **做法**: `XImage_LoadFromDataRGBA(data, w, h)` 接收非预乘 RGBA(内部转 BGRA), `p.Draw.XDraw_ImageEx(h, x, y, w, h)` 直接缩放绘制; 设备重建/元素销毁时用 `XImage_Destroy` 释放。
+    - **圆形裁剪**: xcgui 的 D2D 层/几何裁剪没有 Go 封装, 不要指望在绘制回调里 clip 成圆; 在 CPU 侧按 4× 逻辑尺寸做居中裁剪 + 双线性缩放 + 抗锯齿圆形 alpha, 高 DPI 下边缘依然平滑。
+    - **注意**: `color.Color.RGBA()` 返回的是预乘值, 半透明 PNG 直接塞进去会发黑; 先反预乘成直通 alpha 再写缓冲区。
+
+118. **长页面滚到底后, 深层嵌套卡片的命中区与绘制位置可能不同步**(demo 基础2 页实测, 根因未完全定位):
+    - **现象**: 一行 `row → col → Card(内容区) → HStack → Button` 的卡片位于长页面最底部, 滚到底后按钮画在这里、命中区却整体低约 20~30 逻辑像素 —— 鼠标悬停命中的是按钮下方那一行标签, 点击按钮无反应; 窗口最大化/还原触发一次完整重排后恢复正常, 把同一行移到页面顶部也正常。
+    - **现状**: 只在"页面内容很长 + 滚到底 + 多层 Auto 布局卡片"的组合里复现; 同一页面上方的 Accordion 按钮命中正常, 最小探针(单页 ScrollArea + 同样的 row/col/Card 结构)也未复现, 因此暂未定位到具体是哪一层布局缓存没有刷新。
+    - **规避**: 交互密集的新组件卡片放在页首/少滚动的位置; 必须放在长页面底部时, 优先减少 `row/col` 嵌套, 或改放窗口最大化/重排后使用。本库 demo 的弹出层/头像/命令面板卡都放在对应页首。
+
+119. **`XWnd_SetWindowPos` 的位置是物理像素, 尺寸是逻辑像素**(`popup.go` 的 `popoverPanel.resize`, Popover/HoverCard 用户报障):
+    - **现象**: 自动高度弹层的卡片只占窗口的 2/3, 右侧/下方多出一大片"阴影"; 弹层窗口实测 671×356 物理, 而卡片只有 288 逻辑宽, 预期窗口应约 447 物理。
+    - **根因**: `resize` 里把窗口尺寸按 `cw * DPI/96` 算成物理值再传给 `SetWindowPos`, 而 xcgui 的 `XWnd_SetWindowPos` 对 **cx/cy** 会再做一次 DPI 适配 —— 尺寸被缩放了两次; 同一个调用里的 **x/y** 却是按物理像素直接使用的(位置没有二次缩放)。
+    - **修法**: 位置仍自己乘 `DPI/96` 后传物理值; 尺寸直接传**逻辑像素**(`cw + shadowBand*2`), 不再乘缩放比。弹层窗口 = 卡片 + 两侧阴影带, 与可见卡片严格贴合。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1521,6 +1561,9 @@ ui/
 - 直通 D2D(图标抗锯齿, 见第八节 43):`xc.XDraw_GetD2dRenderTarget(hDraw) → *ID2D1RenderTarget`、`xc.XC_GetD2dFactory → *ID2D1Factory`、`xc.XDraw_ConvRect(hDraw, *RECT) / XDraw_ConvXY`(客户区坐标 → 画布对齐物理坐标, 第三方绘图必须先换算); 用到的 D2D 方法: `ID2D1Factory::CreatePathGeometry`、`ID2D1PathGeometry::Open / GetBounds`、`ID2D1GeometrySink::{SetFillMode, BeginFigure, AddLines, EndFigure, Close}`、`ID2D1RenderTarget::{CreateSolidColorBrush, FillGeometry}`
 - 官方自绘示例:BeautifyButton / CheckBox / RadioButton / Edit / ProgressBar / SliderBar
 - 剪贴板读(InputOTP 粘贴, 见第八节 110 所在组件): `wapi.IsClipboardFormatAvailable(CF_UNICODETEXT) / OpenClipboard(0) / GetClipboardData / CloseClipboard` + `wapi.GlobalLock/GlobalUnlock`; GlobalLock 返回的 uintptr 别直接转 `unsafe.Pointer`(vet 报"可能的误用"), 用同布局的自定义 slice 头读 UTF-16; `wapi.GetAsyncKeyState(VK_CONTROL)` 判 Ctrl(VK 状态位按 `uint16` 与 `0x8000` 比, int16 会溢出)
+- 弹层内容测量/非激活显示(Popover/HoverCard, 见第八节 115/116): `xc.XWnd_GetDPI`、`SetWindowPos(..., SWP_NOACTIVATE|SWP_SHOWWINDOW)`、`wapi.ShowWindow(hwnd, SW_SHOWNOACTIVATE=4)`、`xcc.WS_EX_NOACTIVATE`、`xc.XEle_SetRect`、`xc.XEle_AdjustLayout`; 关闭检查用 `wapi.GetCursorPos` + `wapi.GetWindowRect` 与 `XEle_GetWndClientRect` 的物理换算
+- 圆形头像图片(见第八节 117): `xc.XImage_LoadFromDataRGBA(data, w, h)`(非预乘 RGBA, 内部转 BGRA)、`xc.XImage_Destroy`、`drawx.Draw.XDraw_ImageEx(hImage, x, y, w, h)`; `image.Decode`(png/jpeg/gif) 与 CPU 侧蒙版在 `avatar.go`
+- 命令面板: 原生 `widget.NewEdit` 透明化(EnableBkTransparent/EnableDrawBorder(false)/EnableDrawFocus(false)/SetBorderSize(0,0,0,0)/EnableAutoSelAll(false)) + `SetDefaultText/SetDefaultTextColor/SetCaretColor/SetTextAlign(Left|Center_V)`; `AddEvent_Edit_Changed` / `AddEvent_KeyDown` 接管 ↑↓/Home/End/Enter/ESC(原生箭头键会先到这里, 标记 handled 即可); 列表滚动用 `ScrollArea` 的 `GetViewHeight/GetViewPosV/ScrollPosYV`
 - 字体:`xui.FontSpec{Family, Size, Bold, Italic}`。**没有下划线字段**: `xcc.FontStyle_Underline` 在本框架的 D2D 文本路径下不渲染(探针: 下划线字体与普通字体像素一致), hover:underline 一律手绘 1px 线 —— 宽度取 `xui.TextWidth`, 落点见 Button 的 link 变体与 Accordion 触发区
 - 弹层键盘钩子(`popoverPanel`, Select 的 ↑↓/Enter 用): `Window.AddEvent_KeyDown`(窗口级, 焦点在子元素上也先于元素分发)、`popoverPanel.OnKeyDown/OnEsc`(popup.go 预留的钩子) + `Element.SetFocus`(焦点即条目高亮)
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`

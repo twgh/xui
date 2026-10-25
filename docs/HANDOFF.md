@@ -8,11 +8,21 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-24)
+## 当前状态(截至 2026-10-25)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
+
+- ✅ **批次 3: Popover / Hover Card / Avatar / Command**(2026-10-25, 上游 tsx 同步):
+  - **前置完成**: 本地 shadcn 参考实现补齐 `popover.tsx` / `hover-card.tsx` / `command.tsx` / `avatar.tsx`(取自 shadcn.com.cn registry), App.tsx 加"基础/表单/导航"对照卡, `pnpm build` 通过。
+  - **Popover(★★)**: 公开 `NewPopover(trigger, WithPopoverContent(...))`; 弹层底座在 popup.go 上扩展出"布局内容 + 离屏量高"(第八节 115), 默认 w-72(288)/p-4; 点击触发(Button 走 BnClick、普通元素 LButtonUp)、失焦/ESC 关闭、ESC 回焦点; side/align 支持下方优先 + 自动翻转 + 工作区夹取; `PopoverHeader/Title/Description` 助手; 固定高/自适应高、`Refresh`。
+  - **HoverCard(★★)**: 非激活弹层(`WS_EX_NOACTIVATE` + SW_SHOWNOACTIVATE, 不调 SetForegroundWindow、不依赖 KillFocus, 第八节 116); 悬停 700ms 打开/移出 300ms 关闭, 指针在卡片/触发区上时关闭检查续期; 内容可交互、不抢输入焦点; 支持 side/align/delay/width/padding。
+  - **Avatar(★★)**: 圆形 sm 24/default 32/lg 40; 本地图片或 `image.Image` → CPU 居中裁剪 + 4× 抗锯齿圆形蒙版 → `XImage_LoadFromDataRGBA` + `XDraw_ImageEx`(第八节 117), 无图回落首字母; 右下角徽标(圆环内缩, 可带图标); AvatarGroup 用横向布局负间距 -8 叠放 + 组内 2px 背景色环 + `AddCount`。
+  - **Command(★★★)**: 搜索行(自绘搜索图标 + 透明原生 Edit + 设备像素对齐下边框) + ScrollArea; 分组标题/条目/快捷键/禁用/空状态; 输入即过滤(不区分大小写 + keywords), ↑↓ 循环跳过禁用、Home/End/PageUp/PageDown、Enter 选中、ESC 清空; 鼠标悬停高亮、点击选中并回焦搜索框; 选中不自动关闭, 用 Dialog + Command 组合成命令面板弹窗。
+  - **验收**: 探针逐项验证 —— Popover 自动高度/锚点居中/翻转; HoverCard 非激活显示、悬停进入卡片保持、移出 300ms + 轮询后续期关闭; Avatar 圆形裁图/徽标/叠放组/负间距; Command 键盘 ↓×2+Enter、输入过滤、空状态、ESC 清空、点击回焦; demo 基础2 页首加弹出层/头像卡、导航页首加命令面板卡(避开长页面滚到底后深层卡片的命中偏移, 见第八节 118)。逐组件安装 avatar / popover / hover-card / command 与 `add --all` 均编译通过; `go test ./...` 全绿。
+  - **新结论**: 隐藏窗口里 LayoutEle 的 Auto 高恒为 0, 弹层要离屏显示一次再量(115); 非激活悬停弹层的关闭改用 MouseLeave + 指针位置轮询(116); 圆形头像用 RGBA 蒙版 + XDraw_ImageEx(117); 长页面滚到底后深层嵌套卡片的命中区可能比绘制位置低 20~30 逻辑像素(118, 根因未定位, 交互密集卡片放页首规避)。
+  - **复验(阴影过宽, 二轮)**: 用户二次反馈"阴影还是在很外面"且"文字贴到按钮" —— ① 首轮把阴影带从 8/48 收到 5/50 只解决了一半; 探针枚举窗口发现弹层窗口 671×356 物理, 卡片只有 288 逻辑宽 —— `popoverPanel.resize` 把窗口尺寸乘了 DPI 再传给 `SetWindowPos`, 而该 API 的 **cx/cy 是逻辑像素**(x/y 才是物理像素), 尺寸被二次缩放, 多出来的区域就是"阴影"; 改为尺寸传逻辑值后窗口 447×237, 与卡片+5px 阴影带严格贴合(见 DESIGN 第八节 119)。② 内容区子项默认间距 0 导致末行文字贴按钮, Popover/HoverCard 内容宿主改为 gap 8; demo 的说明拆两行。Select / DatePicker / TimePicker 不调用 resize, 不受尺寸 bug 影响, 但共用收紧后的阴影带。
 
 - ✅ **批次 2 收尾: Native Select / Select / Input-OTP / Accordion**(2026-10-24, 上游 tsx + App.tsx 对照卡同步):
   - **前置完成**: 本地 shadcn 参考实现补齐 `native-select.tsx` / `input-otp.tsx` / `accordion.tsx`(`npx shadcn add`), select.tsx 原有; App.tsx 基础页加手风琴对照卡、表单页加「独立 Select / NativeSelect」「验证码输入」对照卡, `pnpm build` 通过。
@@ -566,7 +576,7 @@
   - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
   - **批次 2 — 表单闭环**: 已完成(2026-10-24): Toggle / Toggle Group / Native Select / Select / Input OTP / Accordion(复用 Collapsible)。
-  - **批次 3 — 弹层基座**: Popover(公开 `popoverPanel`, 是后续组件的底座) → Hover Card → Command; Avatar 独立(★★~★★★)。
+  - **批次 3 — 弹层基座**: 已完成(2026-10-25): Popover / Hover Card / Avatar / Command。
   - **批次 4 — 窗格/菜单**: Sheet → Drawer、Menubar(★★★)。
   - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Carousel、Resizable、Navigation Menu、Chart、Sidebar(★★★★~★★★★★)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
@@ -586,6 +596,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
 │                                 empty field item breadcrumb kbd skeleton spinner toggle
 │                                 native_select select inputotp accordion
+                                 popover hovercard avatar command
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)

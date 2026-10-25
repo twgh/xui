@@ -40,6 +40,148 @@ func monitorWorkArea(hWnd uintptr) (xc.RECT, bool) {
 	}, true
 }
 
+// PopoverSide 弹层相对触发区的方位, 对应 radix Popover 的 side。
+type PopoverSide int
+
+const (
+	PopoverSideBottom PopoverSide = iota // 下方(默认)
+	PopoverSideTop                       // 上方
+	PopoverSideLeft                      // 左侧
+	PopoverSideRight                     // 右侧
+)
+
+// PopoverAlign 弹层与触发区在交叉轴上的对齐方式, 对应 radix Popover 的 align。
+type PopoverAlign int
+
+const (
+	PopoverAlignCenter PopoverAlign = iota // 居中对齐(默认)
+	PopoverAlignStart                      // 起始边对齐
+	PopoverAlignEnd                        // 结束边对齐
+)
+
+// popupPosition 计算锚定弹层的位置: 先按 side/align 摆放, 放不下翻到对侧,
+// 最后夹进显示器工作区。hTrigger 只用来取触发元素与宿主窗口。
+func popupPosition(hTrigger int, w, h int32, side PopoverSide, align PopoverAlign, gap int32) (int32, int32) {
+	var rc, wr xc.RECT
+	xc.XEle_GetWndClientRect(hTrigger, &rc)
+	hWnd := xc.XWidget_GetHWINDOW(hTrigger)
+	if hWnd <= 0 {
+		return 0, 0
+	}
+	xc.XWnd_GetRect(hWnd, &wr)
+	dpi := xc.XWnd_GetDPI(hWnd)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
+
+	aL := wr.Left + rc.Left
+	aT := wr.Top + rc.Top
+	aR := wr.Left + rc.Right
+	aB := wr.Top + rc.Bottom
+	x, y := popupPlaceIn(hTrigger, w, h, aL, aT, aR, aB, side, align, gap)
+
+	if wa, ok := monitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
+		waL := int32(float64(wa.Left)/sc + 0.5)
+		waT := int32(float64(wa.Top)/sc + 0.5)
+		waR := int32(float64(wa.Right)/sc + 0.5)
+		waB := int32(float64(wa.Bottom)/sc + 0.5)
+		if x+w > waR {
+			x = waR - w
+		}
+		if x < waL {
+			x = waL
+		}
+		if y+h > waB {
+			y = waB - h
+		}
+		if y < waT {
+			y = waT
+		}
+	}
+	return x, y
+}
+
+func popupPlaceIn(hTrigger int, w, h, aL, aT, aR, aB int32, side PopoverSide, align PopoverAlign, gap int32) (int32, int32) {
+	x, y := aL, aT
+	switch side {
+	case PopoverSideTop:
+		x = popupCrossH(aL, aR, w, align)
+		y = aT - h - gap
+		if y < 0 && aB+gap+h <= screenBottom(hTrigger) {
+			y = aB + gap
+		}
+	case PopoverSideLeft:
+		x = aL - w - gap
+		y = popupCrossV(aT, aB, h, align)
+		if x < 0 && aR+gap+w <= screenRight(hTrigger) {
+			x = aR + gap
+		}
+	case PopoverSideRight:
+		x = aR + gap
+		y = popupCrossV(aT, aB, h, align)
+		if x+w > screenRight(hTrigger) && aL-gap-w >= 0 {
+			x = aL - w - gap
+		}
+	default:
+		x = popupCrossH(aL, aR, w, align)
+		y = aB + gap
+		if y+h > screenBottom(hTrigger) && aT-h-gap >= 0 {
+			y = aT - h - gap
+		}
+	}
+	return x, y
+}
+
+func popupCrossH(aL, aR, w int32, align PopoverAlign) int32 {
+	switch align {
+	case PopoverAlignStart:
+		return aL
+	case PopoverAlignEnd:
+		return aR - w
+	default:
+		return aL + (aR-aL)/2 - w/2
+	}
+}
+
+func popupCrossV(aT, aB, h int32, align PopoverAlign) int32 {
+	switch align {
+	case PopoverAlignStart:
+		return aT
+	case PopoverAlignEnd:
+		return aB - h
+	default:
+		return aT + (aB-aT)/2 - h/2
+	}
+}
+
+// screenBottom/screenRight 返回触发区所在显示器的逻辑工作区边界(取不到时用整屏兜底)。
+func screenBottom(hTrigger int) int32 {
+	if hWnd := xc.XWidget_GetHWINDOW(hTrigger); hWnd > 0 {
+		if wa, ok := monitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
+			dpi := xc.XWnd_GetDPI(hWnd)
+			if dpi <= 0 {
+				dpi = 96
+			}
+			return int32(float64(wa.Bottom)/float64(dpi)*96 + 0.5)
+		}
+	}
+	return 1 << 30
+}
+
+func screenRight(hTrigger int) int32 {
+	if hWnd := xc.XWidget_GetHWINDOW(hTrigger); hWnd > 0 {
+		if wa, ok := monitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
+			dpi := xc.XWnd_GetDPI(hWnd)
+			if dpi <= 0 {
+				dpi = 96
+			}
+			return int32(float64(wa.Right)/float64(dpi)*96 + 0.5)
+		}
+	}
+	return 1 << 30
+}
+
 // ===== 组件内建弹层的公共基座 =====
 //
 // 日期框 / 时间框这类组件需要一个"贴着触发区弹出的卡片", 原生控件里没有可直接复用的
@@ -58,8 +200,10 @@ func monitorWorkArea(hWnd uintptr) (xc.RECT, bool) {
 // 为什么不用"点击外部轮询/全局钩子": 原生弹层就是靠激活窗口 + 失焦关闭, 这套机制在
 // 多显示器 / 输入法 / 模态场景下都由系统处理, 自己判定鼠标位置会漏掉键盘切窗等路径。
 
-// popoverShadow 是弹层的阴影带宽(逻辑像素), 对齐 shadcn shadow-md 的可见范围。
-const popoverShadow int32 = 8
+// popoverShadow 是弹层的阴影带宽(逻辑像素), 与 menu 的 shadow-md 同一口径。
+// 曾经取 8, 弹层四周会露出一圈过宽的柔光(用户反馈"阴影区域怎么那么外面"),
+// 收紧到 5 后与菜单弹层的阴影观感一致。
+const popoverShadow int32 = 5
 
 // popoverReopenFadeSkip 是"关闭后多久内重开可以跳过进场淡入":
 // 用户在快速交互(连点开关)时, 每次都从透明渐显会让弹层看起来在"眨眼/抖动";
@@ -98,12 +242,22 @@ type popoverPanel struct {
 	ch   int32
 	open bool
 
+	// activate 为 false 时不抢焦点、不因失焦关闭(悬停卡片这类"鼠标移入内容"的弹层)。
+	activate bool
+	// bodyLayout 是启用布局的内容宿主(layoutBody = true 时非空); 公开 Popover /
+	// HoverCard 的内容区建在它上面, 这样才能量出内容的自然高度。
+	bodyLayout *widget.LayoutEle
+	content    *widget.LayoutEle
+
 	// OnKeyDown 键盘事件钩子: ESC 之外的自定义键位(方向键/回车等)。返回 true 表示
 	// 已处理(事件标记为已吃掉, 不再继续分发)。
 	OnKeyDown func(wParam uintptr) bool
 
 	// OnEsc ESC 关闭弹层后的回调(如把焦点还给触发区)。
 	OnEsc func()
+
+	// OnHide 弹层关闭后的回调(OnOpenChange(false) 用)。ESC / 失焦 / 主动 Hide 都会走。
+	OnHide func()
 
 	// OnFaded 进场淡入到位后的回调(可选)。淡入的 SetSubtreeAlpha 会把 body 子树里
 	// 所有元素的 alpha 一并拉满 —— 子控件里如果有"自己管理元素 alpha"的东西
@@ -119,19 +273,30 @@ type popoverPanel struct {
 // newPopoverPanel 创建弹层(cw/ch 是卡片尺寸, 不含阴影带), 失败返回 nil。
 // hAnchor 是触发元素句柄, 只用来取宿主窗口与 DPI。
 func newPopoverPanel(cw, ch int32, hAnchor int) *popoverPanel {
+	return newPopoverPanelEx(cw, ch, hAnchor, false, true)
+}
+
+// newPopoverPanelEx 是带形态参数的构造器:
+//   - layoutBody: body 换成 LayoutEle, 内容区可以用布局量出自然高度(公开 Popover);
+//   - activate: false = 不抢焦点、不因失焦关闭(HoverCard; 窗口加 WS_EX_NOACTIVATE)。
+func newPopoverPanelEx(cw, ch int32, hAnchor int, layoutBody, activate bool) *popoverPanel {
 	host := xc.XWidget_GetHWINDOW(hAnchor)
 	if host <= 0 {
 		return nil
 	}
 	band := popoverShadow
-	win := window.NewEx(xcc.WS_EX_TOOLWINDOW, 0, "", 0, 0, cw+band*2, ch+band*2, "", 0,
+	exStyle := xcc.WS_EX_TOOLWINDOW
+	if !activate {
+		exStyle |= xcc.WS_EX_NOACTIVATE
+	}
+	win := window.NewEx(exStyle, 0, "", 0, 0, cw+band*2, ch+band*2, "", 0,
 		xcc.Window_Style_Nothing)
 	if win == nil {
 		return nil
 	}
 	win.SetBorderSize(0, 0, 0, 0)
 	win.SetTransparentType(xcc.Window_Transparent_Shadow)
-	win.SetShadowInfo(band, 48, xui.Current().RadiusLg(), false, xc.RGBA(0, 0, 0, 128))
+	win.SetShadowInfo(band, 50, xui.Current().RadiusLg(), false, xc.RGBA(0, 0, 0, 128))
 	win.SetTransparentAlpha(255)
 	// ⚠️ 必须垫一层 alpha=0 的窗口背景填充: 弹窗默认背景是**白色**, 淡入用元素 alpha,
 	// 元素全透明时白底就从卡片下面露出来 —— 深色主题下表现为"每次弹出闪一下白"
@@ -142,10 +307,25 @@ func newPopoverPanel(cw, ch int32, hAnchor int) *popoverPanel {
 		xc.XBkM_AddFill(bkm, xcc.CombinedState_Window_State_Flag_Leave, 0, 0)
 	}
 
-	body := widget.NewElement(band, band, cw, ch, win.Handle)
-	if body == nil {
-		win.DestroyWindow()
-		return nil
+	var body *widget.Element
+	var bodyLayout *widget.LayoutEle
+	if layoutBody {
+		bodyLayout = widget.NewLayoutEle(band, band, cw, ch, win.Handle)
+		if bodyLayout == nil {
+			win.DestroyWindow()
+			return nil
+		}
+		body = &bodyLayout.Element
+		bodyLayout.EnableHorizon(false)
+		bodyLayout.EnableLayout(true)
+		bodyLayout.EnableAutoWrap(false)
+		bodyLayout.SetAlignV(xcc.Layout_Align_Top)
+	} else {
+		body = widget.NewElement(band, band, cw, ch, win.Handle)
+		if body == nil {
+			win.DestroyWindow()
+			return nil
+		}
 	}
 	body.EnableBkTransparent(true)
 	body.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
@@ -160,9 +340,9 @@ func newPopoverPanel(cw, ch int32, hAnchor int) *popoverPanel {
 		return 0
 	})
 
-	p := &popoverPanel{win: win, body: body, cw: cw, ch: ch}
+	p := &popoverPanel{win: win, body: body, bodyLayout: bodyLayout, cw: cw, ch: ch, activate: activate}
 	win.AddEvent_KillFocus(func(hWindow int, pbHandled *bool) int {
-		if p.open {
+		if p.activate && p.open {
 			p.Hide()
 		}
 		return 0
@@ -202,6 +382,87 @@ func (p *popoverPanel) Content() int {
 		return 0
 	}
 	return p.body.Handle
+}
+
+// LayoutContent 在启用布局的弹层里建(或返回)内容区: 宽铺满卡片、高按内容自撑,
+// padding 为四周内边距。只有 newPopoverPanelEx(..., layoutBody=true) 创建的弹层可用。
+func (p *popoverPanel) LayoutContent(padding, gap int32) *widget.LayoutEle {
+	if p == nil || p.bodyLayout == nil {
+		return nil
+	}
+	if p.content != nil {
+		return p.content
+	}
+	c := widget.NewLayoutEle(0, 0, p.cw-padding*2, 0, p.body.Handle)
+	if c == nil {
+		return nil
+	}
+	c.EnableHorizon(false)
+	c.EnableLayout(true)
+	c.EnableBkTransparent(true)
+	c.EnableAutoWrap(false)
+	c.SetAlignV(xcc.Layout_Align_Top)
+	c.SetSpace(gap)
+	c.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	c.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	c.LayoutItem_SetMargin(padding, padding, padding, padding)
+	p.content = c
+	return c
+}
+
+// MeasureContent 在屏幕外把弹层显示出来, 让内容区完成一次布局, 再把卡片高度收成
+// 内容自然高度 + 上下内边距。返回内容区高度(0 表示测量失败)。
+//
+// 为什么必须显示: 布局只在元素真正可见时才有尺寸(探针实测, 隐藏窗口里
+// LayoutEle 的 Auto 高始终是 0, GetContentSize 也不出结果)。窗口在 -30000 处
+// 显示, 用户看不到; 用的是不激活的显示方式, 不会抢走触发区焦点。
+func (p *popoverPanel) MeasureContent(padding int32) int32 {
+	if p == nil || !p.alive() || p.content == nil {
+		return 0
+	}
+	p.win.SetWindowPos(xcc.HWND_TOP, -30000, -30000, 0, 0,
+		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
+	if p.activate {
+		p.win.ShowWindow(xcc.SW_SHOW)
+	} else {
+		wapi.ShowWindow(p.win.GetHWND(), 4) // SW_SHOWNOACTIVATE
+	}
+	p.bodyLayout.AdjustLayout()
+	h := p.content.GetHeight()
+	p.hideNative()
+	if h > 0 {
+		p.resize(p.cw, h+padding*2)
+	}
+	return h
+}
+
+// resize 调整卡片尺寸(不含阴影带), 并同步窗口/内容宿主; 窗口尺寸传逻辑像素, 由 xcgui 做 DPI 适配。
+func (p *popoverPanel) resize(cw, ch int32) {
+	if p == nil || cw <= 0 || ch <= 0 {
+		return
+	}
+	p.cw, p.ch = cw, ch
+	if !p.alive() {
+		return
+	}
+	band := popoverShadow
+	xc.XEle_SetRect(p.body.Handle,
+		&xc.RECT{Left: band, Top: band, Right: band + cw, Bottom: band + ch},
+		false, xcc.AdjustLayout_No)
+	// ⚠️ SetWindowPos 的尺寸参数是**逻辑像素**(xcgui 内部再做 DPI 缩放);
+	// 曾经把尺寸乘了 sc 再传, 窗口实际比卡片大 1.5 倍, 四周多出一大片"阴影".
+	p.win.SetWindowPos(xcc.HWND_TOP, 0, 0, cw+band*2, ch+band*2,
+		xcc.SWP_NOMOVE|xcc.SWP_NOZORDER|xcc.SWP_NOACTIVATE)
+	if p.bodyLayout != nil {
+		p.bodyLayout.AdjustLayout()
+	}
+}
+
+// hideNative 只隐藏原生窗口, 不改 open / lastClose 状态(测量阶段用)。
+func (p *popoverPanel) hideNative() {
+	if p.alive() {
+		p.win.ShowWindow(xcc.SW_HIDE)
+	}
 }
 
 // IsOpen 报告弹层是否打开。
@@ -276,8 +537,8 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 	p.showAt(hAnchor, x, y)
 }
 
-// ShowAt 在调用方算好的位置弹出弹层(x/y 为逻辑像素, 原点 = 宿主窗口矩形原点,
-// 同 Show 内部坐标语义), 同样夹在显示器工作区内。Select 的 item-aligned 定位用:
+// ShowAt 在调用方算好的位置弹出弹层(x/y 为**屏幕逻辑像素**, 与 Show 内部
+// wr.Left+rc.Left 同口径), 同样夹在显示器工作区内。Select 的 item-aligned 定位用:
 // 弹层盖住触发区、选中项正对触发区, 位置不是"贴着触发区下方"能表达的。
 //
 // 与 Show 的差异只有"位置怎么来": 钳制、屏幕外预显示、淡入全部共用。
@@ -331,7 +592,8 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	}
 	sc := float64(dpi) / 96
 
-	// SetWindowPos 是 Win32 直通(物理像素), 逻辑坐标要自己乘 DPI; 窗口左上角含阴影带。
+	// ⚠️ SetWindowPos 的 **x/y 是物理像素**(窗口位置要自己乘 DPI), 但 **cx/cy 是逻辑像素**
+	// (xcgui 会再做一次 DPI 缩放, 见 DESIGN 第八节 119); 窗口左上角含阴影带。
 	band := float64(popoverShadow)
 	wx := int32((float64(x)-band)*sc + 0.5)
 	wy := int32((float64(y)-band)*sc + 0.5)
@@ -359,7 +621,13 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	// 表面内容已是透明帧。Win32 窗口坐标范围 ±32768, -30000 安全。
 	p.win.SetWindowPos(xcc.HWND_TOP, -30000, -30000, 0, 0,
 		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
-	p.win.ShowWindow(xcc.SW_SHOW)
+	if p.activate {
+		p.win.ShowWindow(xcc.SW_SHOW)
+	} else {
+		// 悬停卡片不能抢焦点: 一抢, 用户正在操作的原窗口就丢焦点(输入框光标消失),
+		// 而且弹层会收到 KillFocus 立刻关掉自己。
+		wapi.ShowWindow(p.win.GetHWND(), 4) // SW_SHOWNOACTIVATE
+	}
 	// ⚠️ OnFaded 必须在这次重绘**之前**调用: 子控件的"初始隐藏态"(时间列表的滚动条
 	// alpha=0)要落进首帧 —— 时机错了滚动条会随首帧一起亮出来, 直到鼠标进入列表再
 	// 离开才被显隐逻辑藏掉 —— 表现为"刚弹出时滚动条是亮着的"。窗口已显示(虽在屏幕外), 子元素句柄
@@ -370,7 +638,9 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	p.win.Redraw(true) // 在屏幕外把 alpha=0 的透明帧画好(含滚动条隐藏)
 	p.win.SetWindowPos(xcc.HWND_TOP, wx, wy, 0, 0,
 		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE)
-	wapi.SetForegroundWindow(p.win.GetHWND()) // 拿到焦点才会在点击外部时收到 KillFocus
+	if p.activate {
+		wapi.SetForegroundWindow(p.win.GetHWND()) // 拿到焦点才会在点击外部时收到 KillFocus
+	}
 
 	if fast { // 跳过淡入: 直接完成态 —— 属性已设 1, 再重绘一次落地
 		p.win.Redraw(true)
@@ -421,6 +691,9 @@ func (p *popoverPanel) Hide() {
 	}
 	if p.alive() {
 		p.win.ShowWindow(xcc.SW_HIDE)
+	}
+	if p.OnHide != nil {
+		p.OnHide()
 	}
 }
 
