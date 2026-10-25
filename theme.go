@@ -1,6 +1,9 @@
 package xui
 
 // FontSpec 描述主题中的一套字体方案。组件按需从中选取字段。
+//
+// 没有下划线字段: `FontStyle_Underline` 在本框架的 D2D 文本路径下不渲染(见 DESIGN
+// 第八节 110), hover:underline 一律手绘 1px 线(Button 的 link 变体、Accordion 触发区)。
 type FontSpec struct {
 	Family string // 字体名, 如 "微软雅黑"、"Segoe UI"
 	Size   int32  // 字号(逻辑像素; xcgui 字体单位是 pt, FontHandle 内部按 px×0.75 换算)

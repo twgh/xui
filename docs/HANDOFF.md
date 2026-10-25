@@ -10,9 +10,21 @@
 
 ## 当前状态(截至 2026-10-24)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
+
+- ✅ **批次 2 收尾: Native Select / Select / Input-OTP / Accordion**(2026-10-24, 上游 tsx + App.tsx 对照卡同步):
+  - **前置完成**: 本地 shadcn 参考实现补齐 `native-select.tsx` / `input-otp.tsx` / `accordion.tsx`(`npx shadcn add`), select.tsx 原有; App.tsx 基础页加手风琴对照卡、表单页加「独立 Select / NativeSelect」「验证码输入」对照卡, `pnpm build` 通过。
+  - **NativeSelect(★)**: ComboBox 的 value 语义封装 —— 触发区/原生弹层与 NewComboBox 完全一致, 补 `<option value>` 字符串 API(`Value/SetValue/OnValueChange`, SetValue 匹配不上取消选中)。
+  - **Select(★★★)**: radix Select(item-aligned)的自绘弹层独立版 —— 触发区与 ComboBox 同一套 paint 规则; 弹层 = popoverPanel + ScrollArea + 自绘条目按钮(悬停/焦点 = bg-accent、选中右侧 check、禁用置灰、分组标签/分隔线); item-aligned = 选中项正对触发区(中心对齐推导同 alignComboPopup), 内容超高时算好 `pendingScroll` 落位后 `ScrollPosYV`; 键盘 ↑↓(跳过禁用)/Home/End/Enter 走 `popoverPanel` 新增的 `OnKeyDown/OnEsc` 钩子(ESC 把焦点还给触发区), 打开即把焦点放到选中项。实现期修掉两个 bug: ① `syncValue`/`Selected` 查懒构建的 flat(没弹过层是空表)导致"SetValue 后触发区还显示占位符", 改查源数据 groups; ② build 的循环闭包没拷贝循环变量(Go 1.18 旧语义, HANDOFF 硬规则), 所有条目画成最后一条。
+  - **InputOTP(★★★)**: 每格一个原生 Edit(32×32) + 自绘壳; 字符在 `AddEvent_Char` 拦截后自己落格(打进已填格 = 替换并前进、非法字符不入格, 原生没有 maxlength 放行会越填越长); ←→/Home/End 移动、Backspace 空格退格清前一格、Ctrl+V 读剪贴板分发(过滤非法字符, 焦点停最后写入格); 全满触发 OnComplete。文字居中走原生 `SetTextAlign(Center|Center_V)`(单行 Edit 程序 SetText 同样生效; 实现期一度误判"对齐不生效"改成按字宽设左右 border, 结果把数字右半截裁掉, 见 DESIGN 第八节 110); aria-invalid 的组外圈画在容器 PAINT_END(普通 paint 阶段画的环会被格子盖掉); `WithInputOTPValue` 在选项阶段格子还不存在, 先记 initial 格子建好后落位。剪贴板读 = wapi 的 Clipboard 系列 + GlobalLock(vet 坑: uintptr 别直转 unsafe.Pointer, 用同布局自定义 slice 头读 UTF-16)。
+  - **Accordion(★★)**: 每项 = Toggle 式全自绘触发钮(check 类型, 键盘空格/回车自补, 高度固定 40) + 复用 Collapsible 的内容高度过渡; 触发区 hover:underline **手绘 1px 线**(字体侧 `FontStyle_Underline` 不渲染), 箭头随开合在 ChevronUp/Down 间互换(上游就是互换无旋转); 条目间 1px 分隔线(末项没有); single 单开互斥可全收 / multiple 独立, 互斥收起只通知一次; 根 `Value/SetValue/OnChange`。
+  - **验收**: 探针(独立 main 包, AppWindow 样板)亮/暗双主题逐项截图 —— Select 弹层(分组/图标/禁用/勾/高亮/item-aligned)、OTP(逐格前进跨分隔符、居中、退格、预填/禁用/invalid 红环)、Accordion(单开互斥、箭头切换、分隔线)、NativeSelect(原生弹层+value 流); 键盘导航(↓×2 跳禁用项 + Enter 选中回写)与 ESC 关闭实测通过。**两个排查教训**: ① "弹层开着但看不见"这轮是测试环境问题 —— 用 PowerShell 把探针窗口设成 `HWND_TOPMOST` 后, 非 topmost 的弹层被压在探针后面(点击全被探针截走 → KillFocus 秒关), 换 `HWND_TOP` + SetForegroundWindow 即正常, 组件代码没有问题; ② 合成滚轮/滚动条拖动不可用是已知限制(DESIGN 66 末), 弹层类验收改走"程序化开合 + 点击/键盘注入"的探针路线。逐组件安装 native-select / select / input-otp / accordion 与 `add --all` 均编译通过; `go build/vet/test ./...` 全绿。registry 新增 4 项(accordion 依赖 button+collapsible+separator, 首跑漏了后两个已补), demo 表单1/基础2 页各加展示卡。
+  - **复验(同日, 用户报障后)**: ① 手风琴展开抖动 —— 根因是"每条 Collapsible 各挂一条动画定时器 + 每帧 apply 各自立即整窗重绘"(一帧两张中间态), 以及"内容区 pb-2.5 用外边距导致动画目标 34 / 终态 Auto 24, 收尾跳 10px"; 改为过渡归属宿主窗口 + 占位元素表达内边距(DESIGN 111)。② 触发区 hover 下划线看不到 —— `FontSpec.Underline`(FontStyle_Underline)在 D2D 文本路径下不渲染, 改手绘 1px 线; 运行时 `FontSpec` 的 `Underline` 字段已删。③ 验证码文字显示不全 —— DESIGN 110 结论错误, 对齐本来生效, border 技巧才是裁字根源, 已回退。④ 顺带修: 手风琴 demo/文档示例的内容标签漏了 `xui.ItemFill`(标签 0 宽, 展开后一片空白)、触发区高度按预设 33 而非 40。
+  - **二轮复验(用户截图报障)**: ① 手风琴焦点环整条触发区被填成灰色圆角块 —— 环带只画了"整块铺环色", 漏了"内芯铺回宿主底色", 补上(照 Button 的 focus-visible 画法, DESIGN 112); ② 内容区顶部那个"看起来像多出来的分隔线"的细矩形 —— 是 pb-2.5 占位元素的原生 1px 边框(`EnableBkTransparent` 只清背景), 补 `EnableDrawBorder(false)`(DESIGN 111 末); ③ 验证码: 第二组首格没有左边框/圆角、格子顶底横线在竖线处断 1px、聚焦时最左格环带方角 —— 圆角与外侧边改按"组"算、擦边只擦中段、环带用同一套 corners(DESIGN 113); ④ 禁用态验证码点进去还有光标 —— `XEle_Enable` 不禁鼠标聚焦, 补 `EnableFocus(false)` + caret 染底色兜底 + `Focus()` 在禁用时直接返回(DESIGN 114), 分隔符的减号也跟着 50% 透明; ⑤ Select 组标签贴左边框 —— 标签文字补 6px 左内距, 与条目内容对齐。
+  - **三轮复验(手风琴内容间距)**: 描述离触发区太远、离分隔线太近 —— pb-2.5 的占位在 `ContentStack` 里就挂了, 排在第一个子项**之前**; 改成开合时挂到末尾(幂等, 用户再加内容会把占位挪回末尾), 占位高度扣掉内容区行间距。实测内容区 = 标签 24 + 间距 6 + 占位 4 = 34, 文字上下各 12 逻辑像素, 与 shadcn 的 `pt-0 + pb-2.5` 观感一致(DESIGN 111 末)。
+  - **四轮复验(焦点环压字 + 分隔线一粗一细)**: ① 焦点环盖到文字/箭头上 —— 上游 `ring-3` 画在框外, 我们的环画在元素内必然吃 3px 内容区; 触发区文字加 `accordionPadX = 4` 让位、环带不再描内缘; 箭头绘制块贴右缘(chevron 墨迹自带内缩, 视觉间隙与文字一致, 逐像素探针确认左右都 ≈2 设备像素)(DESIGN 112 末)。② 两条分隔线一粗一细(实测 2 物理行 vs 1 行)—— 根因是 `widget.NewElement` 的原生 1px 边框在 1px 高的元素上就是那条线, 框架对它按 y 相位取整; 关掉边框后由自绘画"对齐整设备像素"的 1 物理行(`FillRectColorF` + 中心设备行), 全 DPI 恒定。顺带修: `Painter.Scale` 在 `BeginPaint` 里一直是 0, 现在填 `DPI/96`(DESIGN 10)。
 
 - ✅ **Toggle / Toggle Group**(2026-10-24): 补齐 shadcn 批次 2 前两项 —— `ui.NewToggle`(default/outline 变体、h-9/h-8/h-10 三档、行内图标、aria-invalid、禁用、焦点环; 鼠标/空格/回车切换 + `OnChange`)、`ui.NewToggleGroup`(单选默认互斥且可全部取消 / `WithToggleGroupMultiple` 多选, `AddItem(value,text,...)` + `Value/SetValue/OnChange/SetSpacing`, spacing=0 首尾外角、组级 variant/size 覆盖条目); demo 基础1页第四行; 亮/暗 150% DPI 验收, 点击/空格/Tab 焦点环/单选互斥与全部取消/多选/组回调/首尾圆角/间距逐项确认; 新结论: 原生 Check 按钮不响应空格/回车(元素 KeyDown 能收到), 组件自补键盘激活并与鼠标共用回调, 见第八节 108; 逐组件安装 toggle / toggle-group 与 `add --all` 均编译通过
 - ✅ **Label 下伸裁剪修复**(2026-10-24): 卡片说明 "ToggleGroup:" 的 g 尾巴被切平; 探针对比 20/21/22/23/24/26 行高, 根因是原生 Button 默认四边 border=1, 20 高标签的文字区上下各少 1px, 14px 字体的行盒装不下; Label 构造时 `SetBorderSize(1,0,1,0)`, 只清上下内缩、不增加布局高度; 探针与实际 demo 说明行均确认 20 高墨迹与 24 高一致(见第八节 109)
@@ -551,14 +563,14 @@
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
 - ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components 的 59 项: 39 项已有对应, 4 项部分覆盖, 16 项未实现)。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
   - **已有等价实现(不新增)**: Radio Group = `NewRadio`(原生父容器互斥)、Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
-  - **部分覆盖待补**: Select(弹层皮肤与 item-aligned 定位已在 ComboBox, 缺无过滤独立版)、Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
+  - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
-  - **批次 2 — 表单闭环**: 已完成 Toggle / Toggle Group(2026-10-24); 剩余 Native Select、Select、Input OTP(★~★★★); Accordion 复用 Collapsible, 可并行(★★)。
+  - **批次 2 — 表单闭环**: 已完成(2026-10-24): Toggle / Toggle Group / Native Select / Select / Input OTP / Accordion(复用 Collapsible)。
   - **批次 3 — 弹层基座**: Popover(公开 `popoverPanel`, 是后续组件的底座) → Hover Card → Command; Avatar 独立(★★~★★★)。
   - **批次 4 — 窗格/菜单**: Sheet → Drawer、Menubar(★★★)。
   - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Carousel、Resizable、Navigation Menu、Chart、Sidebar(★★★★~★★★★★)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
-  - **前置**: 本地 shadcn 参考实现只有 20 个旧组件, 实施新组件前先补上游源码作为语义权威(AGENTS 硬规则: 先读源码再改交互语义)。
+  - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义)。
 
 ## 仓库结构
 
@@ -573,6 +585,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 menu table tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
 │                                 empty field item breadcrumb kbd skeleton spinner toggle
+│                                 native_select select inputotp accordion
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)

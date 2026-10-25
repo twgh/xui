@@ -259,6 +259,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Tree | 原生 Tree + 项模板 | `XE_TREE_DRAWITEM` 自绘行底/参考线/chevron, 模板子元素保留(第八节 42) | 库文档 + 探针 |
 | Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53) | — |
 | Icon | 直通 D2D 几何绘制 | lucide path → 描边几何 + `DrawGeometry`(圆角样式), 色点走 `FillGeometry`(第八节 43); 回落折线描边 / `svg.Svg` | svg 包 + D2D 探针 |
+| NativeSelect | ComboBox(value 封装) | 载体就是 NewComboBox: 触发区自绘 + 原生弹层(第八节 30), 在其上提供 `<option value>` 字符串语义(Value/SetValue/OnValueChange) | native-select.tsx(radix-nova) |
+| Select | Button(触发区, 全自绘) + popoverPanel + ScrollArea | 触发区与 ComboBox 同一套 paint 规则; 弹层是自建阴影窗(popover.go 骨架, item-aligned 定位见第八节 71/74), 条目是自绘 Button(悬停/焦点 = bg-accent, 选中右侧 check, 禁用置灰), 分组标签/分隔线是自绘 Element; 滚动用 ScrollArea(条目超出高度才出), 键盘 ↑↓/Home/End/Enter 走弹窗 KeyDown 钩子 | select.tsx(radix-nova) |
+| InputOTP | 每格一个原生 Edit(32×32) + 自绘壳 | 文字居中用原生 `SetTextAlign(Center\|Center_V)`(单行 Edit 程序 SetText 同样生效; 不要用 border 挤位置, 会切字, 见第八节 110); 字符一律在 `AddEvent_Char` 拦截后自己落格(替换已填格 + 非法字符不入格 + 自动前进), 粘贴在 KeyDown 拦 Ctrl+V 读剪贴板分发; 相邻格共享边 = 每格画 top/bottom/right、首格加 left、中段格的 left 用底色擦掉(防 2px 叠边); aria-invalid 的组外圈画在容器 PAINT_END(子元素之后, 普通 paint 会被格子盖掉) | input-otp.tsx(input-otp 包) |
+| Accordion | LayoutEle + Button(check, 全自绘) + Collapsible | 每项 = 触发钮(Toggle 式全自绘: 文字 hover 下划线**手绘 1px 线**, 箭头随开合换 ChevronUp/Down, 高度固定 40) + 一个 Collapsible 做高度过渡; 条目间 1px 分隔线(末项没有); single 互斥在 item.setOpen 里关其它项, 只通知一次; 内容区 pb-2.5 用 10px 透明占位(不能用外边距, 见第八节 111) | accordion.tsx(radix-nova) |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
@@ -373,12 +377,16 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Card 头 | `ui.NewCardHeader(parent, space)` + `TitleStack` / `ActionStack` | 对应 `CardHeader` + `CardAction`(上游是 grid 1fr_auto); 动作区跨两行贴右上 |
 | ScrollArea | **本库形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档); 隐藏页恢复可见后要延迟重排一次页面, 否则子控件命中区停在旧滚动位置 | 页面滚动容器; 语义与踩坑见第八节 66 |
 | Menu 条目缩进 / 图标 / 右键触发 | `MenuInset` = shadcn 的 `inset` prop(`data-inset:pl-7`, 文字左缘 28; 条目/Label/Sub 都支持); `MenuIcon(path)` = 条目内联前置图标(16px, left-6); `NewContextMenu(hEle, build)` = `ContextMenu` + `ContextMenuTrigger`(右键触发区, 每次右键重建菜单, `SetEnabled`/`OnOpenChange`) | inset 用于和带前置图标的条目文字对齐; 高亮底仍是整行; 右键触发走窗口事件做区域命中(元素右键不冒泡), 见第八节 99 |
+| NativeSelect | `NewNativeSelect(x,y,cx,cy,hParent, values, WithNativeSelectPlaceholder/Size/Value/Invalid)` + `Value/SetValue/OnValueChange` | 对应 native-select.tsx(浏览器原生 `<select>` + 外壳): 弹层完全是原生 ComboBox 弹窗(与 NewComboBox 一致), 组件只补 `value` 字符串语义(`<option value>` / `onChange(e.target.value)`); 未选中时 Value() 返回空串, SetValue 匹配不上会取消选中 |
+| Select | `NewSelect(..., WithSelectPlaceholder/Size/Items/Groups/Value/Invalid/Disabled)` + `Value/SetValue/Selected/SetItems/SetGroups/OnChange/Open/Close/IsOpen`; 条目 `SelectItem{Value,Text,Icon,Disabled}`、分组 `SelectGroup{Label,Items}` | 对应 select.tsx(radix, item-aligned): 弹层盖住触发区、选中项正对触发区(两种盒子高度按**中心**对齐, 同 ComboBox 弹层的推导); 宽 = max(触发区宽, min-w-36); 键盘 ↑↓(跳过禁用)/Home/End 移动高亮(焦点即高亮 bg-accent), Enter/空格 选中, ESC 关闭并把焦点还给触发区; 打开即把焦点放到选中项(radix 语义); 点击选中同值也通知(同 radix onValueChange); 与 ComboBox 的取舍: 弹层自持(可富条目), 原生弹窗行为不复刻 |
+| InputOTP | `NewInputOTP(..., WithInputOTPLength/Pattern/SeparatorAfter/Value/Invalid/Disabled)` + `Value/SetValue/Clear/Focus/SetInvalid/SetDisabled/OnChange/OnComplete`; 预置过滤 `InputOTPPatternDigit/Alphanumeric/Any` | 对应 input-otp.tsx(底层 input-otp 包): 键入打进已填格 = **替换**并前进一格(同上游), 非法字符不入格; ←/→/Home/End 移动, Backspace 清当前格、空格时退格清前一格, Delete 清当前格; Ctrl+V 从当前格起分发粘贴(非法字符跳过, 焦点停最后写入格); 全满触发 OnComplete; 文字居中由原生 `SetTextAlign(Center|Center_V)` 负责(不要用 border 挤位置, 见第八节 110), 只有空格子用对称 border 把原生 caret 顶到格心; 上游的"跨格拖动选择"没有对应物(每格独立 Edit) |
+| Accordion | `NewAccordion(..., WithAccordionType(AccordionSingle/AccordionMultiple))` + `AddItem(value, title, WithAccordionItemDisabled)` + 条目 `Open/SetOpen/Toggle/SetDisabled/Content/ContentStack/Trigger`; 根 `Value/SetValue/OnChange` | 对应 accordion.tsx(radix): 触发区文字左对齐(上游无水平内边距; 我们留 4px 给内嵌环带, 见第八节 112)、箭头贴右、触发区高 40(py-2.5 + text-sm), hover:underline 手绘 1px 线(无过渡), focus-visible 环 rounded-lg; 箭头是 ChevronUp/Down 两枚图标互换(上游也是互换, 无旋转动画); 条目间 1px 分隔线(Item 的 not-last:border-b, 末项没有); 内容底部 pb-2.5 用末尾的透明占位表达(挂在开合时、高度扣掉行间距, 见第八节 111); single = 单开互斥且允许全部收起(radix type="single" collapsible), multiple 各自独立; disabled 只禁触发区, 已展开内容保留 |
 | Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长) + `Success/Error/Warning/Info` 快捷方法; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置只做四角(上游另有 top-center/bottom-center), `richColors` 不做 |
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | 组件库自己不用, 供你的应用取用; 机械转译新主题时一并填(运行时的主题测试有守卫) |
 
-**下划线(Button link / Badge link)**: xcgui 没有下划线文本标志位(`TextFormatFlag_` 里没有), 只能手绘: 宽度用 `xui.TextWidth` 量, y = 行盒中心 + 0.3em + 4px(`underline-offset-4`), 1px 线(`button.go` / `separator.go`)。实测(150% DPI): "Link" 下方 1 条 43 物理像素宽的横线, 紧贴文字下沿。
+**下划线(Button link / Badge link / Accordion 触发区)**: xcgui 没有下划线文本标志位(`TextFormatFlag_` 里没有), 字体侧 `FontStyle_Underline` 在 D2D 文本路径下也不渲染(见第八节 110), 只能手绘: 宽度用 `xui.TextWidth` 量, y = 行盒中心 + 0.3em + offset(`underline-offset-4` 用 4px; Accordion 的 hover:underline 没有 offset, 用行盒底边 - 2px), 1px 线(`button.go` / `separator.go` / `accordion.go`)。实测(150% DPI): "Link" 下方 1 条 43 物理像素宽的横线, 紧贴文字下沿。
 
 ---
 
@@ -456,6 +464,8 @@ ui/
 | Item 的 Header/Footer 没有自动 space-between, 动作之间用 Item 的行间距 | Go 布局没有 justify-between: 用 `xui.ItemWeight` 给靠左的第一个子项撑开; 行内动作也不再单独套 gap-2 容器(嵌套 Auto 宽不量测原生按钮, 见第八节 104) |
 | Breadcrumb 链接/当前页是单行自绘文本, 且不参与 Tab 焦点 | Label 的原生 Button 载体按 `TextWidth` 精确设宽会被内部文本内边距截断(第八节 105); 自绘后不折行、不支持富文本, 键盘焦点需要每链接一个可聚焦元素(当前为鼠标驱动) |
 | Toggle / ToggleGroup 的 outline 不画 shadow-xs | 上游有 1px 浅投影; 本库自绘壳体统一不画阴影(Button/Input 同), 在 Card 底上几乎不可见; `border-input` 与悬停/选中底色完整保留 |
+| InputOTP 没有"跨格拖动选择"/Ctrl+A 全选 | 每格是独立的原生 Edit, 选择语义无法跨格; 复制/剪切整段验证码也未做(粘贴方向完整) |
+| Select 弹层没有 radix 的 scroll-up/down 悬停自动滚按钮与 typeahead(键入跳转) | 自建弹层用 ScrollArea 承载, 滚轮与 ↑↓/Home/End 都可用; typeahead 需要按键聚合计时, 后续有需求再加 |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -472,7 +482,11 @@ ui/
 7. **Edit 自绘**:原生背景需 `EnableBkTransparent` 处理,BeautifyEdit 已验证。
 8. **字体**:主题携带字体方案(微软雅黑等中文环境默认字体),font 包管理。
 9. **拷贝模式的代价**:组件 bug 不会随依赖自动修复 → 用 `xui update` + "组件文件写薄"缓解。
-10. **元素绘制裁剪**:绘制被裁剪在元素自身客户区内,描边沿路径居中(贴边描边外半侧被裁),外扩式焦点环完全不可见 → 焦点框画在边框内侧(填充式,见 FocusFrame),需完整可见的描边请内缩。`XDraw_SetClipRect` 放宽裁剪区**无法突破**这层元素裁剪(实测:按下位移把底边推出 3px 后仍被裁掉,壳体高度少 3px)——要做"整体位移"这类越界绘制,应给元素预留像素(见 `button.go` 的 `pressShift`)。**1px 细条元素(分隔线)不要用画线**:线宽沿路径居中,画在元素边缘会有一半落在客户区外被裁掉 —— 150% DPI 下实测只剩 1 个物理像素、且整条比 Border 令牌淡一档;正确做法是直接 `p.FillRound(&p.Rc, t.Border, 0)` 填满整条(`separator.go`)。
+10. **元素绘制裁剪**:绘制被裁剪在元素自身客户区内,描边沿路径居中(贴边描边外半侧被裁),外扩式焦点环完全不可见 → 焦点框画在边框内侧(填充式,见 FocusFrame),需完整可见的描边请内缩。`XDraw_SetClipRect` 放宽裁剪区**无法突破**这层元素裁剪(实测:按下位移把底边推出 3px 后仍被裁掉,壳体高度少 3px)——要做"整体位移"这类越界绘制,应给元素预留像素(见 `button.go` 的 `pressShift`)。
+    - **1px 细条元素(分隔线)有两个坑**(`separator.go`):
+      ① 不要用画线(线宽沿路径居中, 一半被裁); 也**别以为关掉就完事** —— `widget.NewElement` 自带的原生 1px 边框(`EnableBkTransparent` 只清背景不清边框)在 1px 高的元素上就是那条线本身, 而框架对它按元素 y 的**相位取整**, 同一张卡片里的两条分隔线会一条 1 物理行、一条 2 物理行(实测截图: 229/229 两行 vs 229 一行), 看起来一粗一细。必须 `EnableDrawBorder(false)` 让自绘全权负责。
+      ② 自己画也要**对齐整设备像素**: `Painter.Scale`(物理/逻辑比)填的是 `DPI/96`, 1 逻辑像素 = 1.5 物理像素, 框架对矩形按相位取整还是会出现 1/2 行漂移。取元素矩形中心所在的设备行, 用 `Draw.FillRectColorF(RECTF)` 只填那 1 行 —— 全 DPI 恒定 1 物理像素, 视觉略细于浏览器(浏览器 150% 下是 1.5 行)但**处处一致**。
+    - `Painter.Scale` 曾一直是 0(`BeginPaint` 没赋值), 现已填 `DPI/96`; 需要设备像素对齐的绘制直接用它。
 11. **实心按钮 hover 用透明度**:shadcn 的 `hover:bg-primary/80` 语义用 `WithAlpha` 实现,比 lighten/darken 在近黑/近白主题色上有可感知变化,且明暗主题行为一致。
 12. **cy=0 的控件高度就是 0**:xcgui 不会按内容自适应,高度为 0 的控件直接不渲染(探针实证)→ 组件构造函数对 cy<=0 一律补默认高度。
 13. **窗口背景必须用 Leave 状态注册**:xcgui 的 `XBkM_AddFill` 按"当前组合状态"选填充,窗口绘制时处于 `Window_State_Flag_Leave`,用 `Element_State_Flag_Nothing(0)` 注册的填充永远不被选中;且需先 `XBkM_Clear` 清默认填充(paint 事件 / BkManagerEx / SetBkInfo XML 均无法改变窗口背景,探针实证)。已封装为 `xui.BindWindowBackground`。
@@ -1439,6 +1453,36 @@ ui/
     - **根因**: Label 用原生 Button 画单行文字, 而 Button 默认四边 `border=1`, 文字区 = 元素矩形上下各内缩 1px; 20 高的单行标签扣掉后装不下 14px 字体的完整行盒(墨迹只占 ~24 物理像素, 行盒更高), 底部被裁。
     - **修法**: Label 构造时 `SetBorderSize(1, 0, 1, 0)` —— 只清上下内缩, 左右保留 1px 维持原有水平内缩; **不增加任何布局高度**。探针实测 20 高标签的墨迹行数/像素数与 24 高完全一致。
 
+110. **`XEdit_SetTextAlign` 是生效的; 用它给文字"顶居中"的反而是 border 技巧**(`components/inputotp.go`, 探针实测):
+    - **现象**: OTP 单格里的数字看起来"偏左 + 右半截被切掉"。曾经的结论是"`XEdit_SetTextAlign` 对程序 SetText 不生效", 于是改成按字宽给 Edit 设左右 border 把文字挤到中间 —— 切字正是这个改法造成的。
+    - **根因(两条, 分开看)**:
+      ① **对齐本身没问题**: 单行 Edit 上 `SetTextAlign(Center|Center_V)` 对程序 `SetText` 同样生效, 与"先设对齐还是先设文本、是否透明底/无边框/自绘 paint"都无关(五种组合逐一探针, 数字都在格心)。只给水平位(0x2)时垂直位被清成 Top, 字会贴顶甚至被裁 —— 说明垂直位也是**在生效**。
+      ② **border 技巧 = 自造裁剪**: `SetBorderSize(left, 0, right, 0)` 把文本区压到正好一个字宽, 而 `xui.TextWidth` 量的是"显示矩形", 与字形实际步进差一两个像素; 文本区比字形窄, 右半截就被 Edit 自己的裁剪切掉, 同时整体位置又被 border 推到偏左。
+    - **修法**: 直接用 `SetTextAlign(Center|Center_V)`, 文本区保持 `SetBorderSize(0,0,0,0)`。唯一的 border 用法是**空格子**的 caret: 空文本时原生 caret 贴在文本区左缘(实测 x≈3), 对称内缩半格后落到格心(实测 14/14 → x≈17), 有字时必须清零(否则裁字)。要用"按位置对齐"的思路前先用探针确认量测口径, 别拿裁剪当居中。
+
+111. **同一窗口里多个高度过渡, 每帧会画出"半新半旧"的中间态**(`components/collapsible.go`, 手风琴展开逐帧探针):
+    - **现象**: 手风琴点开一项(同时收起另一项)时, 下面的条目上下抖动, 展开动画结束那一帧还整体跳一下。
+    - **根因(两条)**:
+      ① **动画归属**取的是各自根元素 → 每条过渡一条定时器。两条定时器每帧先后到点, 每次 apply 都 relayout + **立即整窗重绘** —— 一帧里画了两次中间态(一个已经缩了、另一个还没长), 相邻两帧的兄弟项位置来回跳。
+      ② **量测口径不一致**: 布局对 `Auto` 高度的父级**不计子项外边距**, 而内容区被动画锁成 `Fixed(h)` 时那段外边距又确实占位。于是"动画目标 34 / 终态 Auto 24", 动画结束恢复 `Auto` 的那一帧整条列表向上跳 10px(手风琴内容区的 pb-2.5 就踩到了)。
+    - **修法**: ① 过渡归属改成**宿主窗口**(`XWidget_GetHWINDOW`), 同一窗口的所有高度过渡共用一条定时器, 本帧所有 apply 跑完只让运行时重绘一次; `applyHeight` 里**不要**再自己 `redrawNow`(终态由 `done` 重绘)。② 内边距不要用子项外边距, 改成内容区里垫一个透明占位元素, 让"动画目标"与"终态 Auto"量到同一个数。占位有三个坑: 第一, 要同时 `EnableBkTransparent(true)` **和 `EnableDrawBorder(false)`** —— 前者只清背景, 原生 1px 边框还在, 内容区会多出一个整宽的细矩形(看着像多了一条分隔线); 第二, **挂载时机必须是"用户内容都加完"之后**(在 `ContentStack` 里挂会排到第一个子项之前 —— 触发区和正文之间空一大截、正文紧贴分隔线); 第三, 占位高度要**扣掉内容区的行间距**(布局在相邻子项之间也会插 `SetSpace` 那么宽, 不扣的话下边距比上边距宽出一个间距)。
+
+112. **真彩/暗色里"整块被填成灰色"的焦点环, 十有八九是漏了"内芯重新铺底"**(`components/accordion.go`, 手风琴触发区):
+    - **现象**: Tab 聚焦触发区时, 整条 40px 高的行变成一块灰色圆角矩形, 看起来像"选中态"而不是 focus 环。
+    - **根因**: 环带画法是"整块铺环色 → 内芯再铺回去", 只做了第一步。xcgui 会把绘制裁剪在元素自身客户区里, 环带只能画在元素内部, 所以内芯必须显式用宿主底色盖一次(= Button 的 `focus-visible` 画法)。
+    - **修法**: 照抄 Button 的顺序: `FillRoundCorners(整块, 环色)` → `FillRoundCorners(内缩 3px, 宿主底色)` → `StrokeRoundCorners(内缩 3px, 环色, 1)`。同理, 圆角要按"元素自身属于组的哪一端"决定(见 113), 否则首格的环是方角。
+    - **环画在元素内, 内容就要让位**: 上游的 `ring-3` 画在框外, 文字天然不会被压; 我们画在元素内, 环带必然吃掉 3px 内容区 —— 所以**有环带的元素, 内容要给环带让位**(手风琴触发区: 文字左留 `accordionPadX = 4`, 上游本无水平内距, 这是内嵌环的必要代价)。**让位要按"墨迹"算, 别按绘制块算**: 箭头这类图标管线的墨迹在 24 网格内本来就有内缩(chevron 横向只占 6..18), 绘制块贴边时墨迹离环带还有 ~2px, 与文字观感一致 —— 再给绘制块加内距, 右侧就会空出一截(实测探针逐像素量过)。环带内**别再描一道内缘线**, 那会让文字离环更近。
+
+113. **分段拼接的边框(多个格子共享边)必须按"组"算圆角, 且擦边只擦中段**(`components/inputotp.go`, 验证码格子):
+    - **现象**: ① 第二组的第一格没有左边框、也没有圆角; ② 每格顶/底横线在有竖线的位置断开 1px(像被咬了一口); ③ 聚焦时最左格的环带是方角。
+    - **根因**: ① `first:rounded-l-lg` 语义只按 `i==0` 判断 —— 而 shadcn 的验证码是**若干 InputOTPGroup**(分隔符切组), 组的首末格各自圆角、各自画外侧边; ② "中段格擦掉自己左边线"的实现把整列(含上下横线所在行)都擦了, 横线就在那里断了; ③ 环带用了 `UniformCorners(0)`。
+    - **修法**: 用分隔符位置算出 `groupStart/groupEnd`, 圆角与外侧边都按它来; 擦左边线只擦 `Top+1 … Bottom-1`(上下两行留给本格的横线); 环带/内芯描边复用同一套 corners(`corners.Inset(3)`)。**铺底也一样要圆角**: 环带内芯、格的底色如果 `FillRound(rc, 色, 0)`(半径 0), 方角会从圆角环带里露出一个白方块 —— 凡是"盖在圆角形状上"的填充都必须带同一套 corners。
+
+114. **`Enable(false)` 挡不住鼠标聚焦原生 Edit**(`components/inputotp.go`, 禁用态验证码):
+    - **现象**: 禁用组的格子里点一下, 光标照样出现并闪烁 —— 看起来"能输入"(虽然按键确实无效), 与浏览器的 `disabled` 语义不符。
+    - **根因**: xcgui 的 `XEle_Enable` 只关掉输入/交互通路, 鼠标按下仍会走焦点流程; 原生 Win32 的 disabled EDIT 是完全不可聚焦的。自绘的焦点环受 `!disabled` 保护, 所以只剩一个"裸光标"暴露了状态不对。
+    - **修法**: 禁用时额外 `XEle_EnableFocus(false)`(启用时再打开), 并把原生 caret 颜色设成格底兜底; `Focus()` 这类程序接口也要在禁用时直接返回。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1476,4 +1520,7 @@ ui/
 - ⚠️ `TabBar.SetPadding` 在 xcgui.dll 4.0.0.0 中不存在(调用 panic)
 - 直通 D2D(图标抗锯齿, 见第八节 43):`xc.XDraw_GetD2dRenderTarget(hDraw) → *ID2D1RenderTarget`、`xc.XC_GetD2dFactory → *ID2D1Factory`、`xc.XDraw_ConvRect(hDraw, *RECT) / XDraw_ConvXY`(客户区坐标 → 画布对齐物理坐标, 第三方绘图必须先换算); 用到的 D2D 方法: `ID2D1Factory::CreatePathGeometry`、`ID2D1PathGeometry::Open / GetBounds`、`ID2D1GeometrySink::{SetFillMode, BeginFigure, AddLines, EndFigure, Close}`、`ID2D1RenderTarget::{CreateSolidColorBrush, FillGeometry}`
 - 官方自绘示例:BeautifyButton / CheckBox / RadioButton / Edit / ProgressBar / SliderBar
+- 剪贴板读(InputOTP 粘贴, 见第八节 110 所在组件): `wapi.IsClipboardFormatAvailable(CF_UNICODETEXT) / OpenClipboard(0) / GetClipboardData / CloseClipboard` + `wapi.GlobalLock/GlobalUnlock`; GlobalLock 返回的 uintptr 别直接转 `unsafe.Pointer`(vet 报"可能的误用"), 用同布局的自定义 slice 头读 UTF-16; `wapi.GetAsyncKeyState(VK_CONTROL)` 判 Ctrl(VK 状态位按 `uint16` 与 `0x8000` 比, int16 会溢出)
+- 字体:`xui.FontSpec{Family, Size, Bold, Italic}`。**没有下划线字段**: `xcc.FontStyle_Underline` 在本框架的 D2D 文本路径下不渲染(探针: 下划线字体与普通字体像素一致), hover:underline 一律手绘 1px 线 —— 宽度取 `xui.TextWidth`, 落点见 Button 的 link 变体与 Accordion 触发区
+- 弹层键盘钩子(`popoverPanel`, Select 的 ↑↓/Enter 用): `Window.AddEvent_KeyDown`(窗口级, 焦点在子元素上也先于元素分发)、`popoverPanel.OnKeyDown/OnEsc`(popup.go 预留的钩子) + `Element.SetFocus`(焦点即条目高亮)
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`

@@ -37,6 +37,8 @@ func FontHandle(spec FontSpec) int {
 	if spec.Italic {
 		style |= xcc.FontStyle_Italic
 	}
+	// 不要传 FontStyle_Underline: 它在本框架的 D2D 文本路径下不渲染(实测,
+	// 见 DESIGN 第八节 110)。需要下划线一律手绘 1px 线。
 	sizePt := int32(math.Round(float64(spec.Size) * 72.0 / 96.0))
 	f := font.NewEX(spec.Family, sizePt, style)
 	if f == nil {

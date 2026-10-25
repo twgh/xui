@@ -156,6 +156,22 @@
     "toggle-group": {
       "files": ["toggle.go", "group.go"],
       "deps": []
+    },
+    "native-select": {
+      "files": ["native_select.go"],
+      "deps": ["combobox"]
+    },
+    "select": {
+      "files": ["select.go", "popup.go", "scrollarea.go", "scrollbar.go"],
+      "deps": []
+    },
+    "input-otp": {
+      "files": ["inputotp.go"],
+      "deps": []
+    },
+    "accordion": {
+      "files": ["accordion.go"],
+      "deps": ["button", "collapsible", "separator"]
     }
   }
 }

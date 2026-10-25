@@ -98,6 +98,13 @@ type popoverPanel struct {
 	ch   int32
 	open bool
 
+	// OnKeyDown 键盘事件钩子: ESC 之外的自定义键位(方向键/回车等)。返回 true 表示
+	// 已处理(事件标记为已吃掉, 不再继续分发)。
+	OnKeyDown func(wParam uintptr) bool
+
+	// OnEsc ESC 关闭弹层后的回调(如把焦点还给触发区)。
+	OnEsc func()
+
 	// OnFaded 进场淡入到位后的回调(可选)。淡入的 SetSubtreeAlpha 会把 body 子树里
 	// 所有元素的 alpha 一并拉满 —— 子控件里如果有"自己管理元素 alpha"的东西
 	// (TimePicker 列表滚动条的显隐), 在这里恢复它的初始态。
@@ -163,6 +170,13 @@ func newPopoverPanel(cw, ch int32, hAnchor int) *popoverPanel {
 	win.AddEvent_KeyDown(func(hWindow int, wParam, lParam uintptr, pbHandled *bool) int {
 		if wParam == xcc.VK_Esc && p.open {
 			p.Hide()
+			if p.OnEsc != nil {
+				p.OnEsc()
+			}
+			*pbHandled = true
+			return 0
+		}
+		if p.OnKeyDown != nil && p.open && p.OnKeyDown(wParam) {
 			*pbHandled = true
 		}
 		return 0
@@ -259,6 +273,63 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 			x = 0
 		}
 	}
+	p.showAt(hAnchor, x, y)
+}
+
+// ShowAt 在调用方算好的位置弹出弹层(x/y 为逻辑像素, 原点 = 宿主窗口矩形原点,
+// 同 Show 内部坐标语义), 同样夹在显示器工作区内。Select 的 item-aligned 定位用:
+// 弹层盖住触发区、选中项正对触发区, 位置不是"贴着触发区下方"能表达的。
+//
+// 与 Show 的差异只有"位置怎么来": 钳制、屏幕外预显示、淡入全部共用。
+func (p *popoverPanel) ShowAt(hAnchor int, x, y int32) {
+	if p == nil || p.open || !p.alive() {
+		return
+	}
+	hWnd := xc.XWidget_GetHWINDOW(hAnchor)
+	if hWnd <= 0 {
+		return
+	}
+	dpi := xc.XWnd_GetDPI(hWnd)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
+	wa, hasWA := monitorWorkArea(xc.XWnd_GetHWND(hWnd))
+	if hasWA {
+		waL := int32(math.Round(float64(wa.Left) / sc))
+		waT := int32(math.Round(float64(wa.Top) / sc))
+		waR := int32(math.Round(float64(wa.Right) / sc))
+		waB := int32(math.Round(float64(wa.Bottom) / sc))
+		if y+p.ch > waB {
+			y = waB - p.ch
+		}
+		if y < waT {
+			y = waT
+		}
+		if x+p.cw > waR {
+			x = waR - p.cw
+		}
+		if x < waL {
+			x = waL
+		}
+	}
+	p.showAt(hAnchor, x, y)
+}
+
+// showAt 是 Show/ShowAt 的公共落位与进场路径(x/y 已夹好, 逻辑像素)。
+func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
+	if p == nil || p.open || !p.alive() {
+		return
+	}
+	hWnd := xc.XWidget_GetHWINDOW(hAnchor)
+	if hWnd <= 0 {
+		return
+	}
+	dpi := xc.XWnd_GetDPI(hWnd)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
 
 	// SetWindowPos 是 Win32 直通(物理像素), 逻辑坐标要自己乘 DPI; 窗口左上角含阴影带。
 	band := float64(popoverShadow)

@@ -290,7 +290,7 @@ func (c *Collapsible) collapse() {
 }
 
 func (c *Collapsible) startPresence(open bool) {
-	xui.Presence(c.Handle, c.presKey, open, c.duration, c.applyHeight, func(v float64) {
+	xui.Presence(c.presenceOwner(), c.presKey, open, c.duration, c.applyHeight, func(v float64) {
 		if open {
 			// 动画结束恢复 Auto: 之后内容再变高/变矮都跟随布局。
 			c.content.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
@@ -300,6 +300,23 @@ func (c *Collapsible) startPresence(open bool) {
 		}
 		c.redrawNow()
 	})
+}
+
+// presenceOwner 过渡的归属句柄: 取**宿主窗口**而不是根元素。
+//
+// 根因(实测, 见 DESIGN 第八节 111): 手风琴开一项的同时会收起另一项, 两个 Collapsible
+// 各自把定时器挂在自己的根元素上, 两条定时器每帧先后到点 —— 每次 apply 都 relayout +
+// 立即整窗重绘, 于是一帧里画了两张"半新半旧"的中间状态(一个已经缩了、另一个还没长),
+// 相邻两帧的兄弟项位置来回跳, 就是展开时的抖动。挂到窗口之后, 同一窗口里的所有过渡
+// 共用一条定时器: 本帧所有 apply 跑完只重绘一次(见 anim.go 的 hoverTick), 画面单调推进。
+func (c *Collapsible) presenceOwner() int {
+	if c == nil || c.LayoutEle == nil {
+		return 0
+	}
+	if hw := xc.XWidget_GetHWINDOW(c.Handle); hw > 0 {
+		return hw
+	}
+	return c.Handle
 }
 
 // applyHeight 把过渡进度落到内容区高度上。
@@ -316,9 +333,9 @@ func (c *Collapsible) applyHeight(v float64) {
 	}
 	c.setContentHeight(h)
 	c.relayout()
-	// 内容区高度变化会让下面的兄弟项整体上移/下移, 必须整窗重绘; Presence 只负责
-	// 重绘 owner(根元素), 盖不到被推走的兄弟项。
-	c.redrawNow()
+	// 这里**不**自己重绘: 归属窗口(见 presenceOwner)的定时器会在本帧所有 apply 跑完
+	// 之后统一整窗重绘一次。逐个 apply 立即重绘会画出"一半已缩、一半还没长"的中间帧
+	// —— 手风琴一开一收时两帧来回跳, 表现为抖动。
 }
 
 // applyClosed 是收起的终态: 隐藏内容并清除占位。

@@ -38,7 +38,7 @@ func BeginPaint(hEle, hDraw int) *Painter {
 	d.EnableSmoothingMode(true)
 	var rc xc.RECT
 	xc.XEle_GetClientRect(hEle, &rc)
-	return &Painter{Draw: d, hEle: hEle, Rc: rc}
+	return &Painter{Draw: d, hEle: hEle, Rc: rc, Scale: dpiScale(xc.XWidget_GetHWINDOW(hEle))}
 }
 
 // BeginPaintWindow 从窗口绘制回调的 hDraw 构造 Painter(填窗口客户区)。
@@ -50,7 +50,19 @@ func BeginPaintWindow(hWindow, hDraw int) *Painter {
 	d.EnableSmoothingMode(true)
 	var rc xc.RECT
 	xc.XWnd_GetClientRect(hWindow, &rc)
-	return &Painter{Draw: d, hEle: hWindow, Rc: rc}
+	return &Painter{Draw: d, hEle: hWindow, Rc: rc, Scale: dpiScale(hWindow)}
+}
+
+// dpiScale 窗口的物理/逻辑像素比(DPI/96); 取不到窗口或 DPI 时按 1。
+// 自绘里做"对齐整设备像素"的细线/发丝线时必须用它 —— 逻辑坐标乘它才是物理像素。
+func dpiScale(hWindow int) float64 {
+	if hWindow <= 0 {
+		return 1
+	}
+	if dpi := xc.XWnd_GetDPI(hWindow); dpi > 0 {
+		return float64(dpi) / 96
+	}
+	return 1
 }
 
 // W, H 返回客户区宽高(逻辑像素)。

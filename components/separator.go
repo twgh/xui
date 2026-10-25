@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"math"
+
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xui"
 )
 
@@ -49,7 +52,11 @@ func NewSeparator(x, y, cx int32, hParent int, opts ...SeparatorOption) *Separat
 		return nil
 	}
 	s.Element = ele
+	// EnableBkTransparent 只清背景, 元素的原生 1px 边框还在 —— 1px 高的元素上它就是
+	// 那条"分隔线"本身, 而框架对它按相位取整, 同一张卡片里的两条线会一条 1 行一条
+	// 2 行(实测)。必须关掉, 让下面的自绘全权负责。
 	ele.EnableBkTransparent(true)
+	ele.EnableDrawBorder(false)
 	ele.AddEvent_Paint(s.onPaint)
 	xui.AttachWindow(ele.Handle)
 	return s
@@ -65,7 +72,34 @@ func (s *Separator) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 直接填充整个元素矩形(元素本身就是 1px 粗的细条): 用画线的话线宽沿路径居中,
 	// 贴在元素边缘的那一半会被元素裁剪掉 —— 实测 150% DPI 下只剩 1 个物理像素、
 	// 比 Border 令牌的观感淡一半(见 DESIGN 第八节 10)。
-	p.FillRound(&p.Rc, t.Border, 0)
+	//
+	// ⚠️ 但"1 逻辑像素"在 150% DPI 下是 1.5 物理像素, 交给 D2D 会按元素 y 的相位
+	// 有时落 1 行、有时落 2 行 —— 同一张卡片里的两条分隔线一粗一细(实测截图:
+	// 一条只有 1 行 #E5E5E5, 另一条占 2 行)。这里自己对齐到**整设备像素**:
+	// 取元素矩形中心所在的设备行/列, 永远只填 1 个物理像素, 全 DPI 一致。
+	sc := p.Scale
+	if sc <= 0 {
+		sc = 1
+	}
+	if s.vertical {
+		c := math.Floor(float64(p.Rc.Left+p.Rc.Right) / 2 * sc)
+		rc := xc.RECTF{
+			Left:   float32(c / sc),
+			Top:    float32(p.Rc.Top),
+			Right:  float32((c + 1) / sc),
+			Bottom: float32(p.Rc.Bottom),
+		}
+		p.Draw.FillRectColorF(&rc, uint32(t.Border))
+		return 0
+	}
+	c := math.Floor(float64(p.Rc.Top+p.Rc.Bottom) / 2 * sc)
+	rc := xc.RECTF{
+		Left:   float32(p.Rc.Left),
+		Top:    float32(c / sc),
+		Right:  float32(p.Rc.Right),
+		Bottom: float32((c + 1) / sc),
+	}
+	p.Draw.FillRectColorF(&rc, uint32(t.Border))
 	return 0
 }
 

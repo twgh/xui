@@ -870,6 +870,38 @@ func buildBase2Page(body *widget.LayoutEle) {
 	xui.ItemWeight(bill, 1)
 	price := ui.NewLabel(0, 0, 96, 20, "¥ 128.00", h6.Handle).SetFontSize(14).SetMedium()
 	xui.ItemWidth(price, 96)
+
+	// ---- 手风琴(Accordion): 复用 Collapsible 的高度过渡 ----
+	_, va := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "手风琴", va.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Accordion: 触发区 hover 下划线 + 箭头随开合切换; single = 单开互斥(可全收), multiple = 各条目独立; 展开高度过渡 200ms", va.Handle))
+
+	acc := ui.NewAccordion(0, 0, 0, 0, va.Handle)
+	xui.ItemFill(acc)
+	// 内容区里的标签必须自己声明宽度(ItemFill): 布局容器不会替子项铺满,
+	// Label 的 cx 传 0 就是 0 宽, 文字画不出来(整段内容看起来是空的)。
+	a1 := acc.AddItem("item-1", "这是什么?")
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 24,
+		"一套 shadcn-ui 风格的自绘组件, 触发区与内容区之间有 1px 分隔线, 展开高度带 200ms 过渡。",
+		a1.ContentStack(6).Handle))
+	a2 := acc.AddItem("item-2", "可以折叠吗?")
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 24,
+		"可以。single 模式下同一时间至多一项展开, 点开另一项会自动收起当前项; 全部收起也允许。",
+		a2.ContentStack(6).Handle))
+	a3 := acc.AddItem("item-3", "键盘操作")
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 24,
+		"触发区获得键盘焦点时显示焦点环, 空格 / 回车切换开合(Tab 在条目间移动)。",
+		a3.ContentStack(6).Handle))
+	a1.SetOpen(true)
+
+	xui.ItemFill(hint(va.Handle, "multiple(各条目独立开合)"))
+	acc2 := ui.NewAccordion(0, 0, 0, 0, va.Handle, ui.WithAccordionMultiple())
+	xui.ItemFill(acc2)
+	m1 := acc2.AddItem("m-1", "多开示例一")
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 24, "开合状态互不影响, 与 single 模式的互斥行为对比。", m1.ContentStack(6).Handle))
+	m2 := acc2.AddItem("m-2", "多开示例二")
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 24, "同时展开多项时, 每一项的内容区独立做高度过渡。", m2.ContentStack(6).Handle))
 }
 
 // 骨架是"一行两列、每列把两张卡竖着排", 不是"两行各两列":
@@ -1007,6 +1039,66 @@ func buildForm1Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewComboBox(0, 0, 0, 0, v4.Handle,
 		[]string{"开发环境", "测试环境", "生产环境"},
 		ui.WithComboSize(ui.ComboSizeSm), ui.WithComboPlaceholder("sm 尺寸")))
+
+	xui.ItemFill(hint(v4.Handle, "NativeSelect(shadcn 原生 <select> 对应物, value 字符串语义)"))
+	ns := ui.NewNativeSelect(0, 0, 0, 0, v4.Handle,
+		[]string{"开发环境", "测试环境", "生产环境"},
+		ui.WithNativeSelectPlaceholder("选择环境"), ui.WithNativeSelectValue("测试环境"))
+	xui.ItemFill(ns)
+	ns.OnValueChange(func(v string) { println("NativeSelect:", v) })
+
+	// ---- 右列 3: 独立 Select(自绘弹层) ----
+	_, v5 := autoCard(colR.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "独立 Select", v5.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"radix Select(item-aligned 定位): 富条目——图标 / 禁用 / 分组 / 分隔线; ↑↓ 移动高亮、Enter 选中、ESC 关闭", v5.Handle))
+
+	xui.ItemFill(hint(v5.Handle, "分组 + 图标 + 禁用项"))
+	sel := ui.NewSelect(0, 0, 0, 0, v5.Handle,
+		ui.WithSelectPlaceholder("选择主题"),
+		ui.WithSelectGroups([]ui.SelectGroup{
+			{Label: "外观", Items: []ui.SelectItem{
+				{Value: "light", Text: "浅色", Icon: icons.IconSun},
+				{Value: "dark", Text: "深色", Icon: icons.IconMoon},
+				{Value: "system", Text: "跟随系统", Icon: icons.IconMonitor},
+			}},
+			{Label: "更多", Items: []ui.SelectItem{
+				{Value: "custom", Text: "自定义(不可选)", Icon: icons.IconPalette, Disabled: true},
+			}},
+		}))
+	xui.ItemFill(sel)
+	sel.SetValue("dark")
+	sel.OnChange(func(item ui.SelectItem) { println("Select:", item.Value) })
+
+	xui.ItemFill(hint(v5.Handle, "sm 尺寸 + 平铺条目"))
+	xui.ItemFill(ui.NewSelect(0, 0, 0, 0, v5.Handle,
+		ui.WithSelectSize(ui.SelectSizeSm), ui.WithSelectPlaceholder("选择框架"),
+		ui.WithSelectItems([]ui.SelectItem{
+			{Value: "react", Text: "React"},
+			{Value: "vue", Text: "Vue"},
+			{Value: "svelte", Text: "Svelte"},
+		})))
+
+	// ---- 右列 4: 验证码输入 ----
+	_, v6 := autoCard(colR.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "验证码输入", v6.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"InputOTP: 逐格输入(打进已填格 = 替换), ←→/Home/End 移动, Backspace 空格退格, Ctrl+V 分发粘贴; 全满触发 OnComplete", v6.Handle))
+
+	otpVal := ui.NewLabel(0, 0, 0, 0, "值:", v6.Handle).SetMuted()
+	xui.ItemFill(otpVal)
+	otp := ui.NewInputOTP(0, 0, 0, 0, v6.Handle,
+		ui.WithInputOTPLength(6), ui.WithInputOTPPattern(ui.InputOTPPatternDigit),
+		ui.WithInputOTPSeparatorAfter(3))
+	xui.ItemFill(otp)
+	otp.OnChange(func(v string) { otpVal.SetText("值: " + v).Redraw() })
+	otp.OnComplete(func(v string) { otpVal.SetText("已完成: " + v).Redraw() })
+
+	xui.ItemFill(hint(v6.Handle, "禁用 / 校验失败(aria-invalid)"))
+	xui.ItemFill(ui.NewInputOTP(0, 0, 0, 0, v6.Handle,
+		ui.WithInputOTPLength(4), ui.WithInputOTPDisabled()))
+	xui.ItemFill(ui.NewInputOTP(0, 0, 0, 0, v6.Handle,
+		ui.WithInputOTPLength(4), ui.WithInputOTPInvalid()))
 
 	// ---- 第二行: Field 表单布局 ----
 	rField := row(body.Handle, 0, gap)
