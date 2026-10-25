@@ -17,10 +17,17 @@ const (
 	appWndShadowSize int32 = 12
 	appWndBtnW       int32 = 36
 	appWndBtnH       int32 = 28
-	appWndIconSize   int32 = 16
-	// appWndIconBig 是最小化/关闭按钮的图标尺寸: minus/x 这类"一根横线/一个叉"的图形,
-	// 16 在 36 宽的按钮里观感太小。
-	appWndIconBig int32 = 20
+	appWndTitleIcon  int32 = 16 // 标题左侧的应用图标(整块 Logo, 不参与下面的墨迹校准)
+	// 标题栏按钮图标的两档名义尺寸。lucide 的 24 网格里各图形墨迹占比差很多:
+	// minus 14/24、x 12/24(对角线长 0.707)、square 18/24、copy/eye 20/24 —— 同一
+	// 名义尺寸下"闭合方框类"比"线条类"大一圈, 还原态的 copy 比最大化 square 还大。
+	// 两档按**墨迹相等**校准(探针截图 + 放大目测, 比例同 shadcn 模板的 16/12):
+	//   - 线条类(minus/x) 18 → 墨迹宽 10.5/10.5;
+	//   - 满网格闭合类(square/copy 与自定义按钮的 eye/moon 等) 14 → 墨迹 10.5。
+	// 描边固定 2(24 网格)随尺寸缩放: 18→1.5px、14→1.17px, 与模板一致;
+	// 18/36 = 图标占按钮宽一半, 也和模板(16/32)相同。
+	appWndIconLine int32 = 18
+	appWndIconBox  int32 = 14
 )
 
 // AppWindow 是开箱即用的主窗口: 圆角阴影 + 自绘标题栏(最小化/最大化/关闭) + 主题化底色。
@@ -181,7 +188,7 @@ func (w *AppWindow) buildCaption(cfg appWindowConfig) {
 
 	// 标题图标(可选): 16x16, 左缩进 12
 	if cfg.icon != "" {
-		icon := widget.NewLayoutEle(0, 0, appWndIconSize, appWndIconSize, cap.Handle)
+		icon := widget.NewLayoutEle(0, 0, appWndTitleIcon, appWndTitleIcon, cap.Handle)
 		icon.EnableBkTransparent(true)
 		icon.AddEvent_Paint(func(hEle, hDraw int, pbHandled *bool) int {
 			p := xui.BeginPaint(hEle, hDraw)
@@ -192,8 +199,8 @@ func (w *AppWindow) buildCaption(cfg appWindowConfig) {
 			p.Icon(cfg.icon, &p.Rc, xui.Current().Foreground, 2)
 			return 0
 		})
-		icon.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, appWndIconSize)
-		icon.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, appWndIconSize)
+		icon.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, appWndTitleIcon)
+		icon.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, appWndTitleIcon)
 		xui.ItemMarginLeft(icon, 12)
 	}
 
@@ -238,11 +245,11 @@ func (w *AppWindow) buildCaption(cfg appWindowConfig) {
 	// 布局"不接管尺寸"就原样保留(见 xui/layout.go 的约定)。
 	if !cfg.noMinMax {
 		btnMin := NewButton(0, 0, appWndBtnW, appWndBtnH, "", cap.Handle,
-			WithVariant(ButtonGhost), WithIcon(icons.IconMinus), WithIconSize(appWndIconBig))
+			WithVariant(ButtonGhost), WithIcon(icons.IconMinus), WithIconSize(appWndIconLine))
 		btnMin.SetTypeEx(xcc.Button_Type_Min)
 
 		w.btnMax = NewButton(0, 0, appWndBtnW, appWndBtnH, "", cap.Handle,
-			WithVariant(ButtonGhost), WithIcon(icons.IconSquare), WithIconSize(appWndIconSize))
+			WithVariant(ButtonGhost), WithIcon(icons.IconSquare), WithIconSize(appWndIconBox))
 		w.btnMax.SetTypeEx(xcc.Button_Type_Max)
 
 		// 最大化/还原换图标: 按钮类型只管行为, 自绘图标要跟窗口状态走。
@@ -263,7 +270,7 @@ func (w *AppWindow) buildCaption(cfg appWindowConfig) {
 	}
 
 	btnClose := NewButton(0, 0, appWndBtnW, appWndBtnH, "", cap.Handle,
-		WithVariant(ButtonGhost), WithIcon(icons.IconX), WithIconSize(appWndIconBig))
+		WithVariant(ButtonGhost), WithIcon(icons.IconX), WithIconSize(appWndIconLine))
 	btnClose.SetTypeEx(xcc.Button_Type_Close)
 	xui.ItemMarginRight(btnClose, 4) // 关闭钮与圆角之间留一点, 避免 hover 底色贴边
 }
@@ -302,7 +309,7 @@ func (w *AppWindow) AddCaptionButton(icon string, onClick func()) *Button {
 		return nil
 	}
 	b := NewButton(0, 0, appWndBtnW, appWndBtnH, "", w.customBox.Handle,
-		WithVariant(ButtonGhost), WithIcon(icon), WithIconSize(appWndIconSize))
+		WithVariant(ButtonGhost), WithIcon(icon), WithIconSize(appWndIconBox))
 	if onClick != nil {
 		b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 			onClick()
