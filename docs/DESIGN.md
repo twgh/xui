@@ -1574,6 +1574,12 @@ ui/
     - **根因(两层)**: ① 定位把"重叠 4"写成了"间隙 4"(符号错), 两块面板之间真的有空档; ② 收起检查用卡片矩形判断光标在不在面板里 —— 而弹层窗口四周还有阴影带, **阴影带虽然透明却属于弹层窗口**, 光标一进去父面板就再也收不到 MouseMove 了, 此时按卡片矩形算"两边都不在", 于是误关。
     - **修法**: 子菜单与父面板**重叠** 4 像素(radix SubContent 的 `alignOffset: -4` 就是这个用意, 不是间隙); 光标归属判定按窗口矩形(卡片矩形向四周扩出阴影带宽)来做。两块面板在水平方向交叠后, 路径上不存在"谁都不接管"的空档。
 
+128. **窗口直属的绝对定位浮层要用"布局项置位置"钉住, 才扛得住一切窗口级布局趟**(`components/toast.go` 的 `pin`, 探针实测):
+    - **现象**: 通知显示中拖拽缩放窗口(或最大化/还原), 通知跑到窗口左侧。与 96 同源: 缩放与"页签换行→组件逐级重排到 `XWnd_AdjustLayout`"都会跑窗口级布局趟, 把窗口直属的绝对定位元素当布局项排到流式位置(左侧); 96 只堵了"切页别调窗口级布局"这一个触发点, 堵不住其余来源。
+    - **不能走事件**: `XE_ADJUSTLAYOUT_END`(布局完成事件)在 1.4.3 里**注册即崩**(访问违例, 事件总线与 `XEle_RegEventC` 两条注册路径都崩), 没有"布局趟结束后补救"的钩子; 事后重摆(`AfterFunc` 延迟)又与组件自己的延迟重排之间存在排队竞态。
+    - **修法**: 每次落位时调 `XWidget_LayoutItem_SetPosition(hEle, l, t, r, b)` 把元素**四边钉成相对窗口 Body 的 inset**。实测语义: ① 布局趟把钉住的项摆到钉位而不是流式位(缩放/重排后按新父尺寸重算, 四边都钉的项会被拉伸到四边之间 —— 所以 insets 必须与元素矩形一致, 窗口 Size 事件里要按新 Body 重钉); ② 钉在 `XEle_SetRect` 之后仍然存活(进出场动画逐帧 SetRect 不会清掉钉); ③ 只改钉不触发布局趟(显式 AdjustLayout 对"干净"布局是空操作), 所以钉住不干扰动画, 落位仍靠 SetRect。钉住后, 任何来源的窗口级布局趟反而会帮我们把浮层摆回正确位置。
+    - **通用**: 任何"窗口直属 + 绝对定位 + 必须跟随窗口缩放"的浮层(Toast / HUD / 自绘遮罩)都适用这套"落位即重钉"; 元素级 `AdjustLayout_No` 照常使用。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1590,6 +1596,7 @@ ui/
 - `ani.NewAnima / AnimaGroup`、`ease` 缓动
 - `XWnd_Redraw / XWnd_GetDPI`、`XC_EnableAutoDPI / XC_EnableDPI`
 - LayoutEle:`EnableLayout / IsEnableLayout / EnableHorizon / EnableAutoWrap / EnableOverflowHide / SetAlignH(V) / SetSpace / SetSpaceRow / ShowLayoutFrame / GetWidthIn(HeightIn)`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin/SetMinSize`、`xc.XWidget_LayoutItem_GetWidth/Height/GetMargin`、尺寸类型 `xcc.Layout_Size_{Fixed,Fill,Auto,Weight,Percent,Disable}` 与对齐 `xcc.Layout_Align_*`(语义与"Fill≠剩余空间 / Weight 需父级确定尺寸"见第八节 29/41/55;Go 包装无 AdjustLayout, 用 `XEle_AdjustLayout`);`EnableLayout/EnableHorizon/EnableAutoWrap` **只有 LayoutEle 与窗口有**(普通 Element 只能当布局项);**负外边距可用**(竖向按钮组消 1px 按压缝, 见 86)
+- `xc.XWidget_LayoutItem_SetPosition(h, l, t, r, b)`(布局项置位置 = 四边 inset 钉住, 让绝对定位浮层扛住窗口级布局趟; 语义与坑见第八节 128)
 - 按钮组(见第八节 86): `xc.XDraw_FillRoundRectEx/DrawRoundRectEx`(四角独立半径)、`xc.XEle_SetUserData/GetUserData`(组件角色标记)、`XWidget_GetParentEle` + `XEle_GetChildByIndex/GetChildCount`(首尾判定)、`XEle_GetHeight`(按按钮视觉高定文本/分隔条高度)
 - 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)`(元素级内边距, 已实测: Fill 子项按扣除 padding 后的宽度排版, 见 103)
 - 滚动容器(`LayoutFrame`, 见第八节 66):`widget.NewLayoutFrame`(布局盒子 + 滚动视图, 内容总大小自动撑开) + `XLayoutBox_*`(与 LayoutEle 同一套 EnableHorizon/AutoWrap/OverflowHide/Align/Space) + `XSView_SetTotalSize/GetTotalSize/SetScrollBarSize/EnableAutoShowScrollBar/ShowSBarH(V)/GetViewWidth/GetViewHeight/GetViewRect/GetViewPosH(V)/ScrollPosYV(像素)/ScrollPosV(行)/ScrollTop(Bottom)/GetScrollBarH(V)Obj`、`ScrollBar.ShowButton/SetSliderPadding/GetButtonSliderObj` + `AddEvent_Size(xc.XE_SIZE1)`(自愈补排)

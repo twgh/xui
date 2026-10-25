@@ -296,9 +296,10 @@ func buildPages(hWindow, host int) {
 	home := envHomePage()
 
 	// 页签行: 左右与窗口留白对齐; 宽度跟随窗口, 装不下时自动换行(WithTabsWrap)。
+	// 下边距 0: 与页面的距离由页面体自己的上边距表达, 不两边叠加。
 	tabs := ui.NewTabs(0, 0, int32(len(pageTitles))*tabW, host, pageTitles[:], ui.WithTabsWrap())
 	xui.ItemFill(tabs)
-	xui.ItemMargin(tabs, pagePad, 8, pagePad, 6)
+	xui.ItemMargin(tabs, pagePad, 8, pagePad, 0)
 
 	pageHost := widget.NewLayoutEle(0, 0, 0, 0, host)
 	pageHost.EnableHorizon(false)
@@ -374,13 +375,14 @@ func buildPages(hWindow, host int) {
 
 // newPage 建一个页面: 滚动容器(铺满宿主) + 其内带四周留白的内容区(竖向流式, 子项间距 gap)。
 // 内容比窗口高时滚动查看, 不再被裁掉(见 ui.ScrollArea)。
+// 上边距 16(< pagePad): 页签行与首张卡片之间只留一行节奏的空隙, 不叠加页签行距。
 func newPage(host int) (page *ui.ScrollArea, body *widget.LayoutEle) {
 	page = ui.NewScrollArea(0, 0, 0, 0, host)
 	page.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	xui.ItemFillHeight(page) // 高度 = 页面宿主的剩余空间(Weight)
 
 	body = page.ContentStack(gap)
-	body.LayoutItem_SetMargin(pagePad, pagePad, pagePad, pagePad)
+	body.LayoutItem_SetMargin(pagePad, 16, pagePad, pagePad)
 	return page, body
 }
 

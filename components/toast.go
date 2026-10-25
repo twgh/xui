@@ -229,7 +229,9 @@ func NewToaster(hWnd int, opts ...ToasterOption) *Toaster {
 	if t.duration == 0 {
 		t.duration = toastDefaultDuration
 	}
-	// 窗口尺寸变化时重排(卡片宽度与堆叠位置都随内容区走)。
+	// 窗口尺寸变化时重排(卡片宽度与堆叠位置都随内容区走); layout() 里同时按新
+	// Body 矩形重钉布局项位置 —— 否则缩放后的窗口级布局趟会拿旧 inset 把元素拉伸
+	// 变形(布局项置位置是四边 inset, 见 pin 注释)。
 	win.AddEvent_Size(func(hWindow int, nFlags uint, pPt *xc.SIZE, pbHandled *bool) int {
 		t.layout()
 		return 0
@@ -569,9 +571,34 @@ func (t *Toaster) layout() {
 		if it.entered {
 			toastSetRect(it.ele.Handle, it.baseX, it.baseY, it.w, it.h)
 		}
+		it.pin(br)
 		it.ele.SetZOrderEx(0, xcc.Zorder_Top)
 	}
 	xc.XWnd_Redraw(t.hWnd, true)
+}
+
+// pin 把通知元素"钉"成相对窗口 Body 的四边 inset(布局项置位置)。
+//
+// 窗口级布局趟(拖拽缩放、页签换行重排等组件逐级重排到 XWnd_AdjustLayout)会把
+// 窗口直属的绝对定位元素当布局项排到流式位置 —— 左侧(见 DESIGN 96)。元素无法
+// 豁免布局(没有"不参与布局"开关, XE_ADJUSTLAYOUT_END 事件注册即崩), 但布局项
+// 置位置是四边 inset 钉住: 钉住后布局趟把元素摆到钉的位置而不是流式位置, 且
+// 钉在 XEle_SetRect(进出场动画逐帧挪动)之后仍然存活 —— 实测: 探针钉住后
+// SetRect 挪走再 AdjustLayout, 元素回到钉位。所以每次 layout() 都按当前静止
+// 位置重钉, 一切窗口级重排反而会帮我们把通知摆正。
+//
+// 注意 insets 必须与元素矩形一致: 四边都钉住的项在布局趟里被拉伸到四边之间,
+// 缩放后旧 inset 会把元素拉变形 —— 所以窗口 Size 事件里的 layout() 必须用新
+// Body 矩形重钉(元素矩形 = 卡片外扩 toastShadow, 与 toastSetRect 同一套)。
+func (it *Toast) pin(br xc.RECT) {
+	if it.ele == nil {
+		return
+	}
+	x := it.baseX - toastShadow
+	y := it.baseY - toastShadow
+	cx := it.w + 2*toastShadow
+	cy := it.h + 2*toastShadow
+	it.ele.LayoutItem_SetPosition(x-br.Left, y-br.Top, br.Right-(x+cx), br.Bottom-(y+cy))
 }
 
 // bodyRect 返回窗口内容区(Body)的矩形。阴影窗口的 Body 比整窗小一圈,

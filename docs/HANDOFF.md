@@ -10,9 +10,16 @@
 
 ## 当前状态(截至 2026-10-25)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
+
+- ✅ **修复: 通知在缩放窗口时跑到左侧 + 页签行与卡片间距收窄**(2026-10-25, 用户报障):
+  - **现象**: 通知显示中拖拽缩放窗口(或最大化/还原), 通知跑到窗口左侧 —— 与此前"切页后 Toast 跑到左下角"同源(DESIGN 96), 但那次只堵了"切页别调 `XWnd_AdjustLayout`"一个触发点。demo 里复现出的完整链条: 最大化让页签从两行变一行 → Tabs 延迟重排 → `reflowAncestors` 逐级升到 `XWnd_AdjustLayout` → 窗口级布局趟把窗口直属的绝对定位 Toast 当布局项排到流式位置(左侧)。
+  - **为什么不能事后补救**: 探针实测 `XE_ADJUSTLAYOUT_END`(布局完成事件)在 1.4.3 **注册即崩**(事件总线与 `XEle_RegEventC` 两条路径都崩, 访问违例); `AfterFunc(0)` 延迟重摆又与组件自己的延迟重排(Tabs 换行同为 AfterFunc(0))存在排队竞态。探针还确认: 窗口内部布局在 Size 事件**之前**就把 toast 排到左侧(x=8), Size 事件里的重摆本身有效。
+  - **修法(DESIGN 128)**: `toast.go` 新增 `pin(bodyRect)` —— 每次落位用 `XWidget_LayoutItem_SetPosition` 把通知元素四边钉成相对 Body 的 inset。探针实测钉位语义: ① 布局趟把钉住的项摆到钉位(缩放/重排后按新父尺寸重算), 不再流式; ② 钉在 `XEle_SetRect` 之后仍然存活(进出场动画逐帧挪动不清钉); ③ 四边都钉的项在布局趟里被拉伸到四边之间 —— insets 必须与元素矩形一致, 窗口 Size 事件里的 `layout()` 必须按新 Body 重钉, 否则缩放瞬间元素变形; ④ 只改钉不触发布局趟(对"干净"布局显式 AdjustLayout 是空操作), 落位仍靠 SetRect。钉住后任何来源的窗口级布局趟反而会把通知摆回正确位置。
+  - **页签行与卡片间距**(同日报障"空白区域缩小"): PIL 逐像素实测页签块底边到卡片顶边 30 逻辑px = 页签行下边距 6 + 页面体上边距 24; 改为页签行下边距 0 + 页面体上边距 16(`newPage`), 总间隙 30 → 16, 与页内行距 `gap` 一致(复测 16.2)。
+  - 验收: 常驻通知(长文本)下最大化 / 还原 / 拖拽缩放 / Win+方向键分屏四种缩放, 通知始终右下角; `go vet ./...` / `go test ./...` 全绿; 逐组件安装编译(toast 闭包 + 全量)通过。
 
 - ✅ **demo 页签再拆分**(2026-10-25, 基础/表单/导航/反馈单页仍然过长):
   - **基础1** = 按钮 / 按钮组 / 切换按钮 / 切换按钮组; **基础2** = 徽章·分隔线·标签 / 头像 / 快捷键 / 加载指示器 / 骨架屏; **基础3** = 弹出层 / 卡片 / 比例容器; **基础4** = 滚动容器 / 列表项 / 手风琴。
@@ -298,7 +305,8 @@
     1707×1019 vs 整屏 1707×1067, 任务栏 48px 被扣掉)。
 
 - ✅ **Toast 通知(2026-10-19, `components/toast.go`)**:
-  - **载体**: 窗口内覆盖元素(每条通知一个自绘 Element, 无子元素), 右下角堆叠、跟随窗口移动/缩放/最小化;
+  - **载体**: 窗口内覆盖元素(每条通知一个自绘 Element, 无子元素), 右下角堆叠、跟随窗口移动/缩放/最小化
+    (落位时用布局项置位置把元素四边钉成相对 Body 的 inset, 扛住一切窗口级布局趟, 见 DESIGN 128);
     不占用原生控件, 关闭按钮/动作按钮的命中在卡片局部坐标里算。
   - **API**: `ui.NewToaster(w.Handle)` + `Show(ToastOptions{...})` / `Success / Error / Warning / Info`;
     `Duration` 传负数 = 常驻, `Action` + `OnAction` 动作按钮, `CloseButton` 显示关闭钮;
