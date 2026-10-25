@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -29,6 +30,11 @@ const (
 	tabsPad   int32 = 3  // 列表内边距: p-[3px](同时给焦点环留位)
 	tabsVTabH int32 = 24 // 纵向单个标签高: text-sm 行高 20 + py-0.5×2
 	tabsTextX int32 = 6  // 纵向标签的文字左边距: px-1.5
+
+	// 换行模式: 单标签的舒适最小宽(3 个中文字 + 左右留白)与行间距。
+	// 可用宽装不下时按"行数最少、每行数量均衡"换行, 不去压窄标签。
+	tabsWrapMinW int32 = 72
+	tabsRowGap   int32 = 4
 )
 
 // Tabs 自绘标签栏(等价 shadcn 的 Tabs + TabsList + TabsTrigger)。
@@ -52,7 +58,12 @@ type Tabs struct {
 	active   int32
 	variant  TabsVariant
 	vertical bool
+	wrap     bool
 	cb       func(index int32)
+
+	// 换行模式的状态: 上一次宽度(尺寸事件节流)与延迟重排标记。
+	lastWrapW  int32
+	wrapQueued bool
 }
 
 // TabsOption 标签栏配置项。
@@ -72,7 +83,13 @@ func WithTabsOrientation(o TabsOrientation) TabsOption {
 // WithTabsVertical 改为纵向堆叠(等价 WithTabsOrientation(TabsVertical))。
 func WithTabsVertical() TabsOption { return func(t *Tabs) { t.vertical = true } }
 
+// WithTabsWrap 让横向标签在宽度装不下时自动换行(每行均衡分配, 标签高度不变)。
+// 开启后列表宽度应交给布局(如 xui.ItemFill): 组件按实际宽度重排, 高度随之增加;
+// 纵向标签忽略该选项。
+func WithTabsWrap() TabsOption { return func(t *Tabs) { t.wrap = true } }
+
 // NewTabs 创建标签栏。cx 是列表宽度: 横向时标签等宽平分, 纵向时是标签宽度(高度自适应为 n 行)。
+// 开启 WithTabsWrap 后, 横向列表按布局给的实际宽度换行, cx 只作为首帧宽度。
 func NewTabs(x, y, cx int32, hParent int, labels []string, opts ...TabsOption) *Tabs {
 	tb := &Tabs{labels: labels}
 	for _, o := range opts { // 先应用配置: 取向决定列表尺寸
@@ -130,6 +147,10 @@ func NewTabs(x, y, cx int32, hParent int, labels []string, opts ...TabsOption) *
 	if tb.active < 0 || tb.active >= int32(len(tb.list)) {
 		tb.active = 0
 	}
+	if tb.wrap && !tb.vertical {
+		el.AddEvent_Size(tb.onSize)
+		tb.scheduleWrap()
+	}
 	xui.AttachWindow(el.Handle)
 	return tb
 }
@@ -154,6 +175,111 @@ func (t *Tabs) SetActive(i int32) *Tabs {
 func (t *Tabs) OnChange(fn func(index int32)) *Tabs {
 	t.cb = fn
 	return t
+}
+
+// onSize 尺寸事件: 延迟到下一轮 UI 循环再换行, 避免在布局趟里改自己的高度。
+func (t *Tabs) onSize(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+	t.scheduleWrap()
+	return 0
+}
+
+func (t *Tabs) scheduleWrap() {
+	if t == nil || t.wrapQueued {
+		return
+	}
+	t.wrapQueued = true
+	app.AfterFunc(0, func() {
+		t.wrapQueued = false
+		t.relayoutWrap()
+	})
+}
+
+// relayoutWrap 按当前宽度重排换行标签:
+//   - 行数取最少(maxPerRow = 可用宽 / 最小标签宽), 再把标签数平均到各行;
+//   - 每行标签等宽、左对齐, 最后一行不足时右侧留空;
+//   - 行数变化时同步元素高度与布局项高度, 并逐级通知祖先重排(Auto 高的卡片/页面才会让位)。
+func (t *Tabs) relayoutWrap() {
+	if t == nil || !t.wrap || t.vertical || t.Element == nil || len(t.list) == 0 {
+		return
+	}
+	w := t.GetWidth()
+	if w <= 0 || w == t.lastWrapW {
+		return
+	}
+	inner := w - tabsPad*2
+	if inner <= 0 {
+		return
+	}
+	rows, perRow, tabW := tabsWrapGrid(inner, int32(len(t.list)))
+	if tabW <= 0 {
+		return
+	}
+	t.lastWrapW = w
+
+	for i, btn := range t.list {
+		if btn == nil {
+			continue
+		}
+		row := int32(i) / perRow
+		col := int32(i) % perRow
+		btn.SetRectEx(tabsPad+col*tabW, tabsPad+row*(tabsH+tabsRowGap), tabW, tabsH-tabsPad*2,
+			false, xcc.AdjustLayout_No)
+	}
+
+	h := rows*tabsH + (rows-1)*tabsRowGap
+	heightChanged := t.GetHeight() != h
+	if heightChanged {
+		t.SetHeight(h)
+		t.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
+	}
+	// 位置与高度都改完再整窗重绘: 只重绘列表会留下旧位置的标签残影。
+	if hwnd := xc.XWidget_GetHWND(t.Handle); hwnd != 0 {
+		if hw := xc.XC_hWindowFromHWnd(hwnd); hw != 0 {
+			xc.XWnd_Redraw(hw, false)
+		}
+	}
+	if heightChanged {
+		t.reflowAncestors()
+	}
+}
+
+// tabsWrapGrid 计算换行网格: 行数取最少(每行最多 inner/tabsWrapMinW 个),
+// 再把标签数平均到各行; 返回每行个数与等宽标签宽。标签少/宽不足时返回的 tabW 可能为 0。
+func tabsWrapGrid(inner, n int32) (rows, perRow, tabW int32) {
+	if inner <= 0 || n <= 0 {
+		return 0, 0, 0
+	}
+	perRowMax := inner / tabsWrapMinW
+	if perRowMax < 1 {
+		perRowMax = 1
+	}
+	rows = (n + perRowMax - 1) / perRowMax
+	perRow = (n + rows - 1) / rows
+	tabW = inner / perRow
+	return rows, perRow, tabW
+}
+
+// reflowAncestors 逐级通知祖先重排(同 Alert 的做法): 直接调父级对 ScrollArea 内容区
+// 会把宽度打成 0, 遇到 LayoutFrame 必须交给框架自己排。
+func (t *Tabs) reflowAncestors() {
+	for p := xc.XWidget_GetParentEle(t.Handle); p != 0; p = xc.XWidget_GetParentEle(p) {
+		if xc.XC_IsHXCGUI(p, xcc.XC_LAYOUT_FRAME) {
+			xc.XEle_AdjustLayout(p)
+			break
+		}
+		if pp := xc.XWidget_GetParentEle(p); pp != 0 && xc.XC_IsHXCGUI(pp, xcc.XC_LAYOUT_FRAME) {
+			xc.XEle_AdjustLayout(pp)
+			break
+		}
+		if xc.XC_IsHXCGUI(p, xcc.XC_ELE) {
+			xc.XEle_AdjustLayout(p)
+			continue
+		}
+		if xc.XC_IsHXCGUI(p, xcc.XC_WINDOW) {
+			xc.XWnd_AdjustLayout(p)
+		}
+		break
+	}
 }
 
 // onPaintList 绘制列表底与"画在标签外侧"的两个元素:
@@ -183,8 +309,9 @@ func (t *Tabs) onPaintList(hEle int, hDraw int, pbHandled *bool) int {
 				line := xc.RECT{Left: rc.Right + 1, Top: rc.Top, Right: rc.Right + 3, Bottom: rc.Bottom}
 				p.FillRound(&line, th.Foreground, 1)
 			} else {
-				// after:inset-x-0 after:bottom-[-5px] after:h-0.5 —— 贴在列表底边
-				line := xc.RECT{Left: rc.Left, Top: p.Rc.Bottom - 2, Right: rc.Right, Bottom: p.Rc.Bottom}
+				// after:inset-x-0 after:bottom-[-5px] after:h-0.5 —— 贴在**当前行**的底边
+				// (换行时不能再用列表底边, 否则下划线会跑到最后一行下面)
+				line := xc.RECT{Left: rc.Left, Top: rc.Bottom + tabsPad - 2, Right: rc.Right, Bottom: rc.Bottom + tabsPad}
 				p.FillRound(&line, th.Foreground, 1)
 			}
 		}

@@ -134,7 +134,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Checkbox / Radio | 自绘指示器 + 原生状态管理 |
 | Input | 原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环,占位符随主题;校验失败态 `WithInputInvalid`;内嵌附加件:`WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible` / `PasswordVisible`) / `WithCounter`;步进器 `WithStepper(min,max,step)` + `SetNumber` / `Number` / `OnStep`(支持 −/+ 按钮与 ↑/↓ 键,失焦自动夹取吸附;`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态,`WithStepperAutoHide` 让按钮只在悬停/聚焦时出现) |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块;滑块支持自定义值域与步进(`WithSliderRange` / `WithSliderStep`) |
-| Tabs | 标签页(下划线指示条随活动页滑动),支持纵向堆叠(`WithTabsVertical`) |
+| Tabs | 标签页(下划线指示条随活动页滑动),支持纵向堆叠(`WithTabsVertical`);内容超出宽度时可用 `WithTabsWrap` 自动换行 |
 | Collapsible | 可折叠面板(触发区 + 内容区):`NewCollapsible` 建根容器,`BindTrigger` 绑定任意 Button 作触发区,内容放进 `Content()`/`ContentStack()`;展开/收起带 200ms 高度过渡(收起后不占布局),支持初始展开(`WithCollapsibleOpen`)、禁用与 `OnOpenChange` |
 | ComboBox | 下拉框(列表由独立透明弹出窗口承载, 打开时 100ms 淡入);触发区支持 sm 尺寸(`WithComboSize`)与校验失败态(`WithComboInvalid`) |
 | Calendar | 月历卡片(全自绘):6×7 固定网格、周起始日可调(`WithCalendarWeekStart`)、选中实心/今天浅底/悬停过渡;**范围选择**(`WithCalendarRange` + `WithCalendarOnRangeSelect`, 两次点击落区间、端点交换/中段色带, 同 react-day-picker)、**多月并排**(`WithCalendarMonths(1~4)`)、**ISO 周数列**(`WithCalendarWeekNumbers`)、禁用(`WithCalendarDisabled` + Before/After/Weekend/Dates helper)与预订划线(`WithCalendarStrike`)、年月可下拉(`WithCalendarYearRange`)、页脚/预设(`WithCalendarFooter` / `WithCalendarPresets`, 自动换行);可独立摆放, 弹层内用 `WithCalendarFlat` 免双层边框; 尺寸 helper `CalWidthFor` / `CalWidthForWeekNumbers` / `CalHeightForMonths` |
