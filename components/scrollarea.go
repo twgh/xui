@@ -25,7 +25,8 @@ import (
 //	sa.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0) // 宽铺满
 //	xui.ItemFillHeight(sa)                          // 高吃父级剩余空间(Weight 1)
 //	body := sa.ContentStack(16)                     // 内容区: 宽铺满视口, 高按内容自撑
-//	body.LayoutItem_SetMargin(24, 24, 24, 24)       // 页面留白(外边距计入滚动范围)
+//	body.LayoutItem_SetMargin(0, 24, 0, 24)         // 上下留白(外边距计入滚动范围)
+//	body.SetPadding(24, 0, 24, 0)                   // 左右用元素 padding, 约束子项 Fill 宽
 //	... 往 body 里塞卡片/控件
 //
 // 与 shadcn / radix ScrollArea 的差异(有意为之):

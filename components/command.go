@@ -224,7 +224,10 @@ func (c *Command) AddGroup(label string) *CommandGroup {
 	le.SetSpace(0)
 	le.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	le.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-	le.LayoutItem_SetMargin(commandGroupPad, commandGroupPad, commandGroupPad, commandGroupPad)
+	// 左右用元素 padding 约束子项 Fill 宽(组被 Fill 宽排过时, 外边距当内边距会让
+	// 条目/标题向右溢出, 同 card.ContentStack, 见 DESIGN 第八节 129); 上下用外边距计入高度。
+	le.LayoutItem_SetMargin(0, commandGroupPad, 0, commandGroupPad)
+	le.SetPadding(commandGroupPad, 0, commandGroupPad, 0)
 
 	if label != "" {
 		h := NewLabel(0, 0, 0, commandHeadingH, label, le.Handle)

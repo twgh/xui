@@ -151,8 +151,10 @@ func NewEmpty(x, y, cx, cy int32, hParent int) *Empty {
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
 	xui.AttachWindow(ele.Handle)
 
-	// Body 承担内边距(p-6)与 Header/Content 之间的 gap-6。内边距用 Body 的布局项外边距
-	// 表达, 这样 Empty 被父布局拉宽/收窄时内容区自动跟随。
+	// Body 承担内边距(p-6)与 Header/Content 之间的 gap-6。左右内边距用元素 padding
+	// (约束子项 Fill 宽); 上下用布局项外边距, 计入 Empty 的 Auto 高度 —— 四边都用
+	// 外边距时, Empty 被 Fill 宽排过后内容区会向右溢出(同 card.ContentStack,
+	// 见 DESIGN 第八节 129)。
 	e.body = widget.NewLayoutEle(0, 0, 0, 0, ele.Handle)
 	e.body.EnableHorizon(false)
 	e.body.EnableLayout(true)
@@ -162,7 +164,8 @@ func NewEmpty(x, y, cx, cy int32, hParent int) *Empty {
 	e.body.SetAlignH(xcc.Layout_Align_Center)
 	e.body.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	e.body.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-	e.body.LayoutItem_SetMargin(emptyPad, emptyPad, emptyPad, emptyPad)
+	e.body.LayoutItem_SetMargin(0, emptyPad, 0, emptyPad)
+	e.body.SetPadding(emptyPad, 0, emptyPad, 0)
 
 	// Header/Content 预建并隐藏: 保证调用顺序不影响纵向顺序, 未使用的槽位也不产生 gap。
 	e.header = e.newSlot(emptyHeaderGap)

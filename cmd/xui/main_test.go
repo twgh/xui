@@ -161,6 +161,79 @@ func TestParseRegistry(t *testing.T) {
 	}
 }
 
+// 共享助手文件不能把没装过的组件判成"已安装": 只装 select 时,
+// popup.go / scrollarea.go / scrollbar.go 都在, 但它们分别也是 datepicker /
+// dialog / table / tree / combobox 的文件 —— update 无参数不应因此全量同步。
+func TestInstalledComponentsRequiresAllFiles(t *testing.T) {
+	reg := &registry{Components: map[string]entry{
+		"select":     {Files: []string{"select.go", "popup.go", "scrollarea.go", "scrollbar.go"}},
+		"popover":    {Files: []string{"popover.go", "popup.go"}},
+		"hover-card": {Files: []string{"hovercard.go", "popup.go"}},
+		"dialog":     {Files: []string{"dialog.go", "scrollarea.go", "scrollbar.go"}},
+		"table":      {Files: []string{"table.go", "scrollbar.go"}},
+		"calendar":   {Files: []string{"calendar.go"}},
+		"scrollarea": {Files: []string{"scrollarea.go", "scrollbar.go"}},
+	}}
+	dir := t.TempDir()
+	for _, f := range []string{"select.go", "popup.go", "scrollarea.go", "scrollbar.go"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("package ui\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := installedComponents(reg, dir)
+	want := "scrollarea,select"
+	if strings.Join(got, ",") != want {
+		t.Errorf("installedComponents = %v, 期望 %s", got, want)
+	}
+}
+
+func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot()) // 本地源: 不访问网络
+	top := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	// 场景 1: 在空的 sitless 目录里执行 xui init -n sitless, 不应生成 sitless/sitless。
+	named := filepath.Join(top, "sitless")
+	if err := os.MkdirAll(named, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(named); err != nil {
+		t.Fatal(err)
+	}
+	if err := initNewProject("sitless", false, true); err != nil {
+		t.Fatalf("initNewProject 失败: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(named, "go.mod")); err != nil {
+		t.Errorf("骨架应铺在当前目录: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(named, "sitless")); err == nil {
+		t.Error("不应再建一层 sitless/ 目录")
+	}
+
+	// 场景 2: xui init -n . 直接铺在当前空目录, 项目名取目录名。
+	dot := filepath.Join(top, "myapp")
+	if err := os.MkdirAll(dot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dot); err != nil {
+		t.Fatal(err)
+	}
+	if err := initNewProject(".", false, true); err != nil {
+		t.Fatalf("initNewProject(.) 失败: %v", err)
+	}
+	gomod, err := os.ReadFile(filepath.Join(dot, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(gomod), "module myapp") {
+		t.Errorf("go.mod 模块名应为目录名 myapp:\n%s", gomod)
+	}
+}
+
 // 端到端: 用 httptest 冒充远程源, 走完"拉 registry → 解析依赖 → 拷文件"。
 func TestAddViaRemoteSource(t *testing.T) {
 	files := map[string]string{
@@ -329,6 +402,14 @@ func TestInitNewProject(t *testing.T) {
 		if !strings.Contains(string(gomod), want) {
 			t.Errorf("go.mod 缺少 %q:\n%s", want, gomod)
 		}
+	}
+
+	theme, err := os.ReadFile(filepath.Join(dir, "myapp", "ui", "theme.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(theme), "func UseDark(") {
+		t.Errorf("theme.go 应生成 UseDark 切换助手:\n%s", theme)
 	}
 
 	mainGo, err := os.ReadFile(filepath.Join(dir, "myapp", "main.go"))

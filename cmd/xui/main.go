@@ -593,6 +593,7 @@ func usage() {
 	fmt.Println(`xui — shadcn 风格的 xcgui 自绘组件
 
   xui init -n <项目名>       新建完整 Go 项目(go.mod + main.go + README + ui/ 组件)
+  xui init -n .              在当前空目录直接生成项目(项目名取目录名)
   xui init [ui目录]          已有项目: 只初始化组件目录(默认 ui)
   xui add <组件...>          拷贝组件(自动带上依赖组件)
   xui add --all              拷贝全部组件
@@ -700,18 +701,35 @@ func scaffoldUI(dir string, force bool) error {
 // initNewProject 创建完整项目目录: go.mod + main.go + README + .gitignore + ui/。
 // 目标目录已存在且非空时默认拒绝, force 允许覆盖模板文件(不动无关文件)。
 // noInstall = 跳过自动 go mod tidy(--no-install)。
+//
+// 目录规则:
+//   - `-n .` 直接把骨架铺在当前目录(项目名取当前目录名);
+//   - 当前目录本身是空的、且目录名 == -n 的项目名时, 同样铺在当前目录 ——
+//     否则在 `D:\...\sitless` 里执行 `xui init -n sitless` 会生成 sitless/sitless。
 func initNewProject(name string, force, noInstall bool) error {
+	dir := name
+	if name == "." {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("读取当前目录失败: %v", err)
+		}
+		if name = projectNameFromDir(cwd); name == "" {
+			return fmt.Errorf("无法从当前目录推断项目名, 请用 xui init -n <项目名>")
+		}
+	} else if cwdIsEmptyDirNamed(name) {
+		dir = "."
+	}
 	if err := validateProjectName(name); err != nil {
 		return err
 	}
-	if entries, err := os.ReadDir(name); err == nil {
+	if entries, err := os.ReadDir(dir); err == nil {
 		if len(entries) > 0 && !force {
-			return fmt.Errorf("目录 %s 已存在且非空 (确认后加 --force 覆盖模板文件)", name)
+			return fmt.Errorf("目录 %s 已存在且非空 (确认后加 --force 覆盖模板文件)", dir)
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("读取目录 %s 失败: %v", name, err)
+		return fmt.Errorf("读取目录 %s 失败: %v", dir, err)
 	}
-	if err := os.MkdirAll(name, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("创建项目目录失败: %v", err)
 	}
 
@@ -724,7 +742,7 @@ func initNewProject(name string, force, noInstall bool) error {
 		{".gitignore", gitignoreTemplate},
 	}
 	for _, f := range files {
-		path := filepath.Join(name, f.name)
+		path := filepath.Join(dir, f.name)
 		action := "创建"
 		if _, err := os.Stat(path); err == nil {
 			action = "覆盖"
@@ -734,26 +752,51 @@ func initNewProject(name string, force, noInstall bool) error {
 		}
 		info("%s %s", action, path)
 	}
-	if err := scaffoldUI(filepath.Join(name, "ui"), force); err != nil {
+	if err := scaffoldUI(filepath.Join(dir, "ui"), force); err != nil {
 		return err
 	}
 
 	depsReady := false
 	if !noInstall {
 		info("\n正在安装依赖 (go mod tidy)...")
-		if err := installGoModules(name); err != nil {
+		if err := installGoModules(dir); err != nil {
 			warn("依赖安装失败: %v", err)
 		} else {
 			depsReady = true
 			info("依赖安装完成")
 		}
 	}
-	if depsReady {
-		info("\n已创建项目 %s (module %s)\n\n接下来:\n  cd %s\n  go run .", name, module, name)
-	} else {
-		info("\n已创建项目 %s (module %s)\n\n接下来:\n  cd %s\n  go mod tidy\n  go run .", name, module, name)
+	next := "接下来:\n"
+	if dir != "." {
+		next += fmt.Sprintf("  cd %s\n", dir)
 	}
+	next += "  go mod tidy\n  go run ."
+	if !depsReady {
+		info("\n已创建项目 %s (module %s)\n\n%s", name, module, next)
+		return nil
+	}
+	next = strings.Replace(next, "  go mod tidy\n", "", 1)
+	info("\n已创建项目 %s (module %s)\n\n%s", name, module, next)
 	return nil
+}
+
+// projectNameFromDir 取目录名做项目名(根目录无名字时返回空)。
+func projectNameFromDir(dir string) string {
+	base := filepath.Base(filepath.Clean(dir))
+	if base == "." || base == string(filepath.Separator) || base == "" {
+		return ""
+	}
+	return base
+}
+
+// cwdIsEmptyDirNamed 报告当前工作目录是否为空、且目录名就是 name。
+func cwdIsEmptyDirNamed(name string) bool {
+	cwd, err := os.Getwd()
+	if err != nil || projectNameFromDir(cwd) != name {
+		return false
+	}
+	entries, err := os.ReadDir(cwd)
+	return err == nil && len(entries) == 0
 }
 
 // installGoModules 在项目目录执行 go mod tidy, 生成 go.sum 并拉取依赖。
@@ -924,15 +967,24 @@ func resolveNames(reg *registry, names []string) []string {
 	return order
 }
 
-// installedComponents 扫描 uiDir, 返回"至少有一个文件在本地"的组件名(排序)。
+// installedComponents 扫描 uiDir, 返回**全部文件都在本地**的组件名(排序)。
+//
+// 不能用"任意一个文件存在"判定: 组件之间共享助手文件(scrollbar.go / popup.go /
+// scrollarea.go / group.go …), 只装了 select 时 popup.go 等已存在, 会把 datepicker /
+// popover / dialog / table / tree / combobox / toggle 全判成"已安装", update 无参数
+// 时把它们整套拷进 ui/。要求 files 全部存在才能把共享文件归到真正装过的组件上。
 func installedComponents(reg *registry, uiDir string) []string {
 	var names []string
 	for name, e := range reg.Components {
+		installed := len(e.Files) > 0
 		for _, f := range e.Files {
-			if _, err := os.Stat(filepath.Join(uiDir, f)); err == nil {
-				names = append(names, name)
+			if _, err := os.Stat(filepath.Join(uiDir, f)); err != nil {
+				installed = false
 				break
 			}
+		}
+		if installed {
+			names = append(names, name)
 		}
 	}
 	sort.Strings(names)
@@ -1197,6 +1249,17 @@ var light = *xui.Light()
 
 // dark 暗色主题(内置 xui.Dark() 的副本)。
 var dark = *xui.Dark()
+
+// UseDark 切换亮色/暗色主题, 全局生效(内部会通知所有已注册窗口重绘)。
+// 切换的是本文件里的 light/dark 副本, 逐字段定制过的颜色也会跟着走。
+func UseDark(v bool) {
+	if v {
+		Active = dark
+	} else {
+		Active = light
+	}
+	xui.SetTheme(&Active)
+}
 
 // 自定义示例(改字段即可, 不必重写整个结构体):
 //	func init() {

@@ -200,6 +200,43 @@ func col(parent int, weight, space int32) *widget.LayoutEle {
 	l.SetSpace(space)
 	l.LayoutItem_SetWidth(xcc.Layout_Size_Weight, weight)
 	l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	// Weight 宽不会下发给嵌套布局的 Fill 子项(见 DESIGN 第八节 101): 卡片内容区改成
+	// 元素 padding 后(见 129), 列里的 ItemGroup / Collapsible 会变成 0 宽整块消失。
+	// 列宽确定后把 Fill 子项锁成 Fixed; 列宽变化时重新锁。宽度在 AfterFunc 里现读,
+	// 不能捕获 Size 事件那一刻的值 —— 缩放窗口时事件会先给中间宽, 捕获值会让判断失效,
+	// 子项停在旧宽(表现为缩放后行尾按钮被卡片裁掉)。
+	var lastW int32 = -1
+	var syncPending bool
+	synced := map[int]bool{}
+	l.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		if syncPending {
+			return 0
+		}
+		syncPending = true
+		app.AfterFunc(0, func() {
+			syncPending = false
+			w := l.GetWidth()
+			if w <= 0 || w == lastW {
+				return
+			}
+			lastW = w
+			next := make(map[int]bool, len(synced))
+			for i := int32(0); i < xc.XEle_GetChildCount(l.Handle); i++ {
+				child := xc.XEle_GetChildByIndex(l.Handle, i)
+				var typ xcc.Layout_Size_
+				var cw int32
+				xc.XWidget_LayoutItem_GetWidth(child, &typ, &cw)
+				// 第一次锁 Fill 子项后它会变成 Fixed, 后续尺寸变化按 synced 继续更新。
+				if typ == xcc.Layout_Size_Fill || synced[child] {
+					xc.XWidget_LayoutItem_SetWidth(child, xcc.Layout_Size_Fixed, w)
+					next[child] = true
+				}
+			}
+			synced = next
+			l.AdjustLayout()
+		})
+		return 0
+	})
 	return l
 }
 

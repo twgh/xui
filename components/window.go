@@ -146,6 +146,11 @@ func NewAppWindow(title string, cx, cy int32, opts ...AppWindowOption) *AppWindo
 	// shadowSize 宽的阴影带, 标题栏落在 [shadow, shadow+captionH]; 最大化时没有阴影。
 	// 点在标题栏的按钮上不触发(GetStayEle != 0)。
 	w.AddEvent_LButtonDBClick(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
+		// WithAppWindowNoMinMax 只留关闭按钮时没有还原入口, 双击标题栏不能再最大化
+		// (否则窗口被最大化后既没有最大化按钮也没有还原按钮)。
+		if cfg.noMinMax {
+			return 0
+		}
 		top := cfg.captionH + appWndShadowSize
 		if w.IsMaxWindow() {
 			top = cfg.captionH
@@ -302,8 +307,11 @@ func (w *AppWindow) Caption() *widget.LayoutEle {
 	return w.caption
 }
 
-// AddCaptionButton 在标题栏右侧加一个图标按钮(排在最小化按钮左边),
-// 用来放"切换主题 / 设置 / 布局边界"这类按钮。返回按钮便于继续绑事件。
+// AddCaptionButton 在标题栏右侧的自定义按钮区加一个图标按钮(排在三个系统按钮左边),
+// 用来放"切换主题 / 设置 / 布局边界"这类按钮。返回按钮便于继续绑事件、换图标。
+//
+// 默认图标边长 14, 对应 eye/moon 这类满网格闭合图形(与系统键的 square/copy 同档);
+// 放 minus/x 这类线条图标时用返回的按钮再调 `SetIconSize(18)`, 墨迹宽度才与系统键一致。
 func (w *AppWindow) AddCaptionButton(icon string, onClick func()) *Button {
 	if w.customBox == nil {
 		return nil

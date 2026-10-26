@@ -237,7 +237,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 |---|---|---|---|
 | AppWindow | 原生 window.Window 封装 | 无系统标题栏(样式不含 Icon/Btn_*): 阴影圆角 + 自绘 `[图标][标题 Weight][自定义按钮区][最小化/最大化/关闭]`; 双击标题栏最大化/还原; 内容区 = 纵向流式 Weight 1(第八节 76) | demo 窗口 |
 | Button | embed Button | paint 壳, 原生文字(WithIcon 时自绘图标) | BeautifyButton 示例 |
-| Card | LayoutEle(布局容器) | 圆角面板 + ring 描边; 内容区是 Fill 子项、内边距用外边距表达(随卡片缩放), 高度可按内容自撑(Auto), 见第八节 56; 页脚是横向布局容器(内边距 + items-center), 见第八节 95 | — |
+| Card | LayoutEle(布局容器) | 圆角面板 + ring 描边; 内容区是 Fill 子项、左右内边距用元素 padding / 上下用外边距(随卡片缩放, 见第八节 129), 高度可按内容自撑(Auto), 见第八节 56; 页脚是横向布局容器(内边距 + items-center), 见第八节 95 | — |
 | Collapsible | LayoutEle(根 + 内容) + Button(触发区) | 竖向流容器: 触发区由调用方创建 Button 后 `BindTrigger` 绑定(展开态同步 Button 的 aria-expanded 视觉); 内容高度收起 0 / 展开 Auto, 切换时 200ms 逐帧重排祖先并整窗重绘(第八节 97) | collapsible.tsx + radix collapsible(高度 CSS 变量动画示例) |
 | AspectRatio | LayoutEle(布局容器) | 宽度驱动高度: 尺寸事件按新宽度算高写回, 延迟到下一轮消息并逐级重排祖先(同第八节 93 的三段式); 内容区随比例框同步尺寸, 见第八节 94 | shadcn/radix aspect-ratio |
 | Alert | LayoutEle + Label/Element | 卡片底 + 1px border; 图标/文本列横向流式, 标题/描述按宽度量高后写回, 动作槽按内容自撑; 见第八节 90 | alert.tsx(radix-nova) |
@@ -344,7 +344,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | date picker 触发区 = **Button variant="outline"**(不是 Input): h-8 rounded-lg border-input bg-background, 左侧 size-4 calendar 图标 + 文字, hover bg-accent / 文字 accent-foreground; 未选择显示占位符(muted); 弹层 = 自建阴影窗 + Calendar(sideOffset=4, 下方放不下翻上方, 夹在**显示器工作区**内 —— 扣掉任务栏, 见第八节 74); 进场 fade-in 100ms; 选中即回写+关闭+回调, 点外部(弹层失焦)/ESC 关闭; **点触发区关闭后 250ms 内不再重开**(弹层 KillFocus 先于触发区 LButtonUp, 否则表现为"点两次才关掉"); aria-invalid 同 Button | date-picker 文档示例(Button outline + Popover + Calendar) + datepicker.go / popup.go |
 | date picker 范围/预设/可输入 = `WithDatePickerRange`(弹层并排两个月; 第一次点击落起点**保持打开**, 补上终点才关闭; 触发区显示 "起点 - 终点", 未完时只显示起点; `Range()/SetRange/OnRangeChange`)、`WithDatePickerPresets`(弹层底部预设按钮, 范围模式一次落两端并关闭)、`WithDatePickerYearRange/WithDatePickerDisabled`(转给内嵌 Calendar); **可输入形态** `WithDatePickerEditable` = InputGroup: 文字区是原生 Edit(宽度跟触发区走, 见第八节 93), 右侧 24px ghost 日历钮打开弹层, Enter/失焦解析回写(`ParseDateText`: 2026-10-22 / 2026年10月22日 / 今天/明天/后天/大后天 / N天后 / N周后), ↓ 键打开弹层; 范围模式不支持可输入(自动退回普通触发区) | date-picker 文档的 Range / Input 示例 + calendar 的 Presets 示例 + datepicker.go |
 | time picker = 触发区同 date picker(clock 图标 + "09:30") + 弹层两列滚动列表(时 0-23 / 分 0-59): 每列 64 宽、8 项可见(28×8), p-1 内边距; 载体是**原生 ListBox**(滚动/滚轮/点击都是原生), 条目背景与文字自绘 —— 选中 bg-primary + text-primary-foreground, 悬停 bg-accent(150ms 过渡); **选择即生效但弹层保持打开**(继续改另一列), 点外部/ESC 关闭; 打开时选中项滚到列表中间(行步进 = 项高+1, 见第八节 72) | shadcn 无官方 time-picker, 语义取社区通行形态(Popover + 滚动列表) + timepicker.go |
-| toast(sonner) = 右下角堆叠(新的在最下)、卡宽 356、与内容区边缘 24、卡间距 10; 卡片 bg-popover + border + rounded-lg + shadow-md, 内边距 16, 图标 20(与文字间距 10), 标题 13px font-medium / 描述 13px 可折行, 动作按钮 h-26 bg-muted hover:bg-accent, **关闭按钮默认隐藏**(同 shadcn 的 sonner), 显示时在右上角; 类型(success/error/warning/info)只改图标与图标色, 不给卡面上底色(未开 richColors); 自动关闭 **4s**、**悬停任一条暂停全部倒计时**、超出可见条数(默认 3)移除最旧; 进场淡入 + 从堆叠方向滑入 12px(200ms), 退场淡出 + 向侧边滑出 24px(180ms); 类型快捷入口 `Success/Error/Warning/Info`, `Duration < 0` = 常驻 | sonner 默认值(宽度/offset/gap/4s/pauseTimers/visibleToasts=3) + shadcn 的 sonner.tsx(theme 交给令牌; 不传 closeButton) + 第八节 75 |
+| toast(sonner) = 默认右下角堆叠(新的在最下), 位置六种: 四角 + `ToastTopCenter`/`ToastBottomCenter`(居中时左右按 Body 居中); 卡宽 356、与内容区边缘 24、卡间距 10; 卡片 bg-popover + border + rounded-lg + shadow-md, 内边距 16, 图标 20(与文字间距 10), 标题 13px font-medium / 描述 13px 可折行, 动作按钮 h-26 bg-muted hover:bg-accent, **关闭按钮默认隐藏**(同 shadcn 的 sonner), 显示时在右上角; 类型(success/error/warning/info)只改图标与图标色, 不给卡面上底色(未开 richColors); 自动关闭 **4s**、**悬停任一条暂停全部倒计时**、超出可见条数(默认 3)移除最旧; 进场淡入 + 从堆叠方向滑入 12px(200ms), 退场淡出 + 向侧边(居中时向上/下)滑出 24px(180ms); 类型快捷入口 `Success/Error/Warning/Info`, `Duration < 0` = 常驻 | sonner 默认值(宽度/offset/gap/4s/pauseTimers/visibleToasts=3) + shadcn 的 sonner.tsx(theme 交给令牌; 不传 closeButton) + 第八节 75 |
 
 | item = 容器 rounded-md + border-transparent、text-sm;default gap-4(16) + p-4(16),sm gap-2.5(10) + px-4(16)/py-3(12);variants = 透明 / border-border / bg-muted/50;中间行 = Media + Content(吃剩余宽) + Actions,Header/Footer 占整宽;Media icon = size-8(32) rounded-sm border bg-muted + 16 图标,Content gap-1(4);**Header/Footer 的 justify-between 用 `xui.ItemWeight` 撑开第一个子项**(布局没有 justify-between);动作之间用 Item 的行间距,不是上游 gap-2 | item.tsx + item.go(Content 宽度见第八节 104) |
 | breadcrumb = 列表 text-sm muted-foreground、桌面间距 sm:gap-2.5(10)、flex-wrap;条目内 gap-1.5(6);当前页 foreground;分隔符 chevron size-3.5(14);省略号 size-9(36) 居中 size-4 图标;链接 hover 过渡到前景色 | breadcrumb.tsx + breadcrumb.go(文本自绘的原因见第八节 105) |
@@ -399,7 +399,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | HoverCard | `NewHoverCard(hTrigger, WithHoverCardContent/Width/Padding/Side/Align/Delay/OnOpenChange)` + `Open/Close/SetOpen/IsOpen/Content/Refresh` | 对应 hover-card.tsx; 默认 `openDelay=700ms` / `closeDelay=300ms`; 非激活窗口, 不抢焦点; 内容里的子元素都会挂 MouseLeave, 离开后按指针位置决定是否真正关闭 |
 | Avatar | `NewAvatar(x,y,cx,cy,parent,fallback,WithAvatarSize/Image/ImageData/Ring/Badge)` + `SetImage/SetImageData/SetFallback/SetBadge`; `NewAvatarGroup(parent, WithAvatarGroupSize)` + `Add(fallback, opts...)` / `AddCount(n)` | 对应 avatar.tsx 的 `Avatar/AvatarImage/AvatarFallback/AvatarBadge/AvatarGroup/AvatarGroupCount`; 图片走本地文件或 `image.Image`(png/jpeg/gif), 圆形蒙版在 CPU 侧生成; 徽标画在头像内右下角(圆环内缩 2px, 避免被父元素裁剪) |
 | Command | `NewCommand(x,y,cx,cy,parent, WithCommandPlaceholder/EmptyText/OnSelect/OnChange/OnEscape)` + `AddGroup(label)` / `AddSeparator` + `CommandGroup.AddItem(value,text, WithCommandItemIcon/Shortcut/Keywords/Disabled/OnSelect)` + `Focus/Query/SetQuery/Clear/SetPlaceholder` | 对应 command.tsx(cmdk) 的基础形态; 过滤为不区分大小写的包含匹配(可配 keywords), 不是 cmdk 的 command-score; 列表高度 = cy - 36(cy 传 0 = 336); `CommandDialog` 用 `ui.NewDialog` + `Command` 组合(无单独的 CommandDialog 类型) |
-| Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长) + `Success/Error/Warning/Info` 快捷方法; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置只做四角(上游另有 top-center/bottom-center), `richColors` 不做 |
+| Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长) + `Success/Error/Warning/Info` 快捷方法; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置六种(四角 + `ToastTopCenter`/`ToastBottomCenter`), `richColors` 不做 |
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | 组件库自己不用, 供你的应用取用; 机械转译新主题时一并填(运行时的主题测试有守卫) |
@@ -471,7 +471,7 @@ ui/
 | 差异 | 原因 |
 |---|---|
 | Input 的文字/光标/选区/IME 由原生 Edit 绘制 | 都在 DLL 内;只开放字体/字色/占位符色/插入符色/文字内边距。要完全控制就得自绘文字并接管光标闪烁、选区命中、IME 组合窗 |
-| Toast 只支持四角堆叠, 无 `richColors` | 顶部/底部居中与"按类型给卡面上底色"未做(第八节 75) |
+| Toast 无 `richColors` | "按类型给卡面上底色"未做(第八节 75); 六种位置已支持 |
 | 英文长文本折行按字符断行(可能在单词中间换行) | Label 载体是原生 Button, 折行算法在 DLL 内, 不按单词边界; 中文不受影响(第八节 90/91) |
 | Dialog 没有 zoom-in-95 / AlertDialog 没有 text-balance | 元素级缩放对自绘元素无效(第八节 47); 自绘文字没有平衡排版能力 |
 | 没有 `asChild` / `data-slot` / `data-state` | React/DOM 概念, Go 侧没有对应物 |
@@ -1257,6 +1257,7 @@ ui/
     - **悬停暂停必须用窗口级 `MouseMove` + `XWnd_GetStayEle`**: 元素级 MouseStay/MouseLeave 不可靠(21), 而且这里要的是"鼠标在这组通知的任意一条上"的**整组语义**；单条元素判定在两条卡片之间移动时会反复 leave/enter。窗口尺寸事件同理走 `AddEvent_Size` 重排。
     - **倒计时**: 每条通知在自己的元素上挂炫彩定时器(ID 用 `0x7876`, 避开 anim 的 `0x7875`、Tree 的 `0x7874`), 100ms 一帧; 悬停时只是不递减(`paused`)。为什么不用窗口级定时器: 同一窗口可能有多个 Toaster, `XWnd_SetXCTimer` 同一 ID 只能有一个定时器, 会互相覆盖。
     - **定位**: 用 `XWnd_GetBodyRect` 取内容区右下角 —— 阴影窗口(`Window_Transparent_Shadow`)的 Body 比整窗小一圈 band(71), 而**元素坐标原点是窗口原点(含阴影带)**, 不要再叠加. 元素比卡片四周外扩 6px(投影留白), 因为元素绘制被裁剪在自身客户区内。
+    - **位置六种**: `layout()` 按 left/center/right × top/bottom 组合; 居中时 `baseX = Body.Left + (Body 宽 - 卡宽)/2`, 不再用左右 offset。进场沿堆叠方向(底部从下、顶部从上), 退场四角向左右滑出、上下居中向对应方向滑出。
     - **布局坐标一律用"卡片矩形", 元素矩形由设置函数外扩**: 元素 = 卡片 + 四周 6px 投影留白。若把 `it.h`(按 padding+内容算出的卡片高)直接当元素高, 卡片可见高度就少 2×6 = 12 —— 上下内边距各被吃掉 6px, 表现为"文字顶到卡片底、上留白大下留白小"。修法: 排版/布局全按卡片坐标算, `toastSetRect(h, x, y, w, h)` 内部统一减 6 并加 12; 实测两行卡片 topGap=botGap=28 物理像素(@150% DPI), 单行卡片 26/27。
     - **`GetTextShowRect` 的 CY 已含行距**(实测: 微软雅黑 13px 单行 18 / 两行 36 / 三行 53), 与 `p.Text` 实际排版一致 —— 不要按行数再乘系数补偿, 否则底部多出一整行留白。
     - **位置/透明度动画挂窗口**(`xui.Presence(hWnd, key, …)`, hOwner = 窗口): 透明元素的局部重绘**不擦底**, 卡片一移动就在旧位置留下残影; 挂窗口后每 tick 整窗重绘, 滑入与重排都是干净的(代价是动画期间整窗重绘一次/帧, 通知进出场只有 200ms)。动画期间 `layout` 只更新 `baseX/baseY`、不直接落位, 否则会和 apply 的位置打架。
@@ -1394,8 +1395,8 @@ ui/
     - **重排只改坐标, 不重绘被推走的兄弟**: 批量写完高度后要统一 `XWnd_Redraw`, 否则隐藏页首次显示时后面的卡片仍画在旧位置(看起来像重叠)。不要在父链上逐级 `AdjustLayout` / 重新声明 `Auto` —— 框架的量算趟会把比例框临时排成 0 宽、下一轮再恢复, 尺寸事件因此无限自激(实测 CPU 跑满、窗口卡死); 只调最近的 ScrollArea 框架即可, 框架重排会统一更新内容高、兄弟位置与滚动范围。
     - **验收(探针/逐帧)**: 800 宽窗口里 `ItemWeight` 宽的 16:9 容器 → 784×441; 窗口缩到 600 → 584×329; `SetRatio(1)` → 584×584, 外层 Auto 高的行同步长高; PrintWindow 逐帧抓页签切换, **首帧三块比例框就是最终尺寸**, 无展开; 切换后 CPU 稳定(不再跑满), 窗口缩放后比例跟随且无残影。
 
-95. **CardFooter 的内边距用"内层内容区的外边距"表达, 子项别直接挂在页脚上**(`components/card.go`):
-    - 页脚是横向布局容器(`items-center` + 高度 Auto 自撑), 内层 `Content()` 宽 Fill、高 Auto、四边外边距 = 内边距(default 16 / sm 12)。这沿用卡片内容区的既有做法; `XEle_SetPadding` 已验证可用(见 103), 但页脚/内容区现有写法无需改动。
+95. **CardFooter 的内边距用"内层内容区的元素 padding + 上下外边距"表达, 子项别直接挂在页脚上**(`components/card.go`):
+    - 页脚是横向布局容器(`items-center` + 高度 Auto 自撑), 内层 `Content()` 宽 Fill、高 Auto; 左右内边距用**元素 padding**, 上下用布局项外边距(default 16 / sm 12)。与卡片内容区同一套原因: 四边都用外边距时, 页脚被 Fill 宽排过后内层子项会按页脚全宽解析而右溢(见第八节 129)。水平页脚的现有几何不变; 竖向页脚(登录卡的两个整宽按钮)也不会溢出。
     - 页脚 `cy = 0` 时高度 = 内容高 + 上下外边距; 传固定高时内容在页脚内垂直居中。直接挂到页脚上的子项会跳过内边距, 只有整宽背景/分隔线这类贴边内容才这样用。
     - 页脚做成布局容器后, 页脚里放按钮/文字用 `footer.Content()` / `ContentStack(space)`; 要竖排(登录卡的两个整宽按钮)对内容区 `EnableHorizon(false)`。
 
@@ -1480,6 +1481,7 @@ ui/
     - **现象**: 卡片说明里的拉丁字母 g 尾巴被切平; 探针里 20 高标签的墨迹比 24 高的少 2 行(文字带 22 vs 24 物理像素)。
     - **根因**: Label 用原生 Button 画单行文字, 而 Button 默认四边 `border=1`, 文字区 = 元素矩形上下各内缩 1px; 20 高的单行标签扣掉后装不下 14px 字体的完整行盒(墨迹只占 ~24 物理像素, 行盒更高), 底部被裁。
     - **修法**: Label 构造时 `SetBorderSize(1, 0, 1, 0)` —— 只清上下内缩, 左右保留 1px 维持原有水平内缩; **不增加任何布局高度**。探针实测 20 高标签的墨迹行数/像素数与 24 高完全一致。
+    - **复核(150% DPI, 18px "设置")**: 宽度 38/40/42 出省略号, 44 起完整; 有/无 `SetBorderSize(1,0,1,0)` 两组的截断阈值**完全相同** —— 左右 1px border 不会让省略号提前。不要因为"看起来截断"删掉这行(删了 g/p 的下伸部又会被裁); 宽度不够时按第 105 条给量测宽加余量。
 
 110. **`XEdit_SetTextAlign` 是生效的; 用它给文字"顶居中"的反而是 border 技巧**(`components/inputotp.go`, 探针实测):
     - **现象**: OTP 单格里的数字看起来"偏左 + 右半截被切掉"。曾经的结论是"`XEdit_SetTextAlign` 对程序 SetText 不生效", 于是改成按字宽给 Edit 设左右 border 把文字挤到中间 —— 切字正是这个改法造成的。
@@ -1579,6 +1581,33 @@ ui/
     - **不能走事件**: `XE_ADJUSTLAYOUT_END`(布局完成事件)在 1.4.3 里**注册即崩**(访问违例, 事件总线与 `XEle_RegEventC` 两条注册路径都崩), 没有"布局趟结束后补救"的钩子; 事后重摆(`AfterFunc` 延迟)又与组件自己的延迟重排之间存在排队竞态。
     - **修法**: 每次落位时调 `XWidget_LayoutItem_SetPosition(hEle, l, t, r, b)` 把元素**四边钉成相对窗口 Body 的 inset**。实测语义: ① 布局趟把钉住的项摆到钉位而不是流式位(缩放/重排后按新父尺寸重算, 四边都钉的项会被拉伸到四边之间 —— 所以 insets 必须与元素矩形一致, 窗口 Size 事件里要按新 Body 重钉); ② 钉在 `XEle_SetRect` 之后仍然存活(进出场动画逐帧 SetRect 不会清掉钉); ③ 只改钉不触发布局趟(显式 AdjustLayout 对"干净"布局是空操作), 所以钉住不干扰动画, 落位仍靠 SetRect。钉住后, 任何来源的窗口级布局趟反而会帮我们把浮层摆回正确位置。
     - **通用**: 任何"窗口直属 + 绝对定位 + 必须跟随窗口缩放"的浮层(Toast / HUD / 自绘遮罩)都适用这套"落位即重钉"; 元素级 `AdjustLayout_No` 照常使用。
+
+129. **容器的内边距不能用子项外边距表达: Fill 子项会按父级全宽解析并溢出**(`components/card.go` 等, 探针 + 元素矩形实测):
+    - **现象**: Fill 宽的卡片(卡片自己也被父布局排过)里, ContentStack 的子行 / Progress / 分隔线实际宽度 = **卡片全宽**, 右侧越过内边距 16px; 贴右缘的文字和行尾按钮被卡片边界裁掉。同样写法还在 CardFooter 内层、Alert 行容器、Empty Body、Command 分组、Popover/HoverCard 的 `LayoutContent` 里。
+    - **根因**: xcgui 的布局项外边距只**平移并收缩容器自身矩形**, 容器给子项排版时仍按父级布局宽解析 Fill。480 宽 Fill 卡片的探针: ContentStack(四边 margin 16)自身宽 448, 它内部的 Fill 行却是 **480**; 再调几次 `AdjustLayout` 也不会自愈。
+    - **修法**: 左右内边距改用根容器的元素 padding, 上下继续用布局项外边距(计入 Auto 高度):
+      ```go
+      l.LayoutItem_SetMargin(0, pad, 0, pad) // 上下: 计入卡片/弹层 Auto 高
+      l.SetPadding(pad, 0, pad, 0)           // 左右: 约束子项 Fill 宽
+      ```
+      480 卡片实测: 内容区 480 宽, Fill 行 448 宽、左右各内缩 16。元素 padding 不改变容器自身的布局项尺寸(容器仍是 Fill 宽), 只约束子项排版。
+    - **连带(嵌套 Weight 列)**: 容器改用元素 padding 后, 横向行里的 Weight 宽嵌套列会恢复"嵌套 Weight 不把宽度下发给 Fill 子项"(第 101 条) —— Alert 的标题/描述、CardHeader 的标题/说明、以及卡片内容区里 `Weight` 列中的 ItemGroup / Collapsible 都会变成 0 宽整块消失。修法见第 130 条; **应用代码在卡片内容区里使用 Weight 列时, 也要按第 101 条给 Fill 子项显式宽度**(通常用列尺寸事件把子项锁 Fixed)。
+    - **ScrollArea 页面留白同理**: 内容区要左右留白时用 `body.SetPadding(pad,0,pad,0)` + 上下外边距, 不要四边都用 `LayoutItem_SetMargin`。
+
+130. **横向行里 Weight 宽的嵌套列, 其 Fill 子项要由容器按实测宽锁 Fixed(并在尺寸变化时重新锁定)**(`components/alert.go` / `components/card.go`, 元素矩形实测 + 缩放复验):
+    - **现象**: Alert 改用正确的元素 padding 后, 图标还在, 标题/描述整段消失; CardHeader 的"卡片/说明"以及卡片内容区里 Weight 列中的 ItemGroup / Collapsible 同样变成 0 宽。打印矩形: Weight 列 w=506, 内部 Fill 子项 w=0。
+    - **根因**: 第 101 条 —— Weight 宽不会下发给嵌套布局的 Fill 子项; 此前行容器自身溢出时, 子项用的是外层全宽, 恰好把这个问题掩盖了。
+    - **修法**: 容器在自己的尺寸事件里读取实测宽 w, 把 **Fill 直接子项**锁成 `LayoutItem_SetWidth(Fixed, w)`; 写回用 `AfterFunc` 延后, 避免在布局趟里改子项尺寸触发重入。
+      - Alert: 在 reflow 量高时锁标题/描述(见第 90 条的重排链)。
+      - CardHeader: `syncTitleWidth()` 监听标题列尺寸变化, 锁标题/说明(卡片组件内部处理, 调用方无需关心)。
+      - 应用代码的 Weight 列: 同样在列 `AddEvent_Size` 里把 Fill 子项锁 Fixed; demo 的 `col` helper 就是这一套。
+    - **⚠️ 锁过之后要记住哪些子项**: 第一次锁完, 子项的布局项宽度类型已经从 Fill 变成 Fixed; 如果下一次尺寸变化只按"类型 == Fill"筛选, 它们会被当成用户显式固定宽而跳过 —— 表现是**缩放窗口后子项停在旧宽, 行尾按钮被卡片裁掉**。必须用 `synced map[int]bool` 记录本组件锁过的子项, 后续尺寸变化按 `Fill || synced[child]` 继续更新(并清掉已销毁的句柄)。
+    - **探针注意**: reflow 走 `AfterFunc`, 必须跑 `a.Run()` 消息循环; 只 sleep 不泵消息会一直看到宽度 0。
+
+131. **宿主置顶(SetTop)时, 自建弹层窗口必须用 HWND_TOPMOST; 原生菜单/下拉不用改**(探针截图 A/B):
+    - **自建弹层**: `popup.go` 的面板(Select / DatePicker / TimePicker / Popover / HoverCard / Menubar 子菜单)原先用 `HWND_TOP`, 主窗口 TOPMOST 时弹层整个被盖住(打开成功但看不见)。改 `HWND_TOPMOST` 后可见; `resize` 里带 `SWP_NOZORDER` 的一处保持原样。Tooltip 一直就是 TOPMOST。
+    - **原生弹层**: `XMenu_Popup` 的菜单窗与 ComboBox 的下拉窗是**宿主拥有的 popup 窗口**, 实测在 TOPMOST 宿主上仍显示在宿主之上(下拉定位用 `SWP_NOZORDER` 也不影响) —— 不要给它们强加 TOPMOST。
+    - **窗口内覆盖元素**: Dialog / Sheet / Drawer / AlertDialog / Toast 都是宿主窗口的子元素, 不涉及独立窗口 z 序, 置顶宿主下不受影响。
 
 ---
 

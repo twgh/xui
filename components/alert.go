@@ -78,6 +78,7 @@ type Alert struct {
 
 	reflowPending bool  // 已预约一次量高重排(合并同一轮里的多次触发)
 	measuredW     int32 // 上次量高时的文本列宽度(见 onPaint)
+	textW         int32 // 上次写回标题/描述的 Fixed 宽(见 reflow)
 }
 
 // NewAlert 创建提示条。cx 为初始宽度(布局项声明会覆盖), cy 仅作初始高度, 实际高度按内容自撑。
@@ -109,7 +110,11 @@ func NewAlert(x, y, cx, cy int32, hParent int, opts ...AlertOption) *Alert {
 	a.row.SetAlignV(xcc.Layout_Align_Top)
 	a.row.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	a.row.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-	a.row.LayoutItem_SetMargin(alertPadX, alertPadY, alertPadX, alertPadY)
+	// 左右内边距用元素 padding: Alert 被 Fill 宽排过时, 用行容器的布局项外边距表达
+	// 内边距会让行内子项(文本 Weight / 动作槽)按 Alert 全宽排版, 行尾动作溢出被裁
+	// (同 card.ContentStack, 见 DESIGN 第八节 129)。上下仍用外边距, 计入 Auto 高度。
+	ele.SetPadding(alertPadX, 0, alertPadX, 0)
+	a.row.LayoutItem_SetMargin(0, alertPadY, 0, alertPadY)
 
 	a.iconEle = widget.NewElement(0, 0, alertIconSize, alertIconSize, a.row.Handle)
 	a.iconEle.EnableBkTransparent(true)
@@ -178,8 +183,9 @@ func (a *Alert) Action() *widget.LayoutEle {
 	}
 	if !a.action.IsShow() {
 		a.action.Show(true)
-		// 动作贴右上时右侧外边距收到 8(与 shadcn 的 right-2 一致); 无动作时保持 10。
-		a.row.LayoutItem_SetMargin(alertPadX, alertPadY, alertActionOff, alertPadY)
+		// 动作贴右上时右侧内边距收到 8(与 shadcn 的 right-2 一致); 无动作时保持 10。
+		// 右侧同样走元素 padding(见构造函数), 不能改回行容器的外边距。
+		a.SetPadding(alertPadX, 0, alertActionOff, 0)
 		a.scheduleReflow()
 	}
 	return a.action
@@ -286,6 +292,16 @@ func (a *Alert) reflow() {
 		return
 	}
 	a.measuredW = w
+	// 文本列是横向行里的 Weight 宽嵌套布局: 它的 Fill 子项(标题/描述)拿不到这个宽度
+	// (子项宽恒为 0, 见 DESIGN 第八节 101)。按实测文本列宽把它们锁成 Fixed, 长标题
+	// 才会在正确宽度内折行、而不是消失。
+	widthChanged := false
+	if w != a.textW {
+		a.textW = w
+		a.title.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
+		a.desc.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
+		widthChanged = true
+	}
 	// 原生 Button 的文字排版区域比元素窄一圈(默认内边距), 直接按元素宽量会少数一行;
 	// 用收窄后的宽度量高。见 DESIGN 第八节 90。
 	measureW := w - alertTextInsetX
@@ -302,7 +318,7 @@ func (a *Alert) reflow() {
 	}
 	changedTitle := a.setTextHeight(a.title, titleH)
 	changedDesc := a.setTextHeight(a.desc, descH)
-	if !changedTitle && !changedDesc {
+	if !changedTitle && !changedDesc && !widthChanged {
 		return
 	}
 	xc.XEle_AdjustLayout(a.Handle)

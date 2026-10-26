@@ -72,6 +72,8 @@ const (
 	ToastBottomLeft
 	ToastTopRight
 	ToastTopLeft
+	ToastTopCenter    // 顶部居中(sonner position="top-center")
+	ToastBottomCenter // 底部居中
 )
 
 // ToastOptions 描述一条通知。
@@ -148,7 +150,7 @@ func WithToastMaxVisible(n int) ToasterOption {
 }
 
 // Toaster 是挂在窗口上的通知管理器: 每条通知是一个铺在窗口之上的自绘元素,
-// 缺省堆叠在内容区右下角。
+// 缺省堆叠在内容区右下角(可设六种位置, 见 ToastPosition)。
 //
 // 为什么不做成独立置顶小窗(像 Tooltip): 通知要贴着主窗口的右下角, 跟随窗口移动 /
 // 缩放 / 最小化; 用窗口内覆盖元素由框架负责这些, 也不用处理"点了别的窗口要不要消失"。
@@ -156,7 +158,7 @@ func WithToastMaxVisible(n int) ToasterOption {
 // —— 悬停事件不会被内部控件打断, 命中判定也就是一次矩形比较。
 //
 // 交互语义对齐 sonner:
-//   - 右下角堆叠, 新的在最下, 旧的被顶上去; 超出 maxVisible 的最旧一条被移除;
+//   - 默认右下角堆叠, 新的在最下, 旧的被顶上去; 超出 maxVisible 的最旧一条被移除;
 //   - 悬停任意一条通知时**暂停全部倒计时**, 鼠标离开后继续(sonner 的 pauseTimers);
 //   - 自动关闭默认 4s; 关闭按钮默认隐藏; 动作按钮点击后关闭;
 //   - 进场: 淡入 + 从堆叠方向滑入 12px(200ms); 退场: 淡出 + 向侧边滑出 24px(180ms)。
@@ -425,8 +427,14 @@ func (it *Toast) Close() {
 	hEle := it.ele.Handle
 	hWnd := it.t.hWnd
 	dx := int32(toastSlideOut)
-	if it.t.position == ToastBottomLeft || it.t.position == ToastTopLeft {
+	dy := int32(0)
+	switch it.t.position {
+	case ToastBottomLeft, ToastTopLeft:
 		dx = -dx
+	case ToastTopCenter:
+		dx, dy = 0, -toastSlideOut // 顶部居中: 向上滑出
+	case ToastBottomCenter:
+		dx, dy = 0, toastSlideOut // 底部居中: 向下滑出
 	}
 	key := it.key
 	xui.Presence(hWnd, key, false, toastExitDuration, func(v float64) {
@@ -434,7 +442,7 @@ func (it *Toast) Close() {
 			return
 		}
 		xui.SetElementsAlpha(v, hEle)
-		toastSetRect(hEle, baseX+int32(float64(dx)*(1-v)+0.5), baseY, it.w, it.h)
+		toastSetRect(hEle, baseX+int32(float64(dx)*(1-v)+0.5), baseY+int32(float64(dy)*(1-v)+0.5), it.w, it.h)
 	}, func(float64) {
 		it.destroy()
 		xc.XWnd_Redraw(hWnd, true)
@@ -477,8 +485,9 @@ func (it *Toast) enter() {
 	// 起始帧: 全透明 + 偏移(先设好属性再让整窗画一遍, 避免首帧闪出全亮的卡片)。
 	xui.SetElementsAlpha(0, hEle)
 	offset := int32(toastSlide)
-	if it.t.position == ToastBottomRight || it.t.position == ToastBottomLeft {
-		offset = -offset // 底部堆叠: 从更下方滑上来
+	if it.t.position == ToastBottomRight || it.t.position == ToastBottomLeft ||
+		it.t.position == ToastBottomCenter {
+		offset = -offset // 底部堆叠(含底部居中): 从更下方滑上来
 	}
 	toastSetRect(hEle, it.baseX, it.baseY-offset, it.w, it.h)
 	xc.XWnd_Redraw(hWnd, true)
@@ -546,7 +555,8 @@ func (t *Toaster) layout() {
 		w = toastMinWidth
 	}
 	left := t.position == ToastBottomLeft || t.position == ToastTopLeft
-	top := t.position == ToastTopRight || t.position == ToastTopLeft
+	center := t.position == ToastTopCenter || t.position == ToastBottomCenter
+	top := t.position == ToastTopRight || t.position == ToastTopLeft || t.position == ToastTopCenter
 
 	y := br.Bottom - t.offset
 	if top {
@@ -564,6 +574,8 @@ func (t *Toaster) layout() {
 		}
 		if left {
 			it.baseX = br.Left + t.offset
+		} else if center {
+			it.baseX = br.Left + (br.Right-br.Left-it.w)/2
 		} else {
 			it.baseX = br.Right - t.offset - it.w
 		}

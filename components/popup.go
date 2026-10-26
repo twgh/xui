@@ -420,7 +420,11 @@ func (p *popoverPanel) LayoutContent(padding, gap int32) *widget.LayoutEle {
 	c.SetSpace(gap)
 	c.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	c.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-	c.LayoutItem_SetMargin(padding, padding, padding, padding)
+	// 左右用元素 padding 约束子项 Fill 宽, 上下用外边距计入高度 —— 四边外边距会让
+	// 内容区子项按弹层全宽排版, 行容器/整宽控件向右溢出(同 card.ContentStack,
+	// 见 DESIGN 第八节 129)。
+	c.LayoutItem_SetMargin(0, padding, 0, padding)
+	c.SetPadding(padding, 0, padding, 0)
 	p.content = c
 	return c
 }
@@ -435,7 +439,10 @@ func (p *popoverPanel) MeasureContent(padding int32) int32 {
 	if p == nil || !p.alive() || p.content == nil {
 		return 0
 	}
-	p.win.SetWindowPos(xcc.HWND_TOP, -30000, -30000, 0, 0,
+	// ⚠️ 弹层窗口必须用 TOPMOST 抬 z 序: 宿主开了"窗口总在最前"(SetTop(true))时,
+	// HWND_TOP 只把弹层放到**非顶层** band 的顶部, 仍会被 TOPMOST 的主窗口整个盖住 ——
+	// 弹层"打开成功但完全看不见"(实测)。tooltip 一直用 HWND_TOPMOST; 两套弹层统一。
+	p.win.SetWindowPos(xcc.HWND_TOPMOST, -30000, -30000, 0, 0,
 		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
 	if p.activate {
 		p.win.ShowWindow(xcc.SW_SHOW)
@@ -634,7 +641,7 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	// 于是屏幕上"直接显示 → 消失 → 再淡入"(逐帧抓图确认的闪烁)。
 	// 先在屏幕外显示并立即重绘出"透明首帧", 再挪到目标位置: 挪动只改 DWM 合成位置,
 	// 表面内容已是透明帧。Win32 窗口坐标范围 ±32768, -30000 安全。
-	p.win.SetWindowPos(xcc.HWND_TOP, -30000, -30000, 0, 0,
+	p.win.SetWindowPos(xcc.HWND_TOPMOST, -30000, -30000, 0, 0,
 		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
 	if p.activate {
 		p.win.ShowWindow(xcc.SW_SHOW)
@@ -651,7 +658,7 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 		p.OnFaded()
 	}
 	p.win.Redraw(true) // 在屏幕外把 alpha=0 的透明帧画好(含滚动条隐藏)
-	p.win.SetWindowPos(xcc.HWND_TOP, wx, wy, 0, 0,
+	p.win.SetWindowPos(xcc.HWND_TOPMOST, wx, wy, 0, 0,
 		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE)
 	if p.activate {
 		wapi.SetForegroundWindow(p.win.GetHWND()) // 拿到焦点才会在点击外部时收到 KillFocus

@@ -8,12 +8,23 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-25)
+## 当前状态(截至 2026-10-26)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **下游问题清单复核与修复**(2026-10-26, sitless 项目报告, 13 条):
+  - **布局内边距溢出(DESIGN 129/130, 真问题)**: 480 宽 Fill 卡片探针确认 —— ContentStack 四边外边距 16 时自身 448 宽, 内部 Fill 行却是 480(右溢 16); 改为左右 `SetPadding` + 上下外边距后行宽 448。同一写法一并修掉 `CardFooter.Content`、`Alert` 行容器、`Empty.Body`、`Command` 分组、`popup.LayoutContent`(Popover/HoverCard); `ScrollArea` 文档样例同步改为安全写法。Alert 改用正确内边距后暴露第二个问题: 横向行里 Weight 宽文本列的 Fill 标题/描述宽度变 0(嵌套 Weight 不下发宽度, DESIGN 101), reflow 现在按文本列实测宽把两者锁 Fixed(130)。demo 反馈2页 Alert 文字恢复、行尾 Undo/New 不再被卡片边界裁掉。
+  - **复验回归(同日)**: 内边距修复还让卡片内容区里的嵌套 Weight 列(Fill 子项)宽变 0 —— 基础3 的 CardHeader 标题/说明、基础4 的 Item、导航2 的 Collapsible 正文整块消失。CardHeader 增加 `syncTitleWidth()`(按标题列实测宽锁标题/说明 Fixed); demo 的 `col` helper 用 `synced` map 在列宽变化时重新锁 Fill 子项。修正后 1200 与 960×660 下页面 2/3/9 正常, 16 页缩略图逐页核对。**踩坑**: 锁过一次后子项布局项类型已从 Fill 变 Fixed, 后续 resize 若只按 Fill 筛选就会跳过它们 —— 行尾按钮会停在旧宽被卡片裁掉; 必须记录本容器锁过的子项(见 DESIGN 130)。
+  - **弹层 z 序(DESIGN 2, 真问题, A/B 截图)**: 宿主 `SetTop(true)` 时 `popup.go` 的 `HWND_TOP` 弹层被整个盖住(只有触发区可见); 改为 `HWND_TOPMOST` 后 Select 下拉正常显示, 与 tooltip 一致。`resize` 里带 `SWP_NOZORDER` 的一处保持不动。**全量复核**(DESIGN 131): Tooltip 原本就是 TOPMOST; 原生 `XMenu_Popup` 菜单与 ComboBox/NativeSelect 下拉是宿主拥有的 popup 窗口, 探针截图确认在 TOPMOST 宿主上仍可见, 不需要改; Dialog/Sheet/Drawer/AlertDialog/Toast 是宿主窗口内覆盖元素, 不涉及独立窗口 z 序。
+  - **AppWindow NoMinMax**: 双击标题栏处理器补 `noMinMax` 守卫, 只留关闭钮的窗口不再被最大化到没有还原入口。
+  - **HStack**: 补 `EnableAutoWrap(false)`, 行内超宽不再把子项甩到下一行/整块消失(DESIGN 41)。
+  - **CLI**: `update` 无参数改为"files 全部存在才算已安装" —— 只装 select 时不再把 datepicker/popover/dialog/table/tree/combobox/toggle 等共享 `popup.go/scrollarea.go/scrollbar.go` 的组件整套拷进 ui/; `init -n .` 支持当前空目录, 且当前目录为空、目录名 == 项目名时直接铺在当前目录(不再生成 sitless/sitless)。两项都加了测试。
+  - **主题模板**: `init` 生成的 `ui/theme.go` 增加 `UseDark(v bool)`(切换本文件里 light/dark 副本, 保留逐字段定制)。
+  - **Toast**: 新增 `ToastTopCenter` / `ToastBottomCenter`(sonner 六种位置补齐), 居中按 Body 水平居中, 进场沿堆叠方向、退场向上/下; 探针双 Toaster 截图确认上下居中与堆叠顺序。
+  - **未复现/非缺陷**: Label 的 `SetBorderSize(1,0,1,0)` 在 150% DPI 下与无 border 组的省略号阈值完全相同(38/40/42 截断、44 起完整), 不移除(保留 g/p 下伸修复, DESIGN 109 已补复核); HStack 行内未声明布局项的 Input(96)/Label(100)保持创建尺寸, 未复现"被收缩"现象; `AddCaptionButton` 默认 14 适用于满网格图标, 线条类图标用返回按钮的 `SetIconSize(18)` 即可, 不新增 API; 固定尺寸窗口 SetRect 白屏属下游自建窗口场景(上游 AppWindow 始终带 Drag_Border), 未改代码。
+  - 验收: `go test ./...` 全绿; demo 页面 0/4/7/12 亮色 + 页面0暗色 150% DPI 截图; 探针元素矩形逐项核对(Card 480/448、Empty、Popover 内容 288/256、Alert 文本 506); 弹层 z 序 A/B 截图(旧 HWND_TOP 不可见 / 新 TOPMOST 可见)。逐组件安装编译见下方回归记录。
 - ✅ **标题栏按钮图标墨迹对齐**(2026-10-25, 用户报"最大化图标看着比最小化/关闭大"):
   - **根因**: lucide 24 网格里各图形墨迹占比差很多 —— minus 14/24、x 12/24(对角线 0.707)、square 18/24、copy/eye 20/24; 同一名义尺寸下闭合方框类比线条类大一圈, 还原态的 copy 比 square 还大。旧值(minus/x=20、square/自定义=16)是随手定的, 换算墨迹 square(12) 仍大于 X(10)。
   - **修法**: 常量改为**两档按墨迹相等校准**(`window.go`): `appWndIconLine=18`(minus/x, 墨迹 10.5)与 `appWndIconBox=14`(square/copy 与 AddCaptionButton 的 eye/moon 等满网格图形, 墨迹 10.5); 描边 2(24 网格)随尺寸缩放 1.5/1.17px, 与 shadcn 模板(16/12)同款比例; 18/36 = 图标占按钮宽一半也与模板相同。标题左侧应用图标用独立 `appWndTitleIcon=16`(Logo 不参与校准)。

@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 )
@@ -102,8 +104,11 @@ func (c *Card) Footer(cy int32) *CardFooter {
 func (c *Card) ContentWidth() int32 { return c.GetWidth() - c.Padding*2 }
 
 // ContentStack 取卡片的内容区 —— 一个纵向流式布局容器, 卡片里那串内容都挂在它下面。
-// 子项间距 space; 内边距由内容区的四边外边距表达, 所以它会随卡片尺寸自动伸缩
-// (卡片被父布局拉伸时, 内容区宽度跟着变, 不需要调用方重算)。
+// 子项间距 space; 左右内边距用**元素 padding**表达, 上下用布局项外边距(计入卡片 Auto 高度)。
+//
+// 左右不能写成布局项外边距: 卡片是 Fill 宽时(Card 自己被父布局排过), 外边距只平移内容区,
+// 子项的 Fill 宽仍按**卡片全宽**解析 —— 行容器/Progress/分隔线会向右溢出 16px, 贴右缘的
+// 文字和按钮被卡片边界裁掉(实测, 见 DESIGN 第八节 129)。元素 padding 会真实约束子项 Fill 宽。
 //
 // 高度按**内容自撑**(Auto): 卡片高度可以是 Auto(自撑)也可以是固定值, 内容都贴着上边排。
 // 内容要撑满卡片高度(表格/树/图标网格这类"越高越好"的内容)时, 卡片高度给固定值(或 Fill),
@@ -119,7 +124,8 @@ func (c *Card) ContentStack(space int32) *widget.LayoutEle {
 		l.EnableAutoWrap(false)
 		l.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 		l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-		l.LayoutItem_SetMargin(c.Padding, c.Padding, c.Padding, c.Padding)
+		l.LayoutItem_SetMargin(0, c.Padding, 0, c.Padding) // 上下用外边距, 计入卡片 Auto 高度
+		l.SetPadding(c.Padding, 0, c.Padding, 0)           // 左右用元素 padding, 约束子项 Fill 宽
 		c.stack = l
 	}
 	c.stack.SetSpace(space)
@@ -170,9 +176,12 @@ func NewCardDescription(x, y, cx int32, text string, hParent int) *Label {
 //		ui.WithIcon(icons.IconEllipsis), ui.WithSize(ui.ButtonSizeIconSm)))
 type CardHeader struct {
 	*widget.LayoutEle
-	title  *widget.LayoutEle
-	action *widget.LayoutEle
-	space  int32
+	title       *widget.LayoutEle
+	action      *widget.LayoutEle
+	space       int32
+	titleW      int32        // 上次写回标题/描述子项的 Fixed 宽(见 syncTitleWidth)
+	synced      map[int]bool // 由 syncTitleWidth 锁过宽的标题列子项(后续尺寸变化要跟着更新)
+	syncPending bool
 }
 
 // NewCardHeader 创建卡片头。parent 传卡片内容区(ContentStack 的返回值)。
@@ -210,9 +219,58 @@ func (h *CardHeader) TitleStack() *widget.LayoutEle {
 		l.SetSpace(h.space)
 		l.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1) // 1fr
 		l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+		// 横向行里的 Weight 宽嵌套列不会把宽度下发给 Fill 子项(见 DESIGN 第八节 101):
+		// 卡片内容区改用元素 padding 后(见 129), 标题/描述会变成 0 宽而整段消失。
+		// 这里在标题列尺寸确定后, 把它的 Fill 子项按实测宽锁成 Fixed。
+		l.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+			h.syncTitleWidth()
+			return 0
+		})
 		h.title = l
 	}
 	return h.title
+}
+
+// syncTitleWidth 把标题列的 Fill 子项锁成实测宽。
+//
+// 标题列是横向行里的 Weight 宽嵌套布局, 它的 Fill 子项(标题/说明)拿不到宽度
+// (见 DESIGN 第八节 101)。延迟到下一轮消息再写 Fixed, 避免在布局趟里改子项尺寸
+// 触发重入; 宽度没变就完全不动。
+func (h *CardHeader) syncTitleWidth() {
+	if h == nil || h.title == nil || h.syncPending {
+		return
+	}
+	w := h.title.GetWidth()
+	if w <= 0 || w == h.titleW {
+		return
+	}
+	h.syncPending = true
+	app.AfterFunc(0, func() {
+		h.syncPending = false
+		if h == nil || h.title == nil || !xc.XC_IsHXCGUI(h.title.Handle, xcc.XC_ELE) {
+			return
+		}
+		w := h.title.GetWidth()
+		if w <= 0 || w == h.titleW {
+			return
+		}
+		h.titleW = w
+		next := make(map[int]bool, len(h.synced))
+		for i := int32(0); i < xc.XEle_GetChildCount(h.title.Handle); i++ {
+			child := xc.XEle_GetChildByIndex(h.title.Handle, i)
+			var typ xcc.Layout_Size_
+			var cw int32
+			xc.XWidget_LayoutItem_GetWidth(child, &typ, &cw)
+			// 第一次是 Fill, 锁过之后变成 Fixed —— 后续宽度变化要按"本组件锁过的子项"
+			// 继续更新, 不能只看 Fill, 否则缩放后标题/说明停在旧宽。
+			if typ == xcc.Layout_Size_Fill || h.synced[child] {
+				xc.XWidget_LayoutItem_SetWidth(child, xcc.Layout_Size_Fixed, w)
+				next[child] = true
+			}
+		}
+		h.synced = next
+		h.title.AdjustLayout()
+	})
 }
 
 // ActionStack 取右侧动作区(随需创建), 横排、宽高都按内容自撑, 贴右上角。
@@ -280,9 +338,10 @@ func NewCardFooter(x, y, cx, cy int32, hParent int, opts ...CardFooterOption) *C
 		ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
 	}
 
-	// 内层内容区: 宽铺满, 高按内容自撑, 四边外边距 = 页脚内边距。
-	// 用子项外边距而不是元素内边距: xcgui 的 XEle_SetPadding 对布局子项的影响未实测,
-	// 外边距是与卡片内容区一致的既有做法(见 card.ContentStack)。
+	// 内层内容区: 宽铺满, 高按内容自撑。左右内边距用元素 padding(约束子项 Fill 宽),
+	// 上下用布局项外边距(计入页脚 Auto 高度)—— 与 ContentStack 同一套原因:
+	// 四边都用外边距时, 页脚被父布局排成 Fill 宽后, 内层子项的 Fill 宽会按页脚全宽解析,
+	// 右侧溢出 16px(实测, 见 DESIGN 第八节 129)。
 	inner := widget.NewLayoutEle(0, 0, 0, 0, ele.Handle)
 	inner.EnableHorizon(true)
 	inner.EnableLayout(true)
@@ -291,7 +350,8 @@ func NewCardFooter(x, y, cx, cy int32, hParent int, opts ...CardFooterOption) *C
 	inner.SetAlignV(xcc.Layout_Align_Center)
 	inner.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	inner.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-	inner.LayoutItem_SetMargin(f.Padding, f.Padding, f.Padding, f.Padding)
+	inner.LayoutItem_SetMargin(0, f.Padding, 0, f.Padding)
+	inner.SetPadding(f.Padding, 0, f.Padding, 0)
 	f.content = inner
 
 	ele.AddEvent_Paint(f.onPaint)

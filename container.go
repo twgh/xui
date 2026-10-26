@@ -27,6 +27,9 @@ func HStack(parent int, ht, space int32) *widget.LayoutEle {
 	l.EnableHorizon(true)
 	l.EnableLayout(true)
 	l.EnableBkTransparent(true)
+	// 关掉"横向溢出换行": 行内总宽超了会把后面的项甩到下一行(y 超出行高), 整块消失
+	// (实测, 见 DESIGN 第八节 41)。行宽不够时应该由调用方收窄子项, 而不是静默换行。
+	l.EnableAutoWrap(false)
 	l.SetSpace(space)
 	l.SetAlignV(xcc.Layout_Align_Center)
 	l.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
