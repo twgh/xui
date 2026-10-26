@@ -70,6 +70,9 @@ type Menu struct {
 	// 弹层位置以它为准, 在 Popup_Wnd 回调里统一校正(原生定位在副屏上会错,
 	// 见 menuPopupBody)。
 	anchor xc.RECT
+	// 每个分组弹层 Body 的顶(逻辑像素): 键 = 分组 ID(0 = 顶级, 其余 = Sub 触发项 id)。
+	// 子菜单的 Y 必须按"父弹层顶 + 该行偏移"自己算(见 menuOnPopupWnd)。
+	groupTop map[int32]int32
 	// 触发元素宽(逻辑像素, PopupAtElement 记录; 0 = 无触发元素, 如右键菜单),
 	// 用于弹层宽对齐触发区(shadcn 的 w-(--trigger-width) min-w-32)。
 	triggerW int32
@@ -81,7 +84,7 @@ type Menu struct {
 // NewMenu 创建下拉菜单。菜单是一次性对象: 弹出关闭后原生菜单即销毁,
 // 状态(如勾选)由调用方持有并在下次弹出时传入。
 func NewMenu() *Menu {
-	return &Menu{byID: map[int32]*menuItem{}, nextID: 1}
+	return &Menu{byID: map[int32]*menuItem{}, groupTop: map[int32]int32{}, nextID: 1}
 }
 
 func (m *Menu) add(it *menuItem, opts []MenuOpt) *Menu {
@@ -333,7 +336,7 @@ func (m *Menu) popup(hWindow int) {
 func (m *Menu) build(hWindow int) *widget.Menu {
 	menu := widget.NewMenu()
 	menu.SetAutoDestroy(true)
-	menu.SetItemHeight(28) // 条目 = text-sm(20) + py-1(4×2)
+	menu.SetItemHeight(menuRowH) // 条目 = text-sm(20) + py-1(4×2); 子菜单行偏移也用它(见 rowBodyTop)
 	menu.SetLeftWidth(0)   // 不留原生左侧图标条: 前置图标与右侧勾/箭头都由自绘负责
 	// p-1(4px): 默认边距是 3, 条目高亮距弹层左右边缘原差 1px; 设 4 后条目盒
 	// 与 shadcn 完全一致(内容内缩 4, 文字再 px-1.5)。
@@ -513,7 +516,7 @@ const menuShadowDepth int32 = 50
 
 // menuPopupBody 计算顶级菜单弹窗 Body(可见卡片)的左上角(逻辑像素):
 // 以菜单锚点(物理)为基准 —— 默认贴锚点下边、左缘对齐(radix align=start、
-// sideOffset=4), 下方放不下翻到锚点上方, 最后夹进宿主窗口所在显示器的**工作区**。
+// sideOffset=4), 下方放不下翻到锚点上方, 最后夹进**弹窗自己所在显示器**的工作区。
 //
 // 为什么必须自己算: 原生 XMenu_Popup 在副屏(显示器原点非 0,0)上会拿
 // "显示器矩形 × DPI"当边界做钳制 —— 150% 缩放下显示器左缘 2570 被当成 3855,
@@ -521,8 +524,13 @@ const menuShadowDepth int32 = 50
 // 都绕不过: 给多少都钳到同值); 反过来在主屏上边界被放大到 1.5 倍, 贴屏幕
 // 右/下边的弹层会溢出屏幕也不夹。翻到上方用 radix 的 side 翻转语义
 // (弹层下边 = 锚点上边 − sideOffset)。
-func menuPopupBody(hWindow int, mw *window.Window, m *Menu, rc xc.RECT) (int32, int32) {
-	wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWindow))
+//
+// 工作区按**弹窗自己的句柄**取, 不按宿主窗口: 宿主窗口横跨两块显示器时
+// MonitorFromWindow 返回"占多数"的那块, 而锚点(触发区)可能在另一块上 ——
+// 实测窗口压在两屏交界时, 按宿主取会把弹层夹到另一块屏的顶边(y=857)。
+// 原生已经把弹窗放在锚点附近, 它落在哪块屏就是哪块屏。
+func menuPopupBody(mw *window.Window, m *Menu, rc xc.RECT) (int32, int32) {
+	wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(mw.Handle))
 	if !ok {
 		return rc.Left, rc.Top // 取不到显示器信息: 保持原生落位
 	}
@@ -550,12 +558,81 @@ func menuPopupBody(hWindow int, mw *window.Window, m *Menu, rc xc.RECT) (int32, 
 	if x < wa.Left {
 		x = wa.Left
 	}
-	return int32(math.Round(float64(x) / sc)), int32(math.Round(float64(y) / sc))
+	left := int32(math.Round(float64(x) / sc))
+	top := int32(math.Round(float64(y) / sc))
+	return left, top
+}
+
+// menuRowH / menuSepH 与 build 里的原生设置一一对应: 条目高 SetItemHeight(28)、
+// 分隔栏槽高固定 4(逻辑像素)。
+const (
+	menuRowH = 28
+	menuSepH = 4
+)
+
+// rowBodyTop 算"挂在条目 id 上的子菜单"该落在的 Body 顶(逻辑像素):
+// 父弹层顶 + 该条目在同组内的行偏移(= 原生 align=start + alignOffset=-4,
+// 子菜单首行与触发行齐平)。返回的 id2 是该条目自己的 id = 子菜单分组的键。
+func (m *Menu) rowBodyTop(id int32) (top int32, id2 int32, ok bool) {
+	var target *menuItem
+	for _, it := range m.items {
+		if it.id == id {
+			target = it
+			break
+		}
+	}
+	if target == nil {
+		return 0, 0, false
+	}
+	base, ok := m.groupTop[target.parent]
+	if !ok {
+		return 0, 0, false
+	}
+	var off int32
+	for _, it := range m.items {
+		if it == target {
+			break
+		}
+		if it.parent != target.parent {
+			continue
+		}
+		if it.kind == menuKindSeparator {
+			off += menuSepH
+		} else {
+			off += menuRowH
+		}
+	}
+	// 行顶 = Body 顶 + 内边距 4, 子菜单自身也有 4 的内边距 → 相抵后 Body 顶
+	// = 父 Body 顶 + 行偏移, 首行正好压在触发行上(原生实测同值)。
+	return base + off, target.id, true
+}
+
+// menuClampSubTop 把子菜单夹进它自己所在显示器的工作区(radix avoidCollisions:
+// 触发行贴近屏幕底边时整体上移, 不裁条目)。
+func menuClampSubTop(mw *window.Window, top, h int32) int32 {
+	wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(mw.Handle))
+	if !ok {
+		return top
+	}
+	dpi := xc.XWnd_GetDPI(mw.Handle)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
+	bot := int32(math.Round(float64(wa.Bottom) / sc))
+	t0 := int32(math.Round(float64(wa.Top) / sc))
+	if top+h > bot {
+		top = bot - h
+	}
+	if top < t0 {
+		top = t0
+	}
+	return top
 }
 
 // menuOnPopupWnd 弹窗出现: 转阴影弹窗(圆角 + 投影)、把窗口矩形四周外扩补回阴影带,
-// 并**重新落位**: 顶级弹窗以锚点为准重算位置(见 menuPopupBody), 子菜单沿用原生
-// 锚定(它锚在父菜单"实际矩形"上, 父菜单被挪后子菜单自然跟随, 探针验证)。
+// 并**重新落位**: 顶级弹窗以锚点为准重算位置(见 menuPopupBody); 子菜单以"父弹窗
+// 实际顶 + 触发行偏移"重算 Y, X 保留原生(原生把它锚在父弹窗的实际矩形右缘, 会跟随)。
 // 菜单与子菜单都即时全内容出现, 这里不做进场动画(原因见函数末尾说明与 DESIGN 99)。
 //
 // ⚠️ 挪窗只能用 SetRect(本回调里做, 官方 DrawMenu 示例的阴影带外扩同款路径,
@@ -584,12 +661,21 @@ func menuOnPopupWnd(hWindow, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *boo
 	mw.SetShadowInfo(band, menuShadowDepth, t.RadiusLg(), false, xc.RGBA(0, 0, 0, 128))
 	mw.SetTransparentAlpha(255)
 	// 客户区已收缩出阴影带: 窗口矩形四周外扩同尺寸, Body 对齐菜单内容区位置。
-	// 顶级弹窗的位置先按锚点重算(native 给的落位在副屏上不可信), 子菜单不重算。
+	// 顶级弹窗按锚点重算落位(native 给的落位在副屏上不可信, 见 menuPopupBody);
+	// 子菜单的 Y 也自己算, X 保留原生(探针实测原生把子菜单 X 锚在父弹窗的**实际
+	// 矩形**右缘, 会跟随)。Y 不能只补位移: 原生算子菜单位置时把它的底边夹进
+	// "父弹窗底边"的**缓存值**(= 我们挪动之前的位置), 父级被翻到上方过就整体
+	// 下移一整行(见 DESIGN 134)。
 	rc := mw.GetRectEx()
 	left, top := rc.Left, rc.Top
-	if pInfo.NParentID == 0 {
-		if m := menuSkin.active; m != nil {
-			left, top = menuPopupBody(hWindow, mw, m, rc)
+	m := menuSkin.active
+	if m != nil {
+		if pInfo.NParentID == 0 {
+			left, top = menuPopupBody(mw, m, rc)
+			m.groupTop[0] = top
+		} else if bt, gid, ok := m.rowBodyTop(pInfo.NParentID); ok {
+			top = menuClampSubTop(mw, bt, rc.Bottom-rc.Top)
+			m.groupTop[gid] = top
 		}
 	}
 	mw.SetRect(&xc.RECT{

@@ -1612,9 +1612,21 @@ ui/
 132. **原生 `XMenu_Popup` 在副屏(显示器原点非 0,0)上把"显示器矩形 × DPI"当边界钳制, 弹层严重错位; 落位要在 Popup_Wnd 回调里用 `SetRect` 自己算**(`ui/menu.go` 的 `menuPopupBody`, 三块屏探针实测):
     - **现象**: 窗口放在主屏右上方的副屏(矩形 y 为负)时, 下拉菜单弹到触发区的右上方几百像素外; 同一触发区在主屏上正常。
     - **根因(数值实锤)**: `XMenu_Popup` 收到物理锚点后, 会把它夹进"显示器**物理**矩形再乘 DPI 比例"得到的边界里 —— 150% 缩放下副屏左缘 2570 被当成 3855、上缘 857 被当成 1286。探针(窗口 2600,-500, 触发区物理 x=2618): 期望弹窗 x=2618, 实际 3855(=2570×1.5); 换 x=3018 仍是 3855(**钳制特征**: 输入怎么变都吸到同一值); x=4618 超过钳制线 → 正确 4619。右下副屏(正 y)同理: 期望 (2618,1024) → 实际 (3840,1286) = (2560×1.5, 857×1.5)。y 在钳制线以内时不受影响。主屏原点 (0,0) 乘 1.5 仍是 0, 所以只有副屏暴露; 反过来主屏上边界被放大到 1.5 倍, 贴屏幕右/下边的弹层会溢出也不夹。
-    - **修法**: 顶级菜单(含右键菜单)的最终落位不再信原生 —— `Menu_PopupWnd` 回调里按锚点(物理)重算 Body 左上角: 默认贴锚点下边+4, 放不下翻到锚点上方(弹层下边 = 锚点上边 − 4, radix 的 side 翻转), 再夹进宿主窗口所在显示器的**工作区**(`xui.MonitorWorkArea`); 用 `SetRect` 落地(单位是逻辑像素, 窗口矩形连同阴影带一起写), 子菜单不重算。
+    - **修法**: 顶级菜单(含右键菜单)的最终落位不再信原生 —— `Menu_PopupWnd` 回调里按锚点(物理)重算 Body 左上角: 默认贴锚点下边+4, 放不下翻到锚点上方(弹层下边 = 锚点上边 − 4, radix 的 side 翻转), 再夹进工作区(`xui.MonitorWorkArea`); 用 `SetRect` 落地(单位是逻辑像素, 窗口矩形连同阴影带一起写)。子菜单的 X 沿用原生(它锚父弹窗**实际矩形**右缘, 会跟随), Y 必须自己算(见 134)。
     - **为什么这样安全(探针验证)**: ① `SetRect` 大位移(1237px)不崩, 与阴影带外扩同一条路径; 崩的是 `SetWindowPos`, 别混用(见 64)。② 子菜单锚定父菜单**实际矩形**: 父窗挪到 (2819,-235) 后, 子菜单跟随到 (2973,-232)(= 父右缘 +1), 与不挪时行为一致。③ 命中判定跟随窗口: 挪过的菜单里悬停条目能展开子菜单、点击条目能关闭。④ 位置/夹取/上翻数值实测(150%): 副屏工作区 (2570,-743,5130,857), 锚点 (2870,-443) → Body (2870,-435)(= 锚点 +4 + 取整); 锚点 (5070,-343) → x 夹到 4867(= 5130 − 264 − band); 锚点 (2870,827) → 上翻到 683(= 827 − 4×1.5 − 138); 主屏 (0,0,2560,1528) 三组同样精确。中段位置的落位与原生的 ±1~2px 噪声一致, 主屏观感不变。
-    - **注意**: 工作区取的是**宿主窗口**所在显示器 —— 窗口横跨两块屏(病态布局)时锚点可能在另一块屏上, 此时夹取会按窗口占多数的那块算; 事件结构体 `pInfo` 里的 `HWindow` 是弹窗 xcgui 句柄, 记得 `xc.XWnd_GetHWND` 换 Win32 句柄再查显示器。
+    - **注意**: 工作区按**弹窗自己的句柄**取, 不按宿主窗口 —— 宿主窗口横跨两块屏(病态布局)时 `MonitorFromWindow` 返回"占多数"的那块, 而锚点可能在另一块上, 实测会把弹层夹到另一块屏的顶边(y=857); 原生已经把弹窗放在锚点附近, 它落在哪块屏就是哪块屏。事件结构体 `pInfo` 里的 `HWindow` 是弹窗 xcgui 句柄, 记得 `xc.XWnd_GetHWND` 换 Win32 句柄再查显示器。
+
+134. **原生子菜单的 Y 会把它的底边夹进"父弹窗矩形底边"的缓存值 —— 父弹窗被我们挪过就整体错位一整行**(`ui/menu.go` 的 `rowBodyTop`, 五组窗口位置 × 两块屏探针实测):
+    - **现象**: 副屏上触发区贴近窗口底部, 下拉菜单翻到上方后, 悬停带子菜单的条目 —— 子菜单整体低一行(首项压在触发行的**下一行**上), 且低多少随触发区在窗口里的位置变化; 主屏上触发区靠上时正常。
+    - **根因(数值实锤, 150% DPI)**: 原生算子菜单位置时, X 用父弹窗的**实际**矩形(跟随, 没问题), Y 先按"父弹窗顶 + 触发行偏移"算, 再把子菜单底边夹进**父弹窗创建时那个矩形**的底边 —— 也就是我们 `SetRect` **之前**的位置。探针三组同一菜单: ① 父弹窗未被挪(位移 −3 逻辑) → 子菜单顶 = 父顶 + 203, 正常; ② 位移 −19 → +200, 正常; ③ 位移 +93(父弹窗被向下校正) → 子菜单顶 = 父顶 + 139, 少 61 逻辑 = 正好被"缓存底边"截住。所以"给子菜单补一份父级位移"这种线性补偿不成立: 截断一旦发生, 位移与结果不再同比例。
+    - **修法**: 子菜单 Y 一律自己算 —— `rowBodyTop(父项 id)`: 该条目在**同组**内的行偏移 = 前面每个条目 28(`SetItemHeight`) + 每条分隔栏 4(原生槽高), 子菜单 Body 顶 = 父弹窗 Body 顶 + 该偏移(父内边距 4 与子菜单内边距 4 相抵 = radix SubContent 的 `align=start, alignOffset=-4`, 首项正好压在触发行上)。分组弹层顶记在 `Menu.groupTop`(键 = 分组 id, 0 = 顶级, 其余 = Sub 触发项 id), 支持任意层嵌套。再夹进工作区(radix `avoidCollisions`)。X 保留原生。
+    - **验证**: 五组配置(副屏不翻 / 小翻 / 大翻 + 主屏不翻 / 大翻)子菜单 Body 顶都 = 触发行顶 − 6 物理(= 4 逻辑, 即 alignOffset), 之前大翻那组是 −12 且低一行; 右键菜单的子菜单(锚点 = 光标点)同样齐平。
+    - **注意**: `pInfo.NParentID` 是**父项 id**(不是父窗口句柄), 正好用来定位条目; 行偏移模型依赖 `SetItemHeight(28)` 与分隔栏槽高 4 这两处设置, 改它们要同步改 `menuRowH / menuSepH`。
+
+135. **ComboBox 自绘下拉的"屏幕边界"不能写死主屏**(`ui/combobox.go` 的 `alignComboPopup`, 副屏实测):
+    - **现象**: 窗口摆在主屏右上方的副屏(y 为负)上, 表单里的下拉框一点开, 弹层跑到几百物理像素之下, 完全盖不住触发区; 主屏上 item-aligned 正常。
+    - **根因**: 边界取 `screenTop = 0` + `screenBottom = SM_CYSCREEN` —— 前者把"屏幕顶"当成虚拟屏原点(副屏上元素 y 本身是负的), item-aligned 算出的期望位置恒小于 0 → 恒被压到 y=0; 后者只有主屏高度, 底边同样夹错。
+    - **修法**: 两端都换成 `xui.MonitorWorkArea(xc.XWnd_GetHWND(hWindow))`(见 132/133); 取不到时保留原兜底。顶边被夹时仍走原来的"滚动列表让选中项作为首项可见"。
 
 133. **"上方放不下就翻到下方"的判断不能拿虚拟屏原点 (0,0) 当边界**(`ui/tooltip.go`, 负坐标副屏上 ToolTip 恒朝下):
     - **现象**: 窗口放在主屏正上方的副屏(y 为负)上, 标题栏按钮明明上面还有空间, ToolTip 却翻到下方压住页面内容; 主屏上正常。
@@ -1637,7 +1649,7 @@ ui/
 - `svg.NewByString / SetUserFillColor / SetUserStrokeColor / SetSize`
 - `ani.NewAnima / AnimaGroup`、`ease` 缓动
 - `XWnd_Redraw / XWnd_GetDPI`、`XC_EnableAutoDPI / XC_EnableDPI`
-- 显示器工作区(弹层/提示的翻转与夹取): `xui.MonitorWorkArea(hWnd uintptr) (xc.RECT, bool)`(物理像素、已扣任务栏; 必须传 Win32 HWND, 见 74/132/133);`xui` 运行时里, 组件文件不单独携带
+- 显示器工作区(弹层/提示的翻转与夹取): `xui.MonitorWorkArea(hWnd uintptr) (xc.RECT, bool)`(物理像素、已扣任务栏; 必须传 Win32 HWND, 见 74/132/133/135);`xui` 运行时里, 组件文件不单独携带
 - LayoutEle:`EnableLayout / IsEnableLayout / EnableHorizon / EnableAutoWrap / EnableOverflowHide / SetAlignH(V) / SetSpace / SetSpaceRow / ShowLayoutFrame / GetWidthIn(HeightIn)`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin/SetMinSize`、`xc.XWidget_LayoutItem_GetWidth/Height/GetMargin`、尺寸类型 `xcc.Layout_Size_{Fixed,Fill,Auto,Weight,Percent,Disable}` 与对齐 `xcc.Layout_Align_*`(语义与"Fill≠剩余空间 / Weight 需父级确定尺寸"见第八节 29/41/55;Go 包装无 AdjustLayout, 用 `XEle_AdjustLayout`);`EnableLayout/EnableHorizon/EnableAutoWrap` **只有 LayoutEle 与窗口有**(普通 Element 只能当布局项);**负外边距可用**(竖向按钮组消 1px 按压缝, 见 86)
 - `xc.XWidget_LayoutItem_SetPosition(h, l, t, r, b)`(布局项置位置 = 四边 inset 钉住, 让绝对定位浮层扛住窗口级布局趟; 语义与坑见第八节 128)
 - 按钮组(见第八节 86): `xc.XDraw_FillRoundRectEx/DrawRoundRectEx`(四角独立半径)、`xc.XEle_SetUserData/GetUserData`(组件角色标记)、`XWidget_GetParentEle` + `XEle_GetChildByIndex/GetChildCount`(首尾判定)、`XEle_GetHeight`(按按钮视觉高定文本/分隔条高度)

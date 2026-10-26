@@ -302,12 +302,18 @@ func alignComboPopup(hCombo, hWindow int) {
 	desired := mrc.Top + int32(float64(trig.Top-off)*sc)
 	left := mrc.Left + int32(float64(trig.Left)*sc)
 
-	// 屏幕边界截断(物理像素, 主屏): 顶边贴屏时向下压并滚动列表让选中项仍可见。
+	// 屏幕边界截断(物理像素): 顶边贴屏时向下压并滚动列表让选中项仍可见。
+	// 边界必须取**窗口所在显示器的工作区** —— 副屏原点非 0(摆在主屏上方时 y 为负),
+	// 拿 0 当屏幕顶会把 item-aligned 的弹层整个压到 y=0(实测弹层比触发区低 300+
+	// 物理像素, 看起来"弹到很下面"), 而 SM_CYSCREEN 只有主屏高度, 底边同样夹错。
 	hwnd := xc.XWnd_GetHWND(hWindow)
 	var prc xc.RECT
 	wapi.GetWindowRect(hwnd, &prc)
 	ph := prc.Bottom - prc.Top
 	screenTop, screenBottom := int32(0), wapi.GetSystemMetrics(wapi.SM_CYSCREEN)
+	if wa, ok := xui.MonitorWorkArea(hwnd); ok {
+		screenTop, screenBottom = wa.Top, wa.Bottom
+	}
 	if desired < screenTop {
 		cut := int32(float64(screenTop-desired) / sc)
 		desired = screenTop
