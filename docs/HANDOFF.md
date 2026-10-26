@@ -10,7 +10,7 @@
 
 ## 当前状态(截至 2026-10-26)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
@@ -22,7 +22,7 @@
   - **HStack**: 补 `EnableAutoWrap(false)`, 行内超宽不再把子项甩到下一行/整块消失(DESIGN 41)。
   - **CLI**: `update` 无参数改为"files 全部存在才算已安装" —— 只装 select 时不再把 datepicker/popover/dialog/table/tree/combobox/toggle 等共享 `popup.go/scrollarea.go/scrollbar.go` 的组件整套拷进 ui/; `init -n .` 支持当前空目录, 且当前目录为空、目录名 == 项目名时直接铺在当前目录(不再生成 sitless/sitless)。两项都加了测试。
   - **主题模板**: `init` 生成的 `ui/theme.go` 增加 `UseDark(v bool)`(切换本文件里 light/dark 副本, 保留逐字段定制)。
-  - **Toast**: 新增 `ToastTopCenter` / `ToastBottomCenter`(sonner 六种位置补齐), 居中按 Body 水平居中, 进场沿堆叠方向、退场向上/下; 探针双 Toaster 截图确认上下居中与堆叠顺序。
+  - **Toast**: 新增 `ToastTopCenter` / `ToastBottomCenter`(sonner 六种位置补齐), 居中按 Body 水平居中, 进场沿堆叠方向、退场向上/下; 探针双 Toaster 截图确认上下居中与堆叠顺序。补 `richColors`: `WithToastRichColors()`(整组)/ `ToastOptions.RichColors`(单条)开启后按 sonner 的 `--{success,info,warning,error}-{bg,border,text}` 给卡面/描边/文字上色(亮/暗两套), 色值取自 sonner styles.css, 不是 xcgui 限制; demo 通知卡加 richColors 按钮。
   - **未复现/非缺陷**: Label 的 `SetBorderSize(1,0,1,0)` 在 150% DPI 下与无 border 组的省略号阈值完全相同(38/40/42 截断、44 起完整), 不移除(保留 g/p 下伸修复, DESIGN 109 已补复核); HStack 行内未声明布局项的 Input(96)/Label(100)保持创建尺寸, 未复现"被收缩"现象; `AddCaptionButton` 默认 14 适用于满网格图标, 线条类图标用返回按钮的 `SetIconSize(18)` 即可, 不新增 API; 固定尺寸窗口 SetRect 白屏属下游自建窗口场景(上游 AppWindow 始终带 Drag_Border), 未改代码。
   - 验收: `go test ./...` 全绿; demo 页面 0/4/7/12 亮色 + 页面0暗色 150% DPI 截图; 探针元素矩形逐项核对(Card 480/448、Empty、Popover 内容 288/256、Alert 文本 506); 弹层 z 序 A/B 截图(旧 HWND_TOP 不可见 / 新 TOPMOST 可见)。逐组件安装编译见下方回归记录。
 - ✅ **标题栏按钮图标墨迹对齐**(2026-10-25, 用户报"最大化图标看着比最小化/关闭大"):
@@ -612,7 +612,6 @@
 
 
 - ℹ️ Input 的文字/光标/选区/IME 由原生 Edit 绘制(只开放字体/字色/占位符色/插入符色/内边距, 见 DESIGN 三 第 4 条 / 23 / 61)。
-- ℹ️ Toast 只支持四角堆叠(无顶部/底部居中、无 richColors, 见 DESIGN 75)。
 - 完整清单见 DESIGN 第七节。
 
 ## 待办

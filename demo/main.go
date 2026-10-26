@@ -2043,7 +2043,7 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	_, v3 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "通知", v3.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"窗口内覆盖元素, 右下角堆叠; 4s 自动关闭, 悬停全部暂停; 关闭按钮默认隐藏", v3.Handle))
+		"窗口内覆盖元素, 右下角堆叠; 4s 自动关闭, 悬停全部暂停; 关闭按钮默认隐藏; richColors 按类型上色", v3.Handle))
 	toaster := ui.NewToaster(hWindow)
 	rn1 := xui.HStack(v3.Handle, 36, 8)
 	for _, it := range []struct {
@@ -2086,6 +2086,17 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 			Variant:     ui.ToastInfo,
 			Duration:    -1,
 			CloseButton: true,
+		})
+		return 0
+	})
+	bRich := ui.NewButton(0, 0, 0, 0, "richColors", rn2.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(bRich, 96)
+	bRich.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		toaster.Show(ui.ToastOptions{
+			Title:       "富色通知",
+			Description: "richColors: 按类型给卡面/描边/文字上色。",
+			Variant:     ui.ToastSuccess,
+			RichColors:  true,
 		})
 		return 0
 	})

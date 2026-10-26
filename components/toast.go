@@ -52,8 +52,8 @@ const (
 )
 
 // ToastVariant 是通知的语义类型(对应 sonner 的 toast / toast.success / toast.error ...)。
-// 类型只影响图标与图标颜色, 卡片底色仍是 bg-popover —— 与 shadcn 的 sonner 一致
-// (未开 richColors 时 sonner 也不给类型上底色)。
+// 默认只影响图标与图标颜色, 卡片底色仍是 bg-popover —— 与 shadcn 的 sonner 一致
+// (不传 richColors 时 sonner 也不给类型上底色); 开启 richColors 后按类型给整卡上色。
 type ToastVariant int
 
 const (
@@ -99,6 +99,9 @@ type ToastOptions struct {
 
 	// CloseButton 显示右上角关闭按钮(默认不显示, 同 shadcn 的 sonner)。
 	CloseButton bool
+	// RichColors 本条通知按类型给整卡上底色/描边/文字色(sonner 的 richColors)。
+	// Toaster 用 WithToastRichColors 全局开启后本条也生效; 默认 false = 只有图标带语义色。
+	RichColors bool
 	// OnClose 在任何方式关闭时回调一次。
 	OnClose func()
 }
@@ -149,6 +152,12 @@ func WithToastMaxVisible(n int) ToasterOption {
 	return func(t *Toaster) { t.maxVisible = n }
 }
 
+// WithToastRichColors 按类型给整卡上底色/描边/文字色(sonner 的 richColors)。
+// 默认关闭 = 只有图标带语义色、卡面统一 bg-popover; 也可以只给单条开(ToastOptions.RichColors)。
+func WithToastRichColors() ToasterOption {
+	return func(t *Toaster) { t.richColors = true }
+}
+
 // Toaster 是挂在窗口上的通知管理器: 每条通知是一个铺在窗口之上的自绘元素,
 // 缺省堆叠在内容区右下角(可设六种位置, 见 ToastPosition)。
 //
@@ -172,6 +181,7 @@ type Toaster struct {
 	gap        int32
 	duration   time.Duration
 	maxVisible int
+	richColors bool // 整组按类型上色(sonner 的 richColors); 单条可用 ToastOptions.RichColors 覆盖开启
 
 	paused bool // 鼠标停在本组任一条通知上: 全部倒计时暂停
 	items  []*Toast
@@ -774,6 +784,48 @@ func (it *Toast) iconColor(th *xui.Theme) xui.Color {
 	return th.PopoverForeground
 }
 
+// toastRichPalette 是 richColors 开启时一张通知卡的三色(卡面/描边/文字)。
+type toastRichPalette struct {
+	bg, border, text xui.Color
+}
+
+// toastRichColorsFor 返回类型在亮/暗主题下的富色; 无类型的 default 返回 false
+// (卡面维持 bg-popover)。色值逐条取自 sonner 的 styles.css(data-rich-colors 变量),
+// 与 iconColor 一样不属于 shadcn 令牌。
+func toastRichColorsFor(v ToastVariant, dark bool) (toastRichPalette, bool) {
+	switch v {
+	case ToastSuccess:
+		if dark {
+			return toastRichPalette{xui.RGBA(0, 31, 15, 255), xui.RGBA(0, 61, 28, 255), xui.RGBA(89, 243, 166, 255)}, true
+		}
+		return toastRichPalette{xui.RGBA(236, 253, 243, 255), xui.RGBA(191, 252, 217, 255), xui.RGBA(0, 138, 46, 255)}, true
+	case ToastError:
+		if dark {
+			return toastRichPalette{xui.RGBA(45, 6, 7, 255), xui.RGBA(77, 4, 8, 255), xui.RGBA(255, 158, 161, 255)}, true
+		}
+		return toastRichPalette{xui.RGBA(255, 240, 240, 255), xui.RGBA(255, 224, 225, 255), xui.RGBA(230, 0, 0, 255)}, true
+	case ToastWarning:
+		if dark {
+			return toastRichPalette{xui.RGBA(29, 31, 0, 255), xui.RGBA(46, 46, 0, 255), xui.RGBA(243, 207, 88, 255)}, true
+		}
+		return toastRichPalette{xui.RGBA(255, 252, 240, 255), xui.RGBA(251, 238, 177, 255), xui.RGBA(220, 118, 9, 255)}, true
+	case ToastInfo:
+		if dark {
+			return toastRichPalette{xui.RGBA(0, 13, 31, 255), xui.RGBA(25, 35, 62, 255), xui.RGBA(88, 150, 243, 255)}, true
+		}
+		return toastRichPalette{xui.RGBA(240, 248, 255, 255), xui.RGBA(221, 231, 253, 255), xui.RGBA(9, 115, 220, 255)}, true
+	}
+	return toastRichPalette{}, false
+}
+
+// richPalette 返回本条的富色(整组或单条开启时); default 类型没有富色。
+func (it *Toast) richPalette(th *xui.Theme) (toastRichPalette, bool) {
+	if it == nil || it.t == nil || (!it.t.richColors && !it.opts.RichColors) {
+		return toastRichPalette{}, false
+	}
+	return toastRichColorsFor(it.opts.Variant, th.IsDark())
+}
+
 // onPaint 绘制整张通知卡: 投影 / 底色 / 边框 / 图标 / 标题 / 描述 / 动作 / 关闭按钮。
 func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
@@ -795,14 +847,22 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	radius := th.RadiusLg()
 
+	// richColors: 按类型换整卡底色/描边/文字; 未开启或 default 类型保持 bg-popover。
+	cardBg, cardBorder := th.Popover, th.Border
+	titleC, descC, closeC := th.PopoverForeground, th.MutedForeground, th.MutedForeground
+	if pal, ok := it.richPalette(th); ok {
+		cardBg, cardBorder = pal.bg, pal.border
+		titleC, descC, closeC = pal.text, pal.text, pal.text
+	}
+
 	// shadow-md 的近似: 向下偏移 2px 的一层柔和投影(颜色固定半透明黑, 不随主题变)
 	sh := card
 	sh.Top += 2
 	sh.Bottom += 2
 	p.FillRound(&sh, xui.RGBA(0, 0, 0, 18), radius)
 
-	p.FillRound(&card, th.Popover, radius)
-	p.StrokeRound(&card, th.Border, radius, 1)
+	p.FillRound(&card, cardBg, radius)
+	p.StrokeRound(&card, cardBorder, radius, 1)
 
 	// 所有内部矩形都是卡片局部坐标, 绘制时整体平移 shadow
 	off := func(rc xc.RECT) xc.RECT {
@@ -826,7 +886,7 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			p.Draw.SetFont(f)
 		}
 		rc := off(it.geom.title)
-		p.Text(it.opts.Title, &rc, th.PopoverForeground,
+		p.Text(it.opts.Title, &rc, titleC,
 			xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter|
 				xcc.TextFormatFlag_NoWrap|xcc.TextTrimming_EllipsisCharacter)
 	}
@@ -838,7 +898,7 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			p.Draw.SetFont(f)
 		}
 		rc := off(it.geom.desc)
-		p.Text(it.opts.Description, &rc, th.MutedForeground,
+		p.Text(it.opts.Description, &rc, descC,
 			xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
 
@@ -872,7 +932,7 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			Right:  (rc.Left+rc.Right)/2 + n/2,
 			Bottom: (rc.Top+rc.Bottom)/2 + n/2,
 		}
-		p.Icon(icons.IconX, &icon, th.MutedForeground, 2)
+		p.Icon(icons.IconX, &icon, closeC, 2)
 	}
 	return 0
 }

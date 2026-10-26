@@ -145,7 +145,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | TimePicker | 时间框:outline 触发区 + 弹层内"时/分"两列滚动列表(原生 ListBox 行为,条目自绘);选择即生效,弹层保持打开 |
 | Menu | 下拉菜单 / 右键菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 / 文字缩进(`MenuInset`, 条目/Label/Sub 都可用) / 前置图标(`MenuIcon`);`NewContextMenu(触发区元素, build)` 右键触发(每次右键重建菜单, 支持 `SetEnabled` / `OnOpenChange`);弹层宽支持 `Width` 固定、触发区对齐、内容自适应 + 128 下限 |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点) |
-| Toast | 通知(窗口内覆盖元素,默认右下角堆叠,支持四角与上下居中):4 种语义类型(success/error/warning/info)+ 动作按钮 + 可选关闭按钮;自动关闭(默认 4s)、悬停暂停、进出场滑入淡入;`NewToaster(w.Handle).Success("标题","描述")` |
+| Toast | 通知(窗口内覆盖元素,默认右下角堆叠,支持四角与上下居中):4 种语义类型(success/error/warning/info)+ 动作按钮 + 可选关闭按钮;`WithToastRichColors` 可让类型给整卡上色;自动关闭(默认 4s)、悬停暂停、进出场滑入淡入;`NewToaster(w.Handle).Success("标题","描述")` |
 | AppWindow | 主窗口封装:圆角阴影 + 自绘标题栏(最小化/最大化/关闭,双击标题栏最大化/还原,拖动,最大化图标自动切换) + 主题化底色;`NewAppWindow("标题", 640, 480)` 后往 `Content()` 里放内容,`AddCaptionButton` 加标题栏按钮(如切换主题),`WithAppWindowNoMinMax` 只留关闭 |
 | Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述(按宽度折行)+ 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环;`WithDialogScroll` 让内容区滚动、头部/页脚固定,`BindClose` 可把任意控件变成关闭钮 |
 | AlertDialog | 警示对话框:必须明确选择(无右上角 X、点遮罩不关闭、ESC 关闭,焦点落在 Cancel);`AlertDialogSizeDefault` / `Small`(居中头 + 等宽双列页脚)、`WithAlertDialogMedia` 图标块(含破坏性配色);`AddCancel` / `AddAction` 点击后关闭;与 Dialog 共用遮罩/模糊/焦点陷阱,支持对话框内再叠一层 |
