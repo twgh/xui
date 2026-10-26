@@ -631,9 +631,9 @@ ui/
     - `SetLeftWidth(0)` 去掉左侧图标条; Label 项借 `Menu_Item_Flag_Disable` 实现"不可高亮不可点"(自绘时对 kind==label 单独配色);
     - **`XMenu_SetItemWidth` 逐项设置条目文本区宽度, 有效**(官方 DrawMenu 示例同款用法: AddItem 后对单个 nID 调用, 返回 true 表示受理; 探针实测: 3 条短条目弹窗宽 104, 全部条目 `SetItemWidth(300)` → 348, 只设其中一条 → 同样 348, 全部设 60 → 108): 弹窗宽 = **max(各条目有效宽) + 固定开销**(未设条目按自然文本宽计入; 开销 = 边框 + 文本间隔等, 条目高 28 / BorderSize(4) / LeftWidth(0) 配置下实测 48); **设定值完全覆盖自然宽** —— 自然文本宽 229 的长条目设 60 后弹窗仍 108, 长条目不会撑宽弹层。shadcn 的"弹层宽 = 触发区宽 + min-w-32 下限"(dropdown-menu.tsx `w-(--radix-dropdown-menu-trigger-width) min-w-32`)由此实现: 逐条目设 `max(触发区宽, 128) − 开销`(menu.go 已接入) —— 长文本由自绘 `XDraw_SetClipRect` 硬裁剪, 与 radix 的 overflow-x-hidden 一致(原生条目文本同样裁在弹层边缘, 截图验证); 显式覆盖 = `Menu.Width(w)`(对应 shadcn 在 Content 上加 `className="w-56"` 这类宽度类, demo 参考卡就是 w-56=224, 实测精确命中); 右键菜单(PopupAtCursor)无触发区, 退化为"内容自适应 + 128 下限"; 子菜单条目不设宽(shadcn SubContent 是内容自适应 + min-w-96, 不跟触发区);
     - 事件拓扑: 窗口级 `XWM_MENU_DRAW_BACKGROUND/DRAWITEM` 对该窗口弹出的**所有**菜单生效(每次新建的菜单对象、各自的子菜单窗口都触发) → 皮肤每窗口只注册一次(map 守卫), 绘制实时取令牌, 换肤零成本; `Menu_PopupWnd` 对每个弹出窗口(含子菜单)各触发一次且顶级先于子菜单 → 阴影处理放这里全命中;
-    - 弹窗定位: `Popup` 收**物理像素**; 元素锚点 = `XEle_GetWndClientRect`(逻辑, 原点=窗口矩形含阴影边距) + `wapi.GetWindowRect`(物理) 换算; **翻转/夹紧/子菜单定位全部原生自带, 任何手动位置校正都不做** —— 详见下一条;
+    - 弹窗定位: `Popup` 收**物理像素**; 元素锚点 = `XEle_GetWndClientRect`(逻辑, 原点=窗口矩形含阴影边距) + `wapi.GetWindowRect`(物理) 换算; 原生给的初始落位在**副屏上不可信**(钳制基准错, 见 132) → 顶级弹窗的最终位置由 Popup_Wnd 回调按锚点重算, 子菜单仍由原生锚定父窗实际矩形;
     - ⚠️ **截图坑: 全屏缩略截图里暗色弹层窗口会显示成亮底**(截图管线对弹层窗口的合成/缩放问题), 区域放大看才是真实效果 —— 弹层类组件的暗色判断一律以 zoom/像素测量为准, 不要凭全屏缩略图下结论。
-    - ⚠️ **别给弹出菜单手动校正位置**: `XMenu_Popup` 是**阻塞**的(菜单关闭后才返回), 且 `Menu_PopupWnd` 事件对每个弹窗触发一次。两条死路: ① 在 PopupWnd 回调里 `SetWindowPos` 移动顶级弹窗 → 子菜单锚点失效, 二级菜单弹到父菜单**原点**盖住父菜单; ② 等 `Popup` 返回后再校正 → 弹窗已销毁, `XWnd_GetHWND` 报「输入句柄可能无效」。结论: 初始锚点给对(元素矩形换算), 其余(顶部放不下翻到上方、左右夹紧、子菜单贴父菜单右侧行对齐)原生全包, **不要动**。(补充: PopupWnd 里的 `SetRect` 四周对称外扩**不影响**子菜单锚点, 阴影路线依赖它; 但单独的 `SetWindowPos` 位移会直接崩进程, 见 64。)
+    - ⚠️ **菜单落位只能走 PopupWnd 回调里的 `SetRect`, 不能 `SetWindowPos`、也不能等 `Popup` 返回**: `XMenu_Popup` 是**阻塞**的(菜单关闭后才返回), 返回后再校正已拿到销毁的句柄(`XWnd_GetHWND` 报「输入句柄可能无效」); `SetWindowPos` 位移会直接崩进程(见 64)。历史结论"PopupWnd 里只能做对称外扩、不能动位置"已被探针修正: `SetRect` 做**任意落位**(单位逻辑像素)是安全的 —— 子菜单锚定父窗实际矩形会跟着走、命中判定跟随、大位移(上千像素)不崩, 副屏错位正是靠它修的(见 132)。
 
 64. **菜单弹窗转阴影窗 + 进场动画的一批实测结论**(`ui/menu.go`):
     - **阴影弹窗 = 官方 DrawMenu 示例同款三步**: `SetTransparentType(Window_Transparent_Shadow)` → `SetShadowInfo(nSize, nDepth, nAngeleSize=RadiusLg, false, 黑/128)` → `SetRect` 窗口矩形四周外扩 nSize(逻辑像素, 客户区会收缩出同尺寸阴影带, 必须外扩补偿, Body 才回到原生给定的菜单位置)。nAngeleSize 一次把圆角(逐像素 alpha, 无区域裁剪锯齿)和投影都做了。**参数对齐 shadcn shadow-md**(0 4px 6px -1px black/10%): nSize=5(官方示例的 8 比shadow-md 大一圈)、nDepth=50(阴影引擎边缘浓度≈depth/1000, 50 时白底上边缘约 5%, 与 shadow-md 侧缘观感一致; DLL 阴影是均匀环带, 做不出 shadow-md 上 2px/下 10px 的不对称);
@@ -641,7 +641,7 @@ ui/
     - **整窗 alpha 淡入技术上可用, 但菜单不用它做进场**(见 99): 阴影窗是透明类型, `XWnd_SetTransparentAlpha` 有效 —— 第八节 47 条 5 "native 弹层做不了淡入"的结论只适用于**非透明类型**弹窗(menu/combobox 的下拉窗默认不是 WS_EX_LAYERED, `GetLayeredWindowAttributes` 直接失败), **转 Shadow 后可淡入**; 依然遵守"alpha 永远不能精确 = 0"(47), 需要时进场前压到 `xui.AlphaFloor`。⚠️ 但菜单弹层用它会让 popover 底色一起半透明、底下的页面文字在过渡中透上来; 改成"面板不透明 + 只淡内容"又会先出一帧空白面板 —— 两条路都闪, 菜单最终**不做进场动画**(见 99);
     - ⚠️ **过渡闭包绝对不能捕获事件结构体指针**: `Menu_PopupWnd_` 是原生栈对象, 回调返回后被复用/清空 —— Presence 的 apply 帧里再解引用, 读到 0(淡入永远不动, 弹窗 alpha 卡在下限"隐形")或垃圾值(拿无效句柄调 X API → **整个进程静默崩溃**)。必须先把 `hw := pInfo.HWindow` **拷贝值**再进闭包;
     - ⚠️ **apply 每帧要 `XC_IsHXCGUI(hw, XC_WINDOW)` 守卫**: 菜单可能在过渡途中被关闭(弹窗随之销毁), 官方 DrawMenu 示例在 KillFocus 里同款用法;
-    - ⚠️ **对菜单弹窗做 `SetWindowPos` 位移会直接崩进程**(`SWP_NOSIZE|NOZORDER|NOACTIVATE` 也不行, 进场那一瞬移 8px 就崩; `SetRect` 对称外扩没事) → radix 的 slide-in-from-top-2 与 zoom-in-95 **都不可实现**, 进场动画整体放弃(见 99);
+    - ⚠️ **对菜单弹窗做 `SetWindowPos` 位移会直接崩进程**(`SWP_NOSIZE|NOZORDER|NOACTIVATE` 也不行, 进场那一瞬移 8px 就崩; `SetRect` 外扩或一次性落位校正没事, 见 132) → radix 的 slide-in-from-top-2 与 zoom-in-95 **都不可实现**, 进场动画整体放弃(见 99);
     - 像素表现(144 DPI): 条目高亮距弹层左右边缘各 6 物理像素 = 4 逻辑(= p-1, 左右对称); 分隔栏全宽;体色暗色 (23,23,23); 阴影带梯度柔和无黑边;
     - **菜单弹窗的绘制坐标系**(色块标定实验实测): `Menu_DrawBackground/DrawItem` 的绘制上下文**原点 = 弹窗窗口左上角(逻辑像素)**; `XWnd_GetClientRect` 返回的 {8,8,168,276} 就是阴影窗 Body(可见白区)在窗口内的矩形(= 窗口矩形 ± 阴影带) —— fill/ring 都画在它上面即可; **画进 Body 之外(阴影带里)的任何像素都会被阴影 alpha 蒙版压暗至不可见**(opaque 色块画进带里直接"消失"); ring 画在 Body 矩形边界上(线宽外半被蒙版裁掉), 肉眼就是一条贴着窗口边缘的线, 圆角用 RadiusLg 与 Body 一致, 四角才不脱开 —— ring 若内缩或半径不匹配, 视觉上就是"矩形线条浮在弹层里不贴边"。
     - **子菜单悬停延迟 ~330ms 是 xcgui DLL 固化的**(纯净菜单探针实测同值 324ms): 与系统 MenuShowDelay 无关(SPI 置 0 复测仍 343ms), 无配置 API, VK_RIGHT / SendInput 真实点击 / PostMessage 鼠标消息都无法提前触发。xui 侧已把自己那 100ms 进场动画整个去掉(顶级菜单与子菜单都即时全内容, 见 99)。要达到 shadcn 的即时展开只能改 DLL 或等作者提供 API。
@@ -1459,10 +1459,10 @@ ui/
     - **根因**: Label 的载体是原生 Button, 文本区有内部左右内边距; `TextWidth` 只量字形宽度, 不含这段内边距。
     - **修法**: 需要"按文字精确宽度"的小元素不要用 Label, 用透明 Element + `Painter.Text` 自绘(Breadcrumb 即此做法); 必须用 Label 时给量测宽加余量(实测再加 8 逻辑像素即可)。
 
-106. **连续动画: 共享宿主窗口定时器 + 局部矩形重绘 + 前台暂停**(`anim.go`, Spinner/Skeleton, CPU/GPU 实测):
+106. **连续动画: 共享宿主窗口定时器 + 局部矩形重绘 + 只在看不见时停表**(`anim.go`, Spinner/Skeleton, CPU/GPU 实测):
     - **现象**: 首页放 5 个 Spinner + 4 个 Skeleton 后卡顿、DWM 持续占 10%+ GPU; 切走页签/最小化/滚出视口后仍不回落。
     - **根因**: ① 每个动画元素各起一个 60fps 的 `XEle_SetXCTimer`, N 个动画 = N 份定时器回调; ② 逐元素 `XEle_Redraw` 每次都会触达窗口合成, 多个元素比"一次局部重绘"更贵; ③ DWM 对**每帧整窗重新合成**收费, 大窗口 60fps 的连续动画即使应用侧只花 0.5% GPU, DWM 也会占 10%+(窗口样式/阴影不是主因, 普通窗与阴影窗几乎一样); ④ 页签隐藏后元素自身的 Show 标志不一定是 false, 定时器继续空转。
-    - **修法**: `Spin` / `Pulse` 传元素句柄时, 定时器挂到**宿主窗口**(`XWidget_GetHWND` + `XC_hWindowFromHWND`), 键 = 元素句柄(Spin/Pulse 用最低位区分), 同一窗口的所有动画共用一个定时器; 连续动画保持 60fps(试过 30fps: DWM 仍然 ~10%, 只是旋转变卡, 已回退); 每帧用 `XEle_GetWndClientRect`(已含 ScrollArea 滚动偏移, 实测滚 1200 后 y 1500→300)算出动画元素矩形, 外扩后相近/重叠的合并成组, 每组一次 `XWnd_RedrawRect`(超过 4 组退回总并集 —— 多次局部重绘每次都有固定合成成本, 实测 9 块 11.5%, 1 块 7.5%); 每 tick 沿祖先链 `XWidget_IsShow`、窗口 `IsWindowVisible/IsIconic` 与视口矩形相交检查可见性, 隐藏/滚出视口的动画摘掉并停表; 宿主窗口不在前台时**只跳过重绘、保留定时器与相位**, 切回前台下一帧自动恢复(不能清表, 否则没有重绘事件就不会重启)。
+    - **修法**: `Spin` / `Pulse` 传元素句柄时, 定时器挂到**宿主窗口**(`XWidget_GetHWND` + `XC_hWindowFromHWND`), 键 = 元素句柄(Spin/Pulse 用最低位区分), 同一窗口的所有动画共用一个定时器; 连续动画保持 60fps(试过 30fps: DWM 仍然 ~10%, 只是旋转变卡, 已回退); 每帧用 `XEle_GetWndClientRect`(已含 ScrollArea 滚动偏移, 实测滚 1200 后 y 1500→300)算出动画元素矩形, 外扩后相近/重叠的合并成组, 每组一次 `XWnd_RedrawRect`(超过 4 组退回总并集 —— 多次局部重绘每次都有固定合成成本, 实测 9 块 11.5%, 1 块 7.5%); 每 tick 沿祖先链 `XWidget_IsShow`、窗口 `IsWindowVisible/IsIconic` 与视口矩形相交检查可见性, 隐藏/最小化/滚出视口的动画摘掉并停表。**失焦不暂停**: 曾按"非前台只跳过重绘、保留定时器与相位"做过前台暂停(省 DWM), 但在多显示器下窗口可见只是没焦点(放在副屏、用户在主屏操作)时加载圈会冻在半空, 被当成"卡死" —— 现在只要可见就照常 60fps, 开销与前台一致(单窗口动画 app GPU ≈0.5%、DWM ≈10~14%)。
     - **验收**: 2560×1528 前台动画: app CPU ≈0.5s/3s、app GPU ≈0.5%, DWM ≈10~14%(平台合成最大化窗口的固有成本; 30fps 实测仍在 ~10%, 降帧没有意义); 后台/最小化/滚出视口时 DWM ≈0.03%、app GPU 0; 切回前台 Spinner/Skeleton 自动恢复。不要再用"降帧率"换 DWM, 那只损失流畅度。
 
 
@@ -1609,6 +1609,19 @@ ui/
     - **原生弹层**: `XMenu_Popup` 的菜单窗与 ComboBox 的下拉窗是**宿主拥有的 popup 窗口**, 实测在 TOPMOST 宿主上仍显示在宿主之上(下拉定位用 `SWP_NOZORDER` 也不影响) —— 不要给它们强加 TOPMOST。
     - **窗口内覆盖元素**: Dialog / Sheet / Drawer / AlertDialog / Toast 都是宿主窗口的子元素, 不涉及独立窗口 z 序, 置顶宿主下不受影响。
 
+132. **原生 `XMenu_Popup` 在副屏(显示器原点非 0,0)上把"显示器矩形 × DPI"当边界钳制, 弹层严重错位; 落位要在 Popup_Wnd 回调里用 `SetRect` 自己算**(`ui/menu.go` 的 `menuPopupBody`, 三块屏探针实测):
+    - **现象**: 窗口放在主屏右上方的副屏(矩形 y 为负)时, 下拉菜单弹到触发区的右上方几百像素外; 同一触发区在主屏上正常。
+    - **根因(数值实锤)**: `XMenu_Popup` 收到物理锚点后, 会把它夹进"显示器**物理**矩形再乘 DPI 比例"得到的边界里 —— 150% 缩放下副屏左缘 2570 被当成 3855、上缘 857 被当成 1286。探针(窗口 2600,-500, 触发区物理 x=2618): 期望弹窗 x=2618, 实际 3855(=2570×1.5); 换 x=3018 仍是 3855(**钳制特征**: 输入怎么变都吸到同一值); x=4618 超过钳制线 → 正确 4619。右下副屏(正 y)同理: 期望 (2618,1024) → 实际 (3840,1286) = (2560×1.5, 857×1.5)。y 在钳制线以内时不受影响。主屏原点 (0,0) 乘 1.5 仍是 0, 所以只有副屏暴露; 反过来主屏上边界被放大到 1.5 倍, 贴屏幕右/下边的弹层会溢出也不夹。
+    - **修法**: 顶级菜单(含右键菜单)的最终落位不再信原生 —— `Menu_PopupWnd` 回调里按锚点(物理)重算 Body 左上角: 默认贴锚点下边+4, 放不下翻到锚点上方(弹层下边 = 锚点上边 − 4, radix 的 side 翻转), 再夹进宿主窗口所在显示器的**工作区**(`xui.MonitorWorkArea`); 用 `SetRect` 落地(单位是逻辑像素, 窗口矩形连同阴影带一起写), 子菜单不重算。
+    - **为什么这样安全(探针验证)**: ① `SetRect` 大位移(1237px)不崩, 与阴影带外扩同一条路径; 崩的是 `SetWindowPos`, 别混用(见 64)。② 子菜单锚定父菜单**实际矩形**: 父窗挪到 (2819,-235) 后, 子菜单跟随到 (2973,-232)(= 父右缘 +1), 与不挪时行为一致。③ 命中判定跟随窗口: 挪过的菜单里悬停条目能展开子菜单、点击条目能关闭。④ 位置/夹取/上翻数值实测(150%): 副屏工作区 (2570,-743,5130,857), 锚点 (2870,-443) → Body (2870,-435)(= 锚点 +4 + 取整); 锚点 (5070,-343) → x 夹到 4867(= 5130 − 264 − band); 锚点 (2870,827) → 上翻到 683(= 827 − 4×1.5 − 138); 主屏 (0,0,2560,1528) 三组同样精确。中段位置的落位与原生的 ±1~2px 噪声一致, 主屏观感不变。
+    - **注意**: 工作区取的是**宿主窗口**所在显示器 —— 窗口横跨两块屏(病态布局)时锚点可能在另一块屏上, 此时夹取会按窗口占多数的那块算; 事件结构体 `pInfo` 里的 `HWindow` 是弹窗 xcgui 句柄, 记得 `xc.XWnd_GetHWND` 换 Win32 句柄再查显示器。
+
+133. **"上方放不下就翻到下方"的判断不能拿虚拟屏原点 (0,0) 当边界**(`ui/tooltip.go`, 负坐标副屏上 ToolTip 恒朝下):
+    - **现象**: 窗口放在主屏正上方的副屏(y 为负)上, 标题栏按钮明明上面还有空间, ToolTip 却翻到下方压住页面内容; 主屏上正常。
+    - **根因**: 翻转条件是 `y = 元素上边 − 气泡高; if y < 0 { 翻到下方 }` —— 副屏上元素的屏幕 y 本身是负的, 这个条件恒成立。
+    - **修法**: 翻转与左右夹紧一律按**窗口所在显示器的工作区**(`xui.MonitorWorkArea`, 物理 → 除以 DPI 比例换成逻辑)判断: 上方放不下且下方放得下才翻; 最后把气泡夹进工作区(顺带扣掉任务栏)。取不到显示器信息时退回原"以 0 为界"的兜底。
+    - **连带**: 该助手原先只在 `popup.go`(弹层底座)里, ToolTip / Menu 引用它时, copy-not-install 的**逐文件安装闭包**会缺文件 —— 已上移到运行时 `monitor.go` 的 `xui.MonitorWorkArea`(组件都依赖模块运行时, 不用改 registry)。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1624,6 +1637,7 @@ ui/
 - `svg.NewByString / SetUserFillColor / SetUserStrokeColor / SetSize`
 - `ani.NewAnima / AnimaGroup`、`ease` 缓动
 - `XWnd_Redraw / XWnd_GetDPI`、`XC_EnableAutoDPI / XC_EnableDPI`
+- 显示器工作区(弹层/提示的翻转与夹取): `xui.MonitorWorkArea(hWnd uintptr) (xc.RECT, bool)`(物理像素、已扣任务栏; 必须传 Win32 HWND, 见 74/132/133);`xui` 运行时里, 组件文件不单独携带
 - LayoutEle:`EnableLayout / IsEnableLayout / EnableHorizon / EnableAutoWrap / EnableOverflowHide / SetAlignH(V) / SetSpace / SetSpaceRow / ShowLayoutFrame / GetWidthIn(HeightIn)`、`xc.XWidget_LayoutItem_SetWidth/Height/SetMargin/SetMinSize`、`xc.XWidget_LayoutItem_GetWidth/Height/GetMargin`、尺寸类型 `xcc.Layout_Size_{Fixed,Fill,Auto,Weight,Percent,Disable}` 与对齐 `xcc.Layout_Align_*`(语义与"Fill≠剩余空间 / Weight 需父级确定尺寸"见第八节 29/41/55;Go 包装无 AdjustLayout, 用 `XEle_AdjustLayout`);`EnableLayout/EnableHorizon/EnableAutoWrap` **只有 LayoutEle 与窗口有**(普通 Element 只能当布局项);**负外边距可用**(竖向按钮组消 1px 按压缝, 见 86)
 - `xc.XWidget_LayoutItem_SetPosition(h, l, t, r, b)`(布局项置位置 = 四边 inset 钉住, 让绝对定位浮层扛住窗口级布局趟; 语义与坑见第八节 128)
 - 按钮组(见第八节 86): `xc.XDraw_FillRoundRectEx/DrawRoundRectEx`(四角独立半径)、`xc.XEle_SetUserData/GetUserData`(组件角色标记)、`XWidget_GetParentEle` + `XEle_GetChildByIndex/GetChildCount`(首尾判定)、`XEle_GetHeight`(按按钮视觉高定文本/分隔条高度)

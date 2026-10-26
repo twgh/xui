@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"math"
+
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
@@ -194,28 +196,55 @@ func (t *Tooltip) show(hEle int) {
 
 	// 窗口整高 = 气泡 + 箭头, 箭头恰好填满这段间距, 所以窗口边缘要贴住元素边缘
 	// (不再额外加间距, 否则箭头尖端会悬在半空, 看起来"提示框飘得太高")。
-	x := sx + ex/2 - ww/2
-	y := sy - wh
-	t.below = false
-	if y < 0 { // 上方放不下 -> 翻到下方
-		y = sy + ey
-		t.below = true
-	}
-	if sw := screenWidth(hWnd); x+ww > sw {
-		x = sw - ww
-	}
-	if x < 0 {
-		x = 0
-	}
-
-	xc.XEle_SetRect(t.ele.Handle, &xc.RECT{Left: 0, Top: 0, Right: ww, Bottom: wh}, false, xcc.AdjustLayout_No)
-	// 注意: XWnd_SetWindowPos 直接透传给 Win32, 用的是物理像素(框架内部坐标是逻辑像素,
-	// 窗口创建时由框架按 DPI 缩放), 所以这里要自己乘 DPI 比例, 否则窗口会跑到 1/scale 处。
+	//
+	// 翻转与夹紧按**窗口所在显示器的工作区**算, 不能拿 0 当屏幕顶: 副屏原点非 0
+	// (显示器摆在主屏正上方时 y 是负的)时 "y < 0" 恒成立, 上方明明有空间也会把
+	// 气泡翻到下方。工作区还顺带扣掉了任务栏。
 	dpi := xc.XWnd_GetDPI(hWnd)
 	if dpi <= 0 {
 		dpi = 96
 	}
 	scale := float64(dpi) / 96
+	x := sx + ex/2 - ww/2
+	y := sy - wh
+	t.below = false
+	if wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
+		waL := int32(math.Round(float64(wa.Left) / scale))
+		waT := int32(math.Round(float64(wa.Top) / scale))
+		waR := int32(math.Round(float64(wa.Right) / scale))
+		waB := int32(math.Round(float64(wa.Bottom) / scale))
+		if y < waT && sy+ey+wh <= waB { // 上方放不下且下方放得下 -> 翻到下方
+			y = sy + ey
+			t.below = true
+		}
+		if y+wh > waB {
+			y = waB - wh
+		}
+		if y < waT {
+			y = waT
+		}
+		if x+ww > waR {
+			x = waR - ww
+		}
+		if x < waL {
+			x = waL
+		}
+	} else { // 取不到显示器信息: 退回以虚拟屏原点为界的旧行为
+		if y < 0 {
+			y = sy + ey
+			t.below = true
+		}
+		if sw := screenWidth(hWnd); x+ww > sw {
+			x = sw - ww
+		}
+		if x < 0 {
+			x = 0
+		}
+	}
+
+	xc.XEle_SetRect(t.ele.Handle, &xc.RECT{Left: 0, Top: 0, Right: ww, Bottom: wh}, false, xcc.AdjustLayout_No)
+	// 注意: XWnd_SetWindowPos 直接透传给 Win32, 用的是物理像素(框架内部坐标是逻辑像素,
+	// 窗口创建时由框架按 DPI 缩放), 所以这里要自己乘 DPI 比例, 否则窗口会跑到 1/scale 处。
 	px := int32(float64(x) * scale)
 	py := int32(float64(y) * scale)
 	fresh := !t.shown

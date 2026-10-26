@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"strings"
 
 	"github.com/twgh/xcgui/common"
@@ -65,8 +66,10 @@ type Menu struct {
 	nextID int32
 	parent int32 // Sub() 构建期间的父项 ID
 
-	// 弹出锚点(物理屏幕像素); 翻转/夹紧由原生菜单自带, 不需也不应手动校正
-	ax, yBelow int32
+	// 弹出锚点(物理屏幕像素): 触发元素矩形(右键菜单 = 光标点)。
+	// 弹层位置以它为准, 在 Popup_Wnd 回调里统一校正(原生定位在副屏上会错,
+	// 见 menuPopupBody)。
+	anchor xc.RECT
 	// 触发元素宽(逻辑像素, PopupAtElement 记录; 0 = 无触发元素, 如右键菜单),
 	// 用于弹层宽对齐触发区(shadcn 的 w-(--trigger-width) min-w-32)。
 	triggerW int32
@@ -151,9 +154,12 @@ func (m *Menu) PopupAtElement(hEle int) {
 	if !wapi.GetWindowRect(xc.XWnd_GetHWND(hw), &mrc) {
 		return
 	}
-	const sideOffset = 4
-	m.ax = mrc.Left + int32(float64(trig.Left)*sc)
-	m.yBelow = mrc.Top + int32(float64(trig.Bottom)*sc) + int32(sideOffset*sc)
+	m.anchor = xc.RECT{
+		Left:   mrc.Left + int32(float64(trig.Left)*sc),
+		Top:    mrc.Top + int32(float64(trig.Top)*sc),
+		Right:  mrc.Left + int32(float64(trig.Right)*sc),
+		Bottom: mrc.Top + int32(float64(trig.Bottom)*sc),
+	}
 	m.triggerW = trig.Right - trig.Left // 逻辑像素(XEle_GetWndClientRect 未缩放)
 	m.popup(hw)
 }
@@ -166,10 +172,14 @@ func (m *Menu) PopupAtCursor(hWindow int) {
 	}
 	var pt wapi.POINT
 	wapi.GetCursorPos(&pt)
-	m.ax, m.yBelow = pt.X, pt.Y
+	m.anchor = xc.RECT{Left: pt.X, Top: pt.Y, Right: pt.X, Bottom: pt.Y}
 	m.triggerW = 0 // 右键菜单无触发区, 弹层宽退化为内容自适应 + min-w-32 下限
 	m.popup(hWindow)
 }
+
+// menuSideOffset 是弹层与锚点的间距(radix DropdownMenuContent 的 sideOffset=4,
+// 逻辑像素)。
+const menuSideOffset int32 = 4
 
 // menuMinWidth 是 shadcn DropdownMenuContent 的 min-w-32(8rem = 128 逻辑像素)。
 const menuMinWidth int32 = 128
@@ -305,14 +315,16 @@ func (c *ContextMenu) handleRightUp(hWindow int, pPt *xc.POINT, pbHandled *bool)
 
 func (m *Menu) popup(hWindow int) {
 	m.m = m.build(hWindow)
-	// 初始位置即锚点(元素矩形是精确的)。
-	// ⚠️ 不要在这里做任何位置校正: XMenu_Popup 是阻塞的(菜单关闭后才返回),
-	// 校正会拿到已销毁的弹窗句柄(报「输入句柄可能无效」)。
-	// Menu_PopupWnd 回调里的窗口矩形四周外扩(阴影带补偿)是官方 DrawMenu 示例
-	// 同款模式, 探针实测不影响子菜单锚点; 但"把弹窗挪去别的位置"这类校正
-	// 仍然不要做(历史踩坑: 二级菜单弹到父菜单原点盖住它, 且单独的位移会崩进程)。
-	// 翻转/夹紧/子菜单定位原生自带, 锚点给对即可。
-	m.m.Popup(xc.XWnd_GetHWND(hWindow), m.ax, m.yBelow, 0, xcc.Menu_Popup_Position_Left_Top)
+	// 传给原生的锚点只决定它的初始落位; 最终位置在 Menu_PopupWnd 回调里统一校正
+	// (原生在副屏上会错位, 见 menuPopupBody)。这里不要做任何事后校正: XMenu_Popup
+	// 是阻塞的、返回时弹窗已销毁, 那时再碰句柄会报「输入句柄可能无效」。
+	dpi := xc.XWnd_GetDPI(hWindow)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	gap := int32(math.Round(float64(menuSideOffset) * float64(dpi) / 96))
+	m.m.Popup(xc.XWnd_GetHWND(hWindow), m.anchor.Left, m.anchor.Bottom+gap, 0,
+		xcc.Menu_Popup_Position_Left_Top)
 }
 
 // build 创建原生菜单并同步条目。
@@ -374,8 +386,10 @@ func (m *Menu) build(hWindow int) *widget.Menu {
 // ⚠️ 不能留自然宽: 原生菜单按它自己的字体量文本, 与自绘的 14px 字体不一致 ——
 // 长文本会按较窄的原生宽度撑弹层, 自绘时尾部被裁掉(探针截图实测)。
 // 这里统一用 xui.TextWidth(自绘同字体)算"文本区宽":
-//   宽 = 前置保留(inset/图标 22) + 文字 + 快捷键(12 间隔 + 小字宽)
-//        + 右侧保留(Check/Radio/Sub 恒 24, 对齐 shadcn pr-8)。
+//
+//	宽 = 前置保留(inset/图标 22) + 文字 + 快捷键(12 间隔 + 小字宽)
+//	     + 右侧保留(Check/Radio/Sub 恒 24, 对齐 shadcn pr-8)。
+//
 // 弹窗宽 = max(条目宽)+48, 条目盒内的文本区比该值再多 28px 余量(见 48 的构成),
 // 因此按此公式算出的宽足以容纳自绘内容。
 func (m *Menu) applyItemWidths(menu *widget.Menu) {
@@ -497,14 +511,58 @@ const menuShadowSizeSub int32 = 8
 // (阴影引擎在白底上的边缘浓度约 depth/1000)。
 const menuShadowDepth int32 = 50
 
-// menuOnPopupWnd 弹窗出现: 转阴影弹窗(圆角 + 投影)并把窗口矩形四周外扩补回阴影带。
-// 菜单与子菜单都即时全内容出现, 这里不做进场动画(原因见函数末尾说明与 DESIGN 99)。
-// 窗口矩形外扩在本回调里做(官方 DrawMenu 示例同款), 探针实测子菜单锚点不受影响。
+// menuPopupBody 计算顶级菜单弹窗 Body(可见卡片)的左上角(逻辑像素):
+// 以菜单锚点(物理)为基准 —— 默认贴锚点下边、左缘对齐(radix align=start、
+// sideOffset=4), 下方放不下翻到锚点上方, 最后夹进宿主窗口所在显示器的**工作区**。
 //
-// ⚠️ 不要给菜单弹窗做位移: 对菜单弹窗做 SetWindowPos 移动
+// 为什么必须自己算: 原生 XMenu_Popup 在副屏(显示器原点非 0,0)上会拿
+// "显示器矩形 × DPI"当边界做钳制 —— 150% 缩放下显示器左缘 2570 被当成 3855,
+// 锚点落在钳制线左侧的弹窗被强行推到 3855(实测 1237px 级偏移, 位置输入怎么给
+// 都绕不过: 给多少都钳到同值); 反过来在主屏上边界被放大到 1.5 倍, 贴屏幕
+// 右/下边的弹层会溢出屏幕也不夹。翻到上方用 radix 的 side 翻转语义
+// (弹层下边 = 锚点上边 − sideOffset)。
+func menuPopupBody(hWindow int, mw *window.Window, m *Menu, rc xc.RECT) (int32, int32) {
+	wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWindow))
+	if !ok {
+		return rc.Left, rc.Top // 取不到显示器信息: 保持原生落位
+	}
+	dpi := xc.XWnd_GetDPI(mw.Handle)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
+	bw := int32(math.Round(float64(rc.Right-rc.Left) * sc)) // Body 物理宽(GetRectEx 是逻辑尺寸)
+	bh := int32(math.Round(float64(rc.Bottom-rc.Top) * sc))
+	gap := int32(math.Round(float64(menuSideOffset) * sc))
+	x, y := m.anchor.Left, m.anchor.Bottom+gap
+	if y+bh > wa.Bottom && m.anchor.Top-gap-bh >= wa.Top {
+		y = m.anchor.Top - gap - bh
+	}
+	if y+bh > wa.Bottom {
+		y = wa.Bottom - bh
+	}
+	if y < wa.Top {
+		y = wa.Top
+	}
+	if x+bw > wa.Right {
+		x = wa.Right - bw
+	}
+	if x < wa.Left {
+		x = wa.Left
+	}
+	return int32(math.Round(float64(x) / sc)), int32(math.Round(float64(y) / sc))
+}
+
+// menuOnPopupWnd 弹窗出现: 转阴影弹窗(圆角 + 投影)、把窗口矩形四周外扩补回阴影带,
+// 并**重新落位**: 顶级弹窗以锚点为准重算位置(见 menuPopupBody), 子菜单沿用原生
+// 锚定(它锚在父菜单"实际矩形"上, 父菜单被挪后子菜单自然跟随, 探针验证)。
+// 菜单与子菜单都即时全内容出现, 这里不做进场动画(原因见函数末尾说明与 DESIGN 99)。
+//
+// ⚠️ 挪窗只能用 SetRect(本回调里做, 官方 DrawMenu 示例的阴影带外扩同款路径,
+// 大位移安全、命中判定跟随 —— 探针验证); 对菜单弹窗做 SetWindowPos 移动
 // (哪怕只在进场那一瞬、SWP_NOSIZE|NOZORDER|NOACTIVATE)会让 demo 直接崩溃
-// (DLL 内部访问违例, 静默退出; 官方示例的 SetRect 外扩没事, 单独的"移动"不行,
-// 探针+demo 双向验证)。radix 的 slide-in-from-* 与 zoom-in-95 因此都不可实现。
+// (DLL 内部访问违例, 静默退出; 探针+demo 双向验证)。radix 的
+// slide-in-from-* 与 zoom-in-95 因此都不可实现。
 func menuOnPopupWnd(hWindow, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *bool) int {
 	if pInfo == nil || pInfo.HWindow <= 0 {
 		return 0
@@ -525,13 +583,20 @@ func menuOnPopupWnd(hWindow, hMenu int, pInfo *xc.Menu_PopupWnd_, pbHandled *boo
 	mw.SetTransparentType(xcc.Window_Transparent_Shadow)
 	mw.SetShadowInfo(band, menuShadowDepth, t.RadiusLg(), false, xc.RGBA(0, 0, 0, 128))
 	mw.SetTransparentAlpha(255)
-	// 客户区已收缩出阴影带: 窗口矩形四周外扩同尺寸, Body 对齐原生给定的菜单位置。
+	// 客户区已收缩出阴影带: 窗口矩形四周外扩同尺寸, Body 对齐菜单内容区位置。
+	// 顶级弹窗的位置先按锚点重算(native 给的落位在副屏上不可信), 子菜单不重算。
 	rc := mw.GetRectEx()
+	left, top := rc.Left, rc.Top
+	if pInfo.NParentID == 0 {
+		if m := menuSkin.active; m != nil {
+			left, top = menuPopupBody(hWindow, mw, m, rc)
+		}
+	}
 	mw.SetRect(&xc.RECT{
-		Left:   rc.Left - band,
-		Top:    rc.Top - band,
-		Right:  rc.Right + band,
-		Bottom: rc.Bottom + band,
+		Left:   left - band,
+		Top:    top - band,
+		Right:  left + (rc.Right - rc.Left) + band,
+		Bottom: top + (rc.Bottom - rc.Top) + band,
 	})
 
 	// 进场**不做任何淡入**(录屏实测后的结论):

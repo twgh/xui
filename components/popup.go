@@ -12,34 +12,6 @@ import (
 	"github.com/twgh/xui"
 )
 
-// monitorWorkArea 返回窗口所在显示器的工作区(物理像素); 取不到时 ok=false。
-//
-// 用工作区而不是整屏: 工作区已经扣掉任务栏 / 停靠栏。弹层夹在整屏高度里时, 只要触发区
-// 靠近屏幕底部(例如页面已滚到底), 卡片下半截就会被任务栏盖住 —— 任务栏永远在最上层,
-// 弹层是 topmost 也盖不过它。
-//
-// ⚠️ hWnd 必须是 **Win32 HWND**(xc.XWnd_GetHWND 转出来的), 不能喂 xcgui 的窗口句柄:
-// MonitorFromWindow 对无效句柄返回 0, 调用方会静默退回"整屏"兜底分支, 任务栏又会盖上来。
-func monitorWorkArea(hWnd uintptr) (xc.RECT, bool) {
-	hMon := wapi.MonitorFromWindow(hWnd, wapi.MONITOR_DEFAULTTONEAREST)
-	if hMon == 0 { // 句柄无效时退回桌面窗口: 至少仍是"工作区", 不会漏掉任务栏
-		hMon = wapi.MonitorFromWindow(wapi.GetDesktopWindow(), wapi.MONITOR_DEFAULTTONEAREST)
-	}
-	if hMon == 0 {
-		return xc.RECT{}, false
-	}
-	var mi wapi.MONITORINFO
-	if !wapi.GetMonitorInfo(hMon, &mi) {
-		return xc.RECT{}, false
-	}
-	return xc.RECT{
-		Left:   mi.RcWork.Left,
-		Top:    mi.RcWork.Top,
-		Right:  mi.RcWork.Right,
-		Bottom: mi.RcWork.Bottom,
-	}, true
-}
-
 // PopoverSide 弹层相对触发区的方位, 对应 radix Popover 的 side。
 type PopoverSide int
 
@@ -81,7 +53,7 @@ func popupPosition(hTrigger int, w, h int32, side PopoverSide, align PopoverAlig
 	aB := wr.Top + rc.Bottom
 	x, y := popupPlaceIn(hTrigger, w, h, aL, aT, aR, aB, side, align, gap)
 
-	if wa, ok := monitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
+	if wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
 		waL := int32(float64(wa.Left)/sc + 0.5)
 		waT := int32(float64(wa.Top)/sc + 0.5)
 		waR := int32(float64(wa.Right)/sc + 0.5)
@@ -158,7 +130,7 @@ func popupCrossV(aT, aB, h int32, align PopoverAlign) int32 {
 // screenBottom/screenRight 返回触发区所在显示器的逻辑工作区边界(取不到时用整屏兜底)。
 func screenBottom(hTrigger int) int32 {
 	if hWnd := xc.XWidget_GetHWINDOW(hTrigger); hWnd > 0 {
-		if wa, ok := monitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
+		if wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
 			dpi := xc.XWnd_GetDPI(hWnd)
 			if dpi <= 0 {
 				dpi = 96
@@ -171,7 +143,7 @@ func screenBottom(hTrigger int) int32 {
 
 func screenRight(hTrigger int) int32 {
 	if hWnd := xc.XWidget_GetHWINDOW(hTrigger); hWnd > 0 {
-		if wa, ok := monitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
+		if wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
 			dpi := xc.XWnd_GetDPI(hWnd)
 			if dpi <= 0 {
 				dpi = 96
@@ -519,7 +491,7 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 
 	// 夹在**工作区**里(扣掉任务栏): 只用屏幕高度会把弹层下半截压到任务栏底下。
 	// 注意传 Win32 HWND(xcgui 句柄对 Win32 无效, 会让工作区查询静默失败)。
-	wa, hasWA := monitorWorkArea(xc.XWnd_GetHWND(hWnd))
+	wa, hasWA := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWnd))
 	if hasWA {
 		waL := int32(math.Round(float64(wa.Left) / sc))
 		waT := int32(math.Round(float64(wa.Top) / sc))
@@ -577,7 +549,7 @@ func (p *popoverPanel) ShowAt(hAnchor int, x, y int32) {
 		dpi = 96
 	}
 	sc := float64(dpi) / 96
-	wa, hasWA := monitorWorkArea(xc.XWnd_GetHWND(hWnd))
+	wa, hasWA := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWnd))
 	if hasWA {
 		waL := int32(math.Round(float64(wa.Left) / sc))
 		waT := int32(math.Round(float64(wa.Top) / sc))

@@ -268,22 +268,6 @@ func eleEffectivelyVisible(hEle int) bool {
 	return true
 }
 
-// animForeground 报告动画宿主窗口是否在前台。后台窗口不重绘连续动画
-// (DWM 合成整扇窗的成本与窗口面积/帧率成正比), 但保留定时器与相位, 切回前台
-// 后的下一帧自动恢复, 不需要额外的激活事件。
-func animForeground(hOwner int, spinEles []int) bool {
-	var hwnd uintptr
-	if xc.XC_IsHXCGUI(hOwner, xcc.XC_WINDOW) {
-		hwnd = xc.XWnd_GetHWND(hOwner)
-	} else if len(spinEles) > 0 {
-		hwnd = uintptr(xc.XWidget_GetHWND(spinEles[0]))
-	}
-	if hwnd == 0 {
-		return true
-	}
-	return hwnd == wapi.GetForegroundWindow()
-}
-
 // spinRedrawRects 把动画元素按窗口矩形分组(相近/重叠的合并), 每组只重绘一次。
 // 分散在不同卡片的动画不会拼成一个几乎整窗的大矩形; 组数过多时退回一个总并集,
 // 避免一帧内太多次立即重绘。
@@ -550,11 +534,12 @@ func hoverTick(hOwner int) {
 			spinEles = append(spinEles, it.hEle)
 		}
 	}
-	// 宿主窗口不在前台时只跳过重绘(定时器保留), 切回前台下一帧即恢复。
 	// 连续动画保持 60fps: 降到 30fps 对 DWM 的整窗合成成本几乎没有帮助,
 	// 反而让旋转明显变卡(实测 DWM 仍 ~10%), 见 DESIGN 第八节 106。
-	skipSpinFrame := spinActive && !itemsActive && len(applies) == 0 &&
-		!animForeground(hOwner, spinEles)
+	//
+	// **失焦不再暂停**: 窗口可见但不在前台(典型: 放在副屏、用户在主屏操作)时
+	// 照常转 —— 可见的加载圈冻住会被当成"卡死"。只在真正看不见时停表:
+	// 最小化/隐藏/滚出视口/祖先隐藏, 由 eleEffectivelyVisible 摘除(见上)。
 	if !active {
 		o.running = false
 		setHoverTimer(hOwner, false)
@@ -570,7 +555,7 @@ func hoverTick(hOwner int) {
 	// 内容, 要等下一次无关重绘才"突然变实"(弹层淡入停在半透明的根因)。
 	// 连续动画只重绘动画元素所在的矩形分组; 在场过渡/直接挂窗口的动画才整窗重绘。
 	// 逐个 XEle_Redraw 每次都会触达窗口合成, 多个元素反而更贵(见 DESIGN 第八节 106)。
-	if (active && !skipSpinFrame) || len(applies) > 0 {
+	if active || len(applies) > 0 {
 		switch {
 		case xc.XC_IsHELE(hOwner):
 			xc.XEle_Redraw(hOwner, true)
