@@ -259,6 +259,9 @@ func (c *Collapsible) expand() {
 	target := c.content.GetHeight()
 	if target <= 0 || c.duration <= 0 {
 		// 还没拿到宽度(隐藏页/首帧)或关闭了过渡: 直接展开, 交给布局自然长高。
+		// 同时把这个键的 presence 值抬到 1 —— 值停在 0(=不存在)的话, 之后第一次收起
+		// 就撞上"值已经在目标上、过渡不会跑"的幂等分支(见 startPresence)。
+		xui.Presence(c.presenceOwner(), c.presKey, true, 0, nil, nil)
 		c.relayout()
 		c.redrawNow()
 		return
@@ -289,8 +292,16 @@ func (c *Collapsible) collapse() {
 	c.startPresence(false)
 }
 
+// startPresence 播放高度过渡, 并把终态(恢复 Auto / 收起隐藏)落到 settle 里。
+//
+// Presence 是幂等的: 键上的值**已经等于目标值**时既不起过渡、也不会回调 done。折叠面板
+// 恰好会撞上这一条 —— 建页时页面还隐藏, expand 量到内容高度 0 就直接落 Auto, 这个键的值
+// 一直停在 0; 之后第一次收起请求的 target 也是 0 → 过渡不跑 → apply 把高度一步打成 0,
+// 而 done 永远不来: 内容没隐藏、**整窗也没重绘**, 屏幕上留的就是展开态的旧帧
+// (相邻文字往下移一格, 旧位置的像素没擦掉 = 重影/残影)。所以值已经在目标上时,
+// 终态与重绘要自己补一次(settle 是幂等的, 之后真回调到 done 也只是再落一次同样的状态)。
 func (c *Collapsible) startPresence(open bool) {
-	xui.Presence(c.presenceOwner(), c.presKey, open, c.duration, c.applyHeight, func(v float64) {
+	settle := func(float64) {
 		if open {
 			// 动画结束恢复 Auto: 之后内容再变高/变矮都跟随布局。
 			c.content.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
@@ -299,7 +310,11 @@ func (c *Collapsible) startPresence(open bool) {
 			c.applyClosed()
 		}
 		c.redrawNow()
-	})
+	}
+	v := xui.Presence(c.presenceOwner(), c.presKey, open, c.duration, c.applyHeight, settle)
+	if (open && v >= 1) || (!open && v <= 0) {
+		settle(v)
+	}
 }
 
 // presenceOwner 过渡的归属句柄: 取**宿主窗口**而不是根元素。
