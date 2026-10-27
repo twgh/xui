@@ -590,6 +590,7 @@ func (n *NavigationMenu) openItem(idx int, keyboard bool) {
 	}
 	if prevIt != nil {
 		n.setHoverLink(nil)
+		n.setKBLink(nil)
 	}
 	n.showOnly(it)
 	panelH := n.panelHeightFor(it)
@@ -774,7 +775,7 @@ func (n *NavigationMenu) ensurePanel() bool {
 	}
 	t := xui.Current()
 	p.paintRadius = t.RadiusMd()
-	p.paintBorder = t.Border
+	p.paintBorderSolid = true
 	content := p.LayoutContent(navContentPd, 0)
 	if content == nil {
 		p.Destroy()
@@ -994,6 +995,22 @@ func (n *NavigationMenu) linkFromStay(h int) *NavigationMenuLink {
 	return nil
 }
 
+// syncSwitchFocus 在"内容键盘模式"期间关掉**全部**顶级触发区的原生方向键焦点切换。
+//
+// DLL 的方向键换焦点是默认处理, 不看事件回调的 pbHandled: 内容高亮和触发区
+// 焦点会被同一次按键各推一步, 屏幕上就是两个焦点环一起切换(实测)。进入内容
+// 时禁用、退出(ESC/点击/切换菜单)时恢复; Tab 遍历不受影响(恢复发生在同一次
+// 按键的回调里, 原生 Tab 处理在其后)。只关"打开那一项"不够 —— 原生遍历从
+// 焦点所在元素出发, 焦点可能停在别的触发区上。
+func (n *NavigationMenu) syncSwitchFocus() {
+	for _, it := range n.items {
+		if it.btn == nil || !xc.XC_IsHXCGUI(it.btn.Handle, xcc.XC_ELE) {
+			continue
+		}
+		it.btn.EnableSwitchFocus(n.kbLink == nil)
+	}
+}
+
 // setHoverLink 更新指针悬停的链接并重绘(纯 Element 不会自动因 hover 重绘)。
 func (n *NavigationMenu) setHoverLink(l *NavigationMenuLink) {
 	if n.hoverLink == l {
@@ -1181,6 +1198,7 @@ func (n *NavigationMenu) setKBLink(l *NavigationMenuLink) {
 	if l != nil && xc.XC_IsHXCGUI(l.Handle, xcc.XC_ELE) {
 		l.Redraw(false)
 	}
+	n.syncSwitchFocus()
 }
 
 // suppressHoverOnOpenItem 让"指针还停在触发区上"的那一项不要在关闭后

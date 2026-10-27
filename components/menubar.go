@@ -560,7 +560,7 @@ func (v *menubarView) ensurePanel() {
 	}
 	t := xui.Current()
 	p.paintRadius = t.RadiusMd()
-	p.paintBorder = t.Border
+	p.paintBorderSolid = true
 
 	body := widget.NewElement(0, 0, 10, 10, p.Content())
 	if body == nil {
