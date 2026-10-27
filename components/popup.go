@@ -571,6 +571,93 @@ func (p *popoverPanel) ShowAt(hAnchor int, x, y int32) {
 	p.showAt(hAnchor, x, y)
 }
 
+// Relocate 在弹层**已经打开**时移动到新位置(尺寸变化用 resize)。
+// 共享视口这类"同一个弹层承载多个页面"的组件需要它: 切页时弹层不能收起重弹
+// (会重播进场动画/闪一帧), 只该把窗口挪到新的锚点。x/y 是卡片左上角的屏幕
+// 逻辑坐标, 与 ShowAt 同口径, 同样夹进显示器工作区。
+func (p *popoverPanel) Relocate(hAnchor int, x, y int32) {
+	if p == nil || !p.open || !p.alive() {
+		return
+	}
+	hWnd := xc.XWidget_GetHWINDOW(hAnchor)
+	if hWnd <= 0 {
+		return
+	}
+	dpi := xc.XWnd_GetDPI(hWnd)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
+	if wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
+		waL := int32(math.Round(float64(wa.Left) / sc))
+		waT := int32(math.Round(float64(wa.Top) / sc))
+		waR := int32(math.Round(float64(wa.Right) / sc))
+		waB := int32(math.Round(float64(wa.Bottom) / sc))
+		if y+p.ch > waB {
+			y = waB - p.ch
+		}
+		if y < waT {
+			y = waT
+		}
+		if x+p.cw > waR {
+			x = waR - p.cw
+		}
+		if x < waL {
+			x = waL
+		}
+	}
+	band := float64(popoverShadow)
+	wx := int32((float64(x)-band)*sc + 0.5)
+	wy := int32((float64(y)-band)*sc + 0.5)
+	p.win.SetWindowPos(xcc.HWND_TOPMOST, wx, wy, 0, 0,
+		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE)
+}
+
+// cursorInPanel 报告光标是否落在某个弹层**窗口**内(含四周的阴影带)。
+// 必须按窗口矩形算而不是卡片矩形: 阴影带虽然透明却仍属于弹层窗口, 光标走到那里
+// 时父面板已经收不到 MouseMove 了 —— 按卡片矩形判定会得出"两边都不在", 于是
+// 从父菜单移向子菜单的路上就把子菜单关掉。
+func cursorInPanel(p *popoverPanel) bool {
+	if p == nil || !p.alive() {
+		return false
+	}
+	var pt wapi.POINT
+	if !wapi.GetCursorPos(&pt) {
+		return false
+	}
+	dpi := xc.XWnd_GetDPI(p.win.Handle)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
+	cx := int32(math.Round(float64(pt.X) / sc))
+	cy := int32(math.Round(float64(pt.Y) / sc))
+	x, y := panelScreenPos(p)
+	x -= popoverShadow
+	y -= popoverShadow
+	w := p.cw + popoverShadow*2
+	h := p.ch + popoverShadow*2
+	return cx >= x && cx < x+w && cy >= y && cy < y+h
+}
+
+// panelScreenPos 返回弹层卡片(不含阴影带)左上角的屏幕逻辑坐标。
+func panelScreenPos(p *popoverPanel) (int32, int32) {
+	if p == nil || !p.alive() {
+		return 0, 0
+	}
+	var wr xc.RECT
+	if !wapi.GetWindowRect(p.win.GetHWND(), &wr) {
+		return 0, 0
+	}
+	dpi := xc.XWnd_GetDPI(p.win.Handle)
+	if dpi <= 0 {
+		dpi = 96
+	}
+	sc := float64(dpi) / 96
+	return int32(math.Round(float64(wr.Left)/sc)) + popoverShadow,
+		int32(math.Round(float64(wr.Top)/sc)) + popoverShadow
+}
+
 // showAt 是 Show/ShowAt 的公共落位与进场路径(x/y 已夹好, 逻辑像素)。
 func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	if p == nil || p.open || !p.alive() {

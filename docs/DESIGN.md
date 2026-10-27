@@ -270,6 +270,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Sheet | 复用 Dialog 覆盖层(模态栈/焦点陷阱/遮罩) | 面板贴边: 左右占满高、上下按内容撑开; 面板与其直接子元素整体平移做滑入(第八节 120), 遮罩 bg-black/50; 页脚按钮纵向铺满; 只画贴边侧 1px 边框 | sheet.tsx(radix-nova) |
 | Drawer | 复用 Sheet | 底部 max-h-80vh + 顶部抓手 + 上方圆角; 抓手按住捕获鼠标, 拖过面板高 1/3 关闭、否则回弹(第八节 121); 方向可改 top/left/right | drawer.tsx(vaul) |
 | Menubar | 自绘根条 + 每个菜单一个 popoverPanel + 自绘条目 Element | 原生 `XMenu_Popup` 阻塞、期间主窗口收不到鼠标移动, 无法做悬停切换, 因此弹层自绘条目(与 Menu 共用 menu_model.go 的条目模型); 打开后鼠标移到其它触发区即切换; ↑↓/Home/End/Enter/←→/ESC/Tab; 子菜单是第二个激活弹层, 父层 `keepOnBlur` 防止失焦关闭(第八节 122~125) | menubar.tsx(radix-nova) |
+| NavigationMenu | 自绘根列表 + **一个共享 popoverPanel(非激活)** | 所有菜单共用一个视口: 贴列表左下方、宽高随当前菜单内容变化, 切换时不重开窗口; 触发区/顶级链接是全自绘 Button; 内容页是 LayoutEle(链接行助手 `Link`/`LinkIn` + 任意控件); 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开(第八节 137 的轮询同时负责链接 hover 与收起判定) | navigation-menu.tsx(radix-nova) |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
@@ -304,6 +305,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **sheet**: 遮罩 bg-black/50; 面板 bg-background, 左右 h-full w-3/4 max-w-sm、上下 w-full h-auto, 贴边侧 1px border; 头部 p-4(gap-1.5)、页脚 p-4(gap-2) 按钮纵向铺满; 右上角关闭钮; 点遮罩/ESC/X 关闭, Tab 焦点陷阱同 Dialog; 进出场从贴边侧滑入/滑出 | sheet.tsx(radix-nova) + 第八节 120 |
 | **drawer**: 底部面板 max-h-[80vh]、上方两角 rounded-lg、border-t; 顶部抓手 w-[100px] h-2 mt-4 rounded-full bg-muted; 抓手按住下拖过 1/3 关闭、未过阈值回弹; 头部/页脚同 Sheet | drawer.tsx(vaul) + 第八节 121 |
 | **menubar**: 根条 h-9 rounded-md border p-1 gap-1; 触发区 rounded-sm px-2 py-1 text-sm, 悬停/展开 bg-accent; 弹层 min-w-[12rem] rounded-md border p-1, sideOffset 8 / alignOffset -4; 条目 px-2 py-1.5 text-sm, 悬停 bg-accent, 勾选/单选指示器在左(pl-8), 快捷键右对齐; **打开后悬停其它触发区即切换**; ←→ 切换顶级、↑↓/Home/End 移动、Enter 选中、ESC 关闭还焦点、Tab 关闭; 子菜单悬停/Enter 向右展开 | menubar.tsx(radix-nova) + 第八节 122~125 |
+| **navigation menu**: 根列表 gap-1; 触发区 h-9 px-4 rounded-md text-sm, 悬停 bg-accent、展开 bg-accent/50(悬停回全亮), chevron 12 随展开旋转 180°(300ms); 顶级普通链接 p-2; **所有菜单共用一个视口**, 贴列表左缘下方 mt-1.5、p-2、rounded-md border bg-popover, 宽高随当前菜单内容变化; 内容链接行 p-3(标题 20 + 间距 4 + 说明 20), 悬停/键盘高亮 bg-accent, 键盘高亮另画 focus-visible 环; 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开; ←→ 移动顶级焦点、↓ 进入内容、↑↓/Home/End 选链接、Enter 激活、ESC/Tab 关闭; 内容页面切换时从切换方向滑入 208px + 淡入(200ms) | navigation-menu.tsx(radix-nova) + 第八节 137~139 |
 | slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),hover/拖动中/focus-visible 显示 ring-3 | slider.tsx |
 | slider 元素比可见轨道左右各宽 9px(滑块半径 6 + ring 3, 给两端 ring 留绘制空间, 见第八节 26);滑块中心在轨道两端之间移动, 位置由 pos 自算 | slider.tsx(radix 滑块中心贴轨道端点) |
 | slider 交互全自实现:点击跳转 + LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ KeyDown 左右 ±5%/Home/End | — |
@@ -453,12 +455,12 @@ ui/
   | 文件 | 作用 | 被谁依赖 |
   |---|---|---|
   | `scrollbar.go` | 细滚动条皮肤 + 悬停显隐 | table / tree / combobox / input(多行) / scrollarea / dialog(可滚动内容) |
-  | `popup.go` | 弹层骨架(定位、阴影、进出场) | datepicker / timepicker / select / popover / hovercard / menubar |
+  | `popup.go` | 弹层骨架(定位、阴影、进出场、打开态重落位/光标判定) | datepicker / timepicker / select / popover / hovercard / menubar / navigationmenu |
   | `backdrop.go` | 弹层背景模糊(抓窗快照) | dialog |
   | `sheet.go` | 侧边面板(复用 Dialog 的模态基座) | dialog 的文件清单(模态分支) / drawer |
   | `menu_model.go` | 菜单条目模型与 `MenuOpt` 构造器 | menu / menubar |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在 `ui/` 里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update` 或 `xui update button`(只更新该组件及其依赖)。
 
@@ -493,6 +495,9 @@ ui/
 | Drawer 只能从抓手起拖, 且没有 vaul 的橡皮筋阻尼 | 内容区任意位置起拖会与文本选择/按钮点击冲突; 阻尼动画会增加一套每帧缓动, 当前用"跟手 + 松手回弹"覆盖核心手势 |
 | Menubar 弹层超高不滚动 | 位置会夹进工作区, 但菜单本身没有滚动条; 需要滚动得自己控制菜单条目数量 |
 | Menubar 没有 Alt 键访问与 typeahead | 原生 Windows 菜单的 Alt 导航挂在系统菜单栏上; 自绘触发区只覆盖 Tab/方向键这一套可访问路径 |
+| NavigationMenu 内容里只有 `Link` 链接行支持键盘高亮/Enter | 视口是非激活窗口, 不接收键盘焦点: 键盘交互由触发区接管(↓ 进入内容后 ↑↓/Home/End/Enter), 自定义放进内容的控件只支持鼠标操作 |
+| NavigationMenu 的链接说明只有一行(超宽省略号), 上游是 line-clamp-2 | 链接行高固定 68(标题 20 + 间距 4 + 说明 20 + 上下 12); 两行说明会让每个菜单的视口高度随文案跳变 |
+| NavigationMenu 只做共享视口模式, 没有 Sub / viewport=false / Indicator | 每个触发区各开一块弹层可以用 Popover 组合; 视口下方的小箭头(Indicator)在 shadcn 默认示例里也不启用 |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1640,6 +1645,26 @@ ui/
     - **修法**: 两处都补。① `startPresence` 接住 `Presence` 的返回值, 值已经在目标上就自己调一次终态(恢复 Auto / `applyClosed`)并 `redrawNow` —— 终态幂等, 之后真回调到 done 也只是再落一次; ② `expand()` 的早退分支顺手 `Presence(owner, key, true, 0, nil, nil)` 把值抬到 1, 让后续收起回到正常过渡。
     - **验证**: 探针(`XUI_ANIM_SCALE` 慢放)对比: 修前第一次收起 120ms 内就跳到底、内容元素 `show=true`、屏幕上展开态的文字一直留在原位(实测停留 20s 不消失); 修后收起逐帧缩、`show=false`、旧帧被整窗重绘擦净。demo 两条路径(启动即在基础4 / 从基础1 切进基础4)各连点 8 次, 像素级"同一行文字出现两遍"检测全 0。
     - **注意**: 同理, 任何用 `Presence` 且**终态写在 done 里**的组件(弹层 / 抽屉 / 通知)都不能假设 done 一定会来; 值可能一开始就在目标上。
+
+---
+
+137. **非激活弹层里的普通元素没有原生 hover 状态、也没有 MouseMove —— 链接悬停与"指针进入内容"都要自己轮询**(`ui/navigationmenu.go`):
+    - **现象**: ① 悬停导航菜单内容里的链接行, 没有任何 bg-accent; ② 指针从触发区移进视口时, 150ms 的收起计时器照常到点, 菜单在指针已经停在内容上时被关掉(移动得慢一点就必现)。
+    - **根因**: 视口复用 `popoverPanel` 的非激活形态(`WS_EX_NOACTIVATE` + `SW_SHOWNOACTIVATE`)。窗口没有激活时, xcgui 不维护视口里元素的 Stay/Down 状态(探针: 光标压在链接上, 元素 StateFlags=0x80000019, Stay 位不置), 元素级与窗口级 MouseMove 都收不到; 但 **`XWnd_GetStayEle(视口窗口)` 仍能返回光标下的元素**(滚动条显隐用的就是它)。
+    - **修法**: 菜单打开期间起一个 30ms 观察器: `GetStayEle` 向上归到链接 → 记为 `hoverLink` 并重绘该行(`xui.Hover` 负责 150ms 过渡); 用"光标在视口窗口矩形内 或 在菜单触发区矩形内"判定 `pointerOver` —— 在就续期, 不在才启动 150ms 收起; 收起计时到点后再按光标位置续查(同 HoverCard 的做法), 不依赖子元素 MouseLeave。`everInside` 记录本次打开期间指针是否进过导航, 程序化打开且指针一直在外面时不会自动关。
+    - **验证**: 探针把光标移到链接中心后 260ms 菜单仍开着、移开 150ms 后收起; 同一时刻链接 StateFlags 仍是 Leave(证明判定走的不是原生 hover)。demo 里链接行悬停出现 bg-accent, 从触发区移进内容不再被关。
+
+138. **在 KeyDown 回调里同步 `XWnd_SetFocusEle` 会把同一次按键重新派发给新焦点, ←→ 一次移动两项**(`ui/navigationmenu.go` 的 `focusNeighbor`):
+    - **现象**: 焦点在某个触发区上按 →, 一次跳到下下个; 按 ← 也同样跳两项(从第三项按 ← 直接回到第一项)。
+    - **根因**: 在按键回调里同步搬焦点时, 当前按键还会被送给刚获得焦点的按钮, 新按钮的 KeyDown 再执行一次同样的移动(按键本身只按了一次)。
+    - **修法**: 先用 `xui.NoteKeyboard()` 标记焦点来源(焦点环按键盘来源绘制), 再用 `AfterFunc(0)` 把 `SetFocusEle` 推到消息循环里执行 —— 当前按键已经处理完, 新按钮只等下一次按键。
+    - **验证**: 实机/探针 ←→ 每次只移动一项。
+
+139. **面板 `resize` 之后还有一次布局趟, 会把手动写的滑入位移原地复位**(`navigationmenu.go` 的 `animateContentIn`):
+    - **现象**: 切换导航菜单的内容页时, 预期"从切换方向滑入 208px + 淡入", 实际内容直接出现在终点, 只有透明度在变。
+    - **根因**: 切换前刚调过 `panel.resize`(视口宽随内容变化), 窗口收到 WM_SIZE 后 xcgui 会在随后的消息里再排一次布局; 我们在布局之前用 `XEle_SetRect` 写的横移被这次布局改回布局位置。
+    - **修法**: 先把新内容 `SetSubtreeAlpha(0)` 压透明藏住, `AfterFunc(0)` 等布局落定后再取基准矩形(`XEle_GetRect`)、设偏移并起 `Presence`; 每帧 apply 重新写回偏移(万一之后还有布局趟也不会停在终点), done 时恢复基准矩形并把 alpha 打回 1。首次打开不播内容动画 —— 视口自己的淡入(元素 alpha)与内容 alpha 会互相覆盖, 每帧后写的赢。
+    - **验证**: 探针直接读内容元素的矩形/alpha: 起始 left=213/alpha≈3, 中途 150/81, 结束 left=8/alpha=255(8 是内容区的左内边距)。
 
 ---
 

@@ -200,6 +200,10 @@
     "menubar": {
       "files": ["menubar.go", "menu_model.go", "popup.go"],
       "deps": ["button"]
+    },
+    "navigationmenu": {
+      "files": ["navigationmenu.go", "popup.go"],
+      "deps": ["button"]
     }
   }
 }

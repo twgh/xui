@@ -40,7 +40,7 @@ const (
 	pageForm4        // 表单4: 日期与时间 / 月历 / 范围与预设
 	pageNav1         // 导航1: 命令面板 / 下拉菜单 / 右键菜单
 	pageNav2         // 导航2: 标签页 / 面包屑 / 分页 / 可折叠面板
-	pageNav3         // 导航3: 菜单栏(Menubar)
+	pageNav3         // 导航3: 导航菜单(NavigationMenu) + 菜单栏(Menubar)
 	pageFeed1        // 反馈1: 对话框 / 提示气泡 / 警示对话框 / 对话框变体
 	pageFeed2        // 反馈2: 提示条 / 通知 / 进度 / 空状态
 	pageFeed3        // 反馈3: 侧边 Sheet / 底部 Drawer
@@ -1849,9 +1849,62 @@ func borderedBox(parent int, h int32, horizontal bool) *widget.LayoutEle {
 	return box
 }
 
-// ===== 页 11: 导航3(菜单栏) =====
+// ===== 页 11: 导航3(导航菜单 / 菜单栏) =====
 
 func buildNav3Page(body *widget.LayoutEle) {
+	// ---- 导航菜单(共享视口) ----
+	_, vn := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "导航菜单", vn.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"共享视口贴在列表下方: 悬停 200ms 打开、离开 150ms 收起; 切换菜单时视口随内容收放, 新页面从切换方向滑入", vn.Handle))
+	navStatus := ui.NewLabel(0, 0, 0, 20, "尚未选择链接", vn.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(navStatus)
+	setNavStatus := func(text string) { navStatus.SetText(text).Redraw(false) }
+	navState := ui.NewLabel(0, 0, 0, 20, "菜单: 已收起", vn.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(navState)
+
+	nav := ui.NewNavigationMenu(vn.Handle)
+	nav.AddMenu("开始使用", func(c *ui.NavigationMenuContent) {
+		c.Link("组件介绍", "可复用的自绘组件, 基于 xcgui 构建", func() {
+			setNavStatus("开始使用 / 组件介绍")
+		})
+		c.Link("安装", "把组件源码拷进你的项目", func() {
+			setNavStatus("开始使用 / 安装")
+		})
+		c.Link("排版", "标题、正文与间距的基本规则", func() {
+			setNavStatus("开始使用 / 排版")
+		})
+	}, ui.WithNavigationMenuWidth(400))
+	nav.AddMenu("组件", func(c *ui.NavigationMenuContent) {
+		grid := [][2][2]string{
+			{{"按钮", "6 个变体 × 8 档尺寸"}, {"对话框", "窗口内覆盖元素 + 焦点陷阱"}},
+			{{"下拉菜单", "自绘弹层, 支持子菜单"}, {"表格", "原生 List 载体, 外观全自绘"}},
+			{{"月历", "范围选择 / 多月并排"}, {"通知", "堆叠、倒计时与富文本配色"}},
+		}
+		for _, pair := range grid {
+			rh := xui.HStack(c.Handle(), 68, 8)
+			for _, cell := range pair {
+				cell := cell // go.mod 还是 1.18: 循环变量按旧语义共享, 回调里必须拷一份
+				l := c.LinkIn(rh.Handle, cell[0], cell[1], func() {
+					setNavStatus("组件 / " + cell[0])
+				})
+				xui.ItemWeight(l, 1)
+			}
+		}
+	}, ui.WithNavigationMenuWidth(520))
+	nav.AddLink("文档", func() {
+		setNavStatus("文档")
+	})
+	nav.OnValueChange(func(value string) {
+		if value == "" {
+			navState.SetText("菜单: 已收起").Redraw(false)
+		} else {
+			navState.SetText("菜单: " + value).Redraw(false)
+		}
+	})
+	xui.ItemFill(desc(vn.Handle,
+		"悬停 200ms 打开 · 离开 150ms 收起 · 关闭后 300ms 内切到其它触发区立即打开; ←→ 移动焦点, ↓ 进入内容, ↑↓ 选择, Enter 激活, ESC 关闭。"))
+
 	_, v := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "菜单栏", v.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,

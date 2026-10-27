@@ -10,7 +10,7 @@
 
 ## 当前状态(截至 2026-10-26)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
@@ -84,6 +84,14 @@
   - **复验(用户截图三问)**: ① **菜单栏字号没跟上** —— 触发区走 Button sm 预设是 13px, 上游是 text-sm(14): Button 加内部 `fontPx` 覆盖字段(不新增公开 API), Menubar 设 14 后 `FitWidth()` 重量宽, 实测触发区与弹层条目墨迹等高(150% DPI 下都是 11 图像像素), 高度仍按 sm 的 28。② **右侧面板输入框左上角出现两个灰条** —— 150% DPI 下本机未复现, 但探针确认原生 Edit 一创建就带 H/V 两个滚动条子元素, 矩形 (0,0,100,12) / (0,0,12,100) 起点就在左上角, 一旦被"内容超出自动显示"点亮就是截图里那块带箭头的灰条; 单行输入框构造时 `EnableAutoShowScrollBar(false)` + 两个滚动条 `Show(false)`(多行分支不受影响, 表单页文本域回归正常), 见第八节 126。③ **底部面板直角** —— 与上游一致: sheet.tsx 四向都没有圆角, 只有 vaul 的 Drawer 有 rounded-t-lg / rounded-b-lg(我们的 Drawer 有圆角, Sheet 没有)。
   - **二轮复验(用户再报两点)**: ① **灰条"第二次打开才出现"** —— 探针实测: 单行 Edit 的两个滚动条子元素是**控件首次真正显示时才补建**的, 第一次整树 `Show(true)` 枚举不到它们所以正常, 关闭再开就被 `showEleTree` 一起点亮(矩形 (0,0,100,12)/(0,0,12,100) → 画在输入框左上角)。修两处: 单行输入框构造时关掉自动显示并隐藏滚动条 + `showEleTree` 跳过 `XC_SCROLLBAR` 子树(只做前者仍会翻车), 见第八节 126; 探针复验第二次打开 hShow/vShow 仍为 false, 实机第二次打开截图干净。② **关窗后进程不退** —— 菜单栏的弹层窗口是懒创建、只隐藏不销毁的, 主窗口关了它们还在 → 消息循环不退出(与 Tooltip 同一个坑, 第八节 77); 补 `bar.AddEvent_Destroy` + 宿主窗口 `WM_DESTROY` 两级销毁钩子(递归销毁子菜单弹层)。**A/B 实测**: 两个钩子都停用 → 关窗后枚举到 2 个残留 XCGUI 窗口、进程不退; 装回钩子 → 开过顶级菜单 + 子菜单后关窗, 进程正常退出。
   - **三轮复验(子菜单移不过去)**: 子菜单与父菜单之间有一条缝, 鼠标穿过就关掉 —— ① 定位把"重叠 4"写成了"间隙 4"(符号错); ② 光标归属按**卡片矩形**判定, 而弹层窗口的透明阴影带也属于该窗口, 光标一进阴影带父面板就收不到 MouseMove, 于是"两边都不在"被误判为离开。改为与父面板重叠 4(radix `alignOffset: -4` 的本意)+ 判定按**窗口矩形**(卡片矩形外扩阴影带宽), 见第八节 127。实机验证: 悬停「分享」→ 移入子菜单条目保持高亮 → 移回父面板其它行只收子菜单、父菜单留着。
+
+- ✅ **批次 5: Navigation Menu**(2026-10-27, 上游 tsx 同步):
+  - **前置完成**: 本地 shadcn 参考实现补齐 `navigation-menu.tsx`(取自 registry, radix-nova), App.tsx 导航页加对照卡(共享视口 + 两个菜单 + 一个普通链接), `pnpm build` 通过。
+  - **组件(`components/navigationmenu.go`)**: `NewNavigationMenu(parent)` + `AddMenu(title, func(c *ui.NavigationMenuContent), WithNavigationMenuWidth(w))` + `AddLink(title, fn)`; 触发区/顶级普通链接是"原生 Button 行为 + 全自绘外观"(ghost 底、focus-visible 环、chevron 300ms 旋转 180°); **所有菜单共用一个非激活 popoverPanel 视口** —— 贴列表左缘下方 6px, 宽高随当前菜单内容变化, 切换时不收起重弹; 内容页用 `c.Link(标题, 说明, fn)` / `c.LinkIn(父容器, …)`(多列网格用 `xui.HStack` + `xui.ItemWeight`) 或 `c.Handle()` 放任意控件。
+  - **交互**: 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开(之后恢复 200ms); 点击触发区开合; ESC/Tab/点击关掉后指针还停在触发区上时不会被一次轻微移动重新打开(离开再进入恢复, radix 的 wasEscapeClose/wasClickClose 语义); 打开后悬停其它触发区立即切换; 切换时视口立即 resize + 新内容从切换方向滑入 208px 淡入(200ms); ESC / Tab / 宿主窗口失焦 / 移动 / 缩放关闭; 视口不抢焦点(悬停打开不会打断页面里的输入)。
+  - **键盘**: ←→ 在顶级项之间移动焦点、↓/Enter/Space 打开、↓ 进入内容; 内容里 ↑↓←→/Home/End 移动链接高亮、Enter 激活、ESC 关闭; `Value/SetValue/OnValueChange`。
+  - **新结论(DESIGN 137~139)**: ① 非激活弹层里普通元素拿不到 Stay/hover、也收不到 MouseMove —— 打开期间用 30ms 观察器 + `XWnd_GetStayEle` 做链接悬停与收起判定; ② KeyDown 里同步 `XWnd_SetFocusEle` 会让按键重派发给新焦点, ←→ 一次跳两项, 改动推迟到消息循环; ③ `panel.resize` 后的布局趟会复位手动滑入位移, 动画延后到布局落定再起、每帧重写偏移。
+  - **验收**: 探针(临时 main 包)全绿 —— 200ms 延迟/150ms 收起、打开中悬停其它触发区立即切换、关闭后 300ms 内立即打开、各菜单视口宽高(400/520/300, C 菜单 136 高)、视口左缘对齐列表且间距 6、视口非激活(前台窗口不变)、指针进入内容不收起/离开后收起、内容滑入矩形与 alpha(213→150→8)、宿主缩放关闭; demo 导航3页亮/暗 150% DPI 实机 —— 悬停打开、链接行 hover 底色、键盘高亮环、两列网格、普通链接点击、ESC/Tab、点触发区关闭; `go build/vet/test ./...` 全绿; `xui add navigationmenu` / `add menubar` / `add --all` 闭包编译通过。
 
 - ✅ **批次 2 收尾: Native Select / Select / Input-OTP / Accordion**(2026-10-24, 上游 tsx + App.tsx 对照卡同步):
   - **前置完成**: 本地 shadcn 参考实现补齐 `native-select.tsx` / `input-otp.tsx` / `accordion.tsx`(`npx shadcn add`), select.tsx 原有; App.tsx 基础页加手风琴对照卡、表单页加「独立 Select / NativeSelect」「验证码输入」对照卡, `pnpm build` 通过。
@@ -632,14 +640,15 @@
 ## 待办
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
-- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~4 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Carousel / Resizable / Navigation Menu / Chart / Sidebar 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
+- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~5 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Carousel / Resizable / Chart / Sidebar 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
   - **已有等价实现(不新增)**: Radio Group = `NewRadio`(原生父容器互斥)、Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
   - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
   - **批次 2 — 表单闭环**: 已完成(2026-10-24): Toggle / Toggle Group / Native Select / Select / Input OTP / Accordion(复用 Collapsible)。
   - **批次 3 — 弹层基座**: 已完成(2026-10-25): Popover / Hover Card / Avatar / Command。
   - **批次 4 — 窗格/菜单**: 已完成(2026-10-25): Sheet / Drawer / Menubar。
-  - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Carousel、Resizable、Navigation Menu、Chart、Sidebar(★★★★~★★★★★)。
+  - **批次 5 — 导航**: 已完成(2026-10-27): Navigation Menu(共享视口 + 悬停开合 + 内容滑入)。
+  - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Carousel、Resizable、Chart、Sidebar(★★★★~★★★★★)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
   - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义)。
 
@@ -658,7 +667,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 empty field item breadcrumb kbd skeleton spinner toggle
 │                                 native_select select inputotp accordion
                                  popover hovercard avatar command
-                                 sheet drawer menubar
+                                 sheet drawer menubar navigationmenu
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)

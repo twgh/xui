@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"math"
 	"time"
 
 	"github.com/twgh/xcgui/app"
@@ -763,51 +762,6 @@ func (v *menubarView) closeChild() {
 			wapi.SetForegroundWindow(v.panel.win.GetHWND())
 		}
 	}
-}
-
-// cursorInPanel 报告光标是否落在某个弹层**窗口**内(含四周的阴影带)。
-// 必须按窗口矩形算而不是卡片矩形: 阴影带虽然透明却仍属于弹层窗口, 光标走到那里
-// 时父面板已经收不到 MouseMove 了 —— 按卡片矩形判定会得出"两边都不在", 于是
-// 从父菜单移向子菜单的路上就把子菜单关掉。
-func cursorInPanel(p *popoverPanel) bool {
-	if p == nil || !p.alive() {
-		return false
-	}
-	var pt wapi.POINT
-	if !wapi.GetCursorPos(&pt) {
-		return false
-	}
-	dpi := xc.XWnd_GetDPI(p.win.Handle)
-	if dpi <= 0 {
-		dpi = 96
-	}
-	sc := float64(dpi) / 96
-	cx := int32(math.Round(float64(pt.X) / sc))
-	cy := int32(math.Round(float64(pt.Y) / sc))
-	x, y := panelScreenPos(p)
-	x -= popoverShadow
-	y -= popoverShadow
-	w := p.cw + popoverShadow*2
-	h := p.ch + popoverShadow*2
-	return cx >= x && cx < x+w && cy >= y && cy < y+h
-}
-
-// panelScreenPos 返回弹层卡片(不含阴影带)左上角的屏幕逻辑坐标。
-func panelScreenPos(p *popoverPanel) (int32, int32) {
-	if p == nil || !p.alive() {
-		return 0, 0
-	}
-	var wr xc.RECT
-	if !wapi.GetWindowRect(p.win.GetHWND(), &wr) {
-		return 0, 0
-	}
-	dpi := xc.XWnd_GetDPI(p.win.Handle)
-	if dpi <= 0 {
-		dpi = 96
-	}
-	sc := float64(dpi) / 96
-	return int32(math.Round(float64(wr.Left)/sc)) + popoverShadow,
-		int32(math.Round(float64(wr.Top)/sc)) + popoverShadow
 }
 
 // onKeyDown 键盘导航(由 popoverPanel 的窗口级 KeyDown 调用)。
