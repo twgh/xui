@@ -59,7 +59,7 @@
     },
     "progress": {
       "files": ["progress.go"],
-      "deps": []
+      "deps": ["label"]
     },
     "slider": {
       "files": ["slider.go"],

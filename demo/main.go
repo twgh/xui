@@ -1214,7 +1214,8 @@ func buildForm1Page(body *widget.LayoutEle) {
 	// ---- 右列 2: 滑动条 ----
 	_, v3 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "滑动条", v3.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "纯自绘: 点击跳转 / 拖拽 / 键盘左右 ±5%, hover 与拖动显示光环", v3.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"纯自绘: 点击跳转 / 拖拽 / 方向键, hover 与拖动显示光环; 单值 / 范围 / 多滑块 / 垂直 / 禁用", v3.Handle))
 
 	xui.ItemFill(hint(v3.Handle, "连续(0~100)"))
 	rowS := xui.HStack(v3.Handle, 24, 8)
@@ -1223,9 +1224,46 @@ func buildForm1Page(body *widget.LayoutEle) {
 	slVal := ui.NewLabel(0, 0, 40, 0, "40", rowS.Handle).SetMuted()
 	xui.ItemWidth(slVal, 40)
 	sl.SetValue(40)
-	sl.OnChange(func(v float64) { slVal.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
+	sl.OnValuesChange(func(vals []float64) { slVal.SetText(strconv.Itoa(int(vals[0] + 0.5))).Redraw() })
 
-	xui.ItemFill(hint(v3.Handle, "范围步进(0~10, step 1)"))
+	xui.ItemFill(hint(v3.Handle, "范围双滑块(20~80, step 1, 最小间距 5 步)"))
+	rowR := xui.HStack(v3.Handle, 24, 8)
+	rng := ui.NewSlider(0, 0, 200, 0, rowR.Handle,
+		ui.WithSliderValues(20, 80), ui.WithSliderStep(1), ui.WithSliderMinStepsBetweenThumbs(5))
+	xui.ItemWidth(rng, 218)
+	rngVal := ui.NewLabel(0, 0, 80, 0, "20 - 80", rowR.Handle).SetMuted()
+	xui.ItemWidth(rngVal, 80)
+	rng.OnValuesChange(func(vals []float64) {
+		rngVal.SetText(fmt.Sprintf("%.0f - %.0f", vals[0], vals[1])).Redraw()
+	})
+
+	xui.ItemFill(hint(v3.Handle, "三个滑块(10 / 40 / 70, step 10)"))
+	rowM := xui.HStack(v3.Handle, 24, 8)
+	multi := ui.NewSlider(0, 0, 200, 0, rowM.Handle,
+		ui.WithSliderValues(10, 40, 70), ui.WithSliderStep(10))
+	xui.ItemWidth(multi, 218)
+	multiVal := ui.NewLabel(0, 0, 96, 0, "10/40/70", rowM.Handle).SetMuted()
+	xui.ItemWidth(multiVal, 96)
+	multi.OnValuesChange(func(vals []float64) {
+		multiVal.SetText(fmt.Sprintf("%.0f/%.0f/%.0f", vals[0], vals[1], vals[2])).Redraw()
+	})
+
+	xui.ItemFill(hint(v3.Handle, "垂直(轨道 120) + 提交回调 / 禁用"))
+	rowV := xui.HStack(v3.Handle, 138, 16)
+	vs := ui.NewSlider(0, 0, 0, 120, rowV.Handle, ui.WithSliderVertical(), ui.WithSliderValues(40))
+	vsVal := ui.NewLabel(0, 0, 48, 0, "40", rowV.Handle).SetMuted()
+	xui.ItemWidth(vsVal, 48)
+	vs.OnValuesChange(func(vals []float64) { vsVal.SetText(strconv.Itoa(int(vals[0] + 0.5))).Redraw() })
+	commitVal := ui.NewLabel(0, 0, 140, 0, "commit: -", rowV.Handle).SetMuted()
+	xui.ItemWidth(commitVal, 140)
+	vs.OnValuesCommit(func(vals []float64) {
+		commitVal.SetText(fmt.Sprintf("commit: %.0f", vals[0])).Redraw()
+	})
+	sDis := ui.NewSlider(0, 0, 200, 0, rowV.Handle,
+		ui.WithSliderDisabled(), ui.WithSliderValues(30))
+	xui.ItemWidth(sDis, 218)
+
+	xui.ItemFill(hint(v3.Handle, "值域 0~10, step 1"))
 	rowS2 := xui.HStack(v3.Handle, 24, 8)
 	st := ui.NewSlider(0, 0, 200, 0, rowS2.Handle,
 		ui.WithSliderRange(0, 10), ui.WithSliderStep(1))
@@ -1233,7 +1271,7 @@ func buildForm1Page(body *widget.LayoutEle) {
 	stVal := ui.NewLabel(0, 0, 40, 0, "3", rowS2.Handle).SetMuted()
 	xui.ItemWidth(stVal, 40)
 	st.SetValue(3)
-	st.OnChange(func(v float64) { stVal.SetText(strconv.Itoa(int(v + 0.5))).Redraw() })
+	st.OnValuesChange(func(vals []float64) { stVal.SetText(strconv.Itoa(int(vals[0] + 0.5))).Redraw() })
 }
 
 // ===== 页 6: 表单2(选择控件 / 下拉框 / 独立 Select) =====
@@ -1270,13 +1308,18 @@ func buildForm2Page(body *widget.LayoutEle) {
 
 	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
 
-	xui.ItemFill(hint(v2.Handle, "开关(default / sm)"))
+	xui.ItemFill(hint(v2.Handle, "开关(default / sm, 禁用)"))
 	rs := xui.HStack(v2.Handle, 24, 12)
 	ui.NewSwitch(0, 0, rs.Handle, ui.WithSwitchChecked(true))
 	ui.NewSwitch(0, 0, rs.Handle)
 	ui.NewSwitch(0, 0, rs.Handle, ui.WithSwitchSize(ui.SwitchSm), ui.WithSwitchChecked(true))
-	swDis := ui.NewSwitch(0, 0, rs.Handle, ui.WithSwitchSize(ui.SwitchSm))
-	swDis.Enable(false)
+	ui.NewSwitch(0, 0, rs.Handle, ui.WithSwitchSize(ui.SwitchSm), ui.WithSwitchDisabled())
+
+	xui.ItemFill(hint(v2.Handle, "校验失败(aria-invalid; 红边 + 常驻红环) / 空格键切换"))
+	rsInv := xui.HStack(v2.Handle, 24, 12)
+	ui.NewSwitch(0, 0, rsInv.Handle, ui.WithSwitchInvalid())
+	ui.NewSwitch(0, 0, rsInv.Handle, ui.WithSwitchInvalid(), ui.WithSwitchChecked(true))
+	ui.NewSwitch(0, 0, rsInv.Handle, ui.WithSwitchChecked(true))
 
 	// ---- 右列 1: 下拉框 ----
 	_, v4 := autoCard(colR.Handle, 10)
@@ -2321,12 +2364,26 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 
 	_, v4 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "进度", v4.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "h-1 圆角轨道 + 指示器(宽度按百分比)", v4.Handle))
-	for _, val := range []float64{24, 64, 100} {
-		pg := ui.NewProgress(0, 0, 0, 0, v4.Handle)
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"h-1 圆角轨道 + 指示器(宽度按百分比); 支持 max / 不确定态 / 自定义指示器颜色", v4.Handle))
+	for _, it := range []struct{ val, max float64 }{{24, 100}, {64, 100}, {150, 200}} {
+		pg := ui.NewProgress(0, 0, 0, 0, v4.Handle, ui.WithProgressMax(it.max))
 		xui.ItemFill(pg)
-		pg.SetValue(val)
+		pg.SetValue(it.val)
 	}
+
+	xui.ItemFill(hint(v4.Handle, "带标题与数值(ProgressField, 对应文档 Labels 示例)"))
+	pf := ui.NewProgressField(0, 0, 0, 0, v4.Handle,
+		ui.WithProgressFieldTitle("上传进度"), ui.WithProgressFieldValue(66))
+	xui.ItemFill(pf)
+
+	xui.ItemFill(hint(v4.Handle, "不确定态(短条往返) / 指示器跟随主题色"))
+	pInd := ui.NewProgress(0, 0, 0, 0, v4.Handle, ui.WithProgressIndeterminate())
+	xui.ItemFill(pInd)
+	pColor := ui.NewProgress(0, 0, 0, 0, v4.Handle,
+		ui.WithProgressIndicatorColorFunc(func(t *xui.Theme) xui.Color { return t.Chart2 }))
+	xui.ItemFill(pColor)
+	pColor.SetValue(70)
 
 	// ---- 第三行: 空状态 ----
 	rEmpty := row(body.Handle, 0, gap)

@@ -21,7 +21,7 @@ var switchSpecs = map[SwitchSize]struct{ w, h, thumb int32 }{
 }
 
 // switchRingPad 是元素比轨道大出来的量(每边):
-//   - 元素绘制被裁剪在自身客户区内, focus-visible 的 ring-3 需要 3px 绘制空间;
+//   - 元素绘制被裁剪在自身客户区内, focus-visible / aria-invalid 的 ring-3 需要 3px 绘制空间;
 //   - 顺带把点击热区外扩, 与 shadcn 的 after:-inset-x-3 after:-inset-y-2 等效。
 const switchRingPad int32 = 3
 
@@ -29,12 +29,18 @@ const switchRingPad int32 = 3
 // 轨道与滑块全部由本组件绘制。
 //
 // 与 shadcn switch.tsx(radix-nova) 对齐:
-//   - 轨道 rounded-full, 选中 bg-primary, 未选 bg-input, 禁用 opacity-50;
+//   - 轨道 rounded-full, 选中 bg-primary, 未选 bg-input(dark:bg-input/80), 禁用 opacity-50;
 //   - 滑块 rounded-full bg-background, 选中时右移(两侧各留 1px);
-//   - focus-visible: 边框变 Ring 色 + ring-3 ring-ring/50(鼠标点击不显示)。
+//   - focus-visible: 边框变 Ring 色 + ring-3 ring-ring/50(鼠标点击不显示);
+//   - aria-invalid: 边框变 destructive + ring-3 destructive/20(暗色 border /50、ring /40),
+//     常驻不要求焦点; 与 focus-visible 同时成立时红色优先;
+//   - 空格键切换(Radix 的 role=switch 语义, 原生 Check 按钮不响应空格, 见 DESIGN 第八节 108)。
 type Switch struct {
 	*widget.Button
-	size SwitchSize
+	size    SwitchSize
+	invalid bool
+	disabled bool
+	changes []func(checked bool)
 }
 
 // SwitchOption 开关配置项。
@@ -45,6 +51,13 @@ func WithSwitchSize(s SwitchSize) SwitchOption { return func(sw *Switch) { sw.si
 
 // WithSwitchChecked 设置初始选中状态。
 func WithSwitchChecked(v bool) SwitchOption { return func(sw *Switch) { sw.SetCheck(v) } }
+
+// WithSwitchDisabled 初始即禁用(不可点击/聚焦, 整体 opacity-50)。
+func WithSwitchDisabled() SwitchOption { return func(sw *Switch) { sw.disabled = true } }
+
+// WithSwitchInvalid 初始即为校验失败态(对应 shadcn 的 aria-invalid):
+// 轨道描边 destructive + ring-3 destructive/20(暗色 /50、/40), 常驻不要求焦点。
+func WithSwitchInvalid() SwitchOption { return func(sw *Switch) { sw.invalid = true } }
 
 // NewSwitch 创建开关。元素尺寸 = 轨道 + 每边 switchRingPad。
 func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
@@ -71,26 +84,93 @@ func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
 		xui.NotePointerPress()
 		return 0
 	})
+	// 原生勾选不会自动失效重绘; 鼠标点击经 XE_BUTTON_CHECK 补重绘并通知监听者。
+	sw.AddEvent_Button_Check(func(hEle int, bCheck bool, pbHandled *bool) int {
+		sw.Redraw(false)
+		sw.notifyChange(bCheck)
+		return 0
+	})
+	// 原生 Check 按钮不处理空格(实测 KeyDown 能收到、状态不变), Radix 的 role=switch
+	// 用空格切换, 键盘激活自己补(同 Checkbox/Radio/Toggle, 见 DESIGN 第八节 108)。
+	sw.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
+		const vkSpace = 0x20
+		if wParam == vkSpace && sw.IsEnable() {
+			sw.SetCheck(!sw.IsCheck())
+			sw.Redraw(false)
+			sw.notifyChange(sw.IsCheck())
+			*pbHandled = true
+		}
+		return 0
+	})
+	if sw.disabled {
+		sw.disabled = false // 交给 SetDisabled 走统一路径
+		sw.SetDisabled(true)
+	}
 	return sw
 }
 
 // Checked 返回选中状态。
 func (s *Switch) Checked() bool { return s.IsCheck() }
 
-// SetChecked 设置选中状态。
+// SetChecked 设置选中状态(不触发 OnChange)。
 func (s *Switch) SetChecked(v bool) *Switch {
 	s.SetCheck(v)
 	s.Redraw(false)
 	return s
 }
 
-// OnChange 注册选中状态变化回调。
-func (s *Switch) OnChange(fn func(checked bool)) *Switch {
-	s.AddEvent_Button_Check(func(hEle int, bCheck bool, pbHandled *bool) int {
-		fn(bCheck)
-		return 0
-	})
+// Toggle 切换选中状态并触发 OnChange(与点击/空格同一路径)。
+func (s *Switch) Toggle() *Switch {
+	if s.disabled {
+		return s
+	}
+	s.SetCheck(!s.IsCheck())
+	s.Redraw(false)
+	s.notifyChange(s.IsCheck())
 	return s
+}
+
+// SetDisabled 设置禁用态(对应 radix 的 disabled): 不可点击、不可聚焦, 轨道与滑块一起乘 50%。
+func (s *Switch) SetDisabled(v bool) *Switch {
+	if s.disabled == v {
+		return s
+	}
+	s.disabled = v
+	s.Enable(!v)
+	s.EnableFocus(!v)
+	s.Redraw(false)
+	return s
+}
+
+// Disabled 返回是否禁用。
+func (s *Switch) Disabled() bool { return s.disabled }
+
+// SetInvalid 设置/清除校验失败态(见 WithSwitchInvalid)。
+func (s *Switch) SetInvalid(v bool) *Switch {
+	if s.invalid == v {
+		return s
+	}
+	s.invalid = v
+	s.Redraw(false)
+	return s
+}
+
+// Invalid 返回当前是否处于校验失败态。
+func (s *Switch) Invalid() bool { return s.invalid }
+
+// OnChange 注册选中状态变化回调(鼠标点击/空格切换时触发)。
+func (s *Switch) OnChange(fn func(checked bool)) *Switch {
+	if fn == nil {
+		return s
+	}
+	s.changes = append(s.changes, fn)
+	return s
+}
+
+func (s *Switch) notifyChange(checked bool) {
+	for _, fn := range s.changes {
+		fn(checked)
+	}
 }
 
 func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
@@ -102,13 +182,14 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	t := xui.Current()
 	st := xui.StateOf(hEle)
 	checked := s.IsCheck()
+	disabled := s.disabled || st.Disabled
 
 	// 先铺宿主底色(整元素): 透明元素重绘**不擦底**(见 DESIGN 第八节 28) —— 暗色下
 	// 未选轨道是半透明令牌(dark:data-unchecked:bg-input/80), 不铺底会透出上一帧的实心
 	// 轨道/滑块, 键盘焦点环消失后也会把灰环留在画布上。组件按"放在 Card 上"设计。
 	p.FillRound(&p.Rc, t.Card, 0)
 
-	// 轨道在元素内居中(四周留出 switchRingPad 给焦点环)
+	// 轨道在元素内居中(四周留出 switchRingPad 给焦点环/校验环)
 	spec := switchSpecs[s.size]
 	track := xc.RECT{
 		Left:   p.Rc.Left + (p.W()-spec.w)/2,
@@ -119,20 +200,28 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	radius := spec.h / 2
 
 	alpha := 1.0
-	if st.Disabled {
+	if disabled {
 		alpha = 0.5 // disabled:opacity-50
 	}
-	focusRing := st.Focused && !st.Disabled && xui.FocusedByKeyboard()
+	invalid := s.invalid && !disabled
+	focusRing := st.Focused && !disabled && xui.FocusedByKeyboard()
 
-	// focus-visible:ring-3 ring-ring/50
-	if focusRing {
+	// aria-invalid:ring-3 ring-destructive/20(dark /40) / focus-visible:ring-3 ring-ring/50
+	if invalid || focusRing {
 		halo := xc.RECT{
 			Left:   track.Left - switchRingPad,
 			Top:    track.Top - switchRingPad,
 			Right:  track.Right + switchRingPad,
 			Bottom: track.Bottom + switchRingPad,
 		}
-		p.FillRound(&halo, t.Ring.WithAlpha(128), radius+switchRingPad)
+		ring := t.Ring.WithAlpha(128)
+		if invalid {
+			ring = t.Destructive.WithAlpha(51)
+			if t.IsDark() {
+				ring = t.Destructive.WithAlpha(102)
+			}
+		}
+		p.FillRound(&halo, ring, radius+switchRingPad)
 	}
 
 	// 轨道: data-checked:bg-primary / data-unchecked:bg-input(dark 下 input/80)
@@ -146,8 +235,14 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 暗色 input 令牌自带 alpha(白 15%), 禁用是"再乘 50%"而不是覆盖(实测覆盖会变成
 	// 不透明白色, 未选开关看着像一块白饼)
 	p.FillRound(&track, trackColor.ScaleAlpha(alpha), radius)
-	if focusRing {
-		// focus-visible:border-ring
+	// aria-invalid:border-destructive / focus-visible:border-ring(坑: 轨道 border 默认 transparent)
+	if invalid {
+		border := t.Destructive
+		if t.IsDark() {
+			border = t.Destructive.WithAlpha(128) // dark:aria-invalid:border-destructive/50
+		}
+		p.StrokeRound(&track, border, radius, 1)
+	} else if focusRing {
 		p.StrokeRound(&track, t.Ring, radius, 1)
 	}
 
@@ -163,7 +258,7 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 滑块跟随组级透明: disabled:opacity-50 是作用在整个开关上的, 滑块同样要变淡
 	// (只淡轨道的话, 暗色下禁用开关会剩一颗扎眼的全亮白圆)
 	thumbColor := s.thumbColor(t, checked)
-	if st.Disabled {
+	if disabled {
 		thumbColor = thumbColor.ScaleAlpha(alpha)
 	}
 	p.Draw.SetBrushColor(uint32(thumbColor))

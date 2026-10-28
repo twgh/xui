@@ -245,10 +245,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Field | LayoutEle + Label/Element | 表单字段组合: Field/Set/Group 全是流式布局容器; Label/Description 走 Label, Separator 自绘线 + 背景压字, Error 多条 Label 去重; 横向 Content 固定 240(第八节 101) | field.tsx(radix-nova) |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
 | Input | embed Edit | 只画边框+焦点环, 原生光标/IME | BeautifyEdit 示例 |
-| Switch | 纯自绘 Element | 轨道+滑块, 尺寸预设; hover 过渡走运行时 `anim.go`(第八节 45) | — |
+| Switch | 纯自绘 Element | 轨道+滑块, 尺寸预设; hover 过渡走运行时 `anim.go`(第八节 45); aria-invalid 红边 + 常驻红环, 空格切换, `SetDisabled` 关鼠标与键盘(第八节 146) | — |
 | Label/Separator/Badge | 纯 Element | paint | — |
-| Progress | 纯自绘 Element | h-1 圆角轨道 + 指示器(宽度按百分比) | BeautifyProgressBar 配方移植成 token |
-| Slider | 纯自绘 Element | **弃用原生 SliderBar**(滑块按钮 BkInfo 残留压不住, 见第八节 25), 自实现拖拽/点击跳转/键盘 | BeautifySliderBar 示例 + 探针 |
+| Progress | 纯自绘 Element | h-1 圆角轨道 + 指示器(宽度 = value/max); max 可配, 不确定态短条往返, 指示器颜色可覆盖; `ProgressField` = 标题+百分比+条(第八节 145) | BeautifyProgressBar 配方移植成 token + progress 文档 |
+| Slider | 纯自绘 Element | **弃用原生 SliderBar**(滑块按钮 BkInfo 残留压不住, 见第八节 25), 自实现拖拽/点击跳转/键盘; 值数组(单值/范围/多滑块)、垂直、禁用、最小间距、inverted、onValueCommit(第八节 144) | BeautifySliderBar 示例 + 探针 |
 | ComboBox | embed ComboBox | 画输入框; 下拉 ListView 弹层在 `AddEvent_Combobox_Popup_List` 里半接管(第八节 30) | 库文档 FAQ |
 | Tabs | embed TabBar | paint(default/line 两变体) | — |
 | Dialog | 纯 Element 覆盖层 | 全窗遮罩元素(自绘黑 10% + backdrop-blur) + 面板子元素;ESC/点遮罩关闭, Tab 焦点循环(第八节 33);可滚动内容用内嵌 ScrollArea(第八节 91) | — |
@@ -300,17 +300,18 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | alert = bg-card + 1px border + rounded-lg(内边距 10/8); 可选图标 size-4 下移 2、与文本列间距 8; 标题 text-sm 中等字重、描述 text-sm muted, 行间 2; destructive = 标题/图标 destructive、描述 destructive/90; 动作槽贴右上, **无图标/无动作时对应列不占位**; 标题/描述按宽度折行、高度随内容自撑 | alert.tsx(radix-nova) + 第八节 90 |
 | **aria-invalid**(表单校验失败): 边框变 destructive + ring-3 destructive/20(暗色 border /50、ring /40), **常驻不要求焦点**;与 focus-visible 同时成立时红色优先(变体顺序里 aria-invalid 在后);指示器未选中时没有自己的填充, 红环必须先用宿主色盖住指示器矩形, 否则环会从内部透出来 | button.tsx / input.tsx / select.tsx / checkbox.tsx / radio-group.tsx + 第八节 69 |
 | badge h-5 胶囊(rounded-4xl) | badge.tsx |
-| switch 轨道 32x18(选中 bg-primary/未选 bg-input, **暗色未选是 dark:bg-input/80**),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground;**禁用时轨道与滑块一起乘 50%**(滑块不跟班会剩一颗全亮白圆) | switch.tsx(radix-nova) + 第八节 61 |
-| switch 元素比轨道每边大 3px:给 focus-visible 的 ring-3 留绘制空间,同时外扩点击热区(≈ after:-inset-*) | switch.tsx |
-| progress = h-1 rounded-full bg-muted 轨道 + bg-primary 指示器(宽度按百分比) | progress.tsx |
+| switch 轨道 32x18(选中 bg-primary/未选 bg-input, **暗色未选是 dark:bg-input/80**),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground;**禁用时轨道与滑块一起乘 50%**(滑块不跟班会剩一颗全亮白圆);`SetDisabled` 同时关鼠标与键盘(原生 `Enable(false)` 不禁鼠标聚焦, 见第八节 146);**aria-invalid** = 轨道描边 destructive + ring-3 destructive/20(暗色 /50、/40), 常驻不要求焦点;空格键切换(原生 Check 按钮不响应空格, 组件自补) | switch.tsx(radix-nova) + 第八节 61/146 |
+| switch 元素比轨道每边大 3px:给 focus-visible / aria-invalid 的 ring-3 留绘制空间,同时外扩点击热区(≈ after:-inset-*) | switch.tsx |
+| progress = h-1 rounded-full bg-muted 轨道 + bg-primary 指示器; 宽度 = value/max, max 可配(默认 100), 指示器颜色可覆盖; **value=null 的不确定态**用 30% 短条沿轨道三角波往返 | progress.tsx + 第八节 145 |
+| **ProgressField** = 标题行(左标题 / 右百分比)+ 进度条, 高 32(标题 20 + 间距 8 + 条 4), 对应文档 Labels 示例(Field + ProgressLabel + ProgressValue); 数值格式可覆盖 | progress 文档 + 第八节 145 |
 | **sheet**: 遮罩 bg-black/50; 面板 bg-background, 左右 h-full w-3/4 max-w-sm、上下 w-full h-auto, 贴边侧 1px border; 头部 p-4(gap-1.5)、页脚 p-4(gap-2) 按钮纵向铺满; 右上角关闭钮; 点遮罩/ESC/X 关闭, Tab 焦点陷阱同 Dialog; 进出场从贴边侧滑入/滑出 | sheet.tsx(radix-nova) + 第八节 120 |
 | **drawer**: 底部面板 max-h-[80vh]、上方两角 rounded-lg、border-t; 顶部抓手 w-[100px] h-2 mt-4 rounded-full bg-muted; 抓手按住下拖过 1/3 关闭、未过阈值回弹; 头部/页脚同 Sheet | drawer.tsx(vaul) + 第八节 121 |
 | **menubar**: 根条 h-9 rounded-md border p-1 gap-1; 触发区 rounded-sm px-2 py-1 text-sm, 悬停/展开 bg-accent; 弹层 min-w-[12rem] rounded-md border p-1, sideOffset 8 / alignOffset -4; 条目 px-2 py-1.5 text-sm, 悬停 bg-accent, 勾选/单选指示器在左(pl-8), 快捷键右对齐; **打开后悬停其它触发区即切换**; ←→ 切换顶级、↑↓/Home/End 移动、Enter 选中、ESC 关闭还焦点、Tab 关闭; 子菜单悬停/Enter 向右展开 | menubar.tsx(radix-nova) + 第八节 122~125 |
 | **navigation menu**: 根列表 gap-1; 触发区 h-9 px-4 rounded-md text-sm, 悬停 bg-accent、展开 bg-accent/50(悬停回全亮), chevron 12 随展开旋转 180°(300ms); 顶级普通链接 p-2; **所有菜单共用一个视口**, 贴列表左缘下方 mt-1.5、p-2、rounded-md border bg-popover, 宽高随当前菜单内容变化; 内容链接行 p-3(标题 20 + 间距 4 + 说明 20), 悬停/键盘高亮 bg-accent, 键盘高亮另画 focus-visible 环; 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开; ←→ 移动顶级焦点、↓ 进入内容、↑↓/Home/End 选链接、Enter 激活、ESC/Tab 关闭; 内容页面切换时从切换方向滑入 208px + 淡入(200ms) | navigation-menu.tsx(radix-nova) + 第八节 137~139 |
 | **carousel**: 每页 basis-full 整页位移, 页间 16 间隙(`-ml-4` + `pl-4`); 上/下张 = outline + icon-sm + rounded-full 按钮, 在内容左右(纵向时上下)48px 处, 到边界禁用、loop 时始终可用; ←/→ 在轮播内控件获焦时翻页; 循环首尾相接(最后一张的下一页紧跟第一张); 拖拽跟手、松手吸附最近一页(阈值 6 区分点击) | carousel.tsx + embla 默认 loop=false/align=start + 第八节 140/141 |
-| slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),hover/拖动中/focus-visible 显示 ring-3 | slider.tsx |
-| slider 元素比可见轨道左右各宽 9px(滑块半径 6 + ring 3, 给两端 ring 留绘制空间, 见第八节 26);滑块中心在轨道两端之间移动, 位置由 pos 自算 | slider.tsx(radix 滑块中心贴轨道端点) |
-| slider 交互全自实现:点击跳转 + LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ KeyDown 左右 ±5%/Home/End | — |
+| slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),滑块热区 hover / 拖动中 / focus-visible 显示 ring-3; **值用数组表达**(长度 = 滑块数量: 1 个普通、2 个范围、3 个以上多滑块), 单滑块区间从值域下限的几何位置画到滑块、多滑块画首尾之间; 相邻滑块间距受 `minStepsBetweenThumbs` 约束 | slider.tsx + 第八节 144 |
+| slider 元素沿轨道方向比可见轨道多 18(两端各 9 = 滑块半径 6 + ring 3, 见第八节 26); 水平 `cx` / 垂直 `cy` 是**可见轨道长度**, 滑块中心在轨道两端之间移动; 垂直默认轨道 160(radix `min-h-40`), 值从下往上 | slider.tsx(radix 滑块中心贴轨道端点) + 第八节 144 |
+| slider 交互全自实现:点击跳转(按在滑块上不跳值、按轨道把最近滑块跳过去)+ LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ 方向键(水平 ←→ / 垂直 ↑↓; 连续 ±5%、有 step 时一步)/PageUp·PageDown(10 步)/Home/End; `inverted` 反转取值方向; 禁用 = `SetDisabled`(鼠标与键盘一起关); `OnValuesChange` / `OnValuesCommit` 对应 onValueChange / onValueCommit | — + 第八节 144 |
 | tabs 列表 rounded-lg p-[3px] h-8 bg-muted,标签等宽 rounded-md,未选 text-foreground/60、选中 bg-background;line 变体透明列表 + 底边 h-0.5 下划线;标签 text-sm **font-medium(500)≈中文常规粗细,勿用 Bold(700)**(实测对比) | tabs.tsx |
 | tooltip = bg-foreground rounded-md px-3 py-1.5 text-xs text-background + size-2.5 旋转方块箭头,延迟 0;窗口为异型透明,气泡外真透明 | tooltip.tsx |
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条);**弹层不做进场淡入**(上游是 fade-in-0 100ms, 整窗 alpha 在这个异型窗上会概率性冻结 → 弹层看不见还吞点击, 见第八节 30/69);**aria-invalid** = 红边框 + ring-3 destructive/20(暗色 /40), 见上表 | select.tsx + combobox.go(弹层接管路线见第八节 30) |
@@ -503,6 +504,8 @@ ui/
 | Carousel 高度必须显式给(构造参数 cy) | 网页里轮播高度由最高的一页撑开; 自绘容器没有可靠的离屏量高通道, 需要随内容长高时把高度交给外层布局控制 |
 | Carousel 的按钮槽位固定占 96(左右/上下各 48) | 与 shadcn 示例外层 `px-12` 等价; 不需要按钮时用 `WithCarouselControls(false)`, 内容会占满整个根元素 |
 | Carousel 拖拽按"最近一页"吸附, 没有 velocity 惯性 | 桌面鼠标够用; 触摸手势、RTL 与 wheel 翻页未做(embla 的这些能力不在 shadcn 核心弹层语义里) |
+| Progress 的不确定态是"短条往返", 上游是空轨道 | shadcn 的 indeterminate 只暴露 `data-state`, 指示器平移到轨道外; 短条往返是"进行中但未知进度"的通行视觉(见第八节 145) |
+| Slider 是一个焦点元素, 键盘只调整"当前操作滑块" | 桌面 Tab 惯例是整条滑动条一个焦点; radix 的每 thumb 独立 roving tabindex 需要子元素级焦点, 与自绘单元素冲突(见第八节 144) |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1692,6 +1695,27 @@ ui/
     - **根因**: ①`Button_Type_Radio` 的互斥由原生按**同一父容器**处理; 在选中回调里再对同父兄弟调 `SetCheck(false)`, 原生会把刚选中的项一起取消(事件序列 A:true → A:false)。②在 `XE_KEYDOWN` 回调里同步 `XWnd_SetFocusEle` 会被同一次按键的原生焦点导航覆盖, 焦点落到再下一项(同 138 条)。
     - **修法**: 同父兄弟交给原生互斥, 只对**跨父级**条目(例如放进 Field 的选项)手动 `SetSelected(false)`; 键盘导航用 `app.AfterFunc(0, func(){ XWnd_SetFocusEle(...) })` 延迟搬焦点。
     - **验证**: 探针 + demo 表单5页: 点击 A/B/C 单选互斥; ↑/↓/Home/End 选中并搬焦点(循环); Space 选中; Field 嵌套项参与组互斥与方向键; 组级 `SetValue` / `SetDisabled` 正常。
+
+144. **Slider 的"值数组 / 垂直方向 / 滑块热区"三条几何结论**(`slider.go`, 探针实测):
+    - **值必须是数组**: radix 的 `value` 是 `number[]`, 长度决定滑块数量(2 个 = 范围选择)。单滑块时"已完成区间"从**值域下限的几何位置**画到滑块, 不能写死从左端 0 起 —— `inverted` 时下限在右端(垂直时在下端), 写 0 会把整条轨道点亮。多滑块时区间画首尾两个滑块之间(radix 的 Range 语义, 中间滑块不切段)。
+    - **元素沿轨道方向比可见轨道多 18**: 两端各 9(滑块半径 6 + ring 3)是绘制余量, 元素自绘被裁在客户区内, 不留余量两端的 ring 会被切掉。水平 `cx`、垂直 `cy` 都是**可见轨道长度**, 元素尺寸 = 轨道 + 18; 垂直默认轨道 160(radix `min-h-40`), 值从下往上增长。
+    - **滑块热区不是整条轨道**: shadcn 的光环挂在滑块上(`thumb:hover` + `after:-inset-2`), 所以 hover 判定按"滑块中心 ± (半径 + 2)"算, 指针在轨道其它位置不亮环。点击轨道时把**最近的**滑块跳到点击位置并开始拖; 按在滑块上则**不跳值**直接拖(否则轻微点击会让滑块跳动)。
+    - **相邻滑块互不越过**: 拖动/设值时把目标滑块夹在 `values[i-1] + minStepsBetweenThumbs × 一格` 与 `values[i+1] - 同值` 之间; `step=0`(连续)时一格按值域千分之一算。键盘只能调整"当前操作滑块"(点击/拖动过的那一个), 因为整个滑动条是一个焦点元素 —— 不是 radix 的每 thumb 独立 Tab 焦点。
+    - **键盘焦点要自己给**: 普通 Element(非按钮/编辑框)点击**不会**自动获得键盘焦点, `LButtonDown` 里必须 `SetFocus()`, 否则方向键永远收不到(实测: 不加时点击后按 → 无反应, 加上后三下 = +3 个步进)。
+    - **验证**: 探针断言双滑块互不越过(左滑到 55 停在 50, 右滑到 10 停在 60)、三滑块排序、垂直滑块点击位置换算、`inverted` 下 `geoFrac` 与方向键反向; `components/slider_test.go` 固定值域换算/吸附/间距; demo 实机点击跳到 48%、按 →×3 再 +15%、拖动右滑块 80 → 53 且标签同步。
+
+145. **Progress 的 max / 不确定态 / 带标签形态**(`progress.go`):
+    - **value 是绝对值, 不是百分比**: radix 的 `max` 可配(默认 100), 百分比 = value/max。组件内部保存绝对 value, `SetMax` 时 value 不变、按新上限重算百分比(与 radix 一致); 只存百分比会让改 max 时值跟着跳。
+    - **不确定态(value=null)**: 轨道照常, 指示器是 30% 宽的短条沿轨道**三角波往返**(0→1→0), 相位由 `xui.Spin(hEle, true)` 驱动 —— 元素隐藏/滚出视口/窗口最小化时运行时自动停表, 组件不要自己起定时器。百分比文本显示 "…"。上游 shadcn 的 indeterminate 只暴露 `data-state`, 指示器会平移到轨道外(视觉上是空轨道); 这里用短条往返把"进行中但不知道进度"表达出来, 属观感增强。
+    - **ProgressField(标题 + 百分比 + 条)**: 纵向布局容器, 高 32 = 标题行 20 + 间距 8 + 条 4。标题行是 `xui.HStack`(标题 Weight 1、数值固定 48 右对齐); 数值 Label 的右对齐直接改原生 Button 的旗标, **必须把构造时的 `NoWrap` + 省略号旗标一起带上**, 否则超宽会折行、把 20 的行高撑破。数值格式默认 `%.0f%%`(即 radix 的 `Math.round(value/max*100)`)。
+    - **指示器颜色用解析函数**: `WithProgressIndicatorColorFunc(func(t *xui.Theme) xui.Color)`, 每次绘制实时取令牌; 传固定色才用 `WithProgressIndicatorColor`(见 3.2 组件禁止缓存颜色)。
+    - **验证**: 探针 + demo 反馈2页 —— 24/64/100 与 150/200(max)三档、ProgressField 66%、不确定态逐帧短条位移、Chart2 指示器在亮/暗主题下的颜色。
+
+146. **Switch 的空格键、禁用与 aria-invalid**(`switch.go`, 同 108/114 的规律):
+    - **空格切换要自己补**: 载体 `Button_Type_Check` 收得到 KeyDown 但不改变选中(原生不处理空格)。键盘路径里手动 `SetCheck(!IsCheck())` 后**必须自己调监听器** —— 手动 `SetCheck` 不会触发 `XE_BUTTON_CHECK`, 只挂该事件会表现为"空格没反应/状态变了但回调没走"。鼠标路径仍由 `XE_BUTTON_CHECK` 驱动, 两条路共用同一个 `notifyChange`。
+    - **禁用要关两层**: `Enable(false)` 只挡鼠标, `XEle_Enable` 不禁鼠标聚焦(见 114), 所以 `SetDisabled(true)` 里同时 `EnableFocus(false)`; 绘制按 `s.disabled || st.Disabled` 取 50% 透明。
+    - **aria-invalid 画在轨道上**: 轨道本身是 `border border-transparent` 的胶囊, 红色描边必须描**轨道矩形**(不是元素矩形), 环是轨道外扩 3px 的 halo; 暗色 `border-destructive/50`、`ring-destructive/40`, 亮色 `/20`。与 focus-visible 同时成立时红色优先。
+    - **验证**: 探针 + demo 表单2页 —— 空格切换触发 OnChange、禁用后点击/空格/聚焦全部无效、未选与选中两态的红边 + 常驻红环在亮/暗主题下均可分辨。
 
 ---
 
