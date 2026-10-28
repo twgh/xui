@@ -5,7 +5,9 @@ import (
 
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
+	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
+	"github.com/twgh/xui/icons"
 )
 
 // SeparatorOrientation 分隔线取向, 对应 shadcn separator.tsx 的 orientation。
@@ -115,32 +117,61 @@ const (
 	BadgeLink                            // 主色文字, 悬停加下划线
 )
 
+// Badge 几何(逻辑像素), 对齐 badge.tsx 的
+// `h-5 gap-1 rounded-4xl border px-2 py-0.5 text-xs [&>svg]:size-3`。
+const (
+	badgePadX   int32 = 8
+	badgeGap    int32 = 4
+	badgeIconSz int32 = 12
+)
+
 // Badge 自绘徽章: 载体为原生 Element + 手绘文字。
 // 与 shadcn badge.tsx 对齐: h-5(20), rounded-4xl(胶囊), text-xs(主题字号 -2);
 // destructive 为软色调(bg-destructive/10 text-destructive)。
+//
+// 内容排布支持行内图标与加载指示器(对应文档里的 data-icon="inline-start/inline-end"
+// 与"带加载指示器"示例), 三者(前置图标/文字/后置图标)作为一个整体在徽章里居中:
+//
+//	ui.NewBadge(0, 0, 0, 0, "Verified", parent, ui.WithBadgeLeadingIcon(icons.IconBadgeCheck))
+//	ui.NewBadge(0, 0, 0, 0, "Generating", parent, ui.WithBadgeLoading())
 //
 // 关于悬停: shadcn 的 badge 悬停样式写作 `[a]:hover:*`(只有包在链接里才生效)。
 // Go 侧没有"链接"概念, 这里**恒按悬停生效**, 行为与 Button 一致(见 DESIGN.md 第四节的差异清单)。
 type Badge struct {
 	*widget.Element
-	variant BadgeVariant
-	text    string
-	hover   bool
+	variant  BadgeVariant
+	text     string
+	hover    bool
+	leading  string // 前置图标(24 网格 path / SVG 原文)
+	trailing string // 后置图标
+	iconSize int32
+	loading  bool      // 前置位画加载指示器(替换前置图标)
+	onClick  func()    // 点击回调(对应把徽章渲染成链接/按钮)
+	custom   bool      // 使用自定义配色(对应 className 覆盖颜色)
+	bg       xui.Color // 自定义底色
+	fore     xui.Color // 自定义前景色
+	border   xui.Color // 自定义描边
+	autoW    bool      // cx 传 0 时按内容量宽, 文字变化后自动重量
 }
 
-// NewBadge 创建徽章。cy 可传 0 使用默认高度 20。
+// NewBadge 创建徽章。cy 可传 0 使用默认高度 20; cx 传 0 时按内容量宽。
 func NewBadge(x, y, cx, cy int32, text string, hParent int, opts ...func(*Badge)) *Badge {
 	if cy <= 0 {
 		cy = 20
+	}
+	b := &Badge{variant: BadgeDefault, text: text, iconSize: badgeIconSz}
+	for _, o := range opts {
+		o(b)
+	}
+	if cx <= 0 {
+		cx = b.naturalWidth(xui.Current())
+		b.autoW = true
 	}
 	ele := widget.NewElement(x, y, cx, cy, hParent)
 	if ele == nil {
 		return nil
 	}
-	b := &Badge{Element: ele, variant: BadgeDefault, text: text}
-	for _, o := range opts {
-		o(b)
-	}
+	b.Element = ele
 	ele.EnableBkTransparent(true)
 	ele.AddEvent_Paint(b.onPaint)
 	// 悬停: ghost / link / outline 的变体语义要靠它体现
@@ -154,6 +185,14 @@ func NewBadge(x, y, cx, cy int32, text string, hParent int, opts ...func(*Badge)
 		ele.Redraw(true)
 		return 0
 	})
+	// 点击: 链接形态的徽章(Go 侧没有 <a>, 用回调表达)
+	ele.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		if b.onClick != nil {
+			xui.NotePointerPress()
+			b.onClick()
+		}
+		return 0
+	})
 	xui.AttachWindow(ele.Handle)
 	return b
 }
@@ -163,6 +202,35 @@ func WithBadgeVariant(v BadgeVariant) func(*Badge) {
 	return func(b *Badge) { b.variant = v }
 }
 
+// WithBadgeLeadingIcon 在文字前放一枚图标(size-3 = 12, 对应 data-icon=inline-start)。
+func WithBadgeLeadingIcon(path string) func(*Badge) {
+	return func(b *Badge) { b.leading = path }
+}
+
+// WithBadgeTrailingIcon 在文字后放一枚图标(对应 data-icon=inline-end)。
+func WithBadgeTrailingIcon(path string) func(*Badge) {
+	return func(b *Badge) { b.trailing = path }
+}
+
+// WithBadgeLoading 在文字前放一个持续旋转的加载指示器(替代前置图标)。
+// 视觉与文档的 Spinner 示例一致; 只负责视觉, 不改变可点击性。
+func WithBadgeLoading() func(*Badge) {
+	return func(b *Badge) { b.loading = true }
+}
+
+// WithBadgeOnClick 让徽章可点击(对应把 Badge 渲染成链接)。
+func WithBadgeOnClick(fn func()) func(*Badge) {
+	return func(b *Badge) { b.onClick = fn }
+}
+
+// WithBadgeColors 使用自定义配色(对应文档"自定义颜色"的 className 覆盖):
+// bg 为底色、fore 为文字/图标色、border 为描边色(传 xui.None 表示无描边)。
+func WithBadgeColors(bg, fore, border xui.Color) func(*Badge) {
+	return func(b *Badge) {
+		b.custom, b.bg, b.fore, b.border = true, bg, fore, border
+	}
+}
+
 // WithVariant 设置徽章变体。
 func (b *Badge) WithVariant(v BadgeVariant) *Badge {
 	b.variant = v
@@ -170,8 +238,77 @@ func (b *Badge) WithVariant(v BadgeVariant) *Badge {
 	return b
 }
 
+// SetText 更新徽章文字(cx 传 0 创建的徽章会重新量宽)。
+func (b *Badge) SetText(text string) *Badge {
+	if b == nil || b.text == text {
+		return b
+	}
+	b.text = text
+	if b.autoW {
+		w := b.naturalWidth(xui.Current())
+		b.SetWidth(w)
+		b.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
+	}
+	b.Redraw(false)
+	return b
+}
+
+// SetLoading 打开/关闭前置加载指示器。
+func (b *Badge) SetLoading(v bool) *Badge {
+	if b == nil || b.loading == v {
+		return b
+	}
+	b.loading = v
+	if !v {
+		xui.Spin(b.Handle, false) // 停掉运行时旋转定时器(不等下一帧绘制)
+	}
+	b.Redraw(false)
+	return b
+}
+
+// Loading 返回是否处于加载态。
+func (b *Badge) Loading() bool { return b != nil && b.loading }
+
+// SetColors 运行时改自定义配色(语义同 WithBadgeColors)。
+func (b *Badge) SetColors(bg, fore, border xui.Color) *Badge {
+	if b == nil {
+		return b
+	}
+	b.custom, b.bg, b.fore, b.border = true, bg, fore, border
+	b.Redraw(false)
+	return b
+}
+
+// OnClick 注册点击回调(与 WithBadgeOnClick 等价, 便于链式)。
+func (b *Badge) OnClick(fn func()) *Badge {
+	if b != nil {
+		b.onClick = fn
+	}
+	return b
+}
+
+// naturalWidth 按内容量宽: px-2 + 图标 + gap + 文字 + 后置图标。
+func (b *Badge) naturalWidth(t *xui.Theme) int32 {
+	w := badgePadX*2 + xui.TextWidth(b.text, badgeFont(t))
+	if b.leading != "" || b.loading {
+		w += b.iconSize + badgeGap
+	}
+	if b.trailing != "" {
+		w += b.iconSize + badgeGap
+	}
+	return w
+}
+
+// badgeFont 徽章字体: text-xs = 主题字号 - 2(与 tooltip / kbd 同一口径)。
+func badgeFont(t *xui.Theme) int {
+	return xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: t.FontDefault.Size - 2})
+}
+
 // resolve 按变体与悬停进度解析底色/边框/文字色, 逐条对应 badge.tsx 的类名。
 func (b *Badge) resolve(t *xui.Theme, hv float64) (bg, border, fore xui.Color) {
+	if b.custom {
+		return b.bg, b.border, b.fore
+	}
 	var bgHV, foreHV xui.Color
 	switch b.variant {
 	case BadgeSecondary: // bg-secondary text-secondary-foreground; hover:bg-secondary/80
@@ -220,6 +357,9 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	switch b.variant {
 	case BadgeDefault, BadgeSecondary, BadgeDestructive:
 		// 静止/悬停色都是不透明预混色, 整块胶囊每帧被覆盖, 不需要擦底。
+		if b.custom {
+			p.FillRound(&p.Rc, t.Card, radius)
+		}
 	default:
 		// outline / ghost / link 的静止态没有底色, 用圆角底擦掉上一帧悬停痕迹;
 		// 方底会在 muted 底上露出四角, 必须用与胶囊相同的圆角。
@@ -228,23 +368,61 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p.FillRound(&p.Rc, bg, radius)
 	p.StrokeRound(&p.Rc, border, radius, 1)
 
-	// text-xs: 主题字号 -2(与 tooltip 同一口径)
 	fontSize := t.FontDefault.Size - 2
-	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: fontSize})
+	f := badgeFont(t)
 	if f != 0 {
 		p.Draw.SetFont(f)
 	}
-	p.TextCenter(b.text, fore)
+	// 内容整体居中: [前置图标/加载] 文字 [后置图标]
+	tw := xui.TextWidth(b.text, f)
+	leadSz := int32(0)
+	if b.leading != "" || b.loading {
+		leadSz = b.iconSize
+	}
+	trailSz := int32(0)
+	if b.trailing != "" {
+		trailSz = b.iconSize
+	}
+	total := tw
+	if leadSz > 0 {
+		total += leadSz + badgeGap
+	}
+	if trailSz > 0 {
+		total += trailSz + badgeGap
+	}
+	x := (p.Rc.Left+p.Rc.Right)/2 - total/2
+	cy := (p.Rc.Top + p.Rc.Bottom) / 2
+	iconRect := func(x int32, sz int32) xc.RECT {
+		return xc.RECT{Left: x, Top: cy - sz/2, Right: x + sz, Bottom: cy + sz/2}
+	}
+	if leadSz > 0 {
+		rc := iconRect(x, leadSz)
+		if b.loading {
+			// 加载指示器: 运行时按墙钟算相位, 组件只取相位画旋转图标(同 Button)
+			p.IconRotated(icons.IconLoaderCircle, &rc, fore, 2, xui.Spin(hEle, true)*2*math.Pi)
+		} else {
+			p.Icon(b.leading, &rc, fore, 2)
+		}
+		x += leadSz + badgeGap
+	}
+	textX := x
+	if tw > 0 {
+		rc := xc.RECT{Left: textX, Top: p.Rc.Top, Right: textX + tw, Bottom: p.Rc.Bottom}
+		p.Text(b.text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		x += tw + badgeGap
+	}
+	if trailSz > 0 {
+		rc := iconRect(x, trailSz)
+		p.Icon(b.trailing, &rc, fore, 2)
+	}
 
 	// link 变体: hover:underline + underline-offset-4(手绘, 写法同 Button link)。
 	// 透明度随过渡值缩放 —— 过渡最后一帧(值恰好到位)不再触发重绘, 若按全色画,
 	// 淡出倒数第二帧(v≈0.02)的全色下划线会永久留在画布上(实测残留)。
-	if b.variant == BadgeLink && hv > 0 {
-		if w := xui.TextWidth(b.text, f); w > 0 {
-			cy := (p.Rc.Top + p.Rc.Bottom) / 2
+	if b.variant == BadgeLink && !b.custom && hv > 0 {
+		if tw > 0 {
 			y := cy + int32(float32(fontSize)*0.3) + 4
-			x0 := (p.Rc.Left+p.Rc.Right)/2 - w/2
-			p.Line(x0, y, x0+w, y, fore.ScaleAlpha(hv), 1)
+			p.Line(textX, y, textX+tw, y, fore.ScaleAlpha(hv), 1)
 		}
 	}
 	return 0

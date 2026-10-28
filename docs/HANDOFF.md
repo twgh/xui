@@ -14,12 +14,18 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
-- ✅ **Progress / Slider / Switch 文档能力补齐**(2026-10-28, 参 shadcn progress / slider / switch 文档):
-  - **Progress**: `WithProgressMax` / `SetMax`(value 保持绝对值, 百分比 = value/max)、不确定态(`WithProgressIndeterminate` / `SetIndeterminate`, 30% 短条三角波往返, `xui.Spin` 驱动)、指示器颜色(`WithProgressIndicatorColor` 固定色 / `...Func` 跟随主题)、`ui.NewProgressField`(标题行 + 百分比 + 条, 高 32, 默认 `%.0f%%`, 不确定态显示 "…", 标题用 Label 的 medium); `Percent()` 返回 0~100。
-  - **Slider**: 值数组(`WithSliderValues` / `WithSliderRangeValue`, 单值/范围/多滑块, 相邻滑块受 `WithSliderMinStepsBetweenThumbs` 约束)、垂直(`WithSliderVertical`, `cy` = 可见轨道长度, 默认 160)、`WithSliderInverted`、`WithSliderDisabled`、`OnValuesChange` / `OnValuesCommit`(兼容旧 `OnChange(func(float64))`)、PageUp/PageDown(10 步)、Home/End、方向键(水平 ←→ / 垂直 ↑↓; 有 step 按 step, 连续 ±5%); 按下时 `SetFocus` 补键盘焦点(普通 Element 点击不自带焦点), 按下/松手都重算 hover(否则点击跳转后光环闪一下消失); hover 光环只画在滑块热区(半径 + 2), 点轨道把最近滑块跳过去。
-  - **Switch**: `SetDisabled`(同时 `Enable` + `EnableFocus`)、`aria-invalid`(轨道描边 destructive + 常驻红环, 暗色 /50、/40)、空格键切换(手动 `SetCheck` 后自己触发回调)、`Toggle()`。
-  - **registry**: `progress` 增加 `label` 依赖(ProgressField 用 Label)。
-  - 验收: demo 表单1 滑动条卡(连续 / 范围 / 三滑块 / 垂直 + commit / 禁用 / 值域)、表单2 开关卡(禁用 + 两态红边红环)、反馈2 进度卡(max 150/200、ProgressField 66%、不确定态、Chart2 指示器)亮色实机截图; 交互实测 —— 点击轨道 40→48、按 →×3 再 +15%、拖动范围右滑块 80→53 且标签同步; `go build/vet/test ./...` 全绿; `xui add progress`(自动带 label)/ `add slider` / `add switch` / `add --all` 闭包编译通过; `components/slider_test.go` / `progress_test.go` 覆盖换算与间距。
+- ✅ **Combobox 弹层两处交互修复**(2026-10-28, 用户报障, DESIGN 148):
+  - **过滤后弹层跳边**: 触发器在屏幕底部、弹层翻上方后, 输入过滤让列表变矮, resize 按 sideBottom 重算导致弹层跳到下方。修法: 打开/resize 后记录弹层实际在哪一侧(`lastTop`, 弹层底边 ≤ 触发区顶边), resize 沿用。探针数据验证: 过滤后弹层底边固定、顶边随高度上移(保持上方)。
+  - **多选勾选刷新不及时**: 勾选画在弹层行上, 点击切换后只重绘了触发区。修法: 多选分支补 `refreshRows()` 且行改用 `Redraw(true)`(立即重绘, 弹层行独立于宿主待重绘区域)。
+  - 验收: Combobox 弹层方向探针数据(打开 (650,618)-(1040,812) → 过滤后 (650,702)-(1040,812), 底边贴触发区保持上方); `go build/vet/test ./...` 全绿。
+
+- ✅ **Badge 图标/加载/自定义配色 + Input Group + Combobox 自动补全**(2026-10-28, 参 shadcn badge / input-group / combobox 三篇文档):
+  - **Badge**(`separator.go`): 补 `WithBadgeLeadingIcon` / `WithBadgeTrailingIcon`(行内图标, data-icon)、`WithBadgeLoading` / `SetLoading`(前置 spinner, 相位由 `xui.Spin` 驱动)、`WithBadgeColors` / `SetColors`(自定义配色)、`WithBadgeOnClick` / `OnClick`(链接形态, 点击回调)、`SetText`;`cx` 传 0 时按内容量宽(图标 + 文字 + 图标整体居中, link 下划线按文字块画), 文字变化后自动重量。
+  - **Input Group**(`components/inputgroup.go`, 新): `NewInputGroup` + `Addon(InlineStart/InlineEnd/BlockStart/BlockEnd)`, addon 内容支持 `Text` / `Icon` / `Button`(默认 ghost+xs)/ `IconButton` / `Kbd` / `Spinner` / `Content()`;`Input()` / `Textarea(cy)` / `Search(placeholder)`;`SetInvalid` / `SetDisabled` / `Focus`。内层输入是**裸输入**(`input.go` 新增 `WithInputBare` + `setBareInsets`): 不画壳体/环, 边框、焦点环、校验环、禁用底色全由容器画, 焦点用 `AddEvent_SetFocus/KillFocus` 让容器重绘。block-* 存在时自动切成"标题行 + 输入行 + 页脚行"。踩坑见 DESIGN 147(addon 宽不能用 Auto、inline-start 用 `SetZOrder(0)` 调顺序、`InsertChild` 会卡死)。
+  - **Combobox 自动补全**(`components/combobox_search.go`, 新): 触发按钮(outline + chevrons-up-down)+ 弹层(顶部搜索框 + 建议列表 + 空态), 输入即过滤(不区分大小写)、↑↓ 循环跳过禁用、Home/End、Enter 选中、ESC 关闭;单选选中即关闭,`WithComboboxMultiple` 多选点击切换且保持打开(触发区"首个值 +N");条目模型复用 `SelectItem` / `SelectGroup`(从 select.go 抽出 `select_model.go`);弹层高度随过滤结果 `resize + Relocate`(坑: 布局容器位置参数被覆盖、内边距要用元素 padding + 子项锁 Fixed 宽, 见 DESIGN 148)。
+  - registry 新增 `input-group` / `combobox-search`(select 的 files 补 `select_model.go`);demo: 基础2 徽章卡加"图标/加载/自定义/可点击"两行、表单1 新增"输入组"卡(8 种形态)、表单2 新增"自动补全"卡(单选/多选/校验/禁用)。
+  - 验收: 探针截图逐项(输入组 8 形态 / 徽章 6 变体 + 图标 + loader + 自定义 + 点击回调触发 / Combobox 弹层过滤 + 多选切换 + 空态)、demo 三页 150% DPI 截图、`xui add input-group|combobox-search|select|badge|input` 各自闭包 `go build ./ui` 通过 + `add --all` 通过、`go build/vet/test ./...` 全绿。
+
 - ✅ **Checkbox / Radio 三态、校验态与 RadioGroup**(2026-10-28, 参 shadcn radio-group / checkbox 文档): Checkbox 补不确定态(`WithCheckboxIndeterminate` / `SetIndeterminate`, 减号 + 点击落到选中)、aria-invalid(红边框 + 常驻红环, 选中边框保持 primary)与空格切换;Radio 补同款校验态、`SetSelected` 与空格选中。新增 `components/radiogroup.go`:`NewRadioGroup` + `AddItem` / `Attach`(跨 Field 父级入组)+ `Value` / `SetValue` / `OnChange` / `SetDisabled` / `SetInvalid` / `SetSpacing`;↑↓←→ 循环移动并选中、Home/End 首末、空格选中。根因: 同父兄弟手动 `SetCheck(false)` 会让原生单选把刚选中的项一起取消, 键盘 `SetFocusEle` 需延迟到消息循环, 见 DESIGN 143。验收: 独立探针(点击互斥、方向键/Home/End、Space、Field 嵌套项、SetValue、禁用) + demo 新增表单5页两卡(单选组: 默认/Field 说明项/禁用组/可切换校验态; Checkbox 三态与校验);亮暗两套截图核对不确定态与红环;`go build/vet/test ./...`、`xui add radio-group` 与 `add --all` 闭包编译通过。
 - ✅ **菜单栏触发区垂直居中**(2026-10-28, 用户截图报障, DESIGN 142): 触发区悬停/展开的底色块与文字整体偏上 1 逻辑像素, 条本身也比上游高 2。根因: Button 元素高 = 视觉高 + `pressShift`(1px, 留在底边), 菜单栏却按元素高居中, 条高又按旧预留量写成 38。修法: 条高改回上游 h-9 = 36, 触发区按壳体高居中, 弹层锚点改从视觉底边量 sideOffset。验收: 探针 + demo 导航3页 150% DPI 像素实测(条 36、壳体 28、上下各 4; 文字墨迹中心与条中心差 0.5 物理px; 弹层卡片顶边 = 条底边 + 4), `go build/vet/test ./...` 全绿, `xui add menubar` 与 `add --all` 闭包编译通过。
 

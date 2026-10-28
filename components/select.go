@@ -8,40 +8,6 @@ import (
 	"github.com/twgh/xui/icons"
 )
 
-// Select 几何(逻辑像素), 对齐 select.tsx(radix-nova):
-// 条目 text-sm + py-1 = 28(同 combobox 的 comboItemH); label text-xs + py-1 = 24;
-// 分隔线 my-1 + 1px = 17; 内容四周 p-1; 弹层 min-w-36。
-const (
-	selectItemH  int32 = 28
-	selectLabelH int32 = 24
-	selectSepH   int32 = 17
-	selectPad    int32 = 4
-	selectMinW   int32 = 144 // min-w-36
-	selectMaxH   int32 = 320 // 内容高上限(约 11 项), 超出滚动
-)
-
-// SelectSize 触发区尺寸, 同 select.tsx 的 size(default h-8 / sm h-7)。
-type SelectSize int32
-
-const (
-	SelectSizeDefault SelectSize = iota // 高 32
-	SelectSizeSm                        // 高 28, 圆角 min(--radius-md, 10)
-)
-
-// SelectItem 下拉条目。Value 是程序侧标识(onChange 回传), Text 是显示文字。
-type SelectItem struct {
-	Value    string
-	Text     string
-	Icon     string // 前置图标(24 网格 path / icons 常量), 可空
-	Disabled bool
-}
-
-// SelectGroup 带标签的条目分组(同 radix SelectGroup + SelectLabel)。Label 为空时只有分隔线。
-type SelectGroup struct {
-	Label string
-	Items []SelectItem
-}
-
 // Select 独立下拉选择框, 对应 shadcn select.tsx(radix Select, item-aligned 定位):
 //   - 触发区: 与 ComboBox 同一套视觉(border-input / focus-visible 环 / sm 尺寸 /
 //     aria-invalid / 暗色 bg-input/30 悬停加深), 未选择时显示占位符;

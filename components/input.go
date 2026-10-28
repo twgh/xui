@@ -124,6 +124,10 @@ type Input struct {
 	multiline   bool
 	invalid     bool
 	textColor   uint32 // 上次下发给原生 Edit 的字色(避免在 paint 里反复设置)
+	// bare: 裸输入(见 WithInputBare)。不画壳体/焦点环/校验环, 由外层容器(Input Group)负责;
+	// 左右内边距也改由外层按 addon 位置设置(setBareInsets)。
+	bare         bool
+	bareL, bareR int32
 
 	leadingIcon string // 前置图标(lucide path)
 	prefix      string // 前置文字
@@ -155,6 +159,11 @@ func WithPlaceholder(s string) InputOption { return func(i *Input) { i.placehold
 
 // WithMultiline 启用多行(文本域)模式。
 func WithMultiline() InputOption { return func(i *Input) { i.multiline = true } }
+
+// WithInputBare 创建"裸输入": 不绘制壳体、焦点环与校验环, 边框/背景由外层容器负责。
+// 主要给 Input Group 用 —— 组里输入框与 addon 共用一层边框, 输入框自己再画一层会
+// 出现双框; 单独使用(没有外层画框)会得到一个"没有边框的文本框", 一般不需要。
+func WithInputBare() InputOption { return func(i *Input) { i.bare = true } }
 
 // WithInputInvalid 设置校验失败态(对应 shadcn 的 aria-invalid):
 // border-destructive + ring-3 destructive/20(暗色 /40)。与聚焦同时成立时红色优先。
@@ -380,6 +389,23 @@ func (i *Input) trailingInset() int32 {
 // syncPadding 把文字区的左右内边距设为"基础值 + 附加件占位"。
 // 只在构造/换主题时调用 —— 不要在 paint 里调, SetBorderSize 会触发重排与重绘。
 func (i *Input) syncPadding() {
+	if i.bare {
+		// 裸输入: 左右由外层(Input Group)按 addon 所在侧设置 —— 与 addon 相邻的一侧 6
+		// (pl-1.5/pr-1.5), 另一侧 12(px-3); 文本域上下各 12(py-3)。
+		l, r := i.bareL, i.bareR
+		if l <= 0 {
+			l = inputPadX
+		}
+		if r <= 0 {
+			r = inputPadX
+		}
+		if i.multiline {
+			i.SetBorderSize(l, 12, r, 12)
+		} else {
+			i.SetBorderSize(l, 7, r, 5)
+		}
+		return
+	}
 	if i.multiline {
 		// 文本域必须自己给四周内边距: 原生 Edit 默认内边距为 0, 正文会压住圆角描边、
 		// 纵向滚动条也会贴着右边框(多行没有附加件, 所以这里不用算宽度)。
@@ -434,6 +460,16 @@ func (i *Input) syncPadding() {
 	// (实测 32 高输入框: 上方留白 14 物理像素、下方 17)。把 text rect 整体下移 1 逻辑
 	// 像素后上下都是 15.5, 与自绘前后缀(按整高 Vcenter)也对齐了。
 	i.SetBorderSize(left, 7, right, 5)
+}
+
+// setBareInsets 设置裸输入的左右文字内边距(由 Input Group 按 addon 位置调用)。
+func (i *Input) setBareInsets(l, r int32) {
+	if i.bareL == l && i.bareR == r {
+		return
+	}
+	i.bareL, i.bareR = l, r
+	i.syncPadding()
+	i.Redraw(false)
 }
 
 // partAt 返回元素客户区坐标 (x,y) 落在哪个内嵌件上(含其 dim 标记)。
@@ -944,58 +980,62 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	st := xui.StateOf(hEle)
 	i.syncTextColor() // 禁用态在 paint 里发现时补一次(Enable(false) 不会走主题回调)
 
-	bg := t.Background
-	border := t.Input
-	if st.Disabled {
-		// shadcn: disabled:bg-input/50(暗色另有 dark:disabled:bg-input/80) + 组级 opacity-50;
-		// 用 ScaleAlpha 逐层乘, 不要用 WithAlpha 覆盖(暗色 input 自带 15% alpha, 覆盖成 50%
-		// 会画出一块发亮的灰饼)
-		a := 0.5
-		if t.IsDark() {
-			a = 0.8
+	// 裸输入(Input Group 的内嵌控件): 壳体与环由外层容器绘制, 这里只留附加件。
+	if !i.bare {
+		bg := t.Background
+		border := t.Input
+		if st.Disabled {
+			// shadcn: disabled:bg-input/50(暗色另有 dark:disabled:bg-input/80) + 组级 opacity-50;
+			// 用 ScaleAlpha 逐层乘, 不要用 WithAlpha 覆盖(暗色 input 自带 15% alpha, 覆盖成 50%
+			// 会画出一块发亮的灰饼)
+			a := 0.5
+			if t.IsDark() {
+				a = 0.8
+			}
+			bg = t.Input.ScaleAlpha(a).ScaleAlpha(0.5)
+			border = t.Input.ScaleAlpha(0.5)
 		}
-		bg = t.Input.ScaleAlpha(a).ScaleAlpha(0.5)
-		border = t.Input.ScaleAlpha(0.5)
-	}
 
-	// aria-invalid 与 focus-visible 共用"环带 + 内芯"画法, 红色优先(见 button.go 的说明)。
-	// 圆角按按钮组位置收角: 输入框也能直接作为 ButtonGroup 的子项(见 buttongroup.go)。
-	corners := groupCorners(hEle, t.RadiusLg())
-	const inset = int32(3)
-	invalid := i.invalid && !st.Disabled
-	switch {
-	case invalid:
-		halo, borderColor := t.Destructive.WithAlpha(51), t.Destructive
-		if t.IsDark() {
-			halo, borderColor = t.Destructive.WithAlpha(102), t.Destructive.WithAlpha(128)
+		// aria-invalid 与 focus-visible 共用"环带 + 内芯"画法, 红色优先(见 button.go 的说明)。
+		// 圆角按按钮组位置收角: 输入框也能直接作为 ButtonGroup 的子项(见 buttongroup.go)。
+		corners := groupCorners(hEle, t.RadiusLg())
+		const inset = int32(3)
+		invalid := i.invalid && !st.Disabled
+		switch {
+		case invalid:
+			halo, borderColor := t.Destructive.WithAlpha(51), t.Destructive
+			if t.IsDark() {
+				halo, borderColor = t.Destructive.WithAlpha(102), t.Destructive.WithAlpha(128)
+			}
+			p.RingFrameCorners(halo, bg, corners)
+			inner := xc.RECT{
+				Left:   p.Rc.Left + inset,
+				Top:    p.Rc.Top + inset,
+				Right:  p.Rc.Right - inset,
+				Bottom: p.Rc.Bottom - inset,
+			}
+			if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
+				p.StrokeRoundCorners(&inner, borderColor, corners.Inset(inset), 1)
+			}
+		case st.Focused && !st.Disabled:
+			// focus-visible:border-ring + ring-3 ring-ring/50: FocusFrame 画 3px 半透明
+			// ring 带(填充式, 会盖掉原来的 border-input), 实色的 border-ring 边框
+			// 再描在 ring 带内缘 —— 与浏览器一致: 聚焦后边框从 input 色换成 ring 色。
+			p.FocusFrameCorners(t.Ring, bg, corners)
+			inner := xc.RECT{
+				Left:   p.Rc.Left + inset,
+				Top:    p.Rc.Top + inset,
+				Right:  p.Rc.Right - inset,
+				Bottom: p.Rc.Bottom - inset,
+			}
+			if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
+				p.StrokeRoundCorners(&inner, t.Ring, corners.Inset(inset), 1)
+			}
+		default:
+			p.FillRoundCorners(&p.Rc, bg, corners)
+			p.StrokeRoundCorners(&p.Rc, border, corners, 1)
 		}
-		p.RingFrameCorners(halo, bg, corners)
-		inner := xc.RECT{
-			Left:   p.Rc.Left + inset,
-			Top:    p.Rc.Top + inset,
-			Right:  p.Rc.Right - inset,
-			Bottom: p.Rc.Bottom - inset,
-		}
-		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
-			p.StrokeRoundCorners(&inner, borderColor, corners.Inset(inset), 1)
-		}
-	case st.Focused && !st.Disabled:
-		// focus-visible:border-ring + ring-3 ring-ring/50: FocusFrame 画 3px 半透明
-		// ring 带(填充式, 会盖掉原来的 border-input), 实色的 border-ring 边框
-		// 再描在 ring 带内缘 —— 与浏览器一致: 聚焦后边框从 input 色换成 ring 色。
-		p.FocusFrameCorners(t.Ring, bg, corners)
-		inner := xc.RECT{
-			Left:   p.Rc.Left + inset,
-			Top:    p.Rc.Top + inset,
-			Right:  p.Rc.Right - inset,
-			Bottom: p.Rc.Bottom - inset,
-		}
-		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
-			p.StrokeRoundCorners(&inner, t.Ring, corners.Inset(inset), 1)
-		}
-	default:
-		p.FillRoundCorners(&p.Rc, bg, corners)
-		p.StrokeRoundCorners(&p.Rc, border, corners, 1)
+
 	}
 
 	// 壳体内部的附加件(图标/前后缀/计数/按钮)。原生 Edit 的文字在本回调之后绘制,

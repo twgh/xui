@@ -170,7 +170,15 @@
       "deps": ["combobox"]
     },
     "select": {
-      "files": ["select.go", "popup.go", "scrollarea.go", "scrollbar.go"],
+      "files": ["select.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go"],
+      "deps": []
+    },
+    "combobox-search": {
+      "files": ["combobox_search.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go", "label.go"],
+      "deps": []
+    },
+    "input-group": {
+      "files": ["inputgroup.go", "input.go", "scrollbar.go", "group.go", "button.go", "kbd.go", "spinner.go"],
       "deps": []
     },
     "input-otp": {

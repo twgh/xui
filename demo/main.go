@@ -698,6 +698,23 @@ func buildBase2Page(body *widget.LayoutEle) {
 	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Ghost", rg.Handle, ui.WithBadgeVariant(ui.BadgeGhost)), 64)
 	xui.ItemWidth(ui.NewBadge(0, 0, 0, 0, "Link", rg.Handle, ui.WithBadgeVariant(ui.BadgeLink)), 56)
 
+	xui.ItemFill(hint(v2.Handle, "行内图标(inline-start/end) / 加载指示器 / 自定义配色"))
+	ri := xui.HStack(v2.Handle, 24, 8)
+	ui.NewBadge(0, 0, 0, 0, "Verified", ri.Handle, ui.WithBadgeLeadingIcon(icons.IconBadgeCheck))
+	ui.NewBadge(0, 0, 0, 0, "Bookmark", ri.Handle, ui.WithBadgeTrailingIcon(icons.IconBookmark))
+	ui.NewBadge(0, 0, 0, 0, "Generating", ri.Handle,
+		ui.WithBadgeLoading(), ui.WithBadgeVariant(ui.BadgeSecondary))
+	ui.NewBadge(0, 0, 0, 0, "Custom", ri.Handle,
+		ui.WithBadgeColors(xui.Hex("#E6F4EA"), xui.Hex("#1E7E34"), xui.Hex("#B7E1CD")))
+
+	xui.ItemFill(hint(v2.Handle, "可点击(链接形态): 回调 + 悬停下划线"))
+	rc := xui.HStack(v2.Handle, 24, 8)
+	clickBadge := ui.NewBadge(0, 0, 0, 0, "打开文档", rc.Handle,
+		ui.WithBadgeVariant(ui.BadgeLink), ui.WithBadgeTrailingIcon(icons.IconArrowUpRight))
+	clickTip := ui.NewLabel(0, 0, 0, 20, "点一下试试", rc.Handle).SetMuted().SetFontSize(14)
+	xui.ItemWidth(clickTip, 120)
+	clickBadge.OnClick(func() { clickTip.SetText("已点击 ✓").Redraw() })
+
 	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
 
 	xui.ItemFill(hint(v2.Handle, "分隔线与标签"))
@@ -1190,6 +1207,52 @@ func buildForm1Page(body *widget.LayoutEle) {
 	xui.ItemFill(counter)
 	counter.SetValue("这是一段用于演示字数统计的文本")
 
+	// ---- 左列 2: 输入组(Input Group) ----
+	_, vg := autoCard(colL.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "输入组", vg.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"InputGroup: 输入框与附加件共用一层边框与焦点环; addon 四向(inline-start/end、block-start/end)", vg.Handle))
+
+	xui.ItemFill(hint(vg.Handle, "前置图标 / 后置按钮"))
+	g1 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle)
+	g1.Input(ui.WithPlaceholder("搜索组件…"))
+	g1.Addon(ui.InputGroupInlineStart).Icon(icons.IconSearch)
+	xui.ItemFill(g1)
+
+	g2 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle)
+	g2.Input(ui.WithPlaceholder("输入 GitHub 用户名"))
+	g2.Addon(ui.InputGroupInlineEnd).Button("查询")
+	xui.ItemFill(g2)
+
+	xui.ItemFill(hint(vg.Handle, "前后缀文字 + Kbd"))
+	g3 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle)
+	g3.Addon(ui.InputGroupInlineStart).Text("https://")
+	g3.Input(ui.WithPlaceholder("example.com"))
+	g3.Addon(ui.InputGroupInlineEnd).Kbd("⌘K")
+	xui.ItemFill(g3)
+
+	xui.ItemFill(hint(vg.Handle, "block-start 标题 + block-end 说明/按钮"))
+	g4 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle)
+	g4.Addon(ui.InputGroupBlockStart).Text("邮箱地址")
+	g4.Input(ui.WithPlaceholder("m@example.com"))
+	g4.Addon(ui.InputGroupBlockEnd).Text("我们会发送验证码").Button("发送")
+	xui.ItemFill(g4)
+
+	xui.ItemFill(hint(vg.Handle, "文本域 + 字符计数"))
+	g5 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle)
+	g5.Textarea(80, ui.WithPlaceholder("输入留言…"))
+	g5.Addon(ui.InputGroupBlockEnd).Text("0/280").Button("发送")
+	xui.ItemFill(g5)
+
+	xui.ItemFill(hint(vg.Handle, "校验失败 / 禁用"))
+	g6 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle, ui.WithInputGroupInvalid())
+	g6.Input(ui.WithPlaceholder("必填项"))
+	xui.ItemFill(g6)
+	g7 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle, ui.WithInputGroupDisabled())
+	g7.Input(ui.WithPlaceholder("不可编辑"))
+	g7.Addon(ui.InputGroupInlineEnd).IconButton(icons.IconCopy)
+	xui.ItemFill(g7)
+
 	// ---- 右列 1: 验证码输入 ----
 	_, v6 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "验证码输入", v6.Handle))
@@ -1377,6 +1440,54 @@ func buildForm2Page(body *widget.LayoutEle) {
 			{Value: "vue", Text: "Vue"},
 			{Value: "svelte", Text: "Svelte"},
 		})))
+
+	// ---- 右列 3: 自动补全(Combobox) ----
+	_, vc := autoCard(colR.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "自动补全", vc.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"shadcn 文档的 Combobox: 触发按钮 + 弹层搜索框 + 建议列表; 输入即过滤(不区分大小写), ↑↓ 移动、Enter 选中、ESC 关闭", vc.Handle))
+
+	xui.ItemFill(hint(vc.Handle, "单选(分组 + 图标 + 禁用项)"))
+	cb := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxPlaceholder("Select framework..."),
+		ui.WithComboboxSearchPlaceholder("Search framework..."),
+		ui.WithComboboxGroups([]ui.SelectGroup{
+			{Label: "前端", Items: []ui.SelectItem{
+				{Value: "next", Text: "Next.js", Icon: icons.IconGlobe},
+				{Value: "svelte", Text: "SvelteKit", Icon: icons.IconGlobe},
+				{Value: "nuxt", Text: "Nuxt.js", Icon: icons.IconGlobe},
+				{Value: "remix", Text: "Remix(不可选)", Icon: icons.IconGlobe, Disabled: true},
+			}},
+			{Label: "后端", Items: []ui.SelectItem{
+				{Value: "go", Text: "Golang", Icon: icons.IconServer},
+				{Value: "rust", Text: "Rust", Icon: icons.IconServer},
+			}},
+		}))
+	xui.ItemFill(cb)
+	cb.SetValue("next")
+	cb.OnChange(func(items []ui.SelectItem) {
+		if len(items) > 0 {
+			println("Combobox:", items[0].Value)
+		}
+	})
+
+	xui.ItemFill(hint(vc.Handle, "多选(点击切换, 弹层保持打开; 触发区显示 首个值 +N)"))
+	cbMulti := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxMultiple(), ui.WithComboboxPlaceholder("Select frameworks..."),
+		ui.WithComboboxItems([]ui.SelectItem{
+			{Value: "ts", Text: "TypeScript"}, {Value: "go", Text: "Golang"},
+			{Value: "rs", Text: "Rust"}, {Value: "py", Text: "Python"},
+		}))
+	xui.ItemFill(cbMulti)
+	cbMulti.SetValues("ts")
+
+	xui.ItemFill(hint(vc.Handle, "校验失败 / 禁用"))
+	bad := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxInvalid(), ui.WithComboboxPlaceholder("必选项未选择"))
+	xui.ItemFill(bad)
+	xui.ItemFill(ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxDisabled(), ui.WithComboboxPlaceholder("禁用"),
+		ui.WithComboboxItems([]ui.SelectItem{{Value: "a", Text: "A"}})))
 }
 
 // ===== 页 7: 表单3(字段与分组) =====

@@ -1718,6 +1718,23 @@ ui/
     - **aria-invalid 画在轨道上**: 轨道本身是 `border border-transparent` 的胶囊, 红色描边必须描**轨道矩形**(不是元素矩形), 环是轨道外扩 3px 的 halo; 暗色 `border-destructive/50`、`ring-destructive/40`, 亮色 `/20`。与 focus-visible 同时成立时红色优先。
     - **验证**: 探针 + demo 表单2页 —— 空格切换触发 OnChange、禁用后点击/空格/聚焦全部无效、未选与选中两态的红边 + 常驻红环在亮/暗主题下均可分辨。
 
+147. **Input Group: 内层输入框必须是"裸输入", 焦点环由容器画**(`inputgroup.go` + `input.go` 的 `WithInputBare`):
+    - **症状**: 直接把 `ui.NewInput` 塞进一个画了边框的容器, 会看到双框(输入框自己一层 border-input + 容器一层), 聚焦时两个焦点环叠在一起。
+    - **根因**: `Input` 的壳体/焦点环/校验环都画在元素自己的 Paint 里, 它不知道"外面还有一层容器"。
+    - **修法**: `WithInputBare()` 关掉壳体与环(只留原生 Edit + 可选内嵌件), 容器统一画 `FillRound/Corners + Stroke + FocusFrame`。容器的 Paint 是**父级先画、子元素后画**, 子元素都是透明底、内容从 6~8px 起, 不会盖住边缘 3px 的环带 —— 不需要 `EnableEvent_XE_PAINT_END` 那种"最后画"的写法。
+    - **焦点状态**: 组容器读 `xui.StateOf(input.Handle).Focused` 决定画不画环, 并在内层输入框上挂 `AddEvent_SetFocus / AddEvent_KillFocus` 让容器 `Redraw` —— 只在容器自己的 Paint 里读状态是不够的, 输入框聚焦不会自动让容器重绘。
+    - **内边距联动**: 与 addon 相邻的一侧收成 6(pl-1.5/pr-1.5), 另一侧保持 12(px-3), 由容器调 `input.setBareInsets(l, r)` 更新(同包私有方法, 不必暴露给用户)。
+    - **addon 宽度不能靠 Auto**: 横向主轴上嵌套 `LayoutEle` 的 `LayoutItem_SetWidth(Auto)` 实测算成 0, 整个 addon 消失。addon 自己累加内容宽(文字按 `xui.TextWidth`, 按钮/键帽取元素宽), 再用 `Fixed` 锁宽, 并在每次追加内容后让**父级** `AdjustLayout`(布局项声明只在自己身上重排不生效)。
+    - **addon 左右顺序用 z 序调**: 布局顺序 = 子元素索引 = z 序。调用方通常先 `Input()` 再 `Addon(InlineStart)`, 后建的自然落在右边; 用 `xc.XEle_SetZOrder(addon, 0)` 挪到首位即可。⚠️ 不要用 `xc.XEle_InsertChild` 挪动**已布局**的子项 —— 实测会把消息循环卡死(探针只打印到调用前一行)。
+
+148. **布局容器放进自建弹层时: 位置参数会被布局覆盖, 内边距只能用元素 padding + 子项锁 Fixed 宽**(`combobox_search.go` 的弹层):
+    - **症状**: 弹层里的第一个子容器按 `NewLayoutEle(4, 4, w-8, h-8, content)` 建好, 期望四周留 4px 内边距; 实际内容贴边, 列表高亮条一直顶到弹层圆角上(四角露出直角)。
+    - **根因**: `LayoutEle` 一旦作为布局子项参与排版, 位置/尺寸由父级布局算, 构造时传的 x/y 被覆盖; 只有宽高"可能"被布局项声明覆盖 —— 所以 `w-8` 也没生效。
+    - **修法**: 容器自身 `SetPadding(4,4,4,4)` 表达内边距, 同时**里面每个子项都声明 `Fixed` 宽**(= 弹层宽 - 8)。不能给子项用 `Fill`: 元素 padding 不扣减 `Fill` 子项的解析宽度(见 129), 列表会按弹层全宽向右溢出。
+    - **高度同理**: 子项容器高度要显式 `LayoutItem_SetHeight(Fixed, ch)`, 过滤后内容变矮时同步改高度 + `panel.resize()` + `Relocate()`, 否则弹层留着大片空白。
+    - **过滤 resize 必须保持弹出方向**: 触发器贴近屏幕底部、弹层翻到上方后, 输入过滤让列表变矮; 若仍按 sideBottom 重算位置, 变矮的弹层"放得下"就会跳到触发器下方(视觉上整个飞走)。打开/每次 resize 后记下弹层实际在哪一侧(弹层底边 ≤ 触发区顶边即上方), resize 用记住的方向重算。
+    - **多选勾选反馈要立即重绘**: 勾选状态画在弹层的行元素上, 点击切换后只重绘触发区的话, 行上的勾选标记要等下一次无关重绘才出现。切换后对全部行 `Redraw(true)` —— 行是弹层小窗里的独立元素, 立即重绘不影响宿主窗口的待重绘区域(触发区/文本仍用延迟重绘)。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1751,6 +1768,7 @@ ui/
 - 窗口真透明:`Window.SetTransparentType(xcc.Window_Transparent_Shaped)` + `Window.SetTransparentAlpha(255)`、`xcc.Window_Transparent_Shaped`(xcconst.go:55);**对原生自建弹窗**(ComboBox 下拉, 只有窗口句柄)同样可用: `xc.XWnd_SetTransparentType / XWnd_SetTransparentAlpha`, 在弹出回调里(显示前)设置, 见第八节 69 —— **单次设置可信, 逐帧改会概率性冻结**(57/69), 原生弹层不做整窗 alpha 动画
 - 背景对象美化:`BkManager.AddFill/AddBorder(state, color, id)`、`BkManager.GetObjectObj(id) *bkobj.BkObj`、`BkObj.SetRectRoundAngle/SetMargin/SetAlign/SetRotate/SetFillColor/SetBorderColor`、`xcc.BkObject_Align_Flag_*`(bkmanager.go:69/185, bkobj.go:104/42/50/66/74/90)
 - Dialog:`XEle_SetZOrderEx(h, 0, xcc.Zorder_Top)`、`XEle_AdjustLayout`、`XEle_Redraw`、`XEle_GetChildCount/GetChildByIndex`、`XObj_GetType`(→ `xcc.XC_*`)、`XWidget_GetParentEle`、`XWnd_GetRect/Redraw`、`XWnd_SetFocusEle/GetFocusEle`、`xcc.AdjustLayout_No`、`wapi.GetAsyncKeyState`
+- 输入组 / 自动补全(见第八节 147/148):`Element.AddEvent_SetFocus / AddEvent_KillFocus`(裸输入框聚焦进出时让外层容器重绘焦点环)、`xui.StateOf(h).Focused`(在容器 Paint 里判焦点)、`Element.AddEvent_LButtonUp(hEle, nFlags, *xc.POINT, *bool) int`(徽章/补全条目的点击回调)、`xui.Hex("#RRGGBB")`(自定义配色, 徽章 `WithBadgeColors`)
 - 整组透明度:`xui.SetSubtreeAlpha(v, roots...)`(逐个子元素设 alpha, 不级联)、`xui.SetSubtreeAlphaSkipScrollBars(v, roots...)`(跳过滚动条子树, 弹窗打开时的淡入用, 见 98)、`Element.AddEvent_Show(fn(hEle, bShow, pbHandled))`(元素显示/隐藏事件; 滚动条在宿主隐藏时归零自己的显隐状态)
 - Toast(见第八节 75): `XWnd_GetBodyRect`(Body 矩形, 阴影窗口有 band 偏移)、`XWnd_GetStayEle`(窗口级悬停判定)、`XEle_SetXCTimer/KillXCTimer + AddEvent_XC_Timer`(每条通知自己的倒计时)、`XEle_Destroy`、`Element.AddEvent_Destroy_End`、`Window.AddEvent_Size/MouseMove/MouseLeave`、`XEle_SetZOrderEx`
 - Table(原生 List 载体):`CreateAdapterHeader/CreateAdapter/AddColumnText/SetHeaderHeight/SetRowHeightDefault/SetRowSpace/SetColumnWidth/SetSplitLineColor/SetDrawRowBkFlags/AddRowText/SetItemText/GetCount_AD/SetSelectRow/GetSelectRow/GetVisibleRowRange/RefreshRow/RefreshData/AddEvent_List_DrawItem/AddEvent_List_Header_DrawItem/AddEvent_List_Temp_Create_End/AddEvent_List_Header_Temp_Create_End/AddEvent_List_Select/GetTemplateObject/GetHeaderTemplateObject/GetHeaderHELE/GetScrollBarVObj`
