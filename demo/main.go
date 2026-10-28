@@ -32,7 +32,7 @@ import (
 const (
 	pageBase1 = iota // 基础1: 按钮 / 按钮组 / 切换按钮
 	pageBase2        // 基础2: 徽章 / 分隔线 / 标签 / 快捷键 / 加载 / 骨架 / 头像
-	pageBase3        // 基础3: 弹出层 / 卡片 / 比例容器
+	pageBase3        // 基础3: 弹出层 / 轮播 / 卡片 / 比例容器
 	pageBase4        // 基础4: 滚动容器 / 列表项 / 手风琴
 	pageForm1        // 表单1: 输入 / 验证码 / 滑动条
 	pageForm2        // 表单2: 复选 / 单选 / 开关 / 下拉框 / Select
@@ -853,10 +853,13 @@ func buildAvatarCard(parent int) {
 		"AvatarGroup 用横向布局的负间距叠放; 组内头像默认带 2px 背景色环", vav.Handle).SetMuted().SetFontSize(14))
 }
 
-// ===== 页 3: 基础3(弹出层 / 卡片 / 比例容器) =====
+// ===== 页 3: 基础3(弹出层 / 轮播 / 卡片 / 比例容器) =====
 
 func buildBase3Page(body *widget.LayoutEle) {
 	buildPopoverCard(body)
+
+	// 轮播也放在页首: 交互密集的卡片长页滚到底后命中区会滞后(DESIGN 118)。
+	buildCarouselCard(body.Handle)
 
 	// ---- 卡片本身(直接以真卡片呈现, 不套外壳) ----
 	cardDemo, vd := autoCard(body.Handle, 10)
@@ -897,7 +900,80 @@ func buildBase3Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewButton(0, 0, 0, 0, "操作", vsm.Handle, ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline)))
 	smFooter := smCard.Footer(0)
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "CardFooter · p-3", smFooter.Content().Handle).SetMuted())
+}
 
+// buildCarouselCard 建一张轮播演示卡: 整页滑动 + 循环 + 指示点。
+// 幻灯片背景与文字直接用主题令牌自绘, 演示"幻灯片里放任意自绘内容"的用法。
+func buildCarouselCard(parent int) {
+	_, vc := autoCard(parent, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "轮播", vc.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Carousel: 整页滑动(300ms) · 循环 · ←/→ 键盘翻页 · 拖拽松手吸附; 上/下张按钮在内容外侧 48px", vc.Handle))
+
+	car := ui.NewCarousel(0, 0, 0, 200, vc.Handle, ui.WithCarouselLoop(true))
+	xui.ItemFill(car)
+	car.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 200)
+
+	captions := [...]string{
+		"循环开启: 最后一张的下一页接着第一张",
+		"用鼠标拖动后松手, 吸附到最近一页",
+		"← / → 键在轮播内控件获焦时翻页",
+		"按钮的悬停与焦点样式与 ui.Button 一致",
+	}
+	n := len(captions)
+	for i := 0; i < n; i++ {
+		label, caption := fmt.Sprintf("%d", i+1), captions[i]
+		car.AddSlide(func(s *ui.CarouselSlide) {
+			ph := widget.NewElement(0, 0, 0, 0, s.Handle)
+			xui.ItemFill(ph)
+			ph.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
+			ph.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+				p := xui.BeginPaint(hEle, hDraw)
+				if p == nil {
+					return 0
+				}
+				*pbHandled = true
+				t := xui.Current()
+				p.FillRound(&p.Rc, t.Muted, t.RadiusLg())
+				p.Draw.SetFont(xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: 40, Bold: true}))
+				numRc := xc.RECT{Left: p.Rc.Left, Top: p.Rc.Top, Right: p.Rc.Right, Bottom: p.Rc.Bottom - 20}
+				p.Text(label, &numRc, t.Foreground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+				p.Draw.SetFont(xui.FontHandle(t.FontDefault))
+				capRc := xc.RECT{Left: p.Rc.Left + 16, Top: p.Rc.Bottom - 44, Right: p.Rc.Right - 16, Bottom: p.Rc.Bottom - 16}
+				p.Text(caption, &capRc, t.MutedForeground,
+					xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
+				return 0
+			})
+		})
+	}
+
+	// 指示点: 当前页实心, 其余用 Border 色; 页变化时重绘。
+	dots := widget.NewElement(0, 0, 0, 10, vc.Handle)
+	xui.ItemFill(dots)
+	dots.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 10)
+	dots.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		t := xui.Current()
+		const d, gap int32 = 6, 6
+		total := int32(n)*d + int32(n-1)*gap
+		x0 := (p.Rc.Left + p.Rc.Right - total) / 2
+		y := (p.Rc.Top + p.Rc.Bottom - d) / 2
+		for i := 0; i < n; i++ {
+			col := t.Border
+			if i == car.Index() {
+				col = t.Foreground
+			}
+			l := x0 + int32(i)*(d+gap)
+			rc := xc.RECT{Left: l, Top: y, Right: l + d, Bottom: y + d}
+			p.FillRound(&rc, col, d/2)
+		}
+		return 0
+	})
+	car.OnChange(func(i int) { dots.Redraw(true) })
 }
 
 // ===== 页 4: 基础4(滚动容器 / 列表项 / 手风琴) =====

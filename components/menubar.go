@@ -17,7 +17,7 @@ import (
 const (
 	mbPad        int32 = 4   // 根容器 p-1
 	mbGap        int32 = 4   // 根容器 gap-1
-	mbBarH       int32 = 38  // p-1 + 触发钮元素高 30(视觉 28 + 2 按压预留)
+	mbBarH       int32 = 36  // h-9: p-1 + 触发区视觉高 28 + p-1(按钮元素另含 pressShift 的 1px 预留)
 	mbPanelPad   int32 = 4   // MenubarContent p-1
 	mbItemH      int32 = 32  // 条目 px-2 py-1.5, text-sm 行高 20
 	mbLabelH     int32 = 32  // MenubarLabel 同一条目高
@@ -201,7 +201,7 @@ func (mb *Menubar) AddMenu(text string) *MenubarMenu {
 	}
 	idx := len(mb.menus)
 	btn := NewButton(0, 0, 0, 0, text, mb.bar.Handle,
-		WithVariant(ButtonGhost), WithSize(ButtonSizeSm))
+		WithVariant(ButtonGhost), WithSize(ButtonSizeSm), WithButtonHasPopup())
 	if btn == nil {
 		return nil
 	}
@@ -262,7 +262,9 @@ func (mb *Menubar) layoutTriggers() {
 	x := int32(mbPad)
 	for _, tr := range mb.triggers {
 		w, h := tr.GetWidth(), tr.GetHeight()
-		mbSetRect(tr.Handle, x, (mbBarH-h)/2, w, h)
+		// 按**壳体**高居中, 不按元素高: Button 的元素比视觉高多 pressShift(按下位移预留,
+		// 留在底边), 按元素高算会让壳体整体上移 1px(条内上 4 / 下 6)。
+		mbSetRect(tr.Handle, x, (mbBarH-(h-pressShift))/2, w, h)
 		x += w + mbGap
 	}
 	total := x - mbGap + mbPad
@@ -339,7 +341,9 @@ func (mb *Menubar) popupPos(idx int) (int32, int32) {
 	// XWnd_GetRect 返回的是**逻辑像素**(与 XEle_SetRect 同一坐标系), 不要再除 DPI;
 	// 只有 Win32 的 GetWindowRect 才是物理像素(见 panelScreenPos)。
 	xc.XWnd_GetRect(mb.hWnd, &wr)
-	return wr.Left + rc.Left + mbAlignOff, wr.Top + rc.Bottom + mbSideOffset
+	// 从触发区的**视觉底边**量 8: 元素底边还含 Button 的 1px 按压位移预留
+	// (见 button.go 的 pressShift), 拿元素底边算弹层会比上游低 1px。
+	return wr.Left + rc.Left + mbAlignOff, wr.Top + rc.Bottom - pressShift + mbSideOffset
 }
 
 // onPanelHidden 弹层被关掉(失焦/主动 Hide)时同步菜单栏状态。

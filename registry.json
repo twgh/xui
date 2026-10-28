@@ -41,6 +41,10 @@
       "files": ["aspectratio.go"],
       "deps": []
     },
+    "carousel": {
+      "files": ["carousel.go"],
+      "deps": ["button"]
+    },
     "alert": {
       "files": ["alert.go"],
       "deps": ["label"]

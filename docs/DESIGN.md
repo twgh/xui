@@ -271,6 +271,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Drawer | 复用 Sheet | 底部 max-h-80vh + 顶部抓手 + 上方圆角; 抓手按住捕获鼠标, 拖过面板高 1/3 关闭、否则回弹(第八节 121); 方向可改 top/left/right | drawer.tsx(vaul) |
 | Menubar | 自绘根条 + 每个菜单一个 popoverPanel + 自绘条目 Element | 原生 `XMenu_Popup` 阻塞、期间主窗口收不到鼠标移动, 无法做悬停切换, 因此弹层自绘条目(与 Menu 共用 menu_model.go 的条目模型); 打开后鼠标移到其它触发区即切换; ↑↓/Home/End/Enter/←→/ESC/Tab; 子菜单是第二个激活弹层, 父层 `keepOnBlur` 防止失焦关闭(第八节 122~125) | menubar.tsx(radix-nova) |
 | NavigationMenu | 自绘根列表 + **一个共享 popoverPanel(非激活)** | 所有菜单共用一个视口: 贴列表左下方、宽高随当前菜单内容变化, 切换时不重开窗口; 触发区/顶级链接是全自绘 Button; 内容页是 LayoutEle(链接行助手 `Link`/`LinkIn` + 任意控件); 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开(第八节 137 的轮询同时负责链接 hover 与收起判定) | navigation-menu.tsx(radix-nova) |
+| Carousel | 根 Element + 裁切视口 + 每页一个 LayoutEle | 每页宽 = 视口宽 − gap(16), 过渡 300ms 用 `xui.Presence` 每帧重写各页矩形; 循环用"模总长"折回, 首尾相接、不需要克隆页(第八节 141); 拖拽走窗口级起手 + `SetCaptureEle` 跟手(第八节 140); 上/下张是内容外侧 48px 的圆形 Button | carousel.tsx(radix-nova, embla) |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
@@ -306,6 +307,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **drawer**: 底部面板 max-h-[80vh]、上方两角 rounded-lg、border-t; 顶部抓手 w-[100px] h-2 mt-4 rounded-full bg-muted; 抓手按住下拖过 1/3 关闭、未过阈值回弹; 头部/页脚同 Sheet | drawer.tsx(vaul) + 第八节 121 |
 | **menubar**: 根条 h-9 rounded-md border p-1 gap-1; 触发区 rounded-sm px-2 py-1 text-sm, 悬停/展开 bg-accent; 弹层 min-w-[12rem] rounded-md border p-1, sideOffset 8 / alignOffset -4; 条目 px-2 py-1.5 text-sm, 悬停 bg-accent, 勾选/单选指示器在左(pl-8), 快捷键右对齐; **打开后悬停其它触发区即切换**; ←→ 切换顶级、↑↓/Home/End 移动、Enter 选中、ESC 关闭还焦点、Tab 关闭; 子菜单悬停/Enter 向右展开 | menubar.tsx(radix-nova) + 第八节 122~125 |
 | **navigation menu**: 根列表 gap-1; 触发区 h-9 px-4 rounded-md text-sm, 悬停 bg-accent、展开 bg-accent/50(悬停回全亮), chevron 12 随展开旋转 180°(300ms); 顶级普通链接 p-2; **所有菜单共用一个视口**, 贴列表左缘下方 mt-1.5、p-2、rounded-md border bg-popover, 宽高随当前菜单内容变化; 内容链接行 p-3(标题 20 + 间距 4 + 说明 20), 悬停/键盘高亮 bg-accent, 键盘高亮另画 focus-visible 环; 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开; ←→ 移动顶级焦点、↓ 进入内容、↑↓/Home/End 选链接、Enter 激活、ESC/Tab 关闭; 内容页面切换时从切换方向滑入 208px + 淡入(200ms) | navigation-menu.tsx(radix-nova) + 第八节 137~139 |
+| **carousel**: 每页 basis-full 整页位移, 页间 16 间隙(`-ml-4` + `pl-4`); 上/下张 = outline + icon-sm + rounded-full 按钮, 在内容左右(纵向时上下)48px 处, 到边界禁用、loop 时始终可用; ←/→ 在轮播内控件获焦时翻页; 循环首尾相接(最后一张的下一页紧跟第一张); 拖拽跟手、松手吸附最近一页(阈值 6 区分点击) | carousel.tsx + embla 默认 loop=false/align=start + 第八节 140/141 |
 | slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),hover/拖动中/focus-visible 显示 ring-3 | slider.tsx |
 | slider 元素比可见轨道左右各宽 9px(滑块半径 6 + ring 3, 给两端 ring 留绘制空间, 见第八节 26);滑块中心在轨道两端之间移动, 位置由 pos 自算 | slider.tsx(radix 滑块中心贴轨道端点) |
 | slider 交互全自实现:点击跳转 + LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ KeyDown 左右 ±5%/Home/End | — |
@@ -460,7 +462,7 @@ ui/
   | `sheet.go` | 侧边面板(复用 Dialog 的模态基座) | dialog 的文件清单(模态分支) / drawer |
   | `menu_model.go` | 菜单条目模型与 `MenuOpt` 构造器 | menu / menubar |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在 `ui/` 里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update` 或 `xui update button`(只更新该组件及其依赖)。
 
@@ -498,6 +500,9 @@ ui/
 | NavigationMenu 内容里只有 `Link` 链接行支持键盘高亮/Enter | 视口是非激活窗口, 不接收键盘焦点: 键盘交互由触发区接管(↓ 进入内容后 ↑↓/Home/End/Enter), 自定义放进内容的控件只支持鼠标操作 |
 | NavigationMenu 的链接说明只有一行(超宽省略号), 上游是 line-clamp-2 | 链接行高固定 68(标题 20 + 间距 4 + 说明 20 + 上下 12); 两行说明会让每个菜单的视口高度随文案跳变 |
 | NavigationMenu 只做共享视口模式, 没有 Sub / viewport=false / Indicator | 每个触发区各开一块弹层可以用 Popover 组合; 视口下方的小箭头(Indicator)在 shadcn 默认示例里也不启用 |
+| Carousel 高度必须显式给(构造参数 cy) | 网页里轮播高度由最高的一页撑开; 自绘容器没有可靠的离屏量高通道, 需要随内容长高时把高度交给外层布局控制 |
+| Carousel 的按钮槽位固定占 96(左右/上下各 48) | 与 shadcn 示例外层 `px-12` 等价; 不需要按钮时用 `WithCarouselControls(false)`, 内容会占满整个根元素 |
+| Carousel 拖拽按"最近一页"吸附, 没有 velocity 惯性 | 桌面鼠标够用; 触摸手势、RTL 与 wheel 翻页未做(embla 的这些能力不在 shadcn 核心弹层语义里) |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1666,6 +1671,22 @@ ui/
     - **修法**: 先把新内容 `SetSubtreeAlpha(0)` 压透明藏住, `AfterFunc(0)` 等布局落定后再取基准矩形(`XEle_GetRect`)、设偏移并起 `Presence`; 每帧 apply 重新写回偏移(万一之后还有布局趟也不会停在终点), done 时恢复基准矩形并把 alpha 打回 1。首次打开不播内容动画 —— 视口自己的淡入(元素 alpha)与内容 alpha 会互相覆盖, 每帧后写的赢。
     - **验证**: 探针直接读内容元素的矩形/alpha: 起始 left=213/alpha≈3, 中途 150/81, 结束 left=8/alpha=255(8 是内容区的左内边距)。
 
+140. **元素鼠标事件不冒泡; 拖拽要"窗口级起手 + 捕获元素跟手"**(`carousel.go`, 事件路由探针实测):
+    - **实测**: 指针在子元素上时, **父元素收不到** MouseMove/LButtonDown/LButtonUp —— 只有该子元素与**窗口**各收到一份(窗口级 pPt 是窗口客户区逻辑坐标, 元素级 pPt 是该元素客户区坐标)。所以"在视口里按下、在幻灯片上拖动"这种需求不能只监听视口自己的鼠标事件, 幻灯片内容一铺满就再也起不了手。
+    - **修法**: 窗口级 LButtonDown/MouseMove/Up 起手(用 `XEle_GetWndClientRect` 判点是否落在视口内), 越过 6px 阈值后 `window.SetCaptureEle(viewport)`; 捕获后移动只送给该元素(窗口收不到), 坐标要加按下时记的视口原点; 在窗口外松手没有 UP 事件, 用 MouseMove 的 `nFlags & 1`(MK_LBUTTON)判定已松开并收尾; 收尾时 `SetCaptureEle(0)`。
+    - **坑**: 同一次按下窗口和视口都会收到(元素级不冒泡但会各派发一份), 视口自己的 LButtonDown 处理器**不能无条件清拖拽预备状态** —— 它会在窗口级处理器刚置上之后又清掉, 表现为"永远拖不动"(探针实锤, 去掉该清理后正常)。
+
+141. **循环轮播的折回要用"正模"**(`carousel.go` + `carousel_test.go`):
+    - **现象**: 循环模式的上一张(往前拖/按上一张)时, 第一张一直不出现, 左侧留空。
+    - **根因**: Go 的 `math.Mod` 符号跟被除数, `math.Mod(-1363, 2520)` 仍是 -1363; 直接减 `step` 会把第一张留在 -2203 的负区间。折回区间按 `(-step, (n−1)step]` 设计时负数必须自己归正。
+    - **修法**: 先加一轮再取模(`x := math.Mod(x+step, total); if x < 0 { x += total }`)再减 `step`; 这样左侧留一格给"上一张从左边进来", 右侧留一格给"下一张从右边进来", 首尾相接且没有克隆页。`components/carousel_test.go` 固定了 index 0 / 末页 / 拖过末页三种位置。
+
+142. **Button 的元素高 = 视觉高 + `pressShift`(按压位移预留), 容器要按"视觉高"居中, 不要按元素高**(`menubar.go` 的 `layoutTriggers`, 150% DPI 像素实测):
+    - **现象**: 菜单栏一整排触发区看着偏上 —— 悬停/展开的底色块在条内上 4 / 下 6, 文字也跟着高 1 逻辑像素。
+    - **根因**: `NewButton` 把创建高度加了 `pressShift`(1px, 见 88), 预留像素落在**底边**(壳体画在元素矩形去掉底部 1px 的位置)。布局按 `(条高 − 元素高)/2` 居中, 居中的是"壳体 + 底部预留"这个整体, 壳体自然被顶上去 1px; 菜单栏条高又按旧预留量(2px)写成 38, 比上游 `h-9`(36)高 2。
+    - **修法**: 条高按上游 h-9 = p-1(4) + 视觉高 28 + p-1(4) = 36; 触发区按壳体高居中(`(mbBarH-(h-pressShift))/2`); 弹层的 sideOffset 也从**视觉底边**量, 不要拿含预留的元素底边(否则弹层低 1px)。
+    - **验证**: 150% DPI 像素实测(探针 + demo 导航3页): 条 36、壳体 28、上下留白各约 4 逻辑; 四段文字墨迹中心与条中心差 0.5 物理像素(0.33 逻辑, 属字体墨迹不对称); 弹层卡片顶边 = 条底边 + 4 逻辑。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1711,5 +1732,6 @@ ui/
 - 命令面板: 原生 `widget.NewEdit` 透明化(EnableBkTransparent/EnableDrawBorder(false)/EnableDrawFocus(false)/SetBorderSize(0,0,0,0)/EnableAutoSelAll(false)) + `SetDefaultText/SetDefaultTextColor/SetCaretColor/SetTextAlign(Left|Center_V)`; `AddEvent_Edit_Changed` / `AddEvent_KeyDown` 接管 ↑↓/Home/End/Enter/ESC(原生箭头键会先到这里, 标记 handled 即可); 列表滚动用 `ScrollArea` 的 `GetViewHeight/GetViewPosV/ScrollPosYV`
 - 字体:`xui.FontSpec{Family, Size, Bold, Italic}`。**没有下划线字段**: `xcc.FontStyle_Underline` 在本框架的 D2D 文本路径下不渲染(探针: 下划线字体与普通字体像素一致), hover:underline 一律手绘 1px 线 —— 宽度取 `xui.TextWidth`, 落点见 Button 的 link 变体与 Accordion 触发区
 - 弹层键盘钩子(`popoverPanel`, Select 的 ↑↓/Enter 用): `Window.AddEvent_KeyDown`(窗口级, 焦点在子元素上也先于元素分发)、`popoverPanel.OnKeyDown/OnEsc`(popup.go 预留的钩子) + `Element.SetFocus`(焦点即条目高亮)
+- 轮播(见第八节 140/141): 纯自绘根 Element + 视口 + 每页一个 LayoutEle; 位移过渡复用 `xui.Presence`(`DropTransitions` 后每帧写各页矩形); 拖拽用窗口级 `AddEvent_LButtonDown/MouseMove/LButtonUp` + `Window.SetCaptureEle` + `AddEvent_KeyDown`(焦点在轮播内才响应); 上/下张用 `Button`(outline + icon-sm + rounded-full); 循环位置取正模
 - 侧边面板 / 抽屉 / 菜单栏(见第八节 120~125): `XWnd_GetBodyRect`(遮罩铺 Body)、`XEle_SetAlpha`(遮罩淡入, 不级联子元素)、`XEle_GetRect/SetRect`(面板整体平移, 逻辑像素)、`XEle_SetCapture`(抓手拖拽捕获鼠标)、`wapi.GetCursorPos`(拖拽用屏幕坐标算增量)、`wapi.GetForegroundWindow/SetForegroundWindow`(子菜单与父弹层的焦点归属判定)、`app.AfterFunc`(弹层关闭后延迟把焦点还给触发区, 否则被随后的窗口激活覆盖)
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`
