@@ -293,12 +293,12 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **button group**: 首尾保留外圆角、相邻边收直角;xs/sm/icon-xs/icon-sm 在组内圆角统一成 rounded-lg;直系子项相邻边框自然并成 1px;组内嵌组时直接子项间距 8(gap-2);文本块/分隔条拉伸到按钮视觉高 | button-group.tsx + button.tsx 的 `in-data-[slot=button-group]` 规则 + 第八节 86 |
 | **button 加载态**: 行内前置图标位置换成 lucide loader-circle(纯图标按钮替换图标), 1s/圈 linear 持续旋转, 常配 `disabled`;只负责视觉, 是否禁用由调用方决定 | shadcn button 文档的 spinner 示例(`LoaderCircleIcon animate-spin` + disabled)+ 第八节 87 |
 | destructive 软色调(bg-destructive/10 + 红字) | button.tsx / badge.tsx |
-| radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground) | radio-group.tsx |
-| checkbox size-4 rounded-[4px] border-input;未选**亮色无底色 / 暗色 dark:bg-input/30**;选中 bg-primary + 白勾;禁用 = 上面每个图层各乘 50% | checkbox.tsx + 第八节 61 |
+| radio 选中 = bg-primary 实心圆 + size-2 白点(bg-primary-foreground); **RadioGroup = 组值 + 竖向 gap-2(8)**: 方向键在可用项间移动并选中(↑↓←→ 循环)、Home/End 到首末、空格选中当前项; 同父兄弟交给原生互斥, 放进 Field 的跨父级条目由组手动取消; Tab 按桌面惯例遍历各项(非 radix 的 roving tabindex) | radio-group.tsx + 第八节 143 |
+| checkbox size-4 rounded-[4px] border-input;未选**亮色无底色 / 暗色 dark:bg-input/30**;选中 bg-primary + 白勾;不确定态(`checked="indeterminate"`)画减号、点击落到选中;空格切换;禁用 = 上面每个图层各乘 50% | checkbox.tsx + Radix Checkbox indeterminate + 第八节 61 |
 | card 描边 = ring-foreground/10(非 Border 令牌), rounded-xl;卡片头 = 一行两列(左列标题+说明 `1fr`, 右列动作 `auto`), 动作区贴右上、跨标题与说明两行顶端对齐(gap-1 = 4);页脚 = 全宽 `border-t + bg-muted/50`、内容垂直居中、四边内边距跟随卡片尺寸(default 16 / sm 12)、只有下两角随圆角 | card.tsx + `ui/card.go` 的 `CardHeader` / `CardFooter` |
 | **aspect ratio** = 只有比例一个参数, **宽度驱动高度**(高度 = 宽度 / ratio);宽度变化(窗口缩放、布局分配)时自动重算;内容区铺满比例框, 不裁剪溢出内容 | radix aspect-ratio(`@radix-ui/react-aspect-ratio`, CSS aspect-ratio 语义) + 第八节 94 |
 | alert = bg-card + 1px border + rounded-lg(内边距 10/8); 可选图标 size-4 下移 2、与文本列间距 8; 标题 text-sm 中等字重、描述 text-sm muted, 行间 2; destructive = 标题/图标 destructive、描述 destructive/90; 动作槽贴右上, **无图标/无动作时对应列不占位**; 标题/描述按宽度折行、高度随内容自撑 | alert.tsx(radix-nova) + 第八节 90 |
-| **aria-invalid**(表单校验失败): 边框变 destructive + ring-3 destructive/20(暗色 border /50、ring /40), **常驻不要求焦点**;与 focus-visible 同时成立时红色优先(变体顺序里 aria-invalid 在后) | button.tsx / input.tsx / select.tsx + 第八节 69 |
+| **aria-invalid**(表单校验失败): 边框变 destructive + ring-3 destructive/20(暗色 border /50、ring /40), **常驻不要求焦点**;与 focus-visible 同时成立时红色优先(变体顺序里 aria-invalid 在后);指示器未选中时没有自己的填充, 红环必须先用宿主色盖住指示器矩形, 否则环会从内部透出来 | button.tsx / input.tsx / select.tsx / checkbox.tsx / radio-group.tsx + 第八节 69 |
 | badge h-5 胶囊(rounded-4xl) | badge.tsx |
 | switch 轨道 32x18(选中 bg-primary/未选 bg-input, **暗色未选是 dark:bg-input/80**),滑块 16 圆、两侧各留 1px;dark 下选中滑块用 primary-foreground、未选用 foreground;**禁用时轨道与滑块一起乘 50%**(滑块不跟班会剩一颗全亮白圆) | switch.tsx(radix-nova) + 第八节 61 |
 | switch 元素比轨道每边大 3px:给 focus-visible 的 ring-3 留绘制空间,同时外扩点击热区(≈ after:-inset-*) | switch.tsx |
@@ -1686,6 +1686,12 @@ ui/
     - **根因**: `NewButton` 把创建高度加了 `pressShift`(1px, 见 88), 预留像素落在**底边**(壳体画在元素矩形去掉底部 1px 的位置)。布局按 `(条高 − 元素高)/2` 居中, 居中的是"壳体 + 底部预留"这个整体, 壳体自然被顶上去 1px; 菜单栏条高又按旧预留量(2px)写成 38, 比上游 `h-9`(36)高 2。
     - **修法**: 条高按上游 h-9 = p-1(4) + 视觉高 28 + p-1(4) = 36; 触发区按壳体高居中(`(mbBarH-(h-pressShift))/2`); 弹层的 sideOffset 也从**视觉底边**量, 不要拿含预留的元素底边(否则弹层低 1px)。
     - **验证**: 150% DPI 像素实测(探针 + demo 导航3页): 条 36、壳体 28、上下留白各约 4 逻辑; 四段文字墨迹中心与条中心差 0.5 物理像素(0.33 逻辑, 属字体墨迹不对称); 弹层卡片顶边 = 条底边 + 4 逻辑。
+
+143. **Radio 的原生互斥不要逐项手动取消, 键盘搬焦点必须推迟到消息循环**(`radiogroup.go`, 探针实测):
+    - **现象**: ①组内点选另一项后新旧两项都亮, 或者最后两个都不亮; ②按 ↓ 后选中项正确, 但焦点环落在**下一项**上。
+    - **根因**: ①`Button_Type_Radio` 的互斥由原生按**同一父容器**处理; 在选中回调里再对同父兄弟调 `SetCheck(false)`, 原生会把刚选中的项一起取消(事件序列 A:true → A:false)。②在 `XE_KEYDOWN` 回调里同步 `XWnd_SetFocusEle` 会被同一次按键的原生焦点导航覆盖, 焦点落到再下一项(同 138 条)。
+    - **修法**: 同父兄弟交给原生互斥, 只对**跨父级**条目(例如放进 Field 的选项)手动 `SetSelected(false)`; 键盘导航用 `app.AfterFunc(0, func(){ XWnd_SetFocusEle(...) })` 延迟搬焦点。
+    - **验证**: 探针 + demo 表单5页: 点击 A/B/C 单选互斥; ↑/↓/Home/End 选中并搬焦点(循环); Space 选中; Field 嵌套项参与组互斥与方向键; 组级 `SetValue` / `SetDisabled` 正常。
 
 ---
 

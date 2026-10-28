@@ -10,10 +10,11 @@
 
 ## 当前状态(截至 2026-10-28)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 现为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Checkbox / Radio 三态、校验态与 RadioGroup**(2026-10-28, 参 shadcn radio-group / checkbox 文档): Checkbox 补不确定态(`WithCheckboxIndeterminate` / `SetIndeterminate`, 减号 + 点击落到选中)、aria-invalid(红边框 + 常驻红环, 选中边框保持 primary)与空格切换;Radio 补同款校验态、`SetSelected` 与空格选中。新增 `components/radiogroup.go`:`NewRadioGroup` + `AddItem` / `Attach`(跨 Field 父级入组)+ `Value` / `SetValue` / `OnChange` / `SetDisabled` / `SetInvalid` / `SetSpacing`;↑↓←→ 循环移动并选中、Home/End 首末、空格选中。根因: 同父兄弟手动 `SetCheck(false)` 会让原生单选把刚选中的项一起取消, 键盘 `SetFocusEle` 需延迟到消息循环, 见 DESIGN 143。验收: 独立探针(点击互斥、方向键/Home/End、Space、Field 嵌套项、SetValue、禁用) + demo 新增表单5页两卡(单选组: 默认/Field 说明项/禁用组/可切换校验态; Checkbox 三态与校验);亮暗两套截图核对不确定态与红环;`go build/vet/test ./...`、`xui add radio-group` 与 `add --all` 闭包编译通过。
 - ✅ **菜单栏触发区垂直居中**(2026-10-28, 用户截图报障, DESIGN 142): 触发区悬停/展开的底色块与文字整体偏上 1 逻辑像素, 条本身也比上游高 2。根因: Button 元素高 = 视觉高 + `pressShift`(1px, 留在底边), 菜单栏却按元素高居中, 条高又按旧预留量写成 38。修法: 条高改回上游 h-9 = 36, 触发区按壳体高居中, 弹层锚点改从视觉底边量 sideOffset。验收: 探针 + demo 导航3页 150% DPI 像素实测(条 36、壳体 28、上下各 4; 文字墨迹中心与条中心差 0.5 物理px; 弹层卡片顶边 = 条底边 + 4), `go build/vet/test ./...` 全绿, `xui add menubar` 与 `add --all` 闭包编译通过。
 
 - ✅ **手风琴收起后卡片文字重影**(2026-10-26, 用户报障, DESIGN 136): 收起第一项后卡片说明文字在旧位置留一整行没擦掉, 且这一次收起没有 200ms 过渡(直接跳到底)。根因在 `Collapsible`: demo 建页时该页还是隐藏页, `expand()` 量到内容高度 0 走早退分支 → 这个键的 presence 值一直停在 0; 第一次收起的 target 也是 0 → `Presence` 幂等不起过渡、**done 永不回调**, 而终态(隐藏内容)与整窗重绘都写在 done 里 → 布局变了、屏幕一次都没重绘, 旧帧留在屏上。修两处: `startPresence` 接住返回值, 值已在目标上就自己落终态 + `redrawNow`; `expand()` 早退分支把值抬到 1(让后续收起回到正常过渡)。验收: 探针慢放对比(修前旧帧实测停留 20s 不消失、内容 `show=true`;修后逐帧缩、`show=false`、旧帧擦净)、demo 两条进入路径各连点 8 次 + 可折叠面板页 6 次, 像素级"同一行文字出现两遍"检测全 0、`go build/vet/test ./...` 全绿、`accordion collapsible card` 与 `add --all` 闭包编译通过。
@@ -650,7 +651,7 @@
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
 - ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~6 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Resizable / Chart / Sidebar 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
-  - **已有等价实现(不新增)**: Radio Group = `NewRadio`(原生父容器互斥)、Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
+  - **已有等价实现(不新增)**: Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
   - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
   - **批次 2 — 表单闭环**: 已完成(2026-10-24): Toggle / Toggle Group / Native Select / Select / Input OTP / Accordion(复用 Collapsible)。
@@ -658,6 +659,7 @@
   - **批次 4 — 窗格/菜单**: 已完成(2026-10-25): Sheet / Drawer / Menubar。
   - **批次 5 — 导航**: 已完成(2026-10-27): Navigation Menu(共享视口 + 悬停开合 + 内容滑入)。
   - **批次 6 — 轮播**: 已完成(2026-10-28): Carousel(整页滑动 / 循环 / 拖拽吸附 / 自动翻页)。
+  - **批次 7 — 选择控件**: 已完成(2026-10-28): Checkbox 不确定态 / aria-invalid / 空格切换、Radio 校验态 / 空格选中、RadioGroup(组值 / 跨层互斥 / ↑↓←→·Home/End·Space 导航 / 组级禁用与校验)。
   - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Resizable、Chart、Sidebar(★★★★~★★★★★)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
   - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义)。
@@ -670,7 +672,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 draw(Painter) / icons(图标几何+D2D 直通出图) / focus / font / state
 │                                 anim(hover 过渡) / presence(进出场) / container·layout(布局骨架)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
-│                                 button checkbox radio input label separator(含 Badge) card alert
+│                                 button checkbox radio radiogroup input label separator(含 Badge) card alert
 │                                 switch progress slider tabs collapsible tooltip toast window combobox dialog alertdialog
 │                                 menu table tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
@@ -719,7 +721,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
-# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..15 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/导航1/导航2/导航3/反馈1/反馈2/反馈3/数据/图标
+# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..16 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/反馈1/反馈2/反馈3/数据/图标
 #     XUI_ANIM_SCALE=5 把 hover / 弹层 / Collapsible 的过渡慢放 5 倍(抓中间帧用)
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
@@ -820,5 +822,5 @@ go build ./ui
 - `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), **每图标一个 `IconXxx` 常量**;按名字取用 `icons.Path("eye")`(给"名字来自用户输入/配置"的场合)。数据由 `scripts/gen_icons.py` 生成(默认取最新版, `--version` 可钉版)
 - 出图走**直通 D2D 几何填充**(`d2dicon.go`), GDI 模式(`app.New(false)`)自动回落折线描边
 - 体积(实测, 同基准 `-s -w`): 只用常量 **+0 字节**;调 `Path/Names` 引用整张表 **+426KB**
-- demo 第 16 页「图标」是浏览入口(`XUI_HOME_PAGE=15`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
+- demo 第 17 页「图标」是浏览入口(`XUI_HOME_PAGE=16`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
 - **原理、坑、性能结论见 DESIGN 第八节 43(抗锯齿 / figure 数)与 44(资源预处理 / 名字单射 / arc 标志位)**

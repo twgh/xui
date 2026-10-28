@@ -7,7 +7,7 @@
 //   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
 //
 // 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
-// 启动页 XUI_HOME_PAGE = 0..15 = 基础1..4 / 表单1..4 / 导航1..3 / 反馈1..3 / 数据 / 图标。
+// 启动页 XUI_HOME_PAGE = 0..16 = 基础1..4 / 表单1..5 / 导航1..3 / 反馈1..3 / 数据 / 图标。
 package main
 
 import (
@@ -38,6 +38,7 @@ const (
 	pageForm2        // 表单2: 复选 / 单选 / 开关 / 下拉框 / Select
 	pageForm3        // 表单3: 字段与分组(Field / FieldSet)
 	pageForm4        // 表单4: 日期与时间 / 月历 / 范围与预设
+	pageForm5        // 表单5: 单选组 / 复选框三态与校验
 	pageNav1         // 导航1: 命令面板 / 下拉菜单 / 右键菜单
 	pageNav2         // 导航2: 标签页 / 面包屑 / 分页 / 可折叠面板
 	pageNav3         // 导航3: 导航菜单(NavigationMenu) + 菜单栏(Menubar)
@@ -52,7 +53,7 @@ const (
 // pageTitles 的个数必须与 pageCount 一致(页签与页一一对应)。
 var pageTitles = [...]string{
 	"基础1", "基础2", "基础3", "基础4",
-	"表单1", "表单2", "表单3", "表单4",
+	"表单1", "表单2", "表单3", "表单4", "表单5",
 	"导航1", "导航2", "导航3",
 	"反馈1", "反馈2", "反馈3",
 	"数据", "图标",
@@ -365,6 +366,7 @@ func buildPages(hWindow, host int) {
 	buildForm2Page(bodies[pageForm2])
 	buildForm3Page(bodies[pageForm3])
 	buildForm4Page(bodies[pageForm4])
+	buildForm5Page(bodies[pageForm5])
 	buildNav1Page(bodies[pageNav1])
 	buildNav2Page(bodies[pageNav2])
 	buildNav3Page(bodies[pageNav3])
@@ -1577,7 +1579,93 @@ func dateRangeText(from, to time.Time) string {
 	return from.Format("2006年1月2日") + " - " + to.Format("2006年1月2日")
 }
 
-// ===== 页 9: 导航1(命令面板 / 下拉菜单 / 右键菜单) =====
+// ===== 页 9: 表单5(单选组 / 复选框三态与校验) =====
+
+func buildForm5Page(body *widget.LayoutEle) {
+	r := row(body.Handle, 0, gap)
+	colL := col(r.Handle, 1, gap)
+	colR := col(r.Handle, 1, gap)
+
+	// ---- 左列: 单选组 ----
+	_, vGrp := autoCard(colL.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "单选组(RadioGroup)", vGrp.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"组值 + 跨层互斥; ↑↓/←→/Home/End 移动并选中(循环), 空格选中当前项", vGrp.Handle))
+
+	xui.ItemFill(hint(vGrp.Handle, "默认(含一条 Field 说明项, Attach 跨层入组)"))
+	grp := ui.NewRadioGroup(vGrp.Handle, ui.WithRadioGroupValue("mentions"))
+	xui.ItemFill(grp)
+	grp.AddItem("all", "所有消息")
+	grp.AddItem("mentions", "仅提及")
+	grp.AddItem("off", "关闭")
+	grpState := ui.NewLabel(0, 0, 0, 0, "选中: mentions", vGrp.Handle).SetMuted()
+	xui.ItemFill(grpState)
+	grp.OnChange(func(v string) { grpState.SetText("选中: " + v).Redraw() })
+
+	// 条目放在 Field 子容器里时不在组容器直下, xcgui 的"同父容器互斥"管不到;
+	// Attach 把它接入组语义(互斥/方向键/变更回调仍然生效)。
+	fCustom := ui.NewField(0, 0, 0, 0, grp.Handle)
+	xui.ItemFill(fCustom)
+	rCustom := ui.NewRadio(0, 0, 0, 0, "自定义(带说明)", fCustom.Handle)
+	xui.ItemFill(rCustom)
+	fCustom.Description("条目放在 Field 子容器里, 仍参与组互斥与键盘导航。")
+	grp.Attach(rCustom, "custom")
+
+	xui.ItemFill(hint(vGrp.Handle, "禁用整组"))
+	grpDis := ui.NewRadioGroup(vGrp.Handle, ui.WithRadioGroupDisabled(), ui.WithRadioGroupValue("a"))
+	xui.ItemFill(grpDis)
+	grpDis.AddItem("a", "选项 A")
+	grpDis.AddItem("b", "选项 B")
+
+	xui.ItemFill(hint(vGrp.Handle, "校验失败(aria-invalid 常驻红环, 可切换)"))
+	grpInv := ui.NewRadioGroup(vGrp.Handle, ui.WithRadioGroupInvalid())
+	xui.ItemFill(grpInv)
+	grpInv.AddItem("x", "选项 X")
+	grpInv.AddItem("y", "选项 Y")
+	grpInvBtn := ui.NewButton(0, 0, 0, 0, "切换校验状态", vGrp.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+	xui.ItemWidth(grpInvBtn, 120)
+	grpInvBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		grpInv.SetInvalid(!grpInv.Invalid())
+		return 0
+	})
+
+	// ---- 右列: Checkbox 三态 / 校验 ----
+	_, vCB := autoCard(colR.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "Checkbox 三态与校验", vCB.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"不确定态(indeterminate)画减号, 点击/空格落到选中; aria-invalid 红环常驻", vCB.Handle))
+
+	xui.ItemFill(hint(vCB.Handle, "不确定态(点击后变选中)"))
+	indet := ui.NewCheckbox(0, 0, 0, 0, "部分选中", vCB.Handle, ui.WithCheckboxIndeterminate())
+	xui.ItemFill(indet)
+	indetState := ui.NewLabel(0, 0, 0, 0, "状态: 不确定", vCB.Handle).SetMuted()
+	xui.ItemFill(indetState)
+	indet.OnChange(func(checked bool) {
+		switch {
+		case indet.Indeterminate():
+			indetState.SetText("状态: 不确定")
+		case checked:
+			indetState.SetText("状态: 已选中")
+		default:
+			indetState.SetText("状态: 未选中")
+		}
+		indetState.Redraw()
+	})
+
+	xui.ItemFill(hint(vCB.Handle, "校验失败(可切换)"))
+	invCB := ui.NewCheckbox(0, 0, 0, 0, "必选条款", vCB.Handle, ui.WithCheckboxInvalid())
+	xui.ItemFill(invCB)
+	cbInvBtn := ui.NewButton(0, 0, 0, 0, "切换校验状态", vCB.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+	xui.ItemWidth(cbInvBtn, 120)
+	cbInvBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		invCB.SetInvalid(!invCB.Invalid())
+		return 0
+	})
+}
+
+// ===== 页 10: 导航1(命令面板 / 下拉菜单 / 右键菜单) =====
 
 // buildCommandCard 命令面板演示; 放导航1页顶部, 保证输入框/条目的命中区无需滚动即可用。
 func buildCommandCard(body *widget.LayoutEle) {
@@ -1660,7 +1748,7 @@ func buildNav1Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "前置图标 / inset / 子菜单 / 勾选 / 单选 / 破坏性", v3.Handle).SetMuted())
 }
 
-// ===== 页 10: 导航2(标签页 / 分页 / 面包屑 / 可折叠面板) =====
+// ===== 页 11: 导航2(标签页 / 分页 / 面包屑 / 可折叠面板) =====
 
 func buildNav2Page(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
@@ -1925,7 +2013,7 @@ func borderedBox(parent int, h int32, horizontal bool) *widget.LayoutEle {
 	return box
 }
 
-// ===== 页 11: 导航3(导航菜单 / 菜单栏) =====
+// ===== 页 12: 导航3(导航菜单 / 菜单栏) =====
 
 func buildNav3Page(body *widget.LayoutEle) {
 	// ---- 导航菜单(共享视口) ----
@@ -2053,7 +2141,7 @@ func buildNav3Page(body *widget.LayoutEle) {
 		"↑↓ 移动 · Enter 选中 · ←→ 切换顶级菜单 · ESC 关闭并把焦点还给触发区; 子菜单悬停展开(非激活弹层, 不抢焦点)。"))
 }
 
-// ===== 页 12: 反馈1(对话框 / 提示气泡 / 警示对话框 / 对话框变体) =====
+// ===== 页 13: 反馈1(对话框 / 提示气泡 / 警示对话框 / 对话框变体) =====
 
 func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	r := row(body.Handle, 0, gap)
@@ -2114,7 +2202,7 @@ func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(desc(vdv.Handle, "嵌套示例: 点「打开警示」在对话框上再叠一层; 连按 ESC 会先关上层。"))
 }
 
-// ===== 页 13: 反馈2(提示条 / 通知 / 进度 / 空状态) =====
+// ===== 页 14: 反馈2(提示条 / 通知 / 进度 / 空状态) =====
 
 func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	// ---- 第一行: 提示条 ----
@@ -2275,7 +2363,7 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	tip.Bind(learn.Handle, "Empty 不画边框(上游默认也没有可见边框); 需要边框时放进 Card")
 }
 
-// ===== 页 14: 反馈3(侧边 Sheet / 底部 Drawer) =====
+// ===== 页 15: 反馈3(侧边 Sheet / 底部 Drawer) =====
 
 func buildFeed3Page(body *widget.LayoutEle, hWindow int) {
 	r := row(body.Handle, 0, gap)
@@ -2374,7 +2462,7 @@ func buildDrawerDemo(hWindow int, openBtn *ui.Button, status *ui.Label) {
 	dr.BindTrigger(openBtn)
 }
 
-// ===== 页 15: 数据(表格 / 树) =====
+// ===== 页 16: 数据(表格 / 树) =====
 
 func buildDataPage(body *widget.LayoutEle) {
 	r := rowStretch(body.Handle, gap) // 铺满型页面: 表格/树跟随窗口长高(内容区已 SetContentFill)
@@ -2429,7 +2517,7 @@ func buildDataPage(body *widget.LayoutEle) {
 	})
 }
 
-// ===== 页 16: 图标(icons 资源子包) =====
+// ===== 页 17: 图标(icons 资源子包) =====
 // 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
 // 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
 // 点击把名字复制到剪贴板。

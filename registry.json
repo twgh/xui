@@ -17,6 +17,10 @@
       "files": ["radio.go"],
       "deps": []
     },
+    "radio-group": {
+      "files": ["radio.go", "radiogroup.go"],
+      "deps": []
+    },
     "input": {
       "files": ["input.go", "scrollbar.go", "group.go"],
       "deps": []
