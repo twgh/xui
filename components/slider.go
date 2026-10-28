@@ -221,6 +221,9 @@ func (s *Slider) onLButtonDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *b
 		}
 	}
 	s.drag = s.active
+	// 点击跳转后滑块就落在指针下, 同步一次 hover: 否则 hoverThumb 还停在按下前的值,
+	// 松手时 active 环消失、指针又没有移动(不会有 Move/Stay 事件), 环会闪一下就没。
+	s.hoverThumb = s.thumbAt(pPt.X, pPt.Y)
 	xc.XEle_SetCapture(hEle, true) // 捕获鼠标, 拖出元素范围也能继续
 	s.Redraw(true)
 	return 0
@@ -249,6 +252,9 @@ func (s *Slider) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *boo
 	if s.drag >= 0 {
 		s.drag = -1
 		xc.XEle_SetCapture(hEle, false)
+		// 松手时滑块停在指针下, 补一次 hover 同步(shadcn 的 thumb:hover 此时仍成立);
+		// 拖动结束如果不再触发 Move/Stay, hoverThumb 还是拖动前的值, 环会直接消失。
+		s.hoverThumb = s.thumbAt(pPt.X, pPt.Y)
 		s.Redraw(true)
 		s.notifyCommit()
 	}
