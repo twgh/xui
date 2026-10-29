@@ -247,6 +247,8 @@ xui view button         # 打印组件源码
 xui info                # 显示 CLI / 项目环境信息
 ```
 
+组件名统一是 shadcn 文档的 kebab-case(`navigation-menu` / `date-picker` / `scroll-area`), 但不区分大小写、也可省略连字符与下划线:`xui add navigationmenu`、`xui add datepicker` 与 `xui add navigation-menu`、`xui add date-picker` 等价(只有唯一的归一化结果才接受, 不会按前缀猜; 输错时会提示最接近的组件名)。
+
 选项:
 
 - `init -n, --name <项目名>`: 新建项目目录(`-n myapp` 等价于在当前目录创建 `myapp/`);

@@ -18,6 +18,7 @@ shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。**本文件只
 - **Auto 高的卡片, 外面那一层(行里的"列")高度也必须是 `Auto`**: 列高用 `Fill`/`Weight`/`Fixed` 时, 卡片内容区里的整宽控件(原生 `Edit`/`ComboBox`/分隔线)会按**卡片宽**排版, 右边缘压到卡片边框上;中间也**不要**再垫一层, 行高也别用 `Auto`(Auto 行里 `Weight` 宽的列会塌成 0 宽)。栅格一律"一行 + `Weight` 宽的 `Auto` 高列 + 卡片竖排", 见 DESIGN 8.59
 - **容器的内边距禁止用子项外边距表达**: 左右内边距必须用元素 `SetPadding(l,0,r,0)`, 上下才用布局项外边距(计入 Auto 高)。四边都用外边距时, 容器被 Fill 宽排过后, 子项的 Fill 会按父级全宽解析、向右溢出(卡片 ContentStack / Alert / Empty / Command / Popover 内容区都踩过, 见 DESIGN 8.129)。改用元素 padding 后, **嵌套 Weight 列的 Fill 子项会变 0 宽**: 这些列要按 DESIGN 8.101/8.130 在尺寸事件里把 Fill 子项锁 Fixed(锁过的子项要记录, 后续 resize 继续更新)
 - **页面/长内容一律用 `ui.ScrollArea` 滚动容器**(原生 `LayoutFrame` 载体), 不要再靠 `EnableOverflowHide` 把高出来的内容裁掉。两种形态 —— ①**自撑型**(默认): 内容区 `Auto` 高、比视口高就出滚动条, 页里的**行高也必须写 `Auto`**(行高写 `Weight`/`Fill` 在 Auto 内容里塌成 0, 整段消失);②**铺满型**(`SetContentFill()`): 内容区 = 视口高, 行/列/卡片整链 `Weight`, 表格/树这类面板才跟随窗口长高, 代价是页面不滚(见 DESIGN 8.66)
+- **`registry.json` 的组件 key 一律 kebab-case**: 与 shadcn 文档路径同名(`navigation-menu` / `date-picker` / `scroll-area` / `button-group` / `radio-group`), 不写连写名(`navigationmenu`、`datepicker`);Go 文件名与类型名不能带连字符是另一回事(`navigationmenu.go` / `DatePicker`)。CLI 的大小写与连字符容错(`xui add datepicker` 也能装)只是给用户的容错, **不是命名许可** —— 新组件仍按 kebab-case 起 key
 - **用 computer-use-windows 的 MCP 工具前先读技能文档, 并先调 `request_access`**: 任何截图/点击/输入/切前台之前, 必须先加载该 skill、按文档传入应用名与理由申请白名单;白名单为空时 `screenshot` 等工具会直接失败。**不要跳过技能文档直接调 MCP 工具**
 
 ## 运行时基建(踩过坑, 照做)

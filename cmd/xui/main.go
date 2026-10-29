@@ -948,15 +948,12 @@ func resolveNames(reg *registry, names []string) []string {
 	var order []string
 	var resolve func(name string)
 	resolve = func(name string) {
+		name = lookupComponent(reg, name)
 		if seen[name] {
 			return
 		}
-		e, ok := reg.Components[name]
-		if !ok {
-			fatal("未知组件 %q (xui list 查看可用组件)", name)
-		}
 		seen[name] = true
-		for _, d := range e.Deps {
+		for _, d := range reg.Components[name].Deps {
 			resolve(d)
 		}
 		order = append(order, name)
@@ -967,10 +964,122 @@ func resolveNames(reg *registry, names []string) []string {
 	return order
 }
 
+// lookupComponent 把用户输入解析成 registry 里的组件名, 允许省掉连字符、大小写随意。
+//
+// 为什么需要: registry 的 key 统一是 shadcn 文档的 kebab-case(navigation-menu /
+// date-picker / scroll-area), 但用户常按文件名形状敲(navigationmenu / datepicker),
+// 也常混大小写(实测反馈"为啥有 -")。这里先精确匹配(老命令一字不变), 失败后按
+// "小写 + 去掉非字母数字"再比一次, 且**只有唯一命中**才采用 —— 不做前缀匹配,
+// `xui add nav` 这类输入仍然报错, 不会被瞎猜成 navigation-menu。
+func lookupComponent(reg *registry, name string) string {
+	if _, ok := reg.Components[name]; ok {
+		return name
+	}
+	want := normalizeName(name)
+	if want != "" {
+		hit, dup := "", false
+		for k := range reg.Components {
+			if normalizeName(k) != want {
+				continue
+			}
+			if hit != "" {
+				dup = true // 归一化后撞名: 不猜, 走报错
+				break
+			}
+			hit = k
+		}
+		if hit != "" && !dup {
+			return hit
+		}
+	}
+	fatal("未知组件 %q%s (xui list 查看可用组件)", name, suggestComponent(reg, want))
+	return "" // 不可达, fatal 会退出
+}
+
+// normalizeName 小写并去掉非字母数字: RadioGroup / radio_group / radio-group 都归一成 radiogroup。
+func normalizeName(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// suggestComponent 拼出"是否想找 xxx?"的提示, 按编辑距离挑最近的候选(同分取名字短的)。
+//
+// 两条例外: ① 输入是候选的**前缀**(只打了 nav)时算很近 —— 否则距 navigation-menu 有 8 个
+// 编辑, 永远不会被推荐; ② 反过来(候选是输入的前缀, 即用户多打了字)不加分, 否则
+// `radio-grup` 会优先推荐 `radio`(它是 radiogrup 的前缀)而不是 `radio-group`。
+// 距离超过长度 1/3(至少 2) 的候选一律不推荐: 每个错别字都硬凑一个候选反而误导。
+func suggestComponent(reg *registry, want string) string {
+	if want == "" {
+		return ""
+	}
+	best, bestD := "", 0
+	for k := range reg.Components {
+		nk := normalizeName(k)
+		if nk == "" {
+			continue
+		}
+		limit := len(nk) / 3
+		if limit < 2 {
+			limit = 2
+		}
+		d := editDistance(want, nk)
+		if d > limit && len(want) >= 3 && strings.HasPrefix(nk, want) {
+			d = 1 // 只写了前缀
+		}
+		if d > limit {
+			continue
+		}
+		if best == "" || d < bestD || (d == bestD && len(k) < len(best)) {
+			best, bestD = k, d
+		}
+	}
+	if best == "" {
+		return ""
+	}
+	return fmt.Sprintf(", 是否想找 %q?", best)
+}
+
+// editDistance 是 Levenshtein 距离(滚动一维数组, 只用来给"是否想找"挑候选)。
+func editDistance(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	prev := make([]int, len(rb)+1)
+	cur := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			cur[j] = min3(cur[j-1]+1, prev[j]+1, prev[j-1]+cost)
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(rb)]
+}
+
+func min3(a, b, c int) int {
+	if b < a {
+		a = b
+	}
+	if c < a {
+		a = c
+	}
+	return a
+}
+
 // installedComponents 扫描 uiDir, 返回**全部文件都在本地**的组件名(排序)。
 //
 // 不能用"任意一个文件存在"判定: 组件之间共享助手文件(scrollbar.go / popup.go /
-// scrollarea.go / group.go …), 只装了 select 时 popup.go 等已存在, 会把 datepicker /
+// scrollarea.go / group.go …), 只装了 select 时 popup.go 等已存在, 会把 date-picker /
 // popover / dialog / table / tree / combobox / toggle 全判成"已安装", update 无参数
 // 时把它们整套拷进 ui/。要求 files 全部存在才能把共享文件归到真正装过的组件上。
 func installedComponents(reg *registry, uiDir string) []string {

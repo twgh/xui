@@ -5,7 +5,7 @@
       "files": ["button.go", "group.go", "textopt.go", "press.go"],
       "deps": []
     },
-    "buttongroup": {
+    "button-group": {
       "files": ["buttongroup.go", "textopt.go", "press.go"],
       "deps": ["button"]
     },
@@ -41,7 +41,7 @@
       "files": ["card.go"],
       "deps": ["label"]
     },
-    "aspectratio": {
+    "aspect-ratio": {
       "files": ["aspectratio.go"],
       "deps": []
     },
@@ -93,11 +93,11 @@
       "files": ["calendar.go"],
       "deps": []
     },
-    "datepicker": {
+    "date-picker": {
       "files": ["datepicker.go", "popup.go", "calendar.go"],
       "deps": []
     },
-    "timepicker": {
+    "time-picker": {
       "files": ["timepicker.go", "popup.go", "scrollbar.go"],
       "deps": []
     },
@@ -105,7 +105,7 @@
       "files": ["dialog.go", "sheet.go", "backdrop.go", "scrollarea.go", "scrollbar.go"],
       "deps": ["button", "label"]
     },
-    "alertdialog": {
+    "alert-dialog": {
       "files": ["alertdialog.go"],
       "deps": ["dialog"]
     },
@@ -125,7 +125,7 @@
       "files": ["pagination.go", "textopt.go", "press.go"],
       "deps": []
     },
-    "scrollarea": {
+    "scroll-area": {
       "files": ["scrollarea.go", "scrollbar.go"],
       "deps": []
     },
@@ -217,7 +217,7 @@
       "files": ["menubar.go", "menu_model.go", "popup.go", "press.go"],
       "deps": ["button"]
     },
-    "navigationmenu": {
+    "navigation-menu": {
       "files": ["navigationmenu.go", "popup.go", "textopt.go"],
       "deps": ["button"]
     }

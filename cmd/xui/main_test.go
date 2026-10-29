@@ -162,17 +162,17 @@ func TestParseRegistry(t *testing.T) {
 }
 
 // 共享助手文件不能把没装过的组件判成"已安装": 只装 select 时,
-// popup.go / scrollarea.go / scrollbar.go 都在, 但它们分别也是 datepicker /
+// popup.go / scrollarea.go / scrollbar.go 都在, 但它们分别也是 date-picker /
 // dialog / table / tree / combobox 的文件 —— update 无参数不应因此全量同步。
 func TestInstalledComponentsRequiresAllFiles(t *testing.T) {
 	reg := &registry{Components: map[string]entry{
-		"select":     {Files: []string{"select.go", "popup.go", "scrollarea.go", "scrollbar.go"}},
-		"popover":    {Files: []string{"popover.go", "popup.go"}},
-		"hover-card": {Files: []string{"hovercard.go", "popup.go"}},
-		"dialog":     {Files: []string{"dialog.go", "scrollarea.go", "scrollbar.go"}},
-		"table":      {Files: []string{"table.go", "scrollbar.go"}},
-		"calendar":   {Files: []string{"calendar.go"}},
-		"scrollarea": {Files: []string{"scrollarea.go", "scrollbar.go"}},
+		"select":      {Files: []string{"select.go", "popup.go", "scrollarea.go", "scrollbar.go"}},
+		"popover":     {Files: []string{"popover.go", "popup.go"}},
+		"hover-card":  {Files: []string{"hovercard.go", "popup.go"}},
+		"dialog":      {Files: []string{"dialog.go", "scrollarea.go", "scrollbar.go"}},
+		"table":       {Files: []string{"table.go", "scrollbar.go"}},
+		"calendar":    {Files: []string{"calendar.go"}},
+		"scroll-area": {Files: []string{"scrollarea.go", "scrollbar.go"}},
 	}}
 	dir := t.TempDir()
 	for _, f := range []string{"select.go", "popup.go", "scrollarea.go", "scrollbar.go"} {
@@ -181,7 +181,7 @@ func TestInstalledComponentsRequiresAllFiles(t *testing.T) {
 		}
 	}
 	got := installedComponents(reg, dir)
-	want := "scrollarea,select"
+	want := "scroll-area,select"
 	if strings.Join(got, ",") != want {
 		t.Errorf("installedComponents = %v, 期望 %s", got, want)
 	}
@@ -556,6 +556,49 @@ func TestFilterComponents(t *testing.T) {
 	}
 	if got := filterComponents(all, ""); len(got) != 4 {
 		t.Errorf("空查询应返回全部: %v", got)
+	}
+}
+
+// 用户输错形状(radiogroup / radio_group / RadioGroup / navigationmenu)也要能装对;
+// 精确名必须优先, 不能被同族抢走。
+func TestLookupComponent(t *testing.T) {
+	reg := &registry{Components: map[string]entry{
+		"radio": {}, "radio-group": {}, "input": {}, "input-group": {},
+		"navigation-menu": {}, "combobox-search": {}, "carousel": {},
+	}}
+	cases := []struct{ in, want string }{
+		{"radio-group", "radio-group"},
+		{"radiogroup", "radio-group"},
+		{"radio_group", "radio-group"},
+		{"RadioGroup", "radio-group"},
+		{"radio", "radio"},
+		{"inputgroup", "input-group"},
+		{"input", "input"},
+		{"navigation-menu", "navigation-menu"},
+		{"navigationmenu", "navigation-menu"},
+		{"comboboxsearch", "combobox-search"},
+		{"carousel", "carousel"},
+	}
+	for _, c := range cases {
+		if got := lookupComponent(reg, c.in); got != c.want {
+			t.Errorf("lookupComponent(%q) = %q, 期望 %q", c.in, got, c.want)
+		}
+	}
+}
+
+// 打错字/只写前缀时给候选, 太远的输入不硬凑。
+func TestSuggestComponent(t *testing.T) {
+	reg := &registry{Components: map[string]entry{
+		"radio-group": {}, "navigation-menu": {}, "carousel": {},
+	}}
+	if s := suggestComponent(reg, normalizeName("radio-grup")); !strings.Contains(s, "radio-group") {
+		t.Errorf("拼写错误应提示 radio-group, 实得 %q", s)
+	}
+	if s := suggestComponent(reg, normalizeName("nav")); !strings.Contains(s, "navigation-menu") {
+		t.Errorf("前缀应提示 navigation-menu, 实得 %q", s)
+	}
+	if s := suggestComponent(reg, normalizeName("zzzzzzzz")); s != "" {
+		t.Errorf("完全无关的输入不该给候选, 实得 %q", s)
 	}
 }
 
