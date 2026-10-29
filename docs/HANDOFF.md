@@ -14,6 +14,20 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **分页 icon-only 形态残留文字竖条**(2026-10-29, 用户截图报障, DESIGN 153):
+  - **现象**: `WithPaginationHideText` 那行, 上一页 chevron 右侧一条竖线(`< |`)、下一页左侧一个冒号(`: >`)。
+  - **根因**: 隐藏文字只把量出的文字宽置 0, 绘制分支仍然调用 `drawText`, 退化成一两像素宽的文字矩形 → "上一页/下一页"被裁成一条竖条。
+  - **修法**: `hideText` 时直接跳过 `drawText`(两条分支都改); 顺带把 icon-only 链接宽收回 32 方形(与上游 default 按钮 pl-1.5/pr-2.5 + size-4 一致), 图标继续保持居中。
+  - 验收: 探针窗口 150% 截屏逐列扫描墨迹 —— icon-only 行只有 chevron 与页码两类列簇, chevron 与相邻条目之间没有任何 1~3px 残条; `go build/vet/test ./...` 全绿。
+
+- ✅ **Pagination 三种形态 + 键盘可达, Toast Loading / Promise**(2026-10-29, 参 shadcn pagination / sonner 文档, DESIGN 152/153/154):
+  - **Pagination**: 补 `WithPaginationSimple`(只有页码)、`WithPaginationNavOnly`(只有上一页/下一页, 配"每页行数"选择器)、`WithPaginationHideText`(只留 chevron, 对应文字上的 `hidden sm:block`); 条目序列抽成 `sequence()` 并加 `components/pagination_test.go`(三形态槽位恒定 / 键盘 seek 跳过省略号与禁用项 / 焦点下标收敛)。键盘: 整块一个 Tab 站点, 进入后 ←/→/↑/↓ 移动、Home/End 首末、Enter/空格翻页, 到端点不循环; 焦点环只画在当前条目、且只在键盘获焦时出现。
+  - **踩坑(键盘)**: 元素开 `EnableSwitchFocus`(Tab 才进得来)后, 框架**先**把 ←/→ 当"切换焦点"执行, 元素 `AddEvent_KeyDown` 里焦点已经跑到下一个控件, 处理不了; 回车还会被当成"激活"发给新焦点控件(实测把另一个分页翻了一页)。改挂**窗口级** `AddEvent_KeyDown`(先判 `XWnd_GetFocusEle` 是自己, 处理过置 pbHandled), 探针确认焦点保持不动、Tab 仍能走到分页。
+  - **Toast**: 补 `ToastLoading` 变体(转圈, 默认常驻)、`Toaster.Loading`、`Toaster.Promise(fn, ToastPromise{Loading,Success,Error})`(fn 在 goroutine 跑, 结果经 `xc.Auto` 回 UI 线程改同一条通知, panic 用 recover 转成错误态)、`WithToastCloseButton`(整组带关闭钮)、`OnAutoClose` / `OnDismiss`(区分倒计时到点与主动关闭, `OnClose` 仍两种都发)。
+  - **踩坑(转圈)**: `xui.Spin` 是一次登记持续运行, 后续不再调用并不会停表 —— 切出加载态必须显式 `xui.Spin(handle, false)`, 否则卡片一直按帧重绘(DESIGN 154)。
+  - demo: 导航2 分页卡补三行(简洁 / 仅导航 / 只留图标 + 键盘说明), 反馈2 通知卡补 Promise、失败 Promise、常驻加载三钮。
+  - 验收: 探针(键盘: 右右+Enter 翻到第 12 页、End/Home 到端点不越界、Tab 从普通按钮可达; Toast: Promise 成功与 panic 两路都转成结果态、OnAutoClose 与 OnDismiss 各自触发、Clear 清空计数归零) + demo 两页渲染 + `go build/vet/test ./...` 全绿。
+
 - ✅ **InputGroup addon 按钮字号/圆角对齐上游**(2026-10-29, 用户截图报障, DESIGN 147):
   - **现象**: 输入组里的"查询/发送"比旁边的输入文字小一圈、看起来"粗细不同"。用 `ButtonSizeXs` 建 addon 按钮, 字号被降到 12px(周围是 text-sm 14px), 圆角也用了 Button xs 的 10(上游是 calc(--radius-5px)=5)。
   - **修法**: `applyInputGroupButton`: 字号固定跟主题正文(`fontPx` + `FitWidth`), 圆角按 InputGroupButton 语义覆写(Button 新增未导出的 `radiusMode`: xs=radius-5, sm=radius-md)。IconButton 同步。

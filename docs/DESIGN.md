@@ -257,7 +257,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Tooltip | FloatWindow | paint, 异型透明窗口 + 进出场 fade/slide(第八节 24/47) | — |
 | Table | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做 | Basic/List 示例 + 本库探针 |
 | Tree | 原生 Tree + 项模板 | `XE_TREE_DRAWITEM` 自绘行底/参考线/chevron, 模板子元素保留(第八节 42) | 库文档 + 探针 |
-| Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53) | — |
+| Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53); 简洁 / 仅导航 / 只留图标三种形态; 一个 Tab 站点 + 内部方向键(键盘必须挂窗口级, 第八节 152/153) | — |
 | Icon | 直通 D2D 几何绘制 | lucide path → 描边几何 + `DrawGeometry`(圆角样式), 色点走 `FillGeometry`(第八节 43); 回落折线描边 / `svg.Svg` | svg 包 + D2D 探针 |
 | NativeSelect | ComboBox(value 封装) | 载体就是 NewComboBox: 触发区自绘 + 原生弹层(第八节 30), 在其上提供 `<option value>` 字符串语义(Value/SetValue/OnValueChange) | native-select.tsx(radix-nova) |
 | Select | Button(触发区, 全自绘) + popoverPanel + ScrollArea | 触发区与 ComboBox 同一套 paint 规则; 弹层是自建阴影窗(popover.go 骨架, item-aligned 定位见第八节 71/74), 条目是自绘 Button(悬停/焦点 = bg-accent, 选中右侧 check, 禁用置灰), 分组标签/分隔线是自绘 Element; 滚动用 ScrollArea(条目超出高度才出), 键盘 ↑↓/Home/End/Enter 走弹窗 KeyDown 钩子 | select.tsx(radix-nova) |
@@ -318,7 +318,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场**不做动画**(与原生菜单一致, 弹出即全内容 —— 整窗 alpha 会透出背景文字、只淡内容会先出一帧空白面板, 两种都闪, 见 99; 位移/缩放会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; **前置图标 `MenuIcon`**(16px, left-6, 文字从 28 起, 同 shadcn 条目内联 SVG); 勾选/单选选中项右侧 Check 图标(right-2 size-4), **未选中也保留右侧 24(pr-8)**, 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; `MenuInset` 对普通条目 / `Label` / `Sub` 都可用(pl-7, 文字左缘 28); 弹层宽 = `Width(w)` 显式指定, 否则 max(触发区宽, 128)(shadcn `w-(--radix-dropdown-menu-trigger-width) min-w-32`); 无触发区的右键菜单 = 内容自适应 + 128 下限; 子菜单 = 内容自适应 + min-w-96; **所有条目宽度按自绘字体显式算**(原生菜单字体与自绘 14px 不一致, 留自然宽会裁长文本, 见第八节 99); **右键触发区 `NewContextMenu`** = 窗口级右键事件 + 触发区矩形命中(含子元素), `SetEnabled` / `OnOpenChange` | dropdown-menu.tsx + context-menu.tsx + menu.go(原生菜单皮肤, 见第八节 36/64/99) |
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx + table.go(原生 List 接管路线见第八节 40) |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本库令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
-| pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53) | pagination.tsx + 第八节 53 |
+| pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53);三种形态 = 完整 / 简洁(只有页码) / 仅导航(只有上一页下一页, 配"每页行数"选择器), 另有只留 chevron(对应文字上的 `hidden sm:block`);**键盘**: 整块一个 Tab 站点, 进入后 ←/→/↑/↓ 在条目间移动(跳过省略号与到边界的导航项)、Home/End 首末、Enter/空格激活, 到端点不循环, 焦点环只画在**当前条目**上且仅键盘获焦时出现(见第八节 152/153) | pagination.tsx + 第八节 53/152/153 |
 | collapsible: 根容器竖向流(触发区 + 内容区); 触发区是普通按钮(可绑定任意 Button), 点击切换, 展开态走 Button 的 aria-expanded 视觉(bg-muted); 内容收起时隐藏且不占布局, 展开时高度按内容自撑; **本实现**展开/收起带 200ms 高度过渡, 收起动画结束后才隐藏内容(radix presence 语义) | collapsible.tsx + radix CollapsibleContent 的 `--radix-collapsible-content-height` 动画示例 + 第八节 97 |
 | tooltip 绑定元素自身有弹层(如 ComboBox)时, 弹层打开要主动调 `HideTooltip(hEle)`——弹层窗口接管鼠标后触发元素收不到 MouseLeave | tooltip.go / combobox.go |
 | scroll area: 页面/长内容滚动用 `ui.ScrollArea`(原生 LayoutFrame 载体, 见第八节 66): **只做纵向**(内容区恒铺满视口宽); 滚动条**鼠标移入容器才显示、离开淡出**(同 radix 的 `type=hover`, 150ms; 用元素透明度实现, 不改变布局宽度)、10px 轨道 + 8px 圆头滑块(`rounded-full bg-border`)、轨道透明; 滑块悬停**不换色**; 滚轮悬停任意子元素都滚动(原生控件如 List 自吃 —— 嵌套滚动常态); 该规格统一在 `ui/scrollbar.go` 的 `styleScrollBar` + `showScrollBarOnHover`, Table / Tree / ComboBox 弹层 / 多行 Input 同用(**滑块配色与容器不同**: 这四个载体在原版里是浏览器原生滚动条, 用"前景色淡化 + 悬停加深", 见第八节 21) | scroll-area.tsx(w-2.5 p-px `rounded-full bg-border`; radix `type` 默认 hover 淡入 —— 本实现的差异见"已知差异"表) |
@@ -404,8 +404,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | HoverCard | `NewHoverCard(hTrigger, WithHoverCardContent/Width/Padding/Side/Align/Delay/OnOpenChange)` + `Open/Close/SetOpen/IsOpen/Content/Refresh` | 对应 hover-card.tsx; 默认 `openDelay=700ms` / `closeDelay=300ms`; 非激活窗口, 不抢焦点; 内容里的子元素都会挂 MouseLeave, 离开后按指针位置决定是否真正关闭 |
 | Avatar | `NewAvatar(x,y,cx,cy,parent,fallback,WithAvatarSize/Image/ImageData/Ring/Badge)` + `SetImage/SetImageData/SetFallback/SetBadge`; `NewAvatarGroup(parent, WithAvatarGroupSize)` + `Add(fallback, opts...)` / `AddCount(n)` | 对应 avatar.tsx 的 `Avatar/AvatarImage/AvatarFallback/AvatarBadge/AvatarGroup/AvatarGroupCount`; 图片走本地文件或 `image.Image`(png/jpeg/gif), 圆形蒙版在 CPU 侧生成; 徽标画在头像内右下角(圆环内缩 2px, 避免被父元素裁剪) |
 | Command | `NewCommand(x,y,cx,cy,parent, WithCommandPlaceholder/EmptyText/OnSelect/OnChange/OnEscape)` + `AddGroup(label)` / `AddSeparator` + `CommandGroup.AddItem(value,text, WithCommandItemIcon/Shortcut/Keywords/Disabled/OnSelect)` + `Focus/Query/SetQuery/Clear/SetPlaceholder` | 对应 command.tsx(cmdk) 的基础形态; 过滤为不区分大小写的包含匹配(可配 keywords), 不是 cmdk 的 command-score; 列表高度 = cy - 36(cy 传 0 = 336); `CommandDialog` 用 `ui.NewDialog` + `Command` 组合(无单独的 CommandDialog 类型) |
-| Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长) + `Success/Error/Warning/Info` 快捷方法; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible/RichColors`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置六种(四角 + `ToastTopCenter`/`ToastBottomCenter`), `richColors` 通过 `WithToastRichColors` / `ToastOptions.RichColors` 开启 |
+| Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长/`OnClose/OnAutoClose/OnDismiss`) + `Success/Error/Warning/Info/Loading` 快捷方法 + `Promise(fn, ToastPromise{Loading, Success, Error})`; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible/RichColors/CloseButton`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置六种(四角 + `ToastTopCenter`/`ToastBottomCenter`), `richColors` 通过 `WithToastRichColors` / `ToastOptions.RichColors` 开启; `Loading`/`Promise` 的转圈图标由 `xui.Spin` 驱动(退出加载态要显式停表, 见第八节 154), `Promise` 的 fn 在 goroutine 跑、结果经 `xc.Auto` 回 UI 线程 |
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
+| Pagination(形态/键盘) | `WithPaginationSimple()`(只有页码) / `WithPaginationNavOnly()`(只有上一页下一页) / `WithPaginationHideText()`(只留 chevron); 键盘 ←/→/↑/↓、Home/End、Enter/空格 | 见 152/153 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | 组件库自己不用, 供你的应用取用; 机械转译新主题时一并填(运行时的主题测试有守卫) |
 
@@ -1758,11 +1759,30 @@ ui/
     - **修法**: `textVDy(text)` 检测到中文/全角字符返回 **0.5 逻辑像素**, 纯拉丁返回 0; 各组件用 `TextF` 的浮点矩形上移(整数矩形做不到半步)。覆盖 Button(两条路径与 link 下划线)、ButtonGroupText、Toggle、Select、ComboboxSearch、NavigationMenu、Pagination、Accordion、InputGroupAddon.Text(仅 addon 内有文字按钮时, 原因见 147)。**不要恢复全域 -1**: 拉丁文本会整体顶高(见 150)。
     - **验收**: 150% 实测卡片页"了解详情/开始使用"墨迹中心与壳体中心差 +0.5 物理像素(修前 +1.5; Chrome 同尺寸中文 +0.5), 导航菜单 0.0; 拉丁按钮维持 0 / -0.5 / -1.0。
 
+152. **可聚焦元素(EnableSwitchFocus)的 ←/→ 会被框架当成"切换焦点", 键盘处理必须挂在窗口级**(`components/pagination.go`, 探针实测):
+    - **现象**: 给分页元素 `EnableFocus(true)` + `EnableSwitchFocus(true)`(Tab 才能进入)后, 在元素 `AddEvent_KeyDown` 里处理 ←/→ 根本改不了内部焦点: 回调里 `XWnd_GetFocusEle` 已经**不是**自己了, 焦点跑到了下一个可聚焦控件上, 连按两下就把整块分页跳过去了; 回车也会被框架当成"激活"发给新焦点控件(实测把另一个分页翻了一页)。
+    - **根因**: `XEle_EnableSwitchFocus(true)` 的语义是"接受通过键盘(方向键、Tab)切换焦点", 框架在**元素事件之前**就执行了方向键的焦点切换; 元素回调里再 `*pbHandled = true` 已经晚了。
+    - **修法**: 键盘处理挂**窗口级** `Window.AddEvent_KeyDown`, 先判 `xc.XWnd_GetFocusEle(hWnd) == 自己` 再分发, 处理过的键置 `*pbHandled = true`。窗口事件先于元素派发(此时焦点还正确), 实测置 handled 后焦点保持不动、元素 KeyDown 也不再触发(不会双处理)。`EnableSwitchFocus` 保持 true 以便 Tab 能进来, Tab 遍历实测可停在分页上。原生焦点框用 `xc.XEle_EnableDrawFocus(hEle, false)` 关掉, 自己画 focus-visible 环(判定 `xui.StateOf(hEle).Focused && xui.FocusedByKeyboard()`)。
+    - **验收**: 探针里 Tab 从普通按钮能走到分页; 焦点进入后 ←/→ 只在条目间移动(跳过省略号与到边界的导航项), Home/End 到首末, Enter/空格翻页, 按到端点不循环。
+
+153. **分页的三个显示形态与"焦点环画在条目上"**(`components/pagination.go`):
+    - 对齐 shadcn 文档的三个示例: 完整(`[上一页][1][2]…[n][下一页]`)、简洁(`WithPaginationSimple`, 只有页码)、仅导航(`WithPaginationNavOnly`, 只有上一页/下一页, 给"每页行数 + 分页"的数据表用)。上一页/下一页还可 `WithPaginationHideText` 只留 chevron(对应 pagination.tsx 里文字上的 `hidden sm:block`), 此时图标在整个链接里居中而不是贴边, 链接宽收回 32 方形(上游 default 按钮的 pl-1.5/pr-2.5 + size-4 图标)。
+    - **隐藏文字必须连绘制一起跳过**: 只把量出的文字宽置 0 仍然会调用 `drawText`, 退化成一两像素宽的文字矩形会把"上一页/下一页"裁成一条竖线/一个冒号, 贴在 chevron 旁边(像素实测修前残留 1~3px 竖条)。
+    - 形态切换只改条目序列(`sequence()`), 宽度与折叠规则不变; 单测覆盖三种形态的槽位稳定性(页码数量变化时整行宽度不能变, 否则同一坐标连点会点空, 见 53)。
+    - **焦点环必须画在当前条目上**, 不能沿用 `p.FocusFrame`(它恒用元素整矩形): 分页是多链接并列, 整块环看不出是哪一项。做法同 Button —— 条目矩形先铺 3px 环带, 内芯再铺回卡面色, 本体视觉(底/描边/文字/图标)画在内芯上; 直接整块铺环色会盖掉当前页的 outline 描边。
+
+154. **转圈图标切出加载态时要显式 `xui.Spin(hEle, false)`**(`components/toast.go`):
+    - **现象**: 通知从"加载中"更新成成功/失败后, 卡片仍在被高频重绘(看起来像画面在闪/CPU 占用升高)。
+    - **根因**: `xui.Spin(hOwner, true)` 是**一次登记、持续运行**的动画定时器登记; 后续绘制里不再调用它并不会停表, 定时器会一直按帧重绘这个元素(只有元素销毁/不可见时才被剪掉)。
+    - **修法**: `Toast.Update` 里发现新状态不是 `ToastLoading` 就主动 `xui.Spin(handle, false)`; 销毁路径同样先停表再 `XEle_Destroy`。
+    - 配套: `Toaster.Promise(fn, {Loading, Success, Error})` 的 `fn` 在独立 goroutine 跑, 结果经 `xc.Auto` 回 UI 线程更新同一条通知(`Toast`/`Toaster` 的方法不是线程安全的, 不要直接在 goroutine 里调); 用户函数 panic 用 recover 转成错误, 否则通知永远停在转圈上。关闭原因分 `OnAutoClose`(倒计时到点)与 `OnDismiss`(关闭钮/动作/Close/Clear/被挤出), `OnClose` 仍然两种都发。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 
 - `Element.AddEvent_Paint / AddEvent_MouseStay / AddEvent_MouseLeave / AddEvent_KeyDown`(widget/element.go:1192, 1288, 1336, 1744);键盘激活见第八节 108
+- 焦点: `Element.EnableFocus / EnableSwitchFocus`(后者 = 接受方向键与 Tab 切换焦点)、`xc.XEle_EnableDrawFocus(hEle, false)`(关原生焦点框)、`xc.XWnd_GetFocusEle / XWnd_SetFocusEle`、`xui.StateOf(hEle).Focused` + `xui.FocusedByKeyboard()`(focus-visible 判定)、`window.NewByHandle(hWnd).AddEvent_KeyDown`(窗口级拦截, 语义见第八节 152)
 - `Element.AddEvent_Menu_Draw_Background / AddEvent_Menu_DrawItem`(widget/element.go:2056, 2080)
 - Menu / ContextMenu(见第八节 36/64/99):`Menu.AddItem / SetItemWidth / SetItemHeight / SetLeftWidth / SetBorderSize / EnableDrawBackground / EnableDrawItem / AddEvent_Menu_Select / AddEvent_Menu_Exit / AddEvent_Menu_PopupWnd`;右键触发用 `Window.AddEvent_RButtonUp`(pPt = 逻辑像素, 原点 = 窗口矩形原点)+ `xc.XEle_GetWndClientRect` + `XC_IsHXCGUI / XEle_IsEnable / XWidget_IsShow`;`xui.TextWidth` 按自绘字体自行给菜单条目定宽(原生字体与自绘不一致)
 - `drawx.NewByHandle / EnableSmoothingMode / SetBrushColor / FillRoundRect(Ex) / DrawRoundRect(Ex) / GradientFill2/4 / DrawText / TextOut* / Image* / DrawSvg* / SetClipRect / SetLineWidth`

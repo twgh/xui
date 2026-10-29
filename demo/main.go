@@ -1951,6 +1951,24 @@ func buildNav2Page(body *widget.LayoutEle) {
 		pagInfo.Redraw(false)
 	})
 
+	// 简洁(只有页码) / 仅上一页下一页 / 只留 chevron 三种形态, 对应文档的三个示例
+	xui.ItemFill(hint(v5.Handle, "简洁: 只有页码(WithPaginationSimple)"))
+	pagSimple := ui.NewPagination(0, 0, 0, 0, v5.Handle, ui.WithPaginationSimple())
+	xui.ItemFill(pagSimple)
+	pagSimple.SetTotal(50)
+
+	xui.ItemFill(hint(v5.Handle, "仅导航: 上一页 / 下一页(WithPaginationNavOnly, 配合每页行数)"))
+	pagNav := ui.NewPagination(0, 0, 0, 0, v5.Handle,
+		ui.WithPaginationNavOnly(), ui.WithPrevText("上一页"), ui.WithNextText("下一页"))
+	xui.ItemFill(pagNav)
+	pagNav.SetTotal(120)
+
+	xui.ItemFill(hint(v5.Handle, "只留图标(WithPaginationHideText)"))
+	pagIcon := ui.NewPagination(0, 0, 0, 0, v5.Handle, ui.WithPaginationHideText())
+	xui.ItemFill(pagIcon)
+	pagIcon.SetTotal(120)
+	xui.ItemFill(desc(v5.Handle, "Tab 进入后用 ←/→ 移动、Home/End 首末、Enter/空格翻页; 焦点环只在键盘操作时出现。"))
+
 	// ---- 列 2: 面包屑 ----
 	_, vbc := autoCard(col(r.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "面包屑", vbc.Handle))
@@ -2471,7 +2489,48 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 		})
 		return 0
 	})
-	xui.ItemFill(desc(v3.Handle, "ToastOptions.Duration 传负数即常驻; Action 点击后默认关闭通知。"))
+	// Promise: 进行中显示转圈, 结束后同一条变成成功/失败态(sonner 的 toast.promise)
+	rn3 := xui.HStack(v3.Handle, 36, 8)
+	bPromise := ui.NewButton(0, 0, 0, 0, "Promise", rn3.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(bPromise, 96)
+	bPromise.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		toaster.Promise(func() (string, error) {
+			time.Sleep(1500 * time.Millisecond)
+			return "已同步 128 个文件", nil
+		}, ui.ToastPromise{
+			Loading: ui.ToastOptions{Title: "正在同步…", Description: "完成后会自动切换成结果"},
+			Success: func(result string) ui.ToastOptions {
+				return ui.ToastOptions{Title: "同步完成", Description: result, Variant: ui.ToastSuccess}
+			},
+		})
+		return 0
+	})
+	bPromiseFail := ui.NewButton(0, 0, 0, 0, "Promise 失败", rn3.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(bPromiseFail, 106)
+	bPromiseFail.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		toaster.Promise(func() (string, error) {
+			time.Sleep(1200 * time.Millisecond)
+			return "", fmt.Errorf("网络超时, 请重试")
+		}, ui.ToastPromise{
+			Loading: ui.ToastOptions{Title: "正在保存…"},
+		})
+		return 0
+	})
+	bLoading := ui.NewButton(0, 0, 0, 0, "常驻加载", rn3.Handle, ui.WithVariant(ui.ButtonSecondary))
+	xui.ItemWidth(bLoading, 96)
+	bLoading.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		toaster.Show(ui.ToastOptions{
+			Title:       "正在导出…",
+			Description: "Loading 默认常驻, 需要自己关闭或 Update。",
+			Variant:     ui.ToastLoading,
+			Duration:    -1,
+			CloseButton: true,
+			OnDismiss:   func() { fmt.Println("toast: 用户关掉了加载通知") },
+		})
+		return 0
+	})
+	xui.ItemFill(desc(v3.Handle,
+		"ToastOptions.Duration 传负数即常驻; Action 点击后默认关闭; OnAutoClose / OnDismiss 区分超时与主动关闭; WithToastCloseButton() 让整组都带关闭钮。"))
 
 	_, v4 := autoCard(col(r2.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "进度", v4.Handle))

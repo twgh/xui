@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"math"
 	"time"
 
 	"github.com/twgh/xcgui/app"
@@ -62,6 +64,10 @@ const (
 	ToastError                       // 红色圆叉
 	ToastWarning                     // 橙色三角叹号
 	ToastInfo                        // 蓝色信息
+	// ToastLoading 是转圈图标(sonner 的 toast.loading / toast.promise 的进行中态)。
+	// 相位由运行时 xui.Spin 驱动, 不需要调用方起定时器; 用 Toaster.Loading /
+	// Toaster.Promise 创建时会自动设为常驻(不自动关闭)。
+	ToastLoading
 )
 
 // ToastPosition 是通知的堆叠位置(sonner 的 position)。
@@ -102,8 +108,13 @@ type ToastOptions struct {
 	// RichColors 本条通知按类型给整卡上底色/描边/文字色(sonner 的 richColors)。
 	// Toaster 用 WithToastRichColors 全局开启后本条也生效; 默认 false = 只有图标带语义色。
 	RichColors bool
-	// OnClose 在任何方式关闭时回调一次。
+	// OnClose 在任何方式关闭时回调一次(最宽的口子, 相当于 sonner 的 onDismiss + onAutoClose)。
 	OnClose func()
+	// OnAutoClose 只在倒计时到点自动关闭时回调(sonner 的 onAutoClose)。
+	OnAutoClose func()
+	// OnDismiss 在非自动关闭时回调: 关闭按钮、动作按钮、Toast.Close()、Toaster.Clear()
+	// 与超出可见条数被挤掉(sonner 的 onDismiss)。
+	OnDismiss func()
 }
 
 // ToasterOption 是 Toaster 的配置项。
@@ -158,6 +169,24 @@ func WithToastRichColors() ToasterOption {
 	return func(t *Toaster) { t.richColors = true }
 }
 
+// WithToastCloseButton 让所有通知都显示右上角关闭按钮(sonner 的 closeButton 属性)。
+// 单条的 ToastOptions.CloseButton 仍可单独打开; 开了这个开关后无法单条关掉(与 sonner 一致)。
+func WithToastCloseButton() ToasterOption {
+	return func(t *Toaster) { t.closeButton = true }
+}
+
+// ToastPromise 描述一条 Promise 通知在三个阶段显示的内容(对应 sonner 的
+// toast.promise(fn, {loading, success, error}))。
+type ToastPromise struct {
+	// Loading 是进行中的文案; 未指定 Variant 时用 ToastLoading(转圈图标),
+	// 未指定 Duration 时常驻。
+	Loading ToastOptions
+	// Success 按 fn 的返回值生成成功文案; 传 nil 时显示"操作成功"。
+	Success func(result string) ToastOptions
+	// Error 按 fn 的错误生成失败文案; 传 nil 时显示错误文本本身。
+	Error func(err error) ToastOptions
+}
+
 // Toaster 是挂在窗口上的通知管理器: 每条通知是一个铺在窗口之上的自绘元素,
 // 缺省堆叠在内容区右下角(可设六种位置, 见 ToastPosition)。
 //
@@ -179,9 +208,10 @@ type Toaster struct {
 	width      int32
 	offset     int32
 	gap        int32
-	duration   time.Duration
-	maxVisible int
-	richColors bool // 整组按类型上色(sonner 的 richColors); 单条可用 ToastOptions.RichColors 覆盖开启
+	duration    time.Duration
+	maxVisible  int
+	richColors  bool // 整组按类型上色(sonner 的 richColors); 单条可用 ToastOptions.RichColors 覆盖开启
+	closeButton bool // 整组显示右上角关闭按钮(sonner 的 closeButton 属性)
 
 	paused bool // 鼠标停在本组任一条通知上: 全部倒计时暂停
 	items  []*Toast
@@ -200,9 +230,10 @@ type Toast struct {
 	baseX, baseY int32
 	geom         toastGeom
 
-	closed    bool // 已开始退场(或已销毁)
-	entered   bool // 进场动画已完成
-	destroyed bool
+	closed     bool // 已开始退场(或已销毁)
+	entered    bool // 进场动画已完成
+	destroyed  bool
+	autoClosed bool // 关闭原因是倒计时到点(区分 OnAutoClose / OnDismiss)
 
 	paused   bool // 鼠标悬停中: 暂停倒计时
 	remain   time.Duration
@@ -299,6 +330,9 @@ func (t *Toaster) Show(o ToastOptions) *Toast {
 	if o.Duration < 0 {
 		o.Duration = -1
 	}
+	if t.closeButton {
+		o.CloseButton = true
+	}
 	// 超出可见数量: 立即移除最旧的那条(无退场动画, 避免堆积)。
 	for t.maxVisible > 0 && len(t.items) >= t.maxVisible {
 		old := t.items[0]
@@ -378,6 +412,78 @@ func (t *Toaster) Info(title, description string) *Toast {
 	return t.Show(ToastOptions{Title: title, Description: description, Variant: ToastInfo})
 }
 
+// Loading 显示一条转圈的加载通知(sonner 的 toast.loading), 默认常驻不自动关闭,
+// 完成后用 Update 改成结果态(或直接改用 Promise)。
+func (t *Toaster) Loading(title, description string) *Toast {
+	return t.Show(ToastOptions{
+		Title:       title,
+		Description: description,
+		Variant:     ToastLoading,
+		Duration:    -1,
+	})
+}
+
+// Promise 执行 fn 并在期间显示一条 loading 通知, 结束后把**同一条**通知更新成
+// success / error 并重新开始倒计时(对应 sonner 的 toast.promise)。
+//
+// fn 在独立 goroutine 里执行, 结果经 xc.Auto 回到 UI 线程再改界面 —— 不要自己
+// 在 goroutine 里调 Toaster/Toast 的方法(不是线程安全的)。
+//
+// 常驻形态: loading 阶段 Duration 为 -1; 成功/失败文案沿用 ToastOptions.Duration
+// (0 = Toaster 默认 4s), 想让结果也常驻就在 Success/Error 里传负数。
+func (t *Toaster) Promise(fn func() (string, error), p ToastPromise) *Toast {
+	if t == nil || t.win == nil || fn == nil {
+		return nil
+	}
+	loading := p.Loading
+	loading.Variant = ToastLoading
+	loading.Duration = -1
+	it := t.Show(loading)
+	if it == nil {
+		return nil
+	}
+	go func() {
+		result, err := promiseCall(fn)
+		// 通知已被用户关掉 / 被挤掉: 不再更新(句柄可能已销毁)。
+		xc.Auto(func() {
+			if it.closed || it.destroyed {
+				return
+			}
+			if err != nil {
+				o := ToastOptions{Title: err.Error(), Variant: ToastError}
+				if p.Error != nil {
+					o = p.Error(err)
+					if o.Variant == ToastDefault {
+						o.Variant = ToastError
+					}
+				}
+				it.Update(o)
+				return
+			}
+			o := ToastOptions{Title: result, Variant: ToastSuccess}
+			if p.Success != nil {
+				o = p.Success(result)
+				if o.Variant == ToastDefault {
+					o.Variant = ToastSuccess
+				}
+			}
+			it.Update(o)
+		})
+	}()
+	return it
+}
+
+// promiseCall 执行用户函数并把 panic 转成错误(否则 goroutine 里的 panic 会直接
+// 崩掉进程, 而通知会永远停在转圈上)。
+func promiseCall(fn func() (string, error)) (result string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	return fn()
+}
+
 // Count 返回当前显示中的通知条数(含正在退场的)。
 func (t *Toaster) Count() int {
 	if t == nil {
@@ -417,16 +523,26 @@ func (it *Toast) Update(o ToastOptions) *Toast {
 	} else {
 		it.stopTick()
 	}
+	// 从转圈态切到结果态时必须显式关掉旋转: xui.Spin 的登记是"一次登记持续运行",
+	// 只在绘制时不再调用它并不会停表 —— 定时器会一直空转重绘这张卡片。
+	if !it.loading() {
+		xui.Spin(it.ele.Handle, false)
+	}
 	it.t.layout()
 	it.ele.Redraw(false)
 	return it
 }
 
-// Close 关闭通知: 淡出 + 向侧边滑出, 完成后销毁元素。
-func (it *Toast) Close() {
+// Close 关闭通知: 淡出 + 向侧边滑出, 完成后销毁元素。算作"主动关闭"(触发 OnDismiss)。
+func (it *Toast) Close() { it.close(false) }
+
+// close 是关闭的统一入口: auto=true 表示倒计时到点(触发 OnAutoClose),
+// 否则是用户/调用方主动关闭(触发 OnDismiss)。两者都走退场动画, 回调在销毁时发出。
+func (it *Toast) close(auto bool) {
 	if it == nil || it.closed || it.destroyed {
 		return
 	}
+	it.autoClosed = auto
 	it.closed = true
 	it.stopTick()
 	it.t.removeItem(it)
@@ -467,7 +583,7 @@ func (it *Toast) Handle() int {
 	return it.ele.Handle
 }
 
-// destroy 立即销毁通知元素(不播动画)并回调 OnClose。
+// destroy 立即销毁通知元素(不播动画)并按关闭原因回调 OnAutoClose / OnDismiss / OnClose。
 func (it *Toast) destroy() {
 	if it == nil || it.destroyed {
 		return
@@ -479,9 +595,17 @@ func (it *Toast) destroy() {
 		hEle = it.ele.Handle
 	}
 	if hEle != 0 && xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
+		xui.Spin(hEle, false) // 转圈态可能正被销毁(见 Update 里的说明)
 		xc.XEle_Destroy(hEle)
 	}
 	it.t.removeItem(it)
+	if it.autoClosed {
+		if it.opts.OnAutoClose != nil {
+			it.opts.OnAutoClose()
+		}
+	} else if it.opts.OnDismiss != nil {
+		it.opts.OnDismiss()
+	}
 	if it.opts.OnClose != nil {
 		it.opts.OnClose()
 	}
@@ -520,7 +644,7 @@ func (it *Toast) tick() {
 	}
 	it.remain -= toastTickInterval
 	if it.remain <= 0 {
-		it.Close()
+		it.close(true) // 倒计时到点: 触发 OnAutoClose
 	}
 }
 
@@ -748,8 +872,15 @@ func (it *Toast) iconData() string {
 		return icons.IconTriangleAlert
 	case ToastInfo:
 		return icons.IconInfo
+	case ToastLoading:
+		return icons.IconLoaderCircle
 	}
 	return ""
+}
+
+// loading 报告本条是否是转圈态(自定义图标时按调用方给的图静态绘制)。
+func (it *Toast) loading() bool {
+	return it.opts.Variant == ToastLoading && it.opts.Icon == ""
 }
 
 // iconColor 返回图标颜色: 未显式指定时用类型的语义色(sonner 的 --success-text 等)。
@@ -780,6 +911,9 @@ func (it *Toast) iconColor(th *xui.Theme) xui.Color {
 			return xui.RGBA(153, 204, 255, 255) // hsl(210 100% 80%)
 		}
 		return xui.RGBA(0, 112, 224, 255) // hsl(210 100% 44%)
+	case ToastLoading:
+		// sonner 的 loading 转圈用默认前景色(不加类型色), 与后续成功/失败态对比明显
+		return th.MutedForeground
 	}
 	return th.PopoverForeground
 }
@@ -873,10 +1007,14 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		return rc
 	}
 
-	// 图标
+	// 图标: 转圈态走 IconRotated, 相位由运行时按墙钟算并驱动元素重绘(同 Spinner)
 	if data := it.iconData(); data != "" {
 		rc := off(it.geom.icon)
-		p.Icon(data, &rc, it.iconColor(th), 2)
+		if it.loading() {
+			p.IconRotated(data, &rc, it.iconColor(th), 2, xui.Spin(hEle, true)*2*math.Pi)
+		} else {
+			p.Icon(data, &rc, it.iconColor(th), 2)
+		}
 	}
 
 	// 标题(text-[13px] font-medium, 单行截断)
