@@ -116,6 +116,10 @@ type Button struct {
 	// fontPx 覆盖尺寸档预设的字号(0 = 用预设)。Menubar 的触发区要 text-sm(14)
 	// 但高度仍是 sm 档的 28, 单靠 size 预设表达不了这种组合。
 	fontPx int32
+	// radiusMode 覆盖尺寸档的圆角: 0=按预设; 1=主题 Radius-5(InputGroupButton xs);
+	// 2=主题 RadiusMd(InputGroupButton sm)。InputGroupButton 的 xs/sm 只改高度,
+	// 圆角语义与 Button 自己的 xs/sm 不同。
+	radiusMode int8
 }
 
 // ButtonOption 组件配置项, 构造时传入。
@@ -176,14 +180,6 @@ func WithButtonHasPopup() ButtonOption { return func(b *Button) { b.hasPopup = t
 // 持续旋转的 loader(1s/圈, 同 tailwind 的 animate-spin)。只负责视觉, 是否禁用
 // 交互由调用方决定(对应 shadcn 示例里的 disabled + LoaderCircleIcon animate-spin)。
 func WithButtonLoading() ButtonOption { return func(b *Button) { b.loading = true } }
-
-// pressShift 是按下位移量(逻辑像素), 对应 shadcn 的 active:translate-y-px。
-// 元素的创建高度比视觉高度多这么多, 多出的部分留作位移空间: 元素绘制被裁剪在
-// 自身客户区内, 若按下时把底边推出客户区, 越界的 1px 会被切掉(看起来底部被削平),
-// 预留后整体位移始终落在客户区内, 与原版"整块下沉"的观感一致。
-// 实际渲染在 150% DPI 下会被取整成 1 或 2 物理像素; 文字/图标跟随壳体的实际
-// 物理位移(见 onPaint 与 DESIGN 88), 不能让它们各自按逻辑量移动。
-const pressShift int32 = 1
 
 // NewButton 创建自绘按钮。cy 传 0 时按尺寸预设自适应高度;
 // cx 传 0 时按文字/行内图标的量测宽度自适应(纯图标按钮用方形预设)。
@@ -521,6 +517,14 @@ func (b *Button) corners(t *xui.Theme, h int32) xui.Corners {
 	if gp.inGroup {
 		radius = t.RadiusLg()
 	}
+	switch b.radiusMode {
+	case 1:
+		if radius = t.Radius - 5; radius < 0 {
+			radius = 0
+		}
+	case 2:
+		radius = t.RadiusMd()
+	}
 	if b.rounded {
 		radius = h / 2
 	}
@@ -542,25 +546,6 @@ func elementDPIScale(hEle int) float64 {
 		return 1
 	}
 	return float64(dpi) / 96
-}
-
-// shellPressShift 返回按下时壳体在**物理像素**上的实际位移。
-//
-// 1 逻辑像素在 150% DPI 下是 1.5 物理, 壳体矩形经 ConvRect 换算后会按所在
-// 位置的相位取整成 1 或 2 物理像素。文字排版和图标盒各自取整的相位不同, 若让
-// 它们各自按逻辑坐标平移, 就会出现"文字/图标/壳体没一起下沉"(见 DESIGN 88)。
-// 这里直接量壳体的实际物理位移, 内容统一跟随这个整数, 不再猜 round(1×scale)。
-func shellPressShift(p *xui.Painter, base, shifted xc.RECT) int32 {
-	if p == nil || p.Draw == nil || p.Draw.Handle <= 0 {
-		return pressShift
-	}
-	a, b := base, shifted
-	xc.XDraw_ConvRect(p.Draw.Handle, &a)
-	xc.XDraw_ConvRect(p.Draw.Handle, &b)
-	if d := b.Top - a.Top; d > 0 {
-		return d
-	}
-	return pressShift
 }
 
 func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
@@ -700,27 +685,28 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 无行内图标: 文字直接在整块壳体里居中(与旧行为一致)。
 	if lead == "" && trail == "" {
-		// DrawText 的 Vcenter 按字体行高(含降部空间)居中, 字形整体偏下(实测 14pt 下
-		// 上留白 8.6px / 下留白 3.7px), 文字矩形上移 1px 回补; 上移 2px 会明显偏上。
-		// TextF 用浮点矩形承载按下时的物理像素位移(见 DESIGN 第八节 88)。
+		// 拉丁文本的 Vcenter 落点与浏览器 flex 居中一致(见 DESIGN 150); 中文墨迹
+		// 在行盒里偏低, 用 textVDy 上移半像素(见 DESIGN 151)。
+		// TextF 用浮点矩形承载按下位移与半步修正(见 DESIGN 88/151)。
 		left, align := textRc.Left, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter
 		if b.align != ButtonAlignCenter {
 			// justify-start / justify-between 只有一个子项时, 文字都靠左(同 flex 语义)
 			left += b.Spec().padX
 			align = xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter
 		}
+		dy := textVDy(text)
 		rcF := xc.RECTF{
 			Left:   float32(left),
-			Top:    float32(textRc.Top-1) + textDy,
+			Top:    float32(textRc.Top) - dy + textDy,
 			Right:  float32(textRc.Right),
-			Bottom: float32(textRc.Bottom-1) + textDy,
+			Bottom: float32(textRc.Bottom) - dy + textDy,
 		}
 		p.TextF(text, &rcF, fore, align)
 		// link 变体: hover:underline + underline-offset-4。xcgui 没有下划线标志位, 手工画 1px 线:
 		// 宽度取量测的文字宽, y = 基线下方 4px(基线 ≈ 行盒中心 + 0.3em, 见 xui.TextWidth 的坑)。
 		if b.variant == ButtonLink && !st.Disabled && (st.Hover || st.Pressed) {
 			if w := xui.TextWidth(text, f); w > 0 {
-				cy := float64(textRc.Top+textRc.Bottom)/2 - 1 + float64(textDy)
+				cy := float64(textRc.Top+textRc.Bottom)/2 - float64(dy) + float64(textDy)
 				y := int32(math.Round(cy + float64(b.Spec().font)*0.3 + 4))
 				x0 := left
 				if b.align == ButtonAlignCenter {
@@ -784,11 +770,12 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	textX := int32(0)
 	if text != "" {
 		textX = x
+		dy := textVDy(text)
 		rcF := xc.RECTF{
 			Left:   float32(x),
-			Top:    float32(textRc.Top-1) + textDy,
+			Top:    float32(textRc.Top) - dy + textDy,
 			Right:  float32(x + tw + 2),
-			Bottom: float32(textRc.Bottom-1) + textDy,
+			Bottom: float32(textRc.Bottom) - dy + textDy,
 		}
 		p.TextF(text, &rcF, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 		x += tw
@@ -805,7 +792,7 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		drawIcon(trail, tx, 0)
 	}
 	if b.variant == ButtonLink && text != "" && !st.Disabled && (st.Hover || st.Pressed) && tw > 0 {
-		y := int32(math.Round(float64(cy) - 1 + float64(textDy) + float64(b.Spec().font)*0.3 + 4))
+		y := int32(math.Round(float64(cy) - float64(textVDy(text)) + float64(textDy) + float64(b.Spec().font)*0.3 + 4))
 		p.Line(textX, y, textX+tw, y, fore, 1)
 	}
 	return 0

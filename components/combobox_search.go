@@ -1045,13 +1045,14 @@ func (c *Combobox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.Draw.SetFont(f)
 	}
 	if text != "" {
-		rc := xc.RECT{
-			Left:   p.Rc.Left + 10, // pl-2.5
-			Top:    p.Rc.Top - 1,
-			Right:  p.Rc.Right - 30,
-			Bottom: p.Rc.Bottom - 1,
+		dy := textVDy(text)
+		rc := xc.RECTF{
+			Left:   float32(p.Rc.Left + 10), // pl-2.5
+			Top:    float32(p.Rc.Top) - dy,
+			Right:  float32(p.Rc.Right - 30),
+			Bottom: float32(p.Rc.Bottom) - dy,
 		}
-		p.Text(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		p.TextF(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
 	// 右侧 chevrons-up-down(combobox 用上下双箭头, 区别于 select 的单下箭头)
 	icon := xc.RECT{
@@ -1102,13 +1103,14 @@ func (c *Combobox) paintRow(r *comboboxRow, hEle int, hDraw int) {
 		}
 	}
 	if r.item.Text != "" {
-		rc := xc.RECT{
-			Left:   x,
-			Top:    p.Rc.Top - 1,
-			Right:  p.Rc.Right - 24,
-			Bottom: p.Rc.Bottom - 1,
+		dy := textVDy(r.item.Text)
+		rc := xc.RECTF{
+			Left:   float32(x),
+			Top:    float32(p.Rc.Top) - dy,
+			Right:  float32(p.Rc.Right - 24),
+			Bottom: float32(p.Rc.Bottom) - dy,
 		}
-		p.Text(r.item.Text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		p.TextF(r.item.Text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
 	if !c.multiple && c.picked[r.item.Value] && !r.item.Disabled {
 		rc := xc.RECT{

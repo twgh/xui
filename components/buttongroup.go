@@ -399,10 +399,14 @@ func (b *ButtonGroupText) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if f := xui.FontHandle(t.FontDefault); f != 0 {
 		p.Draw.SetFont(f)
 	}
-	rc := p.Rc
-	rc.Top-- // Vcenter 字形偏下 1px(同 Button)
-	rc.Bottom--
-	p.Text(b.text, &rc, t.Foreground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+	dy := textVDy(b.text)
+	rc := xc.RECTF{
+		Left:   float32(p.Rc.Left),
+		Top:    float32(p.Rc.Top) - dy,
+		Right:  float32(p.Rc.Right),
+		Bottom: float32(p.Rc.Bottom) - dy,
+	}
+	p.TextF(b.text, &rc, t.Foreground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 	return 0
 }
 

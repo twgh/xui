@@ -40,7 +40,18 @@ func FontHandle(spec FontSpec) int {
 	// 不要传 FontStyle_Underline: 它在本框架的 D2D 文本路径下不渲染(实测,
 	// 见 DESIGN 第八节 110)。需要下划线一律手绘 1px 线。
 	sizePt := int32(math.Round(float64(spec.Size) * 72.0 / 96.0))
-	f := font.NewEX(spec.Family, sizePt, style)
+	var f *font.Font
+	// xcgui 会把 9pt 及以下的**常规**字重画成宋体(不论字族, 10pt 起才正常,
+	// 9pt 粗体也正常 —— 见 DESIGN 第八节 149)。从字体文件创建同一字族可以
+	// 绕开它的字族解析, 字号保持不变; 解析不到文件时回退原路径。
+	if sizePt < 10 && !spec.Bold && !spec.Italic {
+		if path := fontFileForFamily(spec.Family); path != "" {
+			f = font.NewByFile(path, sizePt, style)
+		}
+	}
+	if f == nil {
+		f = font.NewEX(spec.Family, sizePt, style)
+	}
 	if f == nil {
 		return 0
 	}

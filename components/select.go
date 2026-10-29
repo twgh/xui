@@ -712,13 +712,14 @@ func (s *Select) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		text = it.Text
 	}
 	if text != "" {
-		rc := xc.RECT{
-			Left:   x,
-			Top:    p.Rc.Top - 1, // Vcenter 字形偏下 1px(同 Button)
-			Right:  p.Rc.Right - 30,
-			Bottom: p.Rc.Bottom - 1,
+		dy := textVDy(text)
+		rc := xc.RECTF{
+			Left:   float32(x),
+			Top:    float32(p.Rc.Top) - dy,
+			Right:  float32(p.Rc.Right - 30),
+			Bottom: float32(p.Rc.Bottom) - dy,
 		}
-		p.Text(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		p.TextF(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
 
 	// 右侧 chevron-down: text-muted-foreground(同 ComboBox)
@@ -770,13 +771,14 @@ func (s *Select) paintItem(r *selectRow, hEle int, hDraw int, pbHandled *bool) {
 		}
 	}
 	if r.item.Text != "" {
-		rc := xc.RECT{
-			Left:   x,
-			Top:    p.Rc.Top - 1,
-			Right:  p.Rc.Right - 24, // pr-8: 给 check 留位
-			Bottom: p.Rc.Bottom - 1,
+		dy := textVDy(r.item.Text)
+		rc := xc.RECTF{
+			Left:   float32(x),
+			Top:    float32(p.Rc.Top) - dy,
+			Right:  float32(p.Rc.Right - 24), // pr-8: 给 check 留位
+			Bottom: float32(p.Rc.Bottom) - dy,
 		}
-		p.Text(r.item.Text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		p.TextF(r.item.Text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
 	if r.item.Value == s.value && !r.item.Disabled {
 		// 选中项右侧 check(absolute right-2 size-4)

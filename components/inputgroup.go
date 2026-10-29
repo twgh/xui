@@ -446,6 +446,7 @@ type InputGroupAddon struct {
 	padR     int32
 	contentW int32 // 已追加内容的宽度合计
 	items    int32 // 已追加内容个数(用来算间距)
+	hasBtn   bool  // 含自绘文字按钮(文字排版要跟按钮共用 textVDy, 见 Text)
 }
 
 // grow 记一笔内容宽度并重算 addon 宽度。
@@ -515,7 +516,21 @@ func (a *InputGroupAddon) Text(s string) *InputGroupAddon {
 		if f := xui.FontHandle(tt.FontDefault); f != 0 {
 			p.Draw.SetFont(f)
 		}
-		p.Text(s, &p.Rc, tt.MutedForeground, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		// 与同一行的按钮共用中文光学修正(textVDy): 按钮用 TextF 上移半像素, 这里若用
+		// 整型矩形 p.Text, 块级行里"说明文字 + 按钮"的墨迹就相差 1 物理像素。
+		// 但行内附加件旁边常是原生 Edit(输入框), 原生文字没有这个修正, 跟着按钮偏移
+		// 反而会与输入框文字错开 —— 所以只在附加件里确实有文字按钮时才启用。
+		dy := float32(0)
+		if a.hasBtn {
+			dy = textVDy(s)
+		}
+		rcF := xc.RECTF{
+			Left:   float32(p.Rc.Left),
+			Top:    float32(p.Rc.Top) - dy,
+			Right:  float32(p.Rc.Right),
+			Bottom: float32(p.Rc.Bottom) - dy,
+		}
+		p.TextF(s, &rcF, tt.MutedForeground, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 		return 0
 	}
 	e.AddEvent_Paint(draw)
@@ -554,6 +569,9 @@ func (a *InputGroupAddon) Icon(path string) *InputGroupAddon {
 }
 
 // Button 追加一个按钮(默认 ghost + xs = 24 高, 对应 InputGroupButton 的默认值)。
+// 字号固定跟正文(text-sm): 上游 InputGroupButton 的 xs/sm 只改高度/内边距, 不改字号,
+// 用 Button 自己的 xs 会把字降到 12px, 与旁边的输入文字不是一套。圆角同理:
+// xs 是 rounded-[calc(--radius-5px)]、sm 是 rounded-md(见 applyInputGroupButton)。
 // 组内首个/末个按钮会自动外扩 5px, 让它的视觉内边距贴住容器边缘。
 func (a *InputGroupAddon) Button(text string, opts ...ButtonOption) *Button {
 	if a == nil {
@@ -565,11 +583,53 @@ func (a *InputGroupAddon) Button(text string, opts ...ButtonOption) *Button {
 	if b == nil {
 		return nil
 	}
-	b.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 24)
+	applyInputGroupButton(b)
+	// 先加的文字元素可能已经按"无按钮"画过一帧, 翻转后重画一次(见 Text 的 dy)。
+	if !a.hasBtn {
+		a.hasBtn = true
+		a.Redraw(true)
+	}
 	a.pullButton(b)
+	a.fixButtonBox(b)
 	a.grow(b.GetWidth() - inputGroupBtnPull)
 	a.group.buttons = append(a.group.buttons, b)
 	return b
+}
+
+// applyInputGroupButton 把 InputGroupButton 与 Button 尺寸档不一致的两处对齐上游:
+//   - 字号固定正文(text-sm), xs/sm 不再各自降字号;
+//   - 圆角独立: xs/icon-xs 是 calc(--radius - 5px), sm/icon-sm 是 rounded-md。
+func applyInputGroupButton(b *Button) {
+	if sz := xui.Current().FontDefault.Size; sz > 0 && b.fontPx == 0 {
+		b.fontPx = sz
+		b.FitWidth()
+	}
+	switch b.size {
+	case ButtonSizeXs, ButtonSizeIconXs:
+		b.radiusMode = 1
+	case ButtonSizeSm, ButtonSizeIconSm:
+		b.radiusMode = 2
+	}
+}
+
+// fixButtonBox 让 addon 按钮的布局盒等于视觉高(24):
+// 元素高是 24+pressShift(按下位移预留, 见 press.go), 直接把布局高压成 24 会把
+// 视觉壳压成 23, 并且比同一行里的说明文字高半个逻辑像素(按钮文字看起来偏上)。
+// 盒高保持 24、用 -1 底边距吃掉预留: 壳正好 24, 上下居中, 按下位移也不会被裁。
+func (a *InputGroupAddon) fixButtonBox(b *Button) {
+	if a == nil || b == nil {
+		return
+	}
+	b.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 24+pressShift)
+	var m xc.RECT
+	xc.XWidget_LayoutItem_GetMargin(b.Handle, &m)
+	xc.XWidget_LayoutItem_SetMargin(b.Handle, m.Left, m.Top, m.Right, -pressShift)
+	// 块级行的高度由最高的子项决定(24): 按下时壳体会往下吃掉那 1px 预留,
+	// 没有余量会被父级裁掉(看起来按下时底边不动、壳体"变矮")。给行留 1px 底部
+	// 内边距, 预留落在行内。行内 addon 本身有输入框撑高, 不需要。
+	if a.align == InputGroupBlockStart || a.align == InputGroupBlockEnd {
+		a.SetPadding(0, 0, 0, pressShift)
+	}
 }
 
 // IconButton 追加一个纯图标按钮(默认 ghost + icon-xs = 24×24)。
@@ -583,8 +643,9 @@ func (a *InputGroupAddon) IconButton(icon string, opts ...ButtonOption) *Button 
 	if b == nil {
 		return nil
 	}
-	b.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 24)
+	applyInputGroupButton(b)
 	a.pullButton(b)
+	a.fixButtonBox(b)
 	a.grow(b.GetWidth() - inputGroupBtnPull)
 	a.group.buttons = append(a.group.buttons, b)
 	return b

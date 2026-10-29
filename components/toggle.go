@@ -366,13 +366,14 @@ func (t *Toggle) drawContent(p *xui.Painter, th *xui.Theme, fore xui.Color) {
 		}
 	}
 	if text := t.GetText(); text != "" {
-		rc := xc.RECT{
-			Left:   x,
-			Top:    p.Rc.Top - 1, // Vcenter 字形偏下 1px(同 Button)
-			Right:  x + xui.TextWidth(text, f),
-			Bottom: p.Rc.Bottom - 1,
+		dy := textVDy(text)
+		rc := xc.RECTF{
+			Left:   float32(x),
+			Top:    float32(p.Rc.Top) - dy,
+			Right:  float32(x + xui.TextWidth(text, f)),
+			Bottom: float32(p.Rc.Bottom) - dy,
 		}
-		p.Text(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		p.TextF(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
 }
 

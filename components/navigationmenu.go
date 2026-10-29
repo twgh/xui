@@ -1355,20 +1355,23 @@ func (n *NavigationMenu) paintItem(it *navItem) func(hEle int, hDraw int, pbHand
 		}
 		content := it.titleW + iconSpace
 		x := p.Rc.Left + (p.W()-content)/2
-		textRc := xc.RECT{
-			Left:   x,
-			Top:    p.Rc.Top - 1,
-			Right:  x + it.titleW,
-			Bottom: p.Rc.Bottom - 1,
+		// 中文标签在 Vcenter 行盒里偏低(见 DESIGN 151), textVDy 只对中文上移半像素;
+		// 整数矩形做不到半步, 用 TextF。
+		dy := textVDy(it.title)
+		textRc := xc.RECTF{
+			Left:   float32(x),
+			Top:    float32(p.Rc.Top) - dy,
+			Right:  float32(x + it.titleW),
+			Bottom: float32(p.Rc.Bottom) - dy,
 		}
-		p.Text(it.title, &textRc, fore,
+		p.TextF(it.title, &textRc, fore,
 			xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
 		if it.kind == navKindMenu {
 			iconRc := xc.RECT{
 				Left:   x + it.titleW + navIconGap,
-				Top:    (p.Rc.Top+p.Rc.Bottom-navIcon)/2 + 1,
+				Top:    (p.Rc.Top + p.Rc.Bottom - navIcon) / 2,
 				Right:  x + it.titleW + navIconGap + navIcon,
-				Bottom: (p.Rc.Top+p.Rc.Bottom+navIcon)/2 + 1,
+				Bottom: (p.Rc.Top + p.Rc.Bottom + navIcon) / 2,
 			}
 			p.IconRotated(icons.IconChevronDown, &iconRc, fore, 2, it.chevron)
 		}

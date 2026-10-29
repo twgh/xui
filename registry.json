@@ -2,11 +2,11 @@
   "$schema": "https://raw.githubusercontent.com/twgh/xui/main/registry.schema.json",
   "components": {
     "button": {
-      "files": ["button.go", "group.go"],
+      "files": ["button.go", "group.go", "textopt.go", "press.go"],
       "deps": []
     },
     "buttongroup": {
-      "files": ["buttongroup.go"],
+      "files": ["buttongroup.go", "textopt.go", "press.go"],
       "deps": ["button"]
     },
     "checkbox": {
@@ -122,7 +122,7 @@
       "deps": []
     },
     "pagination": {
-      "files": ["pagination.go"],
+      "files": ["pagination.go", "textopt.go", "press.go"],
       "deps": []
     },
     "scrollarea": {
@@ -158,11 +158,11 @@
       "deps": ["label", "separator"]
     },
     "toggle": {
-      "files": ["toggle.go", "group.go"],
+      "files": ["toggle.go", "group.go", "textopt.go"],
       "deps": []
     },
     "toggle-group": {
-      "files": ["toggle.go", "group.go"],
+      "files": ["toggle.go", "group.go", "textopt.go"],
       "deps": []
     },
     "native-select": {
@@ -170,15 +170,15 @@
       "deps": ["combobox"]
     },
     "select": {
-      "files": ["select.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go"],
+      "files": ["select.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go", "textopt.go"],
       "deps": []
     },
     "combobox-search": {
-      "files": ["combobox_search.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go", "label.go"],
+      "files": ["combobox_search.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go", "label.go", "textopt.go"],
       "deps": []
     },
     "input-group": {
-      "files": ["inputgroup.go", "input.go", "scrollbar.go", "group.go", "button.go", "kbd.go", "spinner.go"],
+      "files": ["inputgroup.go", "input.go", "scrollbar.go", "group.go", "button.go", "kbd.go", "spinner.go", "textopt.go", "press.go"],
       "deps": []
     },
     "input-otp": {
@@ -186,7 +186,7 @@
       "deps": []
     },
     "accordion": {
-      "files": ["accordion.go"],
+      "files": ["accordion.go", "textopt.go"],
       "deps": ["button", "collapsible", "separator"]
     },
     "avatar": {
@@ -214,11 +214,11 @@
       "deps": ["sheet"]
     },
     "menubar": {
-      "files": ["menubar.go", "menu_model.go", "popup.go"],
+      "files": ["menubar.go", "menu_model.go", "popup.go", "press.go"],
       "deps": ["button"]
     },
     "navigationmenu": {
-      "files": ["navigationmenu.go", "popup.go"],
+      "files": ["navigationmenu.go", "popup.go", "textopt.go"],
       "deps": ["button"]
     }
   }

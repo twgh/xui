@@ -402,18 +402,23 @@ func (g *Pagination) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	for i := range g.items {
 		it := g.items[i]
 		hv := xui.HoverItem(hEle, int32(i), i == g.hover)
-		shell := it.rc
-		shell.Bottom -= pagPressShift
+		// 按下 active:translate-y-px: 壳体下沉; 内容跟随壳体在**物理像素**上的实际
+		// 位移(1 逻辑像素在 150% DPI 下会被取整成 1 或 2 物理像素, 文字与图标各自
+		// 取整相位不同, 会显得没一起动, 见 button.go 的 shellPressShift / DESIGN 88)。
+		baseShell := it.rc
+		baseShell.Bottom -= pagPressShift
+		shell := baseShell
+		contentDy := int32(0)
 		if i == g.pressed {
-			// active:translate-y-px: 壳体与内容一起下沉 1px
 			shell.Top += pagPressShift
 			shell.Bottom += pagPressShift
+			contentDy = shellPressShift(p, baseShell, shell)
 		}
 
 		switch it.kind {
 		case pagEllipsis:
 			// size-8 + more-horizontal(muted-foreground), 无悬停反馈
-			g.drawIcon(p, icons.IconMoreHorizontal, shell, t.MutedForeground)
+			g.drawIcon(p, icons.IconMoreHorizontal, baseShell, t.MutedForeground, contentDy)
 
 		case pagPage:
 			if it.page == g.page {
@@ -424,7 +429,7 @@ func (g *Pagination) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 				// 其它页 = ghost 变体(悬停才有底色)
 				p.FillRound(&shell, bg, t.RadiusLg())
 			}
-			g.drawText(p, strconv.Itoa(it.page), shell, t.Foreground, xcc.TextAlignFlag_Center, pagPadIn)
+			g.drawText(p, strconv.Itoa(it.page), baseShell, t.Foreground, xcc.TextAlignFlag_Center, pagPadIn, contentDy)
 
 		case pagPrev, pagNext:
 			dis := (it.kind == pagPrev && g.page <= 1) || (it.kind == pagNext && g.page >= pages)
@@ -438,40 +443,40 @@ func (g *Pagination) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			if dis {
 				col = t.Foreground.WithAlpha(128)
 			}
-			midY := (shell.Top + shell.Bottom) / 2
+			midY := (baseShell.Top + baseShell.Bottom) / 2
 			if it.kind == pagPrev {
 				iconRc := xc.RECT{
-					Left:   shell.Left + pagPadX,
+					Left:   baseShell.Left + pagPadX,
 					Top:    midY - pagIcon/2,
-					Right:  shell.Left + pagPadX + pagIcon,
+					Right:  baseShell.Left + pagPadX + pagIcon,
 					Bottom: midY + pagIcon/2,
 				}
-				p.Icon(icons.IconChevronLeft, &iconRc, col, 2)
+				p.IconRotatedOffset(icons.IconChevronLeft, &iconRc, col, 2, 0, 0, contentDy)
 				// 文字矩形右边界取到壳体右缘: 量宽偏小时也不会截字
 				// (尾部留给 pr-1.5 的余量, 文字左对齐所以观感不变)
 				textRc := xc.RECT{
 					Left:   iconRc.Right + pagIconGap,
-					Top:    shell.Top,
-					Right:  shell.Right,
-					Bottom: shell.Bottom,
+					Top:    baseShell.Top,
+					Right:  baseShell.Right,
+					Bottom: baseShell.Bottom,
 				}
-				g.drawText(p, g.prevText, textRc, col, xcc.TextAlignFlag_Left, 0)
+				g.drawText(p, g.prevText, textRc, col, xcc.TextAlignFlag_Left, 0, contentDy)
 			} else {
 				iconRc := xc.RECT{
-					Left:   shell.Right - pagPadX - pagIcon,
+					Left:   baseShell.Right - pagPadX - pagIcon,
 					Top:    midY - pagIcon/2,
-					Right:  shell.Right - pagPadX,
+					Right:  baseShell.Right - pagPadX,
 					Bottom: midY + pagIcon/2,
 				}
-				p.Icon(icons.IconChevronRight, &iconRc, col, 2)
+				p.IconRotatedOffset(icons.IconChevronRight, &iconRc, col, 2, 0, 0, contentDy)
 				// 同上: 左边界取到壳体左缘, 右对齐文字不会被截头
 				textRc := xc.RECT{
-					Left:   shell.Left,
-					Top:    shell.Top,
+					Left:   baseShell.Left,
+					Top:    baseShell.Top,
 					Right:  iconRc.Left - pagIconGap,
-					Bottom: shell.Bottom,
+					Bottom: baseShell.Bottom,
 				}
-				g.drawText(p, g.nextText, textRc, col, xcc.TextAlignFlag_Right, 0)
+				g.drawText(p, g.nextText, textRc, col, xcc.TextAlignFlag_Right, 0, contentDy)
 			}
 		}
 	}
@@ -479,22 +484,33 @@ func (g *Pagination) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 }
 
 // drawText 在 rc 内水平方向按 align 对齐、垂直居中绘制一段文字, 左右各内缩 inset。
-// 与 button.go 一样上移 1px: DrawText 的 Vcenter 按字体行高居中, 字形整体偏下。
+// dy 是按下时内容跟随壳体的**物理像素**位移(见 shellPressShift), 用 TextF 承载,
+// 避免 1 逻辑像素在 150% DPI 下被取整到与图标不同的物理行。
 func (g *Pagination) drawText(p *xui.Painter, text string, rc xc.RECT, color xui.Color,
-	align xcc.TextFormatFlag_, inset int32) {
+	align xcc.TextFormatFlag_, inset, dy int32) {
 	if text == "" {
 		return
 	}
 	rc.Left += inset
 	rc.Right -= inset
-	rc.Top--
-	rc.Bottom--
-	p.Text(text, &rc, color,
+	scale := p.Scale
+	if scale <= 0 {
+		scale = 1
+	}
+	dyF := float32(dy) / float32(scale)
+	dyF -= textVDy(text)
+	rcF := xc.RECTF{
+		Left:   float32(rc.Left),
+		Top:    float32(rc.Top) + dyF,
+		Right:  float32(rc.Right),
+		Bottom: float32(rc.Bottom) + dyF,
+	}
+	p.TextF(text, &rcF, color,
 		align|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
 }
 
-// drawIcon 在 rc 内居中绘制一枚 size-4 图标。
-func (g *Pagination) drawIcon(p *xui.Painter, path string, rc xc.RECT, color xui.Color) {
+// drawIcon 在 rc 内居中绘制一枚 size-4 图标, dy 语义同 drawText(物理像素)。
+func (g *Pagination) drawIcon(p *xui.Painter, path string, rc xc.RECT, color xui.Color, dy int32) {
 	midX := (rc.Left + rc.Right) / 2
 	midY := (rc.Top + rc.Bottom) / 2
 	iconRc := xc.RECT{
@@ -503,5 +519,5 @@ func (g *Pagination) drawIcon(p *xui.Painter, path string, rc xc.RECT, color xui
 		Right:  midX + pagIcon/2,
 		Bottom: midY + pagIcon/2,
 	}
-	p.Icon(path, &iconRc, color, 2)
+	p.IconRotatedOffset(path, &iconRc, color, 2, 0, 0, dy)
 }

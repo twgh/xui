@@ -1360,7 +1360,7 @@ ui/
       - 文字按**未按下矩形**排版, 用 `TextF` 的浮点矩形加上 `N / DPI scale` 逻辑偏移(实测浮点矩形会精确落到 N 个物理像素);
       - 图标按**未按下位置**画, 用 `IconRotatedOffset(..., dy=N)` 直接加物理像素;
       - 壳体继续按整数逻辑位移。三者都走同一个 N, 不再有相位差。
-    - **范围**: 纯图标按钮没有文字, 但图标也跟随壳体 N; 行内图标(前导/尾随/加载 spinner)同理。GDI 折线回落忽略 `IconRotatedOffset` 的物理偏移。
+    - **范围**: 纯图标按钮没有文字, 但图标也跟随壳体 N; 行内图标(前导/尾随/加载 spinner)同理。GDI 折线回落忽略 `IconRotatedOffset` 的物理偏移。分页(上一页/下一页/页码)的按下位移同一套: 壳体量实际物理位移 `shellPressShift`, 文字用 `TextF` 加 `N/scale`、图标用 `IconRotatedOffset(...,N)`, 三者一起下沉。
     - **验收**: 60fps 录屏 + 逐帧墨迹质心。sm/default × 前导/尾随 四种组合的壳体、文字、图标位移完全一致(本机该行均为 +2 物理); 换到壳体只取整 1 物理的位置时三者应同时为 +1。不能只验证"图标自己移动了", 必须验证与壳体、文字的**相对位移**一致。
 
 89. **元素半透明时, 同色图元重叠会二次叠色**(Tooltip 箭头淡入/淡出时"倒三角上方多一个正三角", 实测):
@@ -1726,6 +1726,9 @@ ui/
     - **内边距联动**: 与 addon 相邻的一侧收成 6(pl-1.5/pr-1.5), 另一侧保持 12(px-3), 由容器调 `input.setBareInsets(l, r)` 更新(同包私有方法, 不必暴露给用户)。
     - **addon 宽度不能靠 Auto**: 横向主轴上嵌套 `LayoutEle` 的 `LayoutItem_SetWidth(Auto)` 实测算成 0, 整个 addon 消失。addon 自己累加内容宽(文字按 `xui.TextWidth`, 按钮/键帽取元素宽), 再用 `Fixed` 锁宽, 并在每次追加内容后让**父级** `AdjustLayout`(布局项声明只在自己身上重排不生效)。
     - **addon 左右顺序用 z 序调**: 布局顺序 = 子元素索引 = z 序。调用方通常先 `Input()` 再 `Addon(InlineStart)`, 后建的自然落在右边; 用 `xc.XEle_SetZOrder(addon, 0)` 挪到首位即可。⚠️ 不要用 `xc.XEle_InsertChild` 挪动**已布局**的子项 —— 实测会把消息循环卡死(探针只打印到调用前一行)。
+    - **addon 按钮的字号/圆角用 InputGroupButton 自己的语义, 不是 Button 的尺寸档**: 上游基类是 `text-sm`, xs/sm 只改高度(24/32)与内边距, **不降字号**; 圆角 xs=`calc(--radius-5px)`、sm=`rounded-md`。直接用 `ButtonSizeXs` 会得到 12px 字号 + 10px 圆角, 与旁边输入文字不是一套(用户一眼看出"查询/发送"粗细不同)。`applyInputGroupButton` 里统一把 `fontPx` 设为主题正文、用 `Button.radiusMode` 覆写圆角; 按钮宽由 `FitWidth` 按新字号重量。
+    - **addon 按钮的布局盒必须等于视觉高 24**: Button 的元素高是 24+`pressShift`(按下预留 1px)。把布局高压成 24 会把视觉壳压成 **23**, 并且按钮文字比同一行的 Label 高约 2 物理像素(用户报"发送太靠上")。修法(`fixButtonBox`): 布局高写 25、底边距 **-1**(布局盒 24、视觉壳 24、文字与行内文字对齐); 块级行再加 1px **底部内边距**, 让按下位移落在行内 —— 否则父级把壳体底部裁掉, 按下时底边不动、看起来像在变矮。行内 addon 有输入框撑高, 不需要这条 padding。
+    - **同一行的说明文字也要走中文光学修正**: 按钮文字按 151 上移半像素, addon 文字若还用整型 `p.Text`, 块级行"说明文字 + 发送"的墨迹仍差 1 物理像素(表现为按钮偏高)。`InputGroupAddon.Text` 改用 `TextF` + `textVDy`; 但**只在 `addon.hasBtn`(里有文字按钮)时启用** —— 行内 addon 旁边通常是原生 `Edit`, 原生文字没有这个修正, 跟着按钮偏移反而会与输入框文字错开 1 物理像素(实测 "example.com" 前缀 + 同串占位符: 不偏移时顶边一致)。
 
 148. **布局容器放进自建弹层时: 位置参数会被布局覆盖, 内边距只能用元素 padding + 子项锁 Fixed 宽**(`combobox_search.go` 的弹层):
     - **症状**: 弹层里的第一个子容器按 `NewLayoutEle(4, 4, w-8, h-8, content)` 建好, 期望四周留 4px 内边距; 实际内容贴边, 列表高亮条一直顶到弹层圆角上(四角露出直角)。
@@ -1734,6 +1737,26 @@ ui/
     - **高度同理**: 子项容器高度要显式 `LayoutItem_SetHeight(Fixed, ch)`, 过滤后内容变矮时同步改高度 + `panel.resize()` + `Relocate()`, 否则弹层留着大片空白。
     - **过滤 resize 必须保持弹出方向**: 触发器贴近屏幕底部、弹层翻到上方后, 输入过滤让列表变矮; 若仍按 sideBottom 重算位置, 变矮的弹层"放得下"就会跳到触发器下方(视觉上整个飞走)。打开/每次 resize 后记下弹层实际在哪一侧(弹层底边 ≤ 触发区顶边即上方), resize 用记住的方向重算。
     - **多选勾选反馈要立即重绘**: 勾选状态画在弹层的行元素上, 点击切换后只重绘触发区的话, 行上的勾选标记要等下一次无关重绘才出现。切换后对全部行 `Redraw(true)` —— 行是弹层小窗里的独立元素, 立即重绘不影响宿主窗口的待重绘区域(触发区/文本仍用延迟重绘)。
+
+149. **xcgui 会把 9pt 及以下的常规字重画成宋体, 从字体文件创建可绕开**(`font.go` / `fontfile.go`, 探针实测):
+    - **现象**: 12px 的主题文字(徽章 text-xs、"打开文档"这类链接、按钮 xs)是宋体, 与 14px 正文的雅黑不一致; 13px/14px 及以上正常。
+    - **根因**: `XFont_CreateEx` 在字号 < 10pt 时把**常规字重**换成宋体 —— 请求微软雅黑、Arial 还是 Consolas, 9pt 常规的渲染结果都一样; 10pt 起才按请求字族渲染。9pt **粗体**不受影响(仍是雅黑粗体)。阈值按磅算, 与 DPI 无关; 所以 12px(9pt)必中, 13px(10pt)起正常。
+    - **修法**: `FontHandle` 对 `sizePt < 10 && !Bold && !Italic` 改走 `font.NewByFile`: GDI+ 取字族的**英文族名**(配置里的 "微软雅黑" 在字体表里登记为 "Microsoft YaHei"), 再查 Fonts 注册表(HKLM + HKCU)拿常规字重的字体文件, 按原 pt 创建。字号保持不变, shadcn 的 text-xs=12px 不用改尺寸。解析不到文件时回退 `font.NewEX`, 即接受 xcgui 的替换。
+    - **两条限制**: 只认注册表表项名里 " & " 分隔的**第一段**(.ttc 以文件第 0 号字形为准: msyh.ttc 第 0 个是 Microsoft YaHei, Microsoft YaHei UI 在后面); HKCU 的字体值是绝对路径, HKLM 是 Fonts 目录下的文件名, 两种都要拼。
+    - **顺带**: 进程里一旦从文件加载过 9pt 的雅黑(修复路径), 之后再 `font.NewEX("微软雅黑", 9)` 也会画成雅黑 —— 9pt 的槽位被替换掉了, 替换发生在渲染期, 与创建时的句柄无关; 显式 `font.NewEX("宋体", 9)` 不受影响(它本来就是宋体)。所以修好的进程里, 连没走 FontHandle 的 9pt 雅黑文字也会跟着正常。
+    - **验收**: 150% DPI 截图, 12px 的 "打开文档" 与 14px 正文字形一致; `TextWidth` 量宽用的是同一个字体句柄, 布局不用改。
+
+150. **按钮类文字的 Vcenter 不需要上移 1px —— 早期回补会让小字偏高**(`button.go` 与同族组件, 像素实测):
+    - **现象**: xs(12px)/sm(13px) 按钮文字看起来不垂直居中, 整体偏高约 1 物理像素。
+    - **根因**: 早期为补偿 "DrawText 按行高居中、字形偏下" 给文字矩形减了 1px。实测 xcgui 的 Vcenter 与浏览器 flex 居中落点一致: 150% DPI 下同尺寸 HTML 按钮(Chrome)的 "Xs"/"Sm" 墨迹上下留白相等; 带 1px 回补时墨迹中心比壳体中心高 2 物理像素(1.33 逻辑), 去掉后为 0 —— 回补本身就是偏差。
+    - **修法**: `Button`(纯文字与行内图标两条路径)、`ButtonGroupText`、`Toggle`、`Select` 触发区与条目、`ComboboxSearch`、`NavigationMenu`、`Pagination`、`Accordion` 触发区的文字矩形不再 `Top-1/Bottom-1`; 含中文的文本另按 151 上移半像素。
+    - **验收**: 150% 实测 "Xs"/"Sm"/"Default" 的墨迹中心与壳体中心差 0.0 / -0.5 / -1.0 物理像素(浏览器同尺寸 0 / 0 / -0.5); 与 149 的字体修复叠加时, 12px 文字不再同时"字体不对 + 位置偏高"。
+
+151. **中文文本的 Vcenter 要上移半个逻辑像素(只调中文)**(`components/textopt.go` 的 `textVDy`, 150% DPI 实测):
+    - **现象**: 中文按钮/胶囊(卡片页"了解详情 / 开始使用"、导航菜单"开始使用")文字看着偏下; 同尺寸拉丁标签(Xs/Default)却是正的。
+    - **根因**: 同一套 Vcenter 下, 拉丁大写字母的墨迹中心在行盒中心上方约 1 物理像素, 中文字形几乎占满字身、墨迹中心在行盒中心下方约 1 物理像素; 14px 规格又被取整成 11pt(14.67px, 见 31), 中文再低一点。两者叠加, 中文低约 1.5 物理像素。
+    - **修法**: `textVDy(text)` 检测到中文/全角字符返回 **0.5 逻辑像素**, 纯拉丁返回 0; 各组件用 `TextF` 的浮点矩形上移(整数矩形做不到半步)。覆盖 Button(两条路径与 link 下划线)、ButtonGroupText、Toggle、Select、ComboboxSearch、NavigationMenu、Pagination、Accordion、InputGroupAddon.Text(仅 addon 内有文字按钮时, 原因见 147)。**不要恢复全域 -1**: 拉丁文本会整体顶高(见 150)。
+    - **验收**: 150% 实测卡片页"了解详情/开始使用"墨迹中心与壳体中心差 +0.5 物理像素(修前 +1.5; Chrome 同尺寸中文 +0.5), 导航菜单 0.0; 拉丁按钮维持 0 / -0.5 / -1.0。
 
 ---
 
@@ -1779,7 +1802,7 @@ ui/
 - 弹层内容测量/非激活显示(Popover/HoverCard, 见第八节 115/116): `xc.XWnd_GetDPI`、`SetWindowPos(..., SWP_NOACTIVATE|SWP_SHOWWINDOW)`、`wapi.ShowWindow(hwnd, SW_SHOWNOACTIVATE=4)`、`xcc.WS_EX_NOACTIVATE`、`xc.XEle_SetRect`、`xc.XEle_AdjustLayout`; 关闭检查用 `wapi.GetCursorPos` + `wapi.GetWindowRect` 与 `XEle_GetWndClientRect` 的物理换算
 - 圆形头像图片(见第八节 117): `xc.XImage_LoadFromDataRGBA(data, w, h)`(非预乘 RGBA, 内部转 BGRA)、`xc.XImage_Destroy`、`drawx.Draw.XDraw_ImageEx(hImage, x, y, w, h)`; `image.Decode`(png/jpeg/gif) 与 CPU 侧蒙版在 `avatar.go`
 - 命令面板: 原生 `widget.NewEdit` 透明化(EnableBkTransparent/EnableDrawBorder(false)/EnableDrawFocus(false)/SetBorderSize(0,0,0,0)/EnableAutoSelAll(false)) + `SetDefaultText/SetDefaultTextColor/SetCaretColor/SetTextAlign(Left|Center_V)`; `AddEvent_Edit_Changed` / `AddEvent_KeyDown` 接管 ↑↓/Home/End/Enter/ESC(原生箭头键会先到这里, 标记 handled 即可); 列表滚动用 `ScrollArea` 的 `GetViewHeight/GetViewPosV/ScrollPosYV`
-- 字体:`xui.FontSpec{Family, Size, Bold, Italic}`。**没有下划线字段**: `xcc.FontStyle_Underline` 在本框架的 D2D 文本路径下不渲染(探针: 下划线字体与普通字体像素一致), hover:underline 一律手绘 1px 线 —— 宽度取 `xui.TextWidth`, 落点见 Button 的 link 变体与 Accordion 触发区
+- 字体:`xui.FontSpec{Family, Size, Bold, Italic}`。**没有下划线字段**: `xcc.FontStyle_Underline` 在本框架的 D2D 文本路径下不渲染(探针: 下划线字体与普通字体像素一致), hover:underline 一律手绘 1px 线 —— 宽度取 `xui.TextWidth`, 落点见 Button 的 link 变体与 Accordion 触发区。9pt 以下的**常规**字重由 `FontHandle` 从字体文件创建(GDI+ 取英文族名 + Fonts 注册表找文件), 绕开 xcgui 的小字号宋体替换(见 149); 组件一律用 `FontHandle`, 不要直接 `font.NewEX`
 - 弹层键盘钩子(`popoverPanel`, Select 的 ↑↓/Enter 用): `Window.AddEvent_KeyDown`(窗口级, 焦点在子元素上也先于元素分发)、`popoverPanel.OnKeyDown/OnEsc`(popup.go 预留的钩子) + `Element.SetFocus`(焦点即条目高亮)
 - 轮播(见第八节 140/141): 纯自绘根 Element + 视口 + 每页一个 LayoutEle; 位移过渡复用 `xui.Presence`(`DropTransitions` 后每帧写各页矩形); 拖拽用窗口级 `AddEvent_LButtonDown/MouseMove/LButtonUp` + `Window.SetCaptureEle` + `AddEvent_KeyDown`(焦点在轮播内才响应); 上/下张用 `Button`(outline + icon-sm + rounded-full); 循环位置取正模
 - 侧边面板 / 抽屉 / 菜单栏(见第八节 120~125): `XWnd_GetBodyRect`(遮罩铺 Body)、`XEle_SetAlpha`(遮罩淡入, 不级联子元素)、`XEle_GetRect/SetRect`(面板整体平移, 逻辑像素)、`XEle_SetCapture`(抓手拖拽捕获鼠标)、`wapi.GetCursorPos`(拖拽用屏幕坐标算增量)、`wapi.GetForegroundWindow/SetForegroundWindow`(子菜单与父弹层的焦点归属判定)、`app.AfterFunc`(弹层关闭后延迟把焦点还给触发区, 否则被随后的窗口激活覆盖)

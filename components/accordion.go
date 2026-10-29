@@ -298,14 +298,15 @@ func (it *AccordionItem) ContentStack(space int32) *widget.LayoutEle {
 // div 的 pb-2.5(= 内容最后一行到分隔线之间 10px)。
 //
 // 三点都是实测踩出来的(见 DESIGN 第八节 111):
-//   ① 不能用外边距: 布局对 `Auto` 高度的父级**不计子项外边距**, 而动画把内容区锁成
-//      `Fixed(h)` 时那段外边距又确实占位 —— "动画目标 34 / 终态 Auto 24", 展开结束
-//      那一帧整条列表向上跳 10px。
-//   ② 必须等用户把内容加完再挂: 在 ContentStack 里就挂会排到**第一个**子项之前,
-//      于是触发区和描述之间空出一大截, 而描述下面紧贴分隔线。所以挂载点在开合时
-//      (只创建一次, 之后幂等)。
-//   ③ 高度要扣掉内容区的行间距(布局在相邻子项之间也插 spacer), 否则底部会比顶部宽
-//      出"间距"那么多。
+//
+//	① 不能用外边距: 布局对 `Auto` 高度的父级**不计子项外边距**, 而动画把内容区锁成
+//	   `Fixed(h)` 时那段外边距又确实占位 —— "动画目标 34 / 终态 Auto 24", 展开结束
+//	   那一帧整条列表向上跳 10px。
+//	② 必须等用户把内容加完再挂: 在 ContentStack 里就挂会排到**第一个**子项之前,
+//	   于是触发区和描述之间空出一大截, 而描述下面紧贴分隔线。所以挂载点在开合时
+//	   (只创建一次, 之后幂等)。
+//	③ 高度要扣掉内容区的行间距(布局在相邻子项之间也插 spacer), 否则底部会比顶部宽
+//	   出"间距"那么多。
 func (it *AccordionItem) ensureBottomPad() {
 	if it == nil || it.body == nil || it.pad != nil {
 		return
@@ -425,13 +426,14 @@ func (it *AccordionItem) drawText(p *xui.Painter, font int, fore xui.Color) {
 		return
 	}
 	p.Draw.SetFont(font)
-	rc := xc.RECT{
-		Left:   p.Rc.Left + accordionPadX,
-		Top:    p.Rc.Top - 1, // Vcenter 字形偏下 1px(同 Button/Toggle)
-		Right:  p.Rc.Right - accordionPadX,
-		Bottom: p.Rc.Bottom - 1,
+	dy := textVDy(text)
+	rc := xc.RECTF{
+		Left:   float32(p.Rc.Left + accordionPadX),
+		Top:    float32(p.Rc.Top) - dy,
+		Right:  float32(p.Rc.Right - accordionPadX),
+		Bottom: float32(p.Rc.Bottom) - dy,
 	}
-	p.Text(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+	p.TextF(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 }
 
 // drawUnderline 在文字墨迹下方补一条 1px 线(hover:underline 的自绘等价物)。

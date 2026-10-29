@@ -8,11 +8,27 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-28)
+## 当前状态(截至 2026-10-29)
 
 **阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 现为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
+
+- ✅ **InputGroup addon 按钮字号/圆角对齐上游**(2026-10-29, 用户截图报障, DESIGN 147):
+  - **现象**: 输入组里的"查询/发送"比旁边的输入文字小一圈、看起来"粗细不同"。用 `ButtonSizeXs` 建 addon 按钮, 字号被降到 12px(周围是 text-sm 14px), 圆角也用了 Button xs 的 10(上游是 calc(--radius-5px)=5)。
+  - **修法**: `applyInputGroupButton`: 字号固定跟主题正文(`fontPx` + `FitWidth`), 圆角按 InputGroupButton 语义覆写(Button 新增未导出的 `radiusMode`: xs=radius-5, sm=radius-md)。IconButton 同步。
+  - **发送按钮偏上**: 两处叠加 —— ①块级行的按钮布局高被压成 24, 视觉壳只剩 23, 按钮高 2 物理像素(`fixButtonBox`: 布局高 25 + 底边距 -1, 块级行补 1px 底部内边距给按下位移); ②说明文字用整型 `p.Text`、按钮文字走了 151 的中文上移半像素, 按钮仍高 1 物理像素(`InputGroupAddon.Text` 改 `TextF` + `textVDy`, 仅 addon 内有文字按钮时启用, 行内 addon 因旁边是原生 Edit 保持不偏移)。实测"我们会发送验证码/发送"墨迹 203–223 完全重合, 按下壳体整体 +2 物理且底边不被裁; 行内 "example.com" 前缀与占位符保持原对齐。
+  - 验收: 探针截图 + 像素测量, 查询/发送墨迹高 20/21(修前 18), 与周围 14px 文字一致; hover 圆角 5px; 按下文字与壳体同步 +2 物理; `go build/vet/test ./...` 全绿, `xui add input-group` 闭包编译通过。
+
+- ✅ **中文文本偏低 + 分页按下图标/文字不同步**(2026-10-29, 用户截图报障, DESIGN 151/88):
+  - **中文偏低**: 先报导航菜单"开始使用", 后报卡片页"了解详情/开始使用"。150% 实测: 同一套 Vcenter 下拉丁墨迹中心在行盒中心上方约 1 物理像素, **中文**在下方约 1 物理像素, 14px→11pt 再低一点, 叠加后中文低 1.5 物理像素。修法: 新增 `components/textopt.go` 的 `textVDy(text)`(含中文返回 0.5 逻辑像素, 纯拉丁 0), Button/ButtonGroupText/Toggle/Select/ComboboxSearch/NavigationMenu/Pagination/Accordion 用 `TextF` 浮点矩形上移半步。实测卡片页两按钮 +0.5(Chrome 同尺寸 +0.5, 修前 +1.5), 导航 0.0; 拉丁按钮维持 0/-0.5/-1.0。
+  - **分页按压**: 上一页/下一页按下时图标与文字位移不一致(和按钮当年同一个坑, DESIGN 88)。修法: 壳体量实际物理位移 `shellPressShift`, 内容按**未按下矩形**排版, 文字 `TextF` 加 `N/scale`、图标 `IconRotatedOffset(...,N)`。150% 实测按下后文字与 chevron 都 +2 物理像素。
+  - 验收: demo 导航2/导航3/基础3 150% DPI 原生截图 + 逐像素测量; `go build/vet/test ./...` 全绿。
+
+- ✅ **12px 文字被画成宋体 + xs/sm 按钮文字偏高**(2026-10-29, 用户截图报障, DESIGN 149/150):
+  - **字体**: 徽章的 "打开文档"(12px → 9pt)显示成宋体。探针确认是 xcgui 对 **<10pt 的常规字重**整体替换成宋体(微软雅黑/Arial/Consolas 的 9pt 常规字形完全相同, 10pt 起正常, 9pt 粗体正常)。抬到 10pt 会让 text-xs 从 12px 变 13.33px、xs/sm 字号档合并, 故改为 `FontHandle` 对 <10pt 常规字重从字体文件创建: GDI+ 取英文族名("微软雅黑"→"Microsoft YaHei")+ Fonts 注册表(HKLM/HKCU)找文件 → `font.NewByFile`, 字号保持 12px; 解析失败回退 `font.NewEX`。新增 `fontfile.go` + `font_test.go`(解析/缓存/不存在字族)。
+  - **居中**: xs/sm 文字整体偏高 1 物理像素。根因是早期给文字矩形减 1px 的 "字形偏下" 回补 —— 同尺寸 Chrome HTML 按钮实测墨迹上下留白相等, 该回补本身就是偏差。`Button`(纯文字 + 行内图标)、`ButtonGroupText`、`Toggle`、`Select`、`ComboboxSearch`、`NavigationMenu`、`Pagination`、`Accordion` 的文字矩形统一去掉 `Top-1/Bottom-1`。
+  - 验收: demo 基础1/2/表单2/导航2/导航3 150% DPI 逐页截图; "Xs"/"Sm"/"Default" 墨迹中心与壳体中心差 0.0 / -0.5 / -1.0 物理像素(Chrome 同尺寸 0 / 0 / -0.5); 徽章/链接文字恢复雅黑; `go build/vet/test ./...` 全绿。
 
 - ✅ **Combobox 弹层两处交互修复**(2026-10-28, 用户报障, DESIGN 148):
   - **过滤后弹层跳边**: 触发器在屏幕底部、弹层翻上方后, 输入过滤让列表变矮, resize 按 sideBottom 重算导致弹层跳到下方。修法: 打开/resize 后记录弹层实际在哪一侧(`lastTop`, 弹层底边 ≤ 触发区顶边), resize 沿用。探针数据验证: 过滤后弹层底边固定、顶边随高度上移(保持上方)。
