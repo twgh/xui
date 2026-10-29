@@ -1,8 +1,10 @@
 package xui
 
 import (
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xc"
+	"github.com/twgh/xcgui/xcc"
 )
 
 // 焦点来源跟踪, 实现 shadcn 的 :focus-visible 语义:
@@ -31,17 +33,28 @@ func FocusedByKeyboard() bool {
 	return !focusSrc.mouse
 }
 
+// HostWindowOf 返回元素所属的 **xcgui 窗口**句柄(找不到返回 0)。
+//
+// 不能一步 `XC_hWindowFromHWnd(XWidget_GetHWND(ele))`: 元素在 ScrollArea(LayoutFrame)、
+// 弹层容器这类自带 HWND 的容器内部时, 取到的 HWND 不是 xcgui 窗口, 映射出来是个无效
+// 小值(实测 7) —— 拿它去 `XWnd_*`、presence、主题重绘都会静默失败。沿 HWND 父链往上找
+// 第一个"映射成功且确实是窗口"的句柄。
+func HostWindowOf(hEle int) int {
+	for hwnd := xc.XWidget_GetHWND(hEle); hwnd != 0; hwnd = wapi.GetParent(hwnd) {
+		if h := xc.XC_hWindowFromHWnd(hwnd); h != 0 && xc.XC_IsHXCGUI(h, xcc.XC_WINDOW) {
+			return h
+		}
+	}
+	return 0
+}
+
 // AttachWindow 组件构造时调用, 为组件所在窗口挂接全局服务:
 //   - 登记窗口随主题切换重绘;
 //   - 挂 Tab 键钩子, Tab 后获得的焦点标记为键盘来源。
 //
 // 每个窗口只挂一次, 幂等。
 func AttachWindow(hEle int) {
-	hWnd := xc.XWidget_GetHWND(hEle)
-	if hWnd == 0 {
-		return
-	}
-	hWindow := xc.XC_hWindowFromHWnd(hWnd)
+	hWindow := HostWindowOf(hEle)
 	if hWindow == 0 {
 		return
 	}

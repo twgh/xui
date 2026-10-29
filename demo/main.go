@@ -1910,10 +1910,14 @@ func buildNav2Page(body *widget.LayoutEle) {
 	// ---- 列 1: 标签页 ----
 	_, v := autoCard(col(r.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "标签页", v.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "default / line 两个变体 + 纵向取向; 标签等宽、选中态走 background", v.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "default / line 两个变体 + 纵向取向; 行内图标、单标签禁用、键盘导航", v.Handle))
 
-	xui.ItemFill(hint(v.Handle, "default"))
-	tabs := ui.NewTabs(0, 0, 240, v.Handle, []string{"账户", "密码", "通知"})
+	xui.ItemFill(hint(v.Handle, "default · 行内图标 / 单项禁用"))
+	tabs := ui.NewTabsItems(0, 0, 240, v.Handle, []ui.TabsItem{
+		{Text: "账户", Icon: icons.Path("user")},
+		{Text: "密码", Icon: icons.Path("lock"), Disabled: true},
+		{Text: "通知", Icon: icons.Path("bell")},
+	}, ui.WithTabsValues("account", "password", "notice"))
 	xui.ItemWidth(tabs, 240)
 	panel := ui.NewLabel(0, 0, 0, 0, "账户设置面板", v.Handle).SetMuted()
 	xui.ItemFill(panel)
@@ -1927,9 +1931,15 @@ func buildNav2Page(body *widget.LayoutEle) {
 		ui.WithTabsVariant(ui.TabsLine), ui.WithTabsActive(1))
 	xui.ItemWidth(lineTabs, 200)
 
-	xui.ItemFill(hint(v.Handle, "纵向"))
-	vTabs := ui.NewTabs(0, 0, 96, v.Handle, []string{"账户", "密码", "通知"}, ui.WithTabsVertical())
-	xui.ItemWidth(vTabs, 96)
+	xui.ItemFill(hint(v.Handle, "纵向 · 图标"))
+	vTabs := ui.NewTabsItems(0, 0, 112, v.Handle, []ui.TabsItem{
+		{Text: "账户", Icon: icons.Path("user")},
+		{Text: "密码", Icon: icons.Path("lock")},
+		{Text: "通知", Icon: icons.Path("bell")},
+	}, ui.WithTabsVertical())
+	xui.ItemWidth(vTabs, 112)
+
+	xui.ItemFill(desc(v.Handle, "键盘: 整块列表是一个 Tab 站点, ←/→ 或 ↑/↓ 移动焦点, Home/End 首末; 默认(automatic)移动即切换, WithTabsManual 则 Enter/Space 才切换。"))
 
 	// ---- 分页 ----
 	_, v5 := autoCard(body.Handle, 10)
@@ -2335,12 +2345,29 @@ func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	// ---- 列 2: 提示气泡 ----
 	_, v2 := autoCard(col(r.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "提示气泡", v2.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "独立透明弹窗承载, 不抢焦点; 延迟 0, 进出场走淡入淡出", v2.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "独立透明弹窗承载, 不抢焦点; 四个方向 + 对齐/间距 + 快捷键内容, 延迟可配", v2.Handle))
+	// 卡片内容区放不下 4 个 88 宽的按钮, 分两行(每行 2 个)
+	mkTipBtn := func(text string, rt *widget.LayoutEle) *ui.Button {
+		b := ui.NewButton(0, 0, 0, 0, text, rt.Handle, ui.WithVariant(ui.ButtonOutline))
+		xui.ItemWidth(b, 88)
+		return b
+	}
 	rt := xui.HStack(v2.Handle, 36, 8)
-	hoverBtn := ui.NewButton(0, 0, 0, 0, "悬浮我", rt.Handle, ui.WithVariant(ui.ButtonSecondary))
-	xui.ItemWidth(hoverBtn, 104)
-	tip.Bind(hoverBtn.Handle, "我是提示气泡")
-	xui.ItemFill(desc(v2.Handle, "绑定的元素自身有弹层时(如 ComboBox), 弹层打开要主动 HideTooltip。"))
+	xui.ItemFill(rt)
+	hoverBtn := mkTipBtn("悬浮我", rt)
+	tip.Bind(hoverBtn.Handle, "上方(默认; 上方放不下翻到下方)")
+	tipBottom := mkTipBtn("下方", rt)
+	tip.BindTip(tipBottom.Handle, "提示在下方", ui.WithTipSide(ui.TipBottom))
+
+	rt2 := xui.HStack(v2.Handle, 36, 8)
+	xui.ItemFill(rt2)
+	tipRight := mkTipBtn("右侧", rt2)
+	tip.BindTip(tipRight.Handle, "右对齐 + 6px 间距", ui.WithTipSide(ui.TipRight),
+		ui.WithTipAlign(ui.TipAlignEnd), ui.WithTipOffset(6))
+	tipKbd := mkTipBtn("快捷键", rt2)
+	tip.BindTip(tipKbd.Handle, "打开命令面板", ui.WithTipShortcut("Ctrl+K"))
+
+	xui.ItemFill(desc(v2.Handle, "键盘焦点进入也显示(鼠标点击产生的焦点不算); WithTipDelay 设延迟、移出后 300ms 内移到下一个元素跳过延迟。绑定的元素自身有弹层时(如 ComboBox), 弹层打开要主动 HideTooltip。"))
 
 	// ---- 第二行: 警示对话框 + 对话框变体 ----
 	rDlg := row(body.Handle, 0, gap)
