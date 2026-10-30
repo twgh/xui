@@ -18,7 +18,8 @@ import (
 // 与 shadcn chart(recharts 的包装)对应的是"数据形状 + 配色 + 图例 + 悬停提示"这套语义,
 // 不是 DOM/React 的 `ChartContainer` —— 真正干活的 recharts 在 Go 侧没有等价物, 所以这里
 // 按桌面场景重写了一套精简引擎:
-//   - 四种图: 柱状(ChartBar)、折线(ChartLine)、面积(ChartArea)、饼/环(ChartPie / ChartDonut);
+//   - 六种图: 柱状(ChartBar, 可横向 `WithChartHorizontal`)、折线(ChartLine)、面积(ChartArea)、
+//     饼/环(ChartPie / ChartDonut)、径向(ChartRadial, 同心弧层)、雷达(ChartRadar);
 //   - 柱状/面积支持堆叠(`WithChartStacked`), 折线/面积支持平滑(`WithChartCurve`);
 //   - 数值轴自动取"整齐刻度"(1/2/2.5/5 × 10^n), 也可显式给值域(`WithChartYDomain`);
 //   - 图例默认在底部居中, 点击可临时隐藏/恢复一项(饼图隐藏的是一块扇区);
@@ -28,9 +29,8 @@ import (
 // 绘制坐标全部是逻辑像素(见 DESIGN 第六节): 元素被布局拉伸时只按新宽高重算几何,
 // 不做任何 DPI 预缩放。
 //
-// 已知边界: 不支持横向柱状图 / 雷达图 / 径向图, 也没有进场动画 —— recharts 的
-// `isAnimationActive` 依赖 CSS 过渡, 而这里是逐帧改几何 + 整窗重绘, 动画期间会把
-// 整个窗口的重绘排队(同 DESIGN 第八节 73 根因 D 的教训)。
+// 已知边界: 没有进场动画 —— recharts 的 `isAnimationActive` 依赖 CSS 过渡, 而这里是
+// 逐帧改几何 + 整窗重绘, 动画期间会把整个窗口的重绘排队(同 DESIGN 第八节 73 根因 D 的教训)。
 type Chart struct {
 	*widget.Element
 
@@ -48,8 +48,10 @@ type Chart struct {
 	legend     bool
 	legendSet  bool
 	barLabels  bool
+	horizontal bool // 柱状图横向(分类轴在 y、数值轴在 x)
 	yMin, yMax float64
 	innerRatio float64
+	innerSet   bool
 
 	centerTitle string
 	centerSub   string
@@ -78,6 +80,11 @@ const (
 	ChartPie
 	// ChartDonut 环形图: 同饼图, 中心镂空并可放两行文字(`WithChartCenter`)。
 	ChartDonut
+	// ChartRadial 径向图: 每个分类一层同心弧, 弧长按该分类相对最大值的比例, 慢速背景轨垫底;
+	// 中心可放两行文字(`WithChartCenter`), 适合"几个指标的完成度"。
+	ChartRadial
+	// ChartRadar 雷达图: 每个分类一根轴(等角分布), 每路数据一个闭合多边形; 适合多维对比。
+	ChartRadar
 )
 
 // ChartSeries 是一路数据。
@@ -175,9 +182,17 @@ func WithChartYDomain(lo, hi float64) ChartOption {
 	}
 }
 
-// WithChartInnerRatio 环形图镂空比例(0~0.9, 默认 0.6)。饼图忽略。
+// WithChartHorizontal 柱状图改横向: 分类沿 y 轴、数值沿 x 轴(其余形态忽略)。
+func WithChartHorizontal() ChartOption {
+	return func(c *Chart) { c.horizontal = true }
+}
+
+// WithChartInnerRatio 环形图/径向图的内径比例(0~0.9, 默认 0.6)。饼图、雷达图忽略。
 func WithChartInnerRatio(r float64) ChartOption {
-	return func(c *Chart) { c.innerRatio = chartClampRatio(r) }
+	return func(c *Chart) {
+		c.innerRatio = chartClampRatio(r)
+		c.innerSet = true
+	}
 }
 
 // WithChartCenter 环形图中心的两行文字(标题 + 说明), 传空串清除。
@@ -201,11 +216,15 @@ func NewChart(x, y, cx, cy int32, hParent int, opts ...ChartOption) *Chart {
 		o(c)
 	}
 	if !c.legendSet {
-		if c.isPie() {
+		if c.keyedByCat() {
 			c.legend = len(c.labels) > 1
 		} else {
 			c.legend = len(c.series) > 1
 		}
+	}
+	// 径向图是同心多层环, 内径太大会把层挤扁(默认 0.6 是环形的观感)。
+	if c.kind == ChartRadial && !c.innerSet {
+		c.innerRatio = 0.35
 	}
 	if cx <= 0 {
 		cx = 480
@@ -408,6 +427,17 @@ func (c *Chart) SetCenter(title, sub string) *Chart {
 }
 
 // SetInnerRatio 设置环形图镂空比例(0~0.9)。
+// SetHorizontal 切换横向柱状(只影响 ChartBar)。
+func (c *Chart) SetHorizontal(v bool) *Chart {
+	if c.horizontal == v {
+		return c
+	}
+	c.horizontal = v
+	c.hover = -1
+	c.Redraw(false)
+	return c
+}
+
 func (c *Chart) SetInnerRatio(r float64) *Chart {
 	c.innerRatio = chartClampRatio(r)
 	c.Redraw(false)
@@ -424,6 +454,12 @@ func (c *Chart) OnPointClick(fn func(cat, series int, value float64)) *Chart {
 // ===== 数据与状态 =====
 
 func (c *Chart) isPie() bool { return c.kind == ChartPie || c.kind == ChartDonut }
+
+// isPolar 报告是否用圆形绘图区(饼/环/径向/雷达都按圆内布局)。
+func (c *Chart) isPolar() bool { return c.isPie() || c.kind == ChartRadial || c.kind == ChartRadar }
+
+// keyedByCat 报告"图例键"是分类还是数据路: 饼/环/径向按分类切换, 直角坐标与雷达按数据路。
+func (c *Chart) keyedByCat() bool { return c.isPie() || c.kind == ChartRadial }
 
 func chartClampRatio(r float64) float64 {
 	if r < 0 {
@@ -612,6 +648,11 @@ type chartLayout struct {
 	yTicks []chartYTick
 	legend []chartLegendSlot
 
+	// horizontal 为真时整套几何旋转 90°(横向柱状图): bandW 变成分类带厚度、
+	// bandCenter 返回 y、valueY 返回 x; 此时 yTicks 的 y 字段存的是"沿 x 的刻度位置",
+	// xTicks 的 x 字段存的是"分类标签的 y 中心" —— 语义复用, 绘制侧必须按本标志分支。
+	horizontal bool
+
 	pieC  xc.POINT
 	pieR  int32
 	pieR2 int32
@@ -620,17 +661,23 @@ type chartLayout struct {
 	yTickX int32 // 数值轴文字左缘
 }
 
-// bandCenter 返回第 i 个分类的中心 x。
+// bandCenter 返回第 i 个分类的中心(竖向图 = x, 横向图 = y)。
 func (l chartLayout) bandCenter(i int) int32 {
+	if l.horizontal {
+		return l.plot.Top + l.bandW*int32(i) + l.bandW/2
+	}
 	return l.plot.Left + l.bandW*int32(i) + l.bandW/2
 }
 
-// valueY 把数值映射到 y 坐标。
+// valueY 把数值映射到坐标(竖向图 = y, 横向图 = x)。名字沿用标量轴的历史语义。
 func (l chartLayout) valueY(v float64) float32 {
-	if l.hi-l.lo <= 1e-9 {
-		return float32(l.plot.Bottom)
+	f := 0.0
+	if l.hi-l.lo > 1e-9 {
+		f = (v - l.lo) / (l.hi - l.lo)
 	}
-	f := (v - l.lo) / (l.hi - l.lo)
+	if l.horizontal {
+		return float32(l.plot.Left) + float32(f)*float32(l.plot.Right-l.plot.Left)
+	}
 	return float32(l.plot.Bottom) - float32(f)*float32(l.plot.Bottom-l.plot.Top)
 }
 
@@ -652,7 +699,7 @@ func (c *Chart) layout(ox, oy, w, h int32, t *xui.Theme) chartLayout {
 		}
 	}
 
-	if c.isPie() {
+	if c.isPolar() {
 		box := xc.RECT{
 			Left:   ox + chartPad,
 			Top:    oy + chartPad,
@@ -671,7 +718,7 @@ func (c *Chart) layout(ox, oy, w, h int32, t *xui.Theme) chartLayout {
 		lay.pieC = xc.POINT{X: (box.Left + box.Right) / 2, Y: (box.Top + box.Bottom) / 2}
 		lay.pieR = r
 		lay.pieR2 = 0
-		if c.kind == ChartDonut {
+		if c.kind == ChartDonut || c.kind == ChartRadial {
 			lay.pieR2 = int32(float64(r) * c.innerRatio)
 		}
 		lay.ok = true
@@ -690,6 +737,48 @@ func (c *Chart) layout(ox, oy, w, h int32, t *xui.Theme) chartLayout {
 		}
 	}
 	lay.yTickX = ox + chartPad
+
+	if c.horizontal && c.kind == ChartBar {
+		// 横向柱: 分类文字在左侧(右对齐)、数值刻度在底部。左侧留白按最长分类名算,
+		// 但不超过元素宽度的 1/3, 否则绘图区被文字吃掉。
+		maxCatW := (w - chartPad*2) / 3
+		need := int32(0)
+		for _, s := range c.labels {
+			if tw := xui.TextWidth(s, f); tw > need {
+				need = tw
+			}
+		}
+		if need < maxCatW {
+			maxCatW = need
+		}
+		plot := xc.RECT{
+			Left:   ox + chartPad + maxCatW + chartAxisGap,
+			Top:    oy + chartPad,
+			Right:  ox + w - chartPad,
+			Bottom: oy + h - chartPad - legendH - chartXLabelH,
+		}
+		if plot.Right-plot.Left < 24 || plot.Bottom-plot.Top < 24 {
+			return lay
+		}
+		lay.plot = plot
+		lay.horizontal = true
+		lay.bandW = (plot.Bottom - plot.Top) / int32(len(c.labels))
+		if lay.bandW < 1 {
+			return lay
+		}
+		for i, v := range ticks {
+			x := int32(math.Round(float64(lay.valueY(v))))
+			lay.yTicks = append(lay.yTicks, chartYTick{y: x, text: texts[i]})
+		}
+		for i, s := range c.labels {
+			if tw := xui.TextWidth(s, f); tw > maxCatW {
+				s = chartEllipsis(s, maxCatW, f)
+			}
+			lay.xTicks = append(lay.xTicks, chartXTick{x: lay.bandCenter(i), w: maxCatW, text: s})
+		}
+		lay.ok = true
+		return lay
+	}
 
 	bottom := oy + h - chartPad - legendH
 	if len(c.labels) > 1 || c.hasXLabels() {
@@ -756,7 +845,7 @@ func (c *Chart) layoutLegend(left, top, right int32, f int) ([]chartLegendSlot, 
 		text string
 	}
 	var items []item
-	if c.isPie() {
+	if c.keyedByCat() {
 		for i, s := range c.labels {
 			items = append(items, item{key: i, text: s})
 		}
@@ -815,9 +904,14 @@ func (c *Chart) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.Draw.SetFont(f)
 	}
 
-	if c.isPie() {
+	switch {
+	case c.isPie():
 		c.paintPie(p, t, lay)
-	} else {
+	case c.kind == ChartRadial:
+		c.paintRadial(p, t, lay)
+	case c.kind == ChartRadar:
+		c.paintRadar(p, t, lay)
+	default:
 		c.paintAxes(p, t, lay)
 		c.paintSeries(p, t, lay)
 	}
@@ -826,8 +920,49 @@ func (c *Chart) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	return 0
 }
 
-// paintAxes 画网格线、数值轴、分类文字与悬停竖向指示线。
+// paintAxes 画网格线、数值轴、分类文字与悬停指示线(横向柱状图整套旋转 90°)。
 func (c *Chart) paintAxes(p *xui.Painter, t *xui.Theme, lay chartLayout) {
+	if lay.horizontal {
+		// 网格 = 竖线(每个数值刻度一根), 数值文字在底部居中, 分类文字在左侧右对齐。
+		if c.showGrid {
+			for _, tk := range lay.yTicks {
+				p.Line(tk.y, lay.plot.Top, tk.y, lay.plot.Bottom, t.Border, 1)
+			}
+		}
+		for _, tk := range lay.yTicks {
+			tw := xui.TextWidth(tk.text, xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: chartLabelPx}))
+			rc := xc.RECT{
+				Left:   tk.y - tw/2 - 2,
+				Top:    lay.plot.Bottom + 4,
+				Right:  tk.y + tw/2 + 2,
+				Bottom: lay.plot.Bottom + 4 + chartXLabelH,
+			}
+			// 首尾刻度的文字会超出元素左右缘, 平移回来(否则被裁成半截数字)。
+			if minL := int32(p.Rc.Left) + 2; rc.Left < minL {
+				rc.Right += minL - rc.Left
+				rc.Left = minL
+			}
+			if maxR := int32(p.Rc.Left) + p.W() - 2; rc.Right > maxR {
+				rc.Left -= rc.Right - maxR
+				rc.Right = maxR
+			}
+			p.Text(tk.text, &rc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+		}
+		for _, tk := range lay.xTicks {
+			rc := xc.RECT{
+				Left:   lay.plot.Left - chartAxisGap - tk.w,
+				Top:    tk.x - 9,
+				Right:  lay.plot.Left - chartAxisGap,
+				Bottom: tk.x + 9,
+			}
+			p.Text(tk.text, &rc, t.MutedForeground, xcc.TextAlignFlag_Right|xcc.TextAlignFlag_Vcenter)
+		}
+		if c.hover >= 0 && c.hover < len(c.labels) {
+			y := lay.bandCenter(c.hover)
+			p.Line(lay.plot.Left, y, lay.plot.Right, y, t.MutedForeground.ScaleAlpha(0.35), 1)
+		}
+		return
+	}
 	if c.showGrid {
 		for _, tk := range lay.yTicks {
 			p.Line(lay.plot.Left, tk.y, lay.plot.Right, tk.y, t.Border, 1)
@@ -872,6 +1007,7 @@ func (c *Chart) paintSeries(p *xui.Painter, t *xui.Theme, lay chartLayout) {
 
 func (c *Chart) paintBars(p *xui.Painter, t *xui.Theme, lay chartLayout, vis []int) {
 	n := int32(len(c.labels))
+	// groupW/segW 是"沿分类带方向"的厚度(竖向图 = 柱宽, 横向图 = 柱高)。
 	groupW := int32(float64(lay.bandW) * 0.72)
 	if groupW < 2 {
 		groupW = 2
@@ -894,11 +1030,18 @@ func (c *Chart) paintBars(p *xui.Painter, t *xui.Theme, lay chartLayout, vis []i
 	base := lay.valueY(0)
 	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: chartLabelPx})
 
+	// bandStart 给出第 cat 个分类带在"分类带方向"上的起点, bandOff 再加上组内偏移。
+	bandStart := func(cat int32) int32 {
+		if lay.horizontal {
+			return lay.plot.Top + lay.bandW*cat
+		}
+		return lay.plot.Left + lay.bandW*cat
+	}
+
 	for cat := int32(0); cat < n; cat++ {
-		bandLeft := lay.plot.Left + lay.bandW*cat
-		x0 := bandLeft + (lay.bandW-groupW)/2
+		off := bandStart(cat) + (lay.bandW-groupW)/2
 		if c.stacked {
-			// 只有"最上面那段"圆角(其余段的顶端要接下一段, 圆角会露出缝)。
+			// 只有"最外那段"圆角(其余段要接下一段, 圆角会露出缝)。
 			last := -1
 			for _, s := range vis {
 				if c.value(int(cat), s) != 0 {
@@ -913,55 +1056,83 @@ func (c *Chart) paintBars(p *xui.Painter, t *xui.Theme, lay chartLayout, vis []i
 				}
 				from, to := lay.valueY(acc), lay.valueY(acc+v)
 				acc += v
-				top, bottom := from, to
-				if top > bottom {
-					top, bottom = bottom, top
-				}
-				rc := xc.RECT{
-					Left:   x0,
-					Top:    int32(math.Round(float64(top))),
-					Right:  x0 + segW,
-					Bottom: int32(math.Round(float64(bottom))),
-				}
-				c.fillBar(p, t, s, rc, v >= 0, s == last)
+				c.fillBar(p, t, s, c.barRect(lay, off, segW, from, to), v >= 0, s == last)
 			}
 			continue
 		}
 		for i, s := range vis {
 			v := c.value(int(cat), s)
-			x := x0 + int32(i)*(segW+innerGap)
-			y := lay.valueY(v)
-			top, bottom := y, base
-			if top > bottom {
-				top, bottom = bottom, top
+			o := off + int32(i)*(segW+innerGap)
+			rc := c.barRect(lay, o, segW, lay.valueY(v), base)
+			if lay.horizontal && rc.Right-rc.Left < 1 {
+				rc.Right = rc.Left + 1 // 值为 0 也留一条 1px 基线, 与 shadcn 的空柱观感一致
 			}
-			rc := xc.RECT{
-				Left:   x,
-				Top:    int32(math.Round(float64(top))),
-				Right:  x + segW,
-				Bottom: int32(math.Round(float64(bottom))),
-			}
-			if rc.Bottom-rc.Top < 1 {
-				rc.Bottom = rc.Top + 1 // 值为 0 也留一条 1px 基线, 与 shadcn 的空柱观感一致
+			if !lay.horizontal && rc.Bottom-rc.Top < 1 {
+				rc.Bottom = rc.Top + 1
 			}
 			c.fillBar(p, t, s, rc, v >= 0, true)
 			if c.barLabels && f != 0 {
 				txt := c.format(v)
 				tw := xui.TextWidth(txt, f)
-				lrc := xc.RECT{
-					Left:   x + (segW-tw)/2,
-					Top:    rc.Top - 18,
-					Right:  x + (segW+tw)/2,
-					Bottom: rc.Top - 2,
+				var lrc xc.RECT
+				if lay.horizontal {
+					// 横向: 标在数据端外侧(正向右、负向左), 垂直居中于**柱体**(不是柱起点 o,
+					// 柱占 [o, o+segW]) —— 用 o 当中心会让数值整体偏上半个柱厚; 顶到绘图区
+					// 右缘时改画在柱内(右对齐), 否则长柱的数值会被元素边界裁掉。
+					// 以柱体中心给框即可: TextAlignFlag_Vcenter 居中字框, 数字墨迹实测只偏下
+					// 0.5px(150% DPI), 再补反而会明显偏下。
+					align := xcc.TextAlignFlag_Left
+					cy := o + segW/2
+					if v >= 0 {
+						l, r := rc.Right+4, rc.Right+8+tw
+						if r > lay.plot.Right {
+							r, l, align = rc.Right-4, rc.Right-8-tw, xcc.TextAlignFlag_Right
+						}
+						lrc = xc.RECT{Left: l, Right: r, Top: cy - 9, Bottom: cy + 9}
+					} else {
+						lrc = xc.RECT{Left: rc.Left - 8 - tw, Right: rc.Left - 4, Top: cy - 9, Bottom: cy + 9}
+						align = xcc.TextAlignFlag_Right
+					}
+					p.Text(txt, &lrc, t.Foreground, align|xcc.TextAlignFlag_Vcenter)
+				} else {
+					lrc = xc.RECT{
+						Left:   o + (segW-tw)/2,
+						Top:    rc.Top - 18,
+						Right:  o + (segW+tw)/2,
+						Bottom: rc.Top - 2,
+					}
+					p.Text(txt, &lrc, t.Foreground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 				}
-				p.Text(txt, &lrc, t.Foreground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 			}
 		}
 	}
 }
 
+// barRect 按朝向拼出柱子矩形: 竖向图用 bandOff/bandThick 定左右、用 value 定上下;
+// 横向图反之。a/b 是两个数值端点(未排序), 函数内部排序。
+func (c *Chart) barRect(lay chartLayout, bandOff, bandThick int32, a, b float32) xc.RECT {
+	lo, hi := a, b
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	if lay.horizontal {
+		return xc.RECT{
+			Left:   int32(math.Round(float64(lo))),
+			Top:    bandOff,
+			Right:  int32(math.Round(float64(hi))),
+			Bottom: bandOff + bandThick,
+		}
+	}
+	return xc.RECT{
+		Left:   bandOff,
+		Top:    int32(math.Round(float64(lo))),
+		Right:  bandOff + bandThick,
+		Bottom: int32(math.Round(float64(hi))),
+	}
+}
+
 // fillBar 画一根柱子: 只圆"数据端"的两个角, 基线端保持方角。
-func (c *Chart) fillBar(p *xui.Painter, t *xui.Theme, series int, rc xc.RECT, up bool, rounded bool) {
+func (c *Chart) fillBar(p *xui.Painter, t *xui.Theme, series int, rc xc.RECT, positive bool, rounded bool) {
 	col := c.seriesColor(t, series)
 	r := int32(0)
 	if rounded {
@@ -973,8 +1144,15 @@ func (c *Chart) fillBar(p *xui.Painter, t *xui.Theme, series int, rc xc.RECT, up
 			r = h
 		}
 	}
-	corners := xui.Corners{TopLeft: r, TopRight: r}
-	if !up {
+	var corners xui.Corners
+	switch {
+	case c.horizontal && positive:
+		corners = xui.Corners{TopRight: r, BottomRight: r}
+	case c.horizontal:
+		corners = xui.Corners{TopLeft: r, BottomLeft: r}
+	case positive:
+		corners = xui.Corners{TopLeft: r, TopRight: r}
+	default:
 		corners = xui.Corners{BottomLeft: r, BottomRight: r}
 	}
 	p.FillRoundCorners(&rc, col, corners)
@@ -1166,6 +1344,11 @@ func (c *Chart) paintPie(p *xui.Painter, t *xui.Theme, lay chartLayout) {
 			p.Text(txt, &rc, chartContrastText(t, c.catColor(t, cat)), xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 		}
 	}
+	c.paintCenterText(p, t, lay, f)
+}
+
+// paintCenterText 在圆形镂空区画两行文字(环形图/径向图共用)。
+func (c *Chart) paintCenterText(p *xui.Painter, t *xui.Theme, lay chartLayout, f int) {
 	if lay.pieR2 <= 0 || (c.centerTitle == "" && c.centerSub == "") {
 		return
 	}
@@ -1193,6 +1376,192 @@ func (c *Chart) paintPie(p *xui.Painter, t *xui.Theme, lay chartLayout) {
 		}
 		rc := xc.RECT{Left: cx - half, Top: top, Right: cx + half, Bottom: top + 18}
 		p.Text(c.centerSub, &rc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+	}
+}
+
+// paintRadial 画径向图: 每个分类一层同心弧(由内到外), 弧长 = 该分类值 / 最大值,
+// 底下垫一圈整轨表示量程。只用第一路数据(与饼图一致), 负值按 0。
+func (c *Chart) paintRadial(p *xui.Painter, t *xui.Theme, lay chartLayout) {
+	cats := c.visibleCat()
+	n := len(cats)
+	if n == 0 || lay.pieR-lay.pieR2 < 6 {
+		return
+	}
+	hi := c.radialMax()
+	band := float64(lay.pieR-lay.pieR2) / float64(n)
+	for k, cat := range cats {
+		r0 := float64(lay.pieR2) + float64(k)*band
+		r1 := r0 + band
+		// 层间留缝; 悬停层向内/外各让 1px —— 径向图不能像饼图那样外扩 4px(会盖住邻层)。
+		if band > 5 {
+			r0 += 0.75
+			r1 -= 0.75
+		}
+		if c.hover >= 0 && cat == c.hover {
+			r0 -= 1
+			r1 += 1
+		}
+		ri, ro := int32(math.Round(r0)), int32(math.Round(r1))
+		if ro-ri < 1 {
+			continue
+		}
+		if track := chartArcPoints(lay.pieC.X, lay.pieC.Y, ro, ri, 0, 360); len(track) >= 3 {
+			p.Draw.SetBrushColor(uint32(t.Border.ScaleAlpha(0.55)))
+			p.Draw.FillPolygonF(track)
+		}
+		frac := 0.0
+		if hi > 0 {
+			frac = math.Max(0, c.value(cat, 0)) / hi
+		}
+		if frac <= 0 {
+			continue
+		}
+		end := frac * 360
+		if end > 359.5 {
+			end = 359.5 // 整圈时首尾点重合, 收一点缺口(与饼图同理)
+		}
+		pts := chartArcPoints(lay.pieC.X, lay.pieC.Y, ro, ri, 0, end)
+		if len(pts) < 3 {
+			continue
+		}
+		if !c.fillShape(p, c.catColor(t, cat), pts) {
+			p.Draw.SetBrushColor(uint32(c.catColor(t, cat)))
+			p.Draw.FillPolygonF(pts)
+		}
+	}
+	c.paintCenterText(p, t, lay, xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: chartLabelPx}))
+}
+
+// radialMax 返回径向图的量程上限(各分类第一路值的最大者)。
+func (c *Chart) radialMax() float64 {
+	m := 0.0
+	for _, i := range c.visibleCat() {
+		if v := c.value(i, 0); v > m {
+			m = v
+		}
+	}
+	if m <= 0 {
+		return 1
+	}
+	return m
+}
+
+// paintRadar 画雷达图: 每个分类一根等角轴, 每路数据一个闭合多边形(填充 + 描边 + 顶点)。
+// 少于 3 个分类构不成多边形, 直接不画(调用方应保证维度足够)。
+func (c *Chart) paintRadar(p *xui.Painter, t *xui.Theme, lay chartLayout) {
+	n := len(c.labels)
+	vis := c.visibleIdx()
+	if n < 3 || len(vis) == 0 {
+		return
+	}
+	// 顶点要留给标签, 数据半径比圆半径小一圈; 标签宽度还会挤掉一点, 这里取固定留白。
+	labelPad := int32(26)
+	r := lay.pieR - labelPad
+	if r < 24 {
+		return
+	}
+	cx, cy := lay.pieC.X, lay.pieC.Y
+	// 雷达的量程取"各轴峰值", 不套数值轴的整齐刻度 —— 刻度会把 305 抬到 400,
+	// 多边形整体缩一圈, 看上去像数据没到顶。
+	hi := 0.0
+	for _, s := range vis {
+		for i := 0; i < n; i++ {
+			hi = math.Max(hi, math.Abs(c.value(i, s)))
+		}
+	}
+	if hi <= 0 {
+		hi = 1
+	}
+	angle := func(i int) float64 { return float64(i) * 360 / float64(n) }
+	pt := func(i int, rad float64) xc.POINTF {
+		a := angle(i) * math.Pi / 180
+		return xc.POINTF{
+			X: float32(float64(cx) + rad*math.Sin(a)),
+			Y: float32(float64(cy) - rad*math.Cos(a)),
+		}
+	}
+	line := func(a, b xc.POINTF, col xui.Color) {
+		p.Line(int32(math.Round(float64(a.X))), int32(math.Round(float64(a.Y))),
+			int32(math.Round(float64(b.X))), int32(math.Round(float64(b.Y))), col, 1)
+	}
+
+	// 网格: 4 圈同心多边形 + 轴线。
+	if c.showGrid {
+		for k := 1; k <= 4; k++ {
+			rr := float64(r) * float64(k) / 4
+			for i := 0; i < n; i++ {
+				line(pt(i, rr), pt((i+1)%n, rr), t.Border)
+			}
+		}
+	}
+	for i := 0; i < n; i++ {
+		line(xc.POINTF{X: float32(cx), Y: float32(cy)}, pt(i, float64(r)), t.Border)
+	}
+	// 悬停轴高亮: 雷达图没有柱子/扇区可高亮, 用一条更亮的轴线指出当前维度。
+	if c.hover >= 0 && c.hover < n {
+		line(xc.POINTF{X: float32(cx), Y: float32(cy)}, pt(c.hover, float64(r)), t.MutedForeground.ScaleAlpha(0.55))
+	}
+
+	// 分类标签: 放在顶点外侧, 按角度决定左右对齐(右侧的顶点左对齐, 左侧的右对齐)。
+	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: chartLabelPx})
+	if f != 0 {
+		for i, s := range c.labels {
+			if s == "" {
+				continue
+			}
+			a := pt(i, float64(r)+11)
+			cos := math.Cos(angle(i) * math.Pi / 180)
+			align := xcc.TextAlignFlag_Center
+			var rc xc.RECT
+			switch {
+			case cos > 0.3:
+				align = xcc.TextAlignFlag_Left
+				rc = xc.RECT{Left: int32(a.X), Top: int32(a.Y) - 9, Right: int32(a.X) + 96, Bottom: int32(a.Y) + 9}
+			case cos < -0.3:
+				align = xcc.TextAlignFlag_Right
+				rc = xc.RECT{Left: int32(a.X) - 96, Top: int32(a.Y) - 9, Right: int32(a.X), Bottom: int32(a.Y) + 9}
+			default:
+				rc = xc.RECT{Left: int32(a.X) - 48, Top: int32(a.Y) - 9, Right: int32(a.X) + 48, Bottom: int32(a.Y) + 9}
+			}
+			// 顶点靠边时标签框会顶出元素(尤其左右两侧), 整体平移回来, 宽度保持不变。
+			if minL := int32(p.Rc.Left) + 2; rc.Left < minL {
+				rc.Right += minL - rc.Left
+				rc.Left = minL
+			}
+			if maxR := int32(p.Rc.Left) + p.W() - 2; rc.Right > maxR {
+				rc.Left -= rc.Right - maxR
+				rc.Right = maxR
+			}
+			col := t.MutedForeground
+			if c.hover == i {
+				col = t.Foreground // 悬停轴: 标签跟着轴线一起提亮
+			}
+			p.Text(s, &rc, col, align|xcc.TextAlignFlag_Vcenter)
+		}
+	}
+
+	// 数据多边形: 填充用半透明色(与面积图同一条路径, 不走 D2D 直通以避开预乘 alpha)。
+	for _, s := range vis {
+		pts := make([]xc.POINTF, n)
+		for i := 0; i < n; i++ {
+			v := math.Abs(c.value(i, s))
+			rad := float64(r) * math.Min(1, v/hi)
+			pts[i] = pt(i, rad)
+		}
+		col := c.seriesColor(t, s)
+		p.Draw.SetBrushColor(uint32(col.ScaleAlpha(0.18)))
+		p.Draw.FillPolygonF(pts)
+		for i := 0; i < n; i++ {
+			line(pts[i], pts[(i+1)%n], col)
+		}
+		if c.dots {
+			for i := 0; i < n; i++ {
+				rr := float32(chartDotR - 1)
+				rc := xc.RECTF{Left: pts[i].X - rr, Top: pts[i].Y - rr, Right: pts[i].X + rr, Bottom: pts[i].Y + rr}
+				p.Draw.SetBrushColor(uint32(col))
+				p.Draw.FillEllipseF(&rc)
+			}
+		}
 	}
 }
 
@@ -1225,9 +1594,9 @@ func (c *Chart) paintLegend(p *xui.Painter, t *xui.Theme, lay chartLayout, f int
 	}
 }
 
-// legendColorAndText 按图例键取颜色与文字(直角坐标系 = 数据路, 饼图 = 分类)。
+// legendColorAndText 按图例键取颜色与文字(直角坐标/雷达 = 数据路, 饼环/径向 = 分类)。
 func (c *Chart) legendColorAndText(t *xui.Theme, key int) (xui.Color, string) {
-	if c.isPie() {
+	if c.keyedByCat() {
 		text := ""
 		if key >= 0 && key < len(c.labels) {
 			text = c.labels[key]
@@ -1252,7 +1621,7 @@ func (c *Chart) paintTooltip(p *xui.Painter, t *xui.Theme, lay chartLayout, f in
 	}
 	title := c.labels[c.hover]
 	var rows []row
-	if c.isPie() {
+	if c.keyedByCat() {
 		val := c.value(c.hover, 0)
 		total := 0.0
 		for i := range c.labels {
@@ -1347,6 +1716,48 @@ func (c *Chart) hitTest(x, y int32) int {
 	if !lay.ok {
 		return -1
 	}
+	if c.kind == ChartRadar {
+		// 雷达图按"离哪根轴的角度最近"命中; 圆心附近是各轴交点, 不算命中。
+		dx := float64(x - lay.pieC.X)
+		dy := float64(y - lay.pieC.Y)
+		d := math.Hypot(dx, dy)
+		n := len(c.labels)
+		if n < 3 || d < float64(lay.pieR)*0.12 || d > float64(lay.pieR) {
+			return -1
+		}
+		ang := math.Atan2(dx, -dy) * 180 / math.Pi
+		if ang < 0 {
+			ang += 360
+		}
+		i := int(math.Round(ang / (360 / float64(n))))
+		if i < 0 {
+			i = 0
+		}
+		return i % n
+	}
+	if c.kind == ChartRadial {
+		// 径向图按半径落在哪一层命中(不看角度: 弧可能只扫了小半圈, 但整层都算这一项)。
+		dx := float64(x - lay.pieC.X)
+		dy := float64(y - lay.pieC.Y)
+		d := math.Hypot(dx, dy)
+		if d > float64(lay.pieR)+4 || d < float64(lay.pieR2) {
+			return -1
+		}
+		cats := c.visibleCat()
+		n := len(cats)
+		if n == 0 {
+			return -1
+		}
+		band := float64(lay.pieR-lay.pieR2) / float64(n)
+		k := int((d - float64(lay.pieR2)) / band)
+		if k < 0 {
+			k = 0
+		}
+		if k >= n {
+			k = n - 1
+		}
+		return cats[k]
+	}
 	if c.isPie() {
 		dx := float64(x - lay.pieC.X)
 		dy := float64(y - lay.pieC.Y)
@@ -1369,6 +1780,20 @@ func (c *Chart) hitTest(x, y int32) int {
 			}
 		}
 		return -1
+	}
+	if lay.horizontal {
+		// 横向柱: 分类沿 y 分带, 允许鼠标落在分类文字那一小段(左侧)。
+		if y < lay.plot.Top || y >= lay.plot.Bottom || x < lay.plot.Left-chartAxisGap || x > lay.plot.Right {
+			return -1
+		}
+		i := int((y - lay.plot.Top) / lay.bandW)
+		if i < 0 {
+			i = 0
+		}
+		if i >= len(c.labels) {
+			i = len(c.labels) - 1
+		}
+		return i
 	}
 	if x < lay.plot.Left || x >= lay.plot.Right || y < lay.plot.Top || y > lay.plot.Bottom+chartXLabelH {
 		return -1
@@ -1444,7 +1869,7 @@ func (c *Chart) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool
 		return 0
 	}
 	if idx := c.hitTest(pPt.X, pPt.Y); idx >= 0 {
-		if c.isPie() {
+		if c.keyedByCat() {
 			c.onClick(idx, 0, c.value(idx, 0))
 		} else {
 			c.onClick(idx, -1, c.chartSum(idx, c.visibleIdx()))
@@ -1453,9 +1878,9 @@ func (c *Chart) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool
 	return 0
 }
 
-// legendKeyCount 返回图例项的键空间大小(直角坐标系 = 数据路数, 饼图 = 分类数)。
+// legendKeyCount 返回图例项的键空间大小(直角坐标/雷达 = 数据路数, 饼环/径向 = 分类数)。
 func (c *Chart) legendKeyCount() int {
-	if c.isPie() {
+	if c.keyedByCat() {
 		return len(c.labels)
 	}
 	return len(c.series)

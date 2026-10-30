@@ -2984,6 +2984,38 @@ func buildChartPage(body *widget.LayoutEle) {
 			ui.ChartSeries{Label: "任务", Values: []float64{42, 26, 22, 10}}),
 		ui.WithChartYFormat(func(f float64) string { return fmt.Sprintf("%.0f 个", f) }))
 	xui.ItemFill(pie)
+
+	// ---- 第四行: 横向柱 + 径向 ----
+	r = row(body.Handle, 0, gap)
+	_, v = autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "横向柱状图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "WithChartHorizontal: 分类沿 y、数值沿 x, 数值贴在柱端。"))
+	hbar := ui.NewChart(0, 0, 0, 240, v.Handle,
+		ui.WithChartHorizontal(),
+		ui.WithChartData(months, desktop, mobile),
+		ui.WithChartBarLabels())
+	xui.ItemFill(hbar)
+
+	_, v = autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "径向图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "ChartRadial: 每分类一层同心弧, 弧长按相对最大值。"))
+	radial := ui.NewChart(0, 0, 0, 240, v.Handle,
+		ui.WithChartKind(ui.ChartRadial),
+		ui.WithChartData([]string{"桌面端", "移动端", "平板", "其它"},
+			ui.ChartSeries{Label: "访问", Values: []float64{420, 260, 130, 70}}),
+		ui.WithChartCenter("880", "总访问"))
+	xui.ItemFill(radial)
+
+	// ---- 第五行: 雷达(整行, 维度多时更舒展) ----
+	r = row(body.Handle, 0, gap)
+	_, v = autoCard(r.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "雷达图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "ChartRadar: 每分类一根等角轴, 每路数据一个闭合多边形。"))
+	radar := ui.NewChart(0, 0, 0, 260, v.Handle,
+		ui.WithChartKind(ui.ChartRadar),
+		ui.WithChartData([]string{"性能", "易用", "功能", "稳定", "文档", "生态"}, desktop, mobile),
+		ui.WithChartDots())
+	xui.ItemFill(radar)
 }
 
 func buildDataPage(body *widget.LayoutEle) {
