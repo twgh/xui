@@ -228,6 +228,10 @@
     "sidebar": {
       "files": ["sidebar.go", "scrollarea.go", "scrollbar.go", "tooltip.go", "button.go", "group.go", "textopt.go", "press.go"],
       "deps": []
+    },
+    "chart": {
+      "files": ["chart.go"],
+      "deps": []
     }
   }
 }

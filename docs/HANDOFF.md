@@ -10,10 +10,18 @@
 
 ## 当前状态(截至 2026-10-30)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 后为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);同日补齐**批次 9: Sidebar**(inset/floating/默认三种外观、offcanvas/icon/none 折叠、左右贴边、分组/子菜单/徽章/动作钮、折叠 tooltip、Ctrl+B, 新增 demo **导航4**, 现为 **18 页**);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 后为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);同日补齐**批次 9: Sidebar**(inset/floating/默认三种外观、offcanvas/icon/none 折叠、左右贴边、分组/子菜单/徽章/动作钮、折叠 tooltip、Ctrl+B, 新增 demo **导航4**);同日补齐**批次 10: Chart**(柱状 / 折线 / 面积 / 饼环 + 堆叠 / 平滑 / 数据点 / 图例 / 提示卡 / 点击回调, 新增 demo **图表**页, 现为 **19 页**);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **批次 10: Chart 图表**(2026-10-30, 参 shadcn chart / recharts 示例):
+  - **组件**(`components/chart.go`): `NewChart(x,y,cx,cy,parent, WithChartKind(ChartBar/ChartLine/ChartArea/ChartPie/ChartDonut), WithChartData(labels, ChartSeries{Label, Values}...), WithChartStacked/Curve/Dots/BarLabels/Grid/Tooltip/Legend, WithChartYFormat/YDomain, WithChartInnerRatio, WithChartCenter(title, sub))`;运行时 `SetData/SetKind/SetStacked/SetCurve/SetDots/SetGrid/SetTooltip/SetLegend/SetBarLabels/SetYFormat/SetYDomain/SetCenter/SetInnerRatio`,点击数据点 `OnPointClick`。
+  - **形态**: 柱状(多路并排, 柱顶数值 + 数据端圆角 4)、堆叠柱、折线(平滑采样 + 数据点)、堆叠面积、饼图、环形图(中心两行文字);数值轴按数据自动取整齐刻度(1/2/2.5/5 × 10^n),图例可点(点后临时隐藏该分类)。
+  - **交互**: 悬停柱/曲线出竖向指示线 + 提示卡(分类 + 各路数值),饼环悬停扇区外扩 + 提示卡;坐标柱可点(`OnPointClick(cat, series, value)`)。
+  - **踩坑(DESIGN 159 / 160)**: ① D2D 下曲线绘制是空实现, 平滑曲线自己采样成折线;② ScrollArea 里的元素收不到元素级 MouseMove, 悬停挂宿主窗口级 `AddEvent_MouseMove` + `XEle_GetWndClientRect`;③ 隐藏页图表矩形还在原位, 命中前沿父链查 `XWidget_IsShow`;④ 中性主题 `Chart1..5` 是灰阶, 片内百分比按亮度差在 Foreground/Background 里取更对比的(不能写死 background, 也不能按"片色亮就用 Foreground" —— 暗色主题的 Foreground 也接近白);⑤ 提示卡画在元素内(翻转/夹紧), 不建小窗;⑥ **扇区边缘锯齿**: `XDraw_FillPolygonF` 无抗锯齿, 改走 D2D 直通 `FillGeometryColor`, 且必须先用 `XDraw_ConvRect` 换算坐标 + 按 `sx/sy/DX/DY` 设变换(否则高 DPI 下整个图形缩到 1/1.5 并偏左上), 变换要 defer 恢复;⑦ 百分比标签卡着 `TextWidth` 给框会被折行(`DrawText` 自动换行), 左右各留 4px。
+- **本轮(2026-10-30)用户报障二次修**: 环形图/饼图外缘锯齿 + 扇区内数字折成 `48` / `%` 两行 —— 见 DESIGN 160;探针像素扫描确认边缘出现 1px 中间灰度(255→207→64)、标签为单行, 亮/暗主题各验一次。
+  - **demo**: 新增**图表**页(17 号页, 6 张卡: 柱状 / 堆叠柱 / 折线 / 面积 / 环形 / 饼), 页签总数 19(基础4 / 表单5 / 导航4 / 反馈3 / 图表 / 数据 / 图标);目录 `registry.json` key = `chart`。
+  - **回归**: `add chart` 闭包与 `add --all` 均编译通过;`go test ./...` 通过;截图核对柱/折线/面积与探针里的饼/环(含悬停提示卡)。
 - ✅ **批次 9: Sidebar 侧边栏**(2026-10-30, 参 shadcn sidebar / radix-nova):
   - **组件**(`components/sidebar.go`): `NewSidebar(x,y,cx,cy,parent, WithSidebarSide/Variant/Collapsible/Width/IconWidth/Open/Rail/NoShortcut/OnOpenChange)`;外壳 = 左侧(或右侧)面板 + 主内容区 `Main()`, 只接受确定高度(内部 Content 是 ScrollArea, 吃剩余高度)。`Header()` / `Content()` / `Footer()` 三段 + `AddHeaderItem` / `AddFooterItem`;`AddGroup(label)` 返回分组(标签/组动作/菜单), `AddItem(text, icon, WithSidebarItemActive/Size/Variant/Badge/Tooltip/Disabled/OnClick/Action/ActionOnHover)`;`AddSub()` 子菜单(`mx-3.5 + 1px 竖线 + px-2.5`, 右侧 chevron, 点击父项 200ms 开合, `SubOpen` / `SetSubOpen` / `ToggleSub`);`AddSeparator` / `AddTrigger`;`Open` / `SetOpen` / `Toggle` / `OnOpenChange`;`SetActive` / `SetBadge` / `SetTooltip` / `SetAction` / `SetDisabled`。
   - **交互**: 宽度 200ms 过渡(offcanvas 面板滑出 / icon 收成 3rem 图标栏 / none 固定);icon 折叠时菜单项 32×32、分组标签/子菜单/徽章/动作隐藏, 菜单项悬停弹右侧 tooltip(delay 0);子菜单点击父项开合、chevron 旋转;Ctrl+B 开合;rail 16px 热区悬停出 2px 线、点击开合;三种外观(sidebar 内缘 1px 分隔线 / floating 8px 边距 + 圆角 + 描边 / inset 外层 sidebar 底色 + 主内容区圆角卡片)。
@@ -322,7 +330,7 @@
     占 `1fr`、右列动作 `auto` 且跨两行顶端对齐; demo 的「卡片」示例改成头 + 省略号动作钮。
   - **`MenuInset()`**: 对应 shadcn dropdown-menu 的 `inset` prop(`data-inset:pl-7`), 条目文字左缘 = 28,
     普通条目借此与带勾选/图标的条目对齐;demo 菜单加了一项。
-  - **`--chart-1..5` / `--sidebar-*` 令牌进 `xui.Theme`**(Chart1..5 / Sidebar*): 组件库不用, 供用户应用取用;
+  - **`--chart-1..5` / `--sidebar-*` 令牌进 `xui.Theme`**(Chart1..5 / Sidebar*): Chart 按分类序号取 Chart1..5(超额循环), Sidebar* 供侧栏/用户应用取用;
     `manager_test.go` 有守卫防漏填。DESIGN 第七节已无菜单宽度差异(原"`XMenu_SetItemWidth` 无效"结论有误, 已修正, 见 DESIGN 64)。
 
 - ✅ **修复: 弹层键撞车导致"点击没反应"(2026-10-17, 用户报障)**: 选过 sm 下拉框后第一次点"打开菜单"无反应(第二次才开),
@@ -720,7 +728,7 @@
 ## 待办
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
-- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~9 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Chart 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
+- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~10 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
   - **已有等价实现(不新增)**: Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
   - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
@@ -732,7 +740,8 @@
   - **批次 7 — 选择控件**: 已完成(2026-10-28): Checkbox 不确定态 / aria-invalid / 空格切换、Radio 校验态 / 空格选中、RadioGroup(组值 / 跨层互斥 / ↑↓←→·Home/End·Space 导航 / 组级禁用与校验)。
   - **批次 8 — 分栏**: 已完成(2026-10-30): Resizable(百分比分栏 / 拖动 / 方向键 5% / Home·End / 双击复位 / 分隔条键盘焦点 / 暗色焦点环)。
   - **批次 9 — 侧栏**: 已完成(2026-10-30): Sidebar(inset/floating/默认外观、offcanvas/icon/none、分组/子菜单/徽章/动作、折叠 tooltip、Ctrl+B、rail)。
-  - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Chart(★★★★~★★★★★)。
+  - **批次 10 — 图表**: 已完成(2026-10-30): Chart(柱状 / 折线 / 面积 / 饼环 + 堆叠 / 平滑 / 数据点 / 图例 / 提示卡 / 点击回调)。
+  - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
   - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义)。
 
@@ -880,6 +889,7 @@ go build ./ui
 - ⚠️ **定位窗口一律用"枚举进程顶层窗口 + 取可见且面积最大"**, 不要用 `Process.MainWindowHandle`: 弹层/提示这类小窗(带 `WS_EX_TOOLWINDOW`)一旦创建, 它就会返回**小窗**, 之后用它算出来的坐标、抓出来的图全是错的(踩过: 整个复现流程因此偏了半天)。诊断脚本见 DESIGN 第九节的 Win32 诊断 API 一行
 - **"窗口可见 ≠ 屏幕上有东西"**: 判断弹层/提示这类异型透明窗有没有真的显示, 不能只看 `IsWindowVisible`/矩形 —— 用 `PrintWindow` 抓它自己的内容(证明"画了")与 `CopyFromScreen` 抓同一块屏幕(证明"屏幕上有没有")对照, 再读 `GetLayeredWindowAttributes` 的 alpha;`可见 + 矩形正确 + 像素为空` ⇒ 整窗 alpha/形状问题(见 57)
 - **验收探针必须跑 `a.Run()` 消息循环**(无泵时 Presence/定时器全不工作, 结论作废)
+- **滚轮翻页靠 `PostMessage(WM_MOUSEWHEEL)`**: MCP 的 scroll 与 PowerShell 的 `mouse_event` 常常不触发 xcgui 的页面滚动(实测滚 8 格画面不动, 误判成"页面滚不动"), 改用 `PostMessage(hwnd, 0x020A, wParam=notches<<16, lParam=(y<<16)|x)`, 每格 120、间隔 60ms, 截图里第三行卡片正常出现
 - 浏览器对照:shadcn 参考页 + xui demo 同屏对比;同一张截图里量两边(ours vs ref)是最可靠的对照法
 - **弹层类组件的暗色验收一律 zoom/像素测量**:全屏缩略截图里暗色弹层会假显亮底(36)
 

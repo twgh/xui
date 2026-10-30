@@ -7,7 +7,7 @@
 //   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
 //
 // 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
-// 启动页 XUI_HOME_PAGE = 0..17 = 基础1..4 / 表单1..5 / 导航1..4 / 反馈1..3 / 数据 / 图标。
+// 启动页 XUI_HOME_PAGE = 0..18 = 基础1..4 / 表单1..5 / 导航1..4 / 反馈1..3 / 图表 / 数据 / 图标。
 package main
 
 import (
@@ -46,6 +46,7 @@ const (
 	pageFeed1        // 反馈1: 对话框 / 提示气泡 / 警示对话框 / 对话框变体
 	pageFeed2        // 反馈2: 提示条 / 通知 / 进度 / 空状态
 	pageFeed3        // 反馈3: 侧边 Sheet / 底部 Drawer
+	pageCharts       // 图表: 柱状 / 折线 / 面积 / 饼环
 	pageData         // 数据: 表格 / 树
 	pageIcons        // 图标: 图标总览
 	pageCount
@@ -57,6 +58,7 @@ var pageTitles = [...]string{
 	"表单1", "表单2", "表单3", "表单4", "表单5",
 	"导航1", "导航2", "导航3", "导航4",
 	"反馈1", "反馈2", "反馈3",
+	"图表",
 	"数据", "图标",
 }
 
@@ -375,6 +377,7 @@ func buildPages(hWindow, host int) {
 	buildFeed1Page(bodies[pageFeed1], hWindow)
 	buildFeed2Page(bodies[pageFeed2], hWindow)
 	buildFeed3Page(bodies[pageFeed3], hWindow)
+	buildChartPage(bodies[pageCharts])
 	buildDataPage(bodies[pageData])
 	buildIconPage(bodies[pageIcons])
 
@@ -2903,6 +2906,85 @@ func buildDrawerDemo(hWindow int, openBtn *ui.Button, status *ui.Label) {
 }
 
 // ===== 页 17: 数据(表格 / 树) =====
+
+// ===== 页 17: 图表(Chart) =====
+// 每张卡片一张图: 柱状(分组/堆叠) / 折线 / 面积(堆叠) / 环形 / 饼图。
+// 图表高度是显式常量(240): 自绘几何按元素矩形算, 高度必须确定, 不能靠内容自撑。
+func buildChartPage(body *widget.LayoutEle) {
+	months := []string{"1月", "2月", "3月", "4月", "5月", "6月"}
+	desktop := ui.ChartSeries{Label: "桌面端", Values: []float64{186, 305, 237, 273, 209, 214}}
+	mobile := ui.ChartSeries{Label: "移动端", Values: []float64{80, 200, 120, 190, 130, 140}}
+
+	// ---- 第一行: 分组柱 + 堆叠柱 ----
+	r := row(body.Handle, 0, gap)
+	_, v := autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "柱状图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "分组柱 + 柱顶数值, 数值轴自动取整齐刻度。"))
+	bar := ui.NewChart(0, 0, 0, 240, v.Handle,
+		ui.WithChartData(months, desktop, mobile),
+		ui.WithChartBarLabels())
+	xui.ItemFill(bar)
+
+	_, v = autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "堆叠柱状图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "WithChartStacked: 同类多路数据叠成一根柱。"))
+	stacked := ui.NewChart(0, 0, 0, 240, v.Handle,
+		ui.WithChartData(months, desktop, mobile),
+		ui.WithChartStacked())
+	xui.ItemFill(stacked)
+
+	// ---- 第二行: 平滑折线 + 堆叠面积 ----
+	r = row(body.Handle, 0, gap)
+	_, v = autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "折线图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "WithChartCurve + WithChartDots: 平滑曲线与数据点。"))
+	line := ui.NewChart(0, 0, 0, 240, v.Handle,
+		ui.WithChartKind(ui.ChartLine),
+		ui.WithChartData(months, desktop, mobile),
+		ui.WithChartCurve(),
+		ui.WithChartDots())
+	xui.ItemFill(line)
+
+	_, v = autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "面积图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "堆叠面积: 每层填在两条曲线之间。"))
+	area := ui.NewChart(0, 0, 0, 240, v.Handle,
+		ui.WithChartKind(ui.ChartArea),
+		ui.WithChartData(months, desktop, mobile),
+		ui.WithChartStacked())
+	xui.ItemFill(area)
+
+	// ---- 第三行: 环形(中心文字 + 点击回调) + 饼图 ----
+	r = row(body.Handle, 0, gap)
+	_, v = autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "环形图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "中心两行文字 + 图例, 点击扇区输出回调。"))
+	status := ui.NewLabel(0, 0, 0, 24, "点击任一扇区查看回调", v.Handle).SetMuted()
+	donutLabels := []string{"桌面端", "移动端", "平板", "其它"}
+	donut := ui.NewChart(0, 0, 0, 240, v.Handle,
+		ui.WithChartKind(ui.ChartDonut),
+		ui.WithChartData(donutLabels,
+			ui.ChartSeries{Label: "占比", Values: []float64{48, 32, 14, 6}}),
+		ui.WithChartCenter("1,284", "总访问"),
+		ui.WithChartInnerRatio(0.62))
+	xui.ItemFill(donut)
+	donut.OnPointClick(func(cat, _ int, value float64) {
+		name := donutLabels[cat]
+		status.SetText(fmt.Sprintf("点击: %s %.0f%%", name, value))
+		status.Redraw(false)
+	})
+	xui.ItemFill(status)
+
+	_, v = autoCard(col(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "饼图", v.Handle))
+	xui.ItemFill(desc(v.Handle, "点图例临时隐藏/恢复一块扇区。"))
+	pie := ui.NewChart(0, 0, 0, 240, v.Handle,
+		ui.WithChartKind(ui.ChartPie),
+		ui.WithChartData([]string{"已完成", "进行中", "未开始", "已取消"},
+			ui.ChartSeries{Label: "任务", Values: []float64{42, 26, 22, 10}}),
+		ui.WithChartYFormat(func(f float64) string { return fmt.Sprintf("%.0f 个", f) }))
+	xui.ItemFill(pie)
+}
 
 func buildDataPage(body *widget.LayoutEle) {
 	r := rowStretch(body.Handle, gap) // 铺满型页面: 表格/树跟随窗口长高(内容区已 SetContentFill)

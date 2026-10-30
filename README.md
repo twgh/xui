@@ -158,6 +158,7 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | AlertDialog | 警示对话框:必须明确选择(无右上角 X、点遮罩不关闭、ESC 关闭,焦点落在 Cancel);`AlertDialogSizeDefault` / `Small`(居中头 + 等宽双列页脚)、`WithAlertDialogMedia` 图标块(含破坏性配色);`AddCancel` / `AddAction` 点击后关闭;与 Dialog 共用遮罩/模糊/焦点陷阱,支持对话框内再叠一层 |
 | Table | 数据表格(原生 `List` 载体 + 全自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽支持"占满剩余宽度" |
 | Tree | 树形视图(原生 `Tree` 载体 + 全自绘皮肤):缩进参考线/旋转 chevron/行悬浮选中;叶节点留空槽位文字全树对齐,点击 chevron 展开收起 |
+| Chart | 图表(`components/chart.go`,纯自绘):`NewChart(x,y,cx,cy,parent, WithChartKind(ChartBar/ChartLine/ChartArea/ChartPie/ChartDonut), WithChartData(分类, ChartSeries{Label, Values}), WithChartStacked/Curve/Dots/BarLabels/Grid/Tooltip/Legend, WithChartYFormat/YDomain, WithChartInnerRatio, WithChartCenter(标题, 副标题))`;数值轴按数据自动取整齐刻度(1/2/2.5/5 × 10^n),柱/曲线/面积悬停出竖向指示线 + 提示卡,圆环/饼图悬停扇区外扩并提示、中心可放两行文字、点图例临时隐藏该分类;运行时可 `SetData/SetKind/SetStacked/SetCurve/SetDots/SetGrid/SetTooltip/SetLegend/SetBarLabels/SetYFormat/SetYDomain/SetCenter/SetInnerRatio`,点击数据点用 `OnPointClick` |
 | Pagination | 分页(纯自绘单元素,鼠标驱动):上一页/下一页 + 页码 + 省略号折叠(>7 页),内容居中、当前页为描边态;`SetTotal/SetPageSize/SetPage/OnChange` |
 | ScrollArea | 滚动容器(原生 `LayoutFrame` 载体):内容比容器高时纵向滚动,内容总大小按子项自动撑开、滚动条自动显隐;主题化细滚动条,内容区 `ContentStack()` 随便塞;`SetContentFill()` 切"铺满视口 + 面板吃剩余高度"形态 |
 | AspectRatio | 固定宽高比容器: 宽度由布局/布局项决定,高度 = 宽度 / ratio(16:9、1:1、9:16…),宽度变化时自动重算并逐级重排;内容放 `Content()` 里铺满比例框,`SetRatio` 运行时切换比例 |

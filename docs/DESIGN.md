@@ -486,7 +486,8 @@ ui/
 | Dialog 没有 zoom-in-95 / AlertDialog 没有 text-balance | 元素级缩放对自绘元素无效(第八节 47); 自绘文字没有平衡排版能力 |
 | 没有 `asChild` / `data-slot` / `data-state` | React/DOM 概念, Go 侧没有对应物 |
 | Card 的 `overflow-hidden` / 首末图片自动圆角、AspectRatio 的圆角裁剪 | xcgui **会按父元素矩形裁剪子元素**(探针实测, 见第八节 97), 但没有圆角裁剪/overflow-hidden 语义: 超出圆角的四角区域仍会画出来; 需要圆角裁剪的图片/内容请自己按路径裁 |
-| `--chart-*` 色板只提供取值 | 组件库不画图表; 这组令牌供你的应用取用(机械转译主题时一并填) |
+| `--chart-*` 色板只有 5 色, 且中性主题下是灰阶 | 上游同样是 5 个槽位循环; Chart 组件按分类序号取色, 超过 5 类会重复, 要区分请自己给足色板。灰阶下饼图百分比标签按片色亮度在正文色/背景色之间取对比更高的那个(第八节 159) |
+| Chart 没有 HTML 的响应式容器/Tooltip 组件联动 | 尺寸完全由布局项决定(建议 `ItemFill` 或给定宽高); 悬停提示卡是元素内自绘的小卡片, 不是 `ui.Tooltip` 弹窗(不抢焦点、不新建小窗) |
 | Calendar 不做 RTL(dir=rtl)/波斯·Jalali 历/timeZone/自然语言日期(chrono-node) | 文字渲染只有 LTR; 历法换算与时区数据是另一套领域库, Go 侧没有 chrono-node 的等价物 —— 绝对/相对日期的键入用 DatePicker 的可输入形态(`ParseDateText`)覆盖最常用场景; 范围色带跨月时在两个月块之间不连续(上游同样是每月一张独立表格) |
 | Field 横向 `Content` 的嵌套列只认 Fixed 宽 | xcgui 不会把 Weight/Percent 宽度传给嵌套布局的 Fill 子项(实测子项宽恒为 0, 内容不显示); 组件默认 Fixed 240, 用 `xui.ItemWidth` 覆盖(第八节 101) |
 | EmptyDescription / FieldDescription / FieldError 不自动折行 | Label 的高度不会随折行自撑; 需要多行时调用方用 `SetWrap` + `WrappedHeight` 量高后写回高度(同 Alert 的做法) |
@@ -1836,6 +1837,21 @@ ui/
     - **初始收起要直接把 progress 落到 0**: `Presence` 只在 SetOpen 时驱动过渡; 构造时 `WithSidebarOpen(false)` 必须同时把 `progress` 置 0(或 collapsible=none 时置 1), 否则首帧是展开宽度、下一帧才跳。
     - **子菜单开合要自己量高并逐帧写回**: 子菜单是 LayoutEle, 收起时 `Show(false)` 让布局立即回缩; 做 200ms 过渡时先 `Show(true)+Auto` 量自然高, 再锁 `Fixed` 从 0/目标值逐帧写到 `target*v`, 每帧重排所在菜单/分组 + ScrollArea 内容(否则滚动范围与下方条目停在旧位置), 到位后展开恢复 `Auto`、收起再 `Show(false)`。chevron 用 `IconRotated(chevron-right, ±90°)` 表示开合, 图标栏形态下不画。初始展开的子菜单也要把它的 presence 键预热到 1, 否则第一次收起瞬跳(同侧栏宽度)。
 
+159. **图表: 曲线要自己采样, 悬停要走窗口级命中, 片内文字要按对比挑色**(`components/chart.go`, 探针 + 截图实测):
+    - **D2D 下曲线绘制是空实现**: 直接调曲线 API 画出来是空白。折线/面积的平滑曲线按固定步长采样成折线段(`p.Draw.FillPolygonF` 填面积、`p.Line` 描线), 每段 12 个采样点在桌面尺寸下肉眼看不出棱角。
+    - **ScrollArea 里的元素收不到元素级 MouseMove**(同 156): 悬停柱/扇区/数据点必须挂**宿主窗口级** `AddEvent_MouseMove`, 用 `XEle_GetWndClientRect` 与事件 `pPt` 同一口径做矩形包含, 再把点换算成元素内局部坐标交给几何命中。窗口级与元素级两个回调都挂: 前者兜底(页面在滚动区里), 后者让直接挂在窗口上的图表少一次遍历。
+    - **隐藏页里的图表矩形还停在原位**: 命中前沿 `XWidget_GetParentEle` 链查 `XWidget_IsShow`, 否则切页后鼠标会命中别的页同位置的图表(与 tooltip 同因)。
+    - **中性主题的 `Chart1..5` 是灰阶**: 上游饼图百分比标签写死 `fill="var(--background)"`(片色之上的反色文字), 那是给彩色色板定的; 灰阶片 + 浅色正文 = 看不见。改成在 `Foreground`/`Background` 之间**比亮度差**取更对比的那个(`chartContrastText`)。注意不能按"片色亮就用 Foreground": 暗色主题的 Foreground 本身接近白色, 浅灰片照样糊掉 —— 只比两个候选谁离片色更远, 与主题无关。
+    - **提示卡画在元素内部**: 跟随光标在图表区内翻转/夹紧(允许盖住图例但不出客户区), 不新建小窗 —— 小窗要额外处理 DPI、置顶、主题重绘、点击穿透, 唯一收益是"能超出卡片边界"。
+
+160. **平滑的扇形: `XDraw_FillPolygonF` 在 D2D 下没有抗锯齿, 而直通 D2D 拿到的渲染目标没有元素变换**(`components/chart.go`, 探针 + 像素扫描实测):
+    - **现象**: 饼图/环形图的扇区外弧与内弧是一圈硬台阶(半径越大越明显)。加密采样**治不了** —— 台阶来自光栅化阶段(多边形是硬填充), 不是几何精度(`FillPolygonF` 画整圆同样有台阶)。
+    - **修法**: 走与图标相同的 D2D 直通 —— `d2d.NewRenderTargetByHandle(xc.XDraw_GetD2dRenderTarget(p.Draw.Handle))` 取渲染目标、`factory.NewGeometryFigures([]d2d.GeometryFigure{{Points: flat, Closed: true}})` 建闭环几何、`rt.FillGeometryColor(geom.Base(), d2d.NewColorF(...))` 出图; 失败(纯 GDI 渲染)再回落 `FillPolygonF`。
+    - **必须先用 `xc.XDraw_ConvRect(hDraw, &rc)` 把客户区矩形换算成画布坐标**, 再按 `sx/sy/DX/DY` 给渲染目标设置变换。直通拿到的 RT 上没有"当前元素"的变换(炫彩是在刷新自己的绘制命令时才施加), 不换算时 150% DPI 下扇区会按"逻辑像素当物理像素"画出来 —— 整个图形缩小到 1/1.5 并偏向左上(实测圆心正好落在逻辑坐标处, 一开始误以为布局错了)。变换要 `defer` 恢复, 否则残留矩阵会把后续 `XDraw_*` 绘制一起平移/缩放。
+    - **元素 alpha 要自己乘**(`xc.XEle_GetAlpha`): 直通绕过了框架的元素 alpha 合成(与图标同因), 否则元素淡入淡出时扇区仍是全不透明。
+    - **验收用像素扫描而不是目测**: 背景与片色之间应出现 1px 中间灰度(实测 `255 → 207 → 64`); 若 `255 → 64` 直跳就是没 AA。相邻扇区在 `y` 向扫描上是连续色段, 说明没有白缝。
+    - **同一段代码里的百分比标签会被折行**: `DrawText` 在矩形内**自动换行**, 而 `TextWidth` 量出的宽度与绘制的排版宽度不严格相等 —— 卡着 `tw` 给框时 `"48%"` 会折成 `48` + `%` 两行(用户截图报障)。矩形左右各留 4px。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1887,4 +1903,5 @@ ui/
 - 可调分栏(见第八节 157): 分组/面板都是 LayoutEle(主轴 Fixed 由百分比算出、交叉轴 Fill); `xc.XEle_GetWndClientRectDPI`(物理客户区矩形 —— 与逻辑坐标的 `XEle_GetWndClientRect` 区分)、`wapi.ClientToScreen`、`wapi.SetCursorPos`、`wapi.LoadImageW(0, wapi.IDC_SIZEWE/IDC_SIZENS/IDC_ARROW, wapi.IMAGE_CURSOR, 0, 0, wapi.LR_DEFAULTSIZE|wapi.LR_SHARED)` + `Element.SetCursor`(col/row-resize 光标)、`Element.AddEvent_LButtonDBClick`(双击复位)
 - 侧边面板 / 抽屉 / 菜单栏(见第八节 120~125): `XWnd_GetBodyRect`(遮罩铺 Body)、`XEle_SetAlpha`(遮罩淡入, 不级联子元素)、`XEle_GetRect/SetRect`(面板整体平移, 逻辑像素)、`XEle_SetCapture`(抓手拖拽捕获鼠标)、`wapi.GetCursorPos`(拖拽用屏幕坐标算增量)、`wapi.GetForegroundWindow/SetForegroundWindow`(子菜单与父弹层的焦点归属判定)、`app.AfterFunc`(弹层关闭后延迟把焦点还给触发区, 否则被随后的窗口激活覆盖)
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`
+- 图表(见第八节 159): 纯自绘根 Element, 绘制全走 paint 回调里的 `*xui.Painter`(`Line`/`Text`/`FillRound`/`StrokeRound`/`FillRoundCorners`)与 `p.Draw` 的浮点几何(`FillPolygonF` 画扇形与面积带、`FillEllipseF`/`DrawEllipse` 画点与圆环); 悬停靠宿主窗口级 `AddEvent_MouseMove` + `xc.XEle_GetWndClientRect` 命中(ScrollArea 里的元素收不到元素级 MouseMove, 同 156); 隐藏页判定沿 `XWidget_GetParentEle` 链查 `XWidget_IsShow`; 曲线**自己采样**成分段折线(D2D 下曲线绘制是空实现); 提示卡与图例都在同一个 Paint 回调里画, 不建小窗
 - 侧边栏(见第八节 158): `wapi.GetCursorPos` + `wapi.ClientToScreen(hwnd, &pt)` + `xc.XEle_GetWndClientRectDPI`(物理客户区矩形) + `xc.XWnd_GetDPI` 换算动作钮命中; `Element.SetZOrder(0)`(构造期抬升 Z 序, `SetZOrderEx` 在窗口未显示时会崩); `Window.AddEvent_MouseMove/AddEvent_MouseLeave`(普通 Element 的悬停兜底); `XWidget_IsShow`; `Painter.TextF` + `xcc.TextFormatFlag_NoWrap|xcc.TextTrimming_EllipsisCharacter`(菜单项长文本省略); `xui.Hover` + `Presence`(宽度 200ms 过渡, 挂宿主窗口)
