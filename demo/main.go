@@ -32,7 +32,7 @@ import (
 const (
 	pageBase1 = iota // 基础1: 按钮 / 按钮组 / 切换按钮
 	pageBase2        // 基础2: 徽章 / 分隔线 / 标签 / 快捷键 / 加载 / 骨架 / 头像
-	pageBase3        // 基础3: 弹出层 / 轮播 / 卡片 / 比例容器
+	pageBase3        // 基础3: 弹出层 / 轮播 / 分栏 / 卡片 / 比例容器
 	pageBase4        // 基础4: 滚动容器 / 列表项 / 手风琴
 	pageForm1        // 表单1: 输入 / 验证码 / 滑动条
 	pageForm2        // 表单2: 复选 / 单选 / 开关 / 下拉框 / Select
@@ -872,13 +872,16 @@ func buildAvatarCard(parent int) {
 		"AvatarGroup 用横向布局的负间距叠放; 组内头像默认带 2px 背景色环", vav.Handle).SetMuted().SetFontSize(14))
 }
 
-// ===== 页 3: 基础3(弹出层 / 轮播 / 卡片 / 比例容器) =====
+// ===== 页 3: 基础3(弹出层 / 轮播 / 分栏 / 卡片 / 比例容器) =====
 
 func buildBase3Page(body *widget.LayoutEle) {
 	buildPopoverCard(body)
 
 	// 轮播也放在页首: 交互密集的卡片长页滚到底后命中区会滞后(DESIGN 118)。
 	buildCarouselCard(body.Handle)
+
+	// 分栏同样放在页首(拖动 + 键盘焦点)。
+	buildResizableCard(body.Handle)
 
 	// ---- 卡片本身(直接以真卡片呈现, 不套外壳) ----
 	cardDemo, vd := autoCard(body.Handle, 10)
@@ -993,6 +996,94 @@ func buildCarouselCard(parent int) {
 		return 0
 	})
 	car.OnChange(func(i int) { dots.Redraw(true) })
+}
+
+// buildResizableCard 建一张分栏演示卡: 横向拖动 + 右侧嵌套纵向分组。
+func buildResizableCard(parent int) {
+	_, vr := autoCard(parent, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可调整分栏", vr.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"Resizable: 拖动分隔条伸缩相邻面板 · 点击分隔条后 ←/→ 每次 5% · Home/End 到边界 · 双击复位", vr.Handle))
+
+	box := borderedBox(vr.Handle, 240, false)
+	g := ui.NewResizableGroup(0, 0, 0, 0, box.Handle)
+	xui.ItemFill(g)
+	xui.ItemHeight(g, 240)
+	left := g.AddPanel(ui.WithResizableSize(35), ui.WithResizableMin(20))
+	leftPane := newResizablePreview(left.Handle, "左 35%", "最小 20% · 拖一拖分隔条")
+	g.AddHandle(ui.WithResizableGrip())
+	right := g.AddPanel(ui.WithResizableSize(65))
+
+	vg := ui.NewResizableGroup(0, 0, 0, 0, right.Handle, ui.WithResizableVertical())
+	xui.ItemFill(vg)
+	xui.ItemFillHeight(vg)
+	top := vg.AddPanel(ui.WithResizableSize(40))
+	topPane := newResizablePreview(top.Handle, "上 40%", "嵌套纵向分组")
+	vg.AddHandle()
+	bottom := vg.AddPanel(ui.WithResizableSize(60))
+	bottomPane := newResizablePreview(bottom.Handle, "下 60%", "↑ / ↓ 调整")
+
+	// 百分比文案跟着调整实时更新(自绘文字不重绘就只是静态数字)。
+	g.OnResize(func(s []float64) {
+		leftPane.SetText(fmt.Sprintf("左 %.0f%%", s[0]), "最小 20% · 拖一拖分隔条")
+	})
+	vg.OnResize(func(s []float64) {
+		topPane.SetText(fmt.Sprintf("上 %.0f%%", s[0]), "嵌套纵向分组")
+		bottomPane.SetText(fmt.Sprintf("下 %.0f%%", s[1]), "↑ / ↓ 调整")
+	})
+}
+
+// resizablePreview 是面板里的演示内容: 圆角弱化底色 + 居中标题/说明,
+// 标题与说明可运行时更新(跟随拖动/键盘调整后的百分比)。
+type resizablePreview struct {
+	*widget.Element
+	title   string
+	caption string
+}
+
+func newResizablePreview(parent int, title, caption string) *resizablePreview {
+	v := &resizablePreview{title: title, caption: caption}
+	ph := widget.NewElement(0, 0, 0, 0, parent)
+	xui.ItemFill(ph)
+	ph.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
+	ph.EnableBkTransparent(true)
+	ph.EnableDrawBorder(false)
+	ph.EnableFocus(false)
+	ph.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		rc := p.Rc
+		rc.Left += 6
+		rc.Top += 6
+		rc.Right -= 6
+		rc.Bottom -= 6
+		if rc.Right <= rc.Left || rc.Bottom <= rc.Top {
+			return 0
+		}
+		t := xui.Current()
+		p.FillRound(&rc, t.Muted, t.RadiusMd())
+		mid := rc.Top + (rc.Bottom-rc.Top)/2
+		titleRc := xc.RECT{Left: rc.Left, Top: rc.Top, Right: rc.Right, Bottom: mid}
+		p.Draw.SetFont(xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: 14}))
+		p.Text(v.title, &titleRc, t.Foreground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+		captionRc := xc.RECT{Left: rc.Left, Top: mid, Right: rc.Right, Bottom: rc.Bottom}
+		p.Draw.SetFont(xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: 12}))
+		p.Text(v.caption, &captionRc, t.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+		return 0
+	})
+	v.Element = ph
+	return v
+}
+
+func (v *resizablePreview) SetText(title, caption string) {
+	if v == nil || (v.title == title && v.caption == caption) {
+		return
+	}
+	v.title, v.caption = title, caption
+	v.Redraw(false)
 }
 
 // ===== 页 4: 基础4(滚动容器 / 列表项 / 手风琴) =====

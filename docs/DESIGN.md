@@ -272,6 +272,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Menubar | 自绘根条 + 每个菜单一个 popoverPanel + 自绘条目 Element | 原生 `XMenu_Popup` 阻塞、期间主窗口收不到鼠标移动, 无法做悬停切换, 因此弹层自绘条目(与 Menu 共用 menu_model.go 的条目模型); 打开后鼠标移到其它触发区即切换; ↑↓/Home/End/Enter/←→/ESC/Tab; 子菜单是第二个激活弹层, 父层 `keepOnBlur` 防止失焦关闭(第八节 122~125) | menubar.tsx(radix-nova) |
 | NavigationMenu | 自绘根列表 + **一个共享 popoverPanel(非激活)** | 所有菜单共用一个视口: 贴列表左下方、宽高随当前菜单内容变化, 切换时不重开窗口; 触发区/顶级链接是全自绘 Button; 内容页是 LayoutEle(链接行助手 `Link`/`LinkIn` + 任意控件); 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开(第八节 137 的轮询同时负责链接 hover 与收起判定) | navigation-menu.tsx(radix-nova) |
 | Carousel | 根 Element + 裁切视口 + 每页一个 LayoutEle | 每页宽 = 视口宽 − gap(16), 过渡 300ms 用 `xui.Presence` 每帧重写各页矩形; 循环用"模总长"折回, 首尾相接、不需要克隆页(第八节 141); 拖拽走窗口级起手 + `SetCaptureEle` 跟手(第八节 140); 上/下张是内容外侧 48px 的圆形 Button | carousel.tsx(radix-nova, embla) |
+| Resizable | 分组 = LayoutEle(横向/纵向) + 面板 = LayoutEle + 分隔条 = 自绘 Element | 面板按百分比分配主轴空间, 像素宽按累计边界取整(每个手柄固定 4px); 分隔条画 1px `bg-border` 线 + 可选 4×24 抓手; 拖拽把鼠标捕获到**分组**(手柄会随布局移动, 不能当坐标原点), 键盘挂窗口级(同 152): 方向键 5%、Home/End 到边界、双击复位(第八节 157) | resizable.tsx(radix-nova) + react-resizable-panels v4 |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
@@ -309,6 +310,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **menubar**: 根条 h-9 rounded-md border p-1 gap-1; 触发区 rounded-sm px-2 py-1 text-sm, 悬停/展开 bg-accent; 弹层 min-w-[12rem] rounded-md border p-1, sideOffset 8 / alignOffset -4; 条目 px-2 py-1.5 text-sm, 悬停 bg-accent, 勾选/单选指示器在左(pl-8), 快捷键右对齐; **打开后悬停其它触发区即切换**; ←→ 切换顶级、↑↓/Home/End 移动、Enter 选中、ESC 关闭还焦点、Tab 关闭; 子菜单悬停/Enter 向右展开 | menubar.tsx(radix-nova) + 第八节 122~125 |
 | **navigation menu**: 根列表 gap-1; 触发区 h-9 px-4 rounded-md text-sm, 悬停 bg-accent、展开 bg-accent/50(悬停回全亮), chevron 12 随展开旋转 180°(300ms); 顶级普通链接 p-2; **所有菜单共用一个视口**, 贴列表左缘下方 mt-1.5、p-2、rounded-md border bg-popover, 宽高随当前菜单内容变化; 内容链接行 p-3(标题 20 + 间距 4 + 说明 20), 悬停/键盘高亮 bg-accent, 键盘高亮另画 focus-visible 环; 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开; ←→ 移动顶级焦点、↓ 进入内容、↑↓/Home/End 选链接、Enter 激活、ESC/Tab 关闭; 内容页面切换时从切换方向滑入 208px + 淡入(200ms) | navigation-menu.tsx(radix-nova) + 第八节 137~139 |
 | **carousel**: 每页 basis-full 整页位移, 页间 16 间隙(`-ml-4` + `pl-4`); 上/下张 = outline + icon-sm + rounded-full 按钮, 在内容左右(纵向时上下)48px 处, 到边界禁用、loop 时始终可用; ←/→ 在轮播内控件获焦时翻页; 循环首尾相接(最后一张的下一页紧跟第一张); 拖拽跟手、松手吸附最近一页(阈值 6 区分点击) | carousel.tsx + embla 默认 loop=false/align=start + 第八节 140/141 |
+| **resizable**: 分组内面板按**百分比**分主轴空间, 手柄各占固定 4px, 窗口缩放时保持相对比例; 分隔条 = 1px `bg-border` 视线 + 4px 热区, `withHandle` 时中间一根 4×24 圆角抓手; 拖动只伸缩两侧面板(相邻到 min 后继续挤压同侧更远的), 增长端受 max; ←/→(纵向 ↑/↓)每次 **5 个百分点**、Home/End 到边界、双击分隔条把"有显式默认值的那一侧"复位; 点击分隔条获得焦点(嵌套元素不在 xcgui 的 Tab 链上, 见第八节 157), focus-visible 画一条更粗的 ring 色单线; 一侧面板收到 0 时分隔线贴到分组边缘(与外层边框重合)且抓手隐藏; 光标 col-resize / row-resize | resizable.tsx + react-resizable-panels v4(方向键 5%、双击复位) + 第八节 157 |
 | slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),滑块热区 hover / 拖动中 / focus-visible 显示 ring-3; **值用数组表达**(长度 = 滑块数量: 1 个普通、2 个范围、3 个以上多滑块), 单滑块区间从值域下限的几何位置画到滑块、多滑块画首尾之间; 相邻滑块间距受 `minStepsBetweenThumbs` 约束 | slider.tsx + 第八节 144 |
 | slider 元素沿轨道方向比可见轨道多 18(两端各 9 = 滑块半径 6 + ring 3, 见第八节 26); 水平 `cx` / 垂直 `cy` 是**可见轨道长度**, 滑块中心在轨道两端之间移动; 垂直默认轨道 160(radix `min-h-40`), 值从下往上 | slider.tsx(radix 滑块中心贴轨道端点) + 第八节 144 |
 | slider 交互全自实现:点击跳转(按在滑块上不跳值、按轨道把最近滑块跳过去)+ LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ 方向键(水平 ←→ / 垂直 ↑↓; 连续 ±5%、有 step 时一步)/PageUp·PageDown(10 步)/Home/End; `inverted` 反转取值方向; 禁用 = `SetDisabled`(鼠标与键盘一起关); `OnValuesChange` / `OnValuesCommit` 对应 onValueChange / onValueCommit | — + 第八节 144 |
@@ -408,6 +410,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长/`OnClose/OnAutoClose/OnDismiss`) + `Success/Error/Warning/Info/Loading` 快捷方法 + `Promise(fn, ToastPromise{Loading, Success, Error})`; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible/RichColors/CloseButton`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置六种(四角 + `ToastTopCenter`/`ToastBottomCenter`), `richColors` 通过 `WithToastRichColors` / `ToastOptions.RichColors` 开启; `Loading`/`Promise` 的转圈图标由 `xui.Spin` 驱动(退出加载态要显式停表, 见第八节 154), `Promise` 的 fn 在 goroutine 跑、结果经 `xc.Auto` 回 UI 线程 |
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | Pagination(形态/键盘) | `WithPaginationSimple()`(只有页码) / `WithPaginationNavOnly()`(只有上一页下一页) / `WithPaginationHideText()`(只留 chevron); 键盘 ←/→/↑/↓、Home/End、Enter/空格 | 见 152/153 |
+| Resizable | `NewResizableGroup(x,y,cx,cy,parent, WithResizableVertical/Disabled/OnResize)` + `AddPanel(WithResizableSize/Min/Max)` + `AddHandle(WithResizableGrip)`; `Sizes/SetSizes/OnResize/SetDisabled/Disabled`; 面板是流式容器, 内容直接放进去 | 对应 resizable.tsx 的 `PanelGroup/Panel/Handle`; 未做 `collapsible/collapsedSize`(Enter 折叠)、`preserve-pixel-size`、F6 在分隔条之间跳焦点、面板/分隔条级 disabled; 尺寸只支持百分比(上游还能写 px/rem); 面板是容器而非独立元素, 没有 `data-panel` 之类的 DOM 钩子 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | 组件库自己不用, 供你的应用取用; 机械转译新主题时一并填(运行时的主题测试有守卫) |
 
@@ -488,6 +491,7 @@ ui/
 | EmptyDescription / FieldDescription / FieldError 不自动折行 | Label 的高度不会随折行自撑; 需要多行时调用方用 `SetWrap` + `WrappedHeight` 量高后写回高度(同 Alert 的做法) |
 | Item 的 Header/Footer 没有自动 space-between, 动作之间用 Item 的行间距 | Go 布局没有 justify-between: 用 `xui.ItemWeight` 给靠左的第一个子项撑开; 行内动作也不再单独套 gap-2 容器(嵌套 Auto 宽不量测原生按钮, 见第八节 104) |
 | Breadcrumb 链接/当前页是单行自绘文本, 且不参与 Tab 焦点 | Label 的原生 Button 载体按 `TextWidth` 精确设宽会被内部文本内边距截断(第八节 105); 自绘后不折行、不支持富文本, 键盘焦点需要每链接一个可聚焦元素(当前为鼠标驱动) |
+| 嵌套在布局容器里的控件(卡片里的按钮 / 分页 / 标签栏 / 分隔条等)无法用 Tab 聚焦 | xcgui 的 Tab 焦点链只覆盖窗口内容区的**直接子元素**: 直接挂在内容区的可聚焦 Element 可以 Tab 到, 套一层 LayoutEle/Element 容器后就被跳过(Button 也一样, `EnableFocus/EnableSwitchFocus/EnableKeyTab` 都补不上, 见第八节 157); 组件内的键盘操作需先用鼠标点击获得焦点 |
 | Toggle / ToggleGroup 的 outline 不画 shadow-xs | 上游有 1px 浅投影; 本库自绘壳体统一不画阴影(Button/Input 同), 在 Card 底上几乎不可见; `border-input` 与悬停/选中底色完整保留 |
 | InputOTP 没有"跨格拖动选择"/Ctrl+A 全选 | 每格是独立的原生 Edit, 选择语义无法跨格; 复制/剪切整段验证码也未做(粘贴方向完整) |
 | Select 弹层没有 radix 的 scroll-up/down 悬停自动滚按钮与 typeahead(键入跳转) | 自建弹层用 ScrollArea 承载, 滚轮与 ↑↓/Home/End 都可用; typeahead 需要按键聚合计时, 后续有需求再加 |
@@ -1804,6 +1808,16 @@ ui/
     - **键盘焦点触发**: 元素 `AddEvent_SetFocus` 里只在 `xui.FocusedByKeyboard()` 为真时显示 —— 否则鼠标点完按钮气泡会一直挂着(点击产生的焦点也是焦点), 直到点别处; 失焦即隐藏。
     - **内容里的快捷键块**(Kbd): 量宽时要把它算进气泡宽并把右内边距从 12 收到 6(对应 `has-data-[slot=kbd]:pr-1.5`), 否则文字会被气泡挤成两行。
 
+157. **可调分栏: 百分比换算像素要按累计边界取整, 拖动以分组为坐标原点**(`components/resizable.go`, 探针实测):
+    - **分组必须有确定的主轴尺寸**: 面板主轴是 Fixed 像素(由百分比算出), 交叉轴 Fill。分组主轴是 Auto 时量算不到可用空间, 面板会停在创建时的 1px —— 放进卡片时把分组/卡片这条链的主轴尺寸写死(Fixed / Weight), 不要用 Auto 包着它。
+    - **像素宽按累计边界取整**: `avail = 主轴长 − 手柄数 × 4`, 每块宽 = `round(累计百分比 × avail) − 上一块右缘`。逐块 round 会留下 1px 缝隙或向右溢出; 手柄是固定 4px, 直接用百分比排会多出 4px/个。
+    - **拖动时鼠标捕获必须落到分组上, 坐标换算到分组客户区**: 手柄只有 4px 宽、拖动过程中还会随布局移动 —— 捕获到手柄时会以它为原点产生反馈(算出的位移把自身推走), 指针移出 4px 就丢事件。分组在拖动期间位置不变, 是稳定基准: `XEle_SetCapture(group, true)` + 分组 `AddEvent_MouseMove`, `nFlags & 1 == 0` 时收尾(窗口外松手没有 UP)。
+    - **抓手和焦点高亮必须以分隔线的设备中心为基准, 抓手厚度取奇数设备像素**: 分隔线只占 1 个设备像素(中心 `c+0.5`), 抓手若用 `(Left+Right)/2` 的整数中心会差半个逻辑像素; 更关键的是**厚度方向的设备宽度不能是偶数** —— 4 逻辑像素在 150% 下是 6 设备像素, 偶数宽以 1 像素的线为中心永远一边多 1px(两轮修完仍"偏左", 实测 6 像素时左 3 右 2; 改成 5 后两边各 2)。画法: 从同一个 `c` 推设备矩形, 再用 `FillRoundRectF` 的浮点矩形。焦点态直接画**一条更粗的单线**(ring 色), 不要"色带 + 细线"或内缩描边: 4px 厚的手柄上双色叠画会被看成两条平行线(用户两次报"上面还是两条线")。
+    - **一侧面板收到 0 时分隔线必须贴到手柄外缘, 抓手隐藏**: 4px 热区的手柄如果始终把线画在中心, 面板收起后线会停在分组边缘内 2px —— 外面再包一层边框(demo 的 borderedBox)时就是"外框 + 分隔线"两条线(用户两次报障; 底边因为布局取整只差 1px, 看起来是一条, 顶边差 2px 就露馅)。现在 `collapsedSides` 判断两侧面板是否已收到 0(像素上只剩 1px 下限), 收起侧的线画在手柄外缘(与分组边缘重合, 自然并进外框), 抓手不画。组件默认 min 仍与上游一致是 0; 若不想让面板被拖没, 用 `WithResizableMin`。
+    - **Tab 链只覆盖窗口内容区的直接子元素**: 探针里直接挂在窗口内容区的可聚焦 Element 能被 Tab 到, 套一层 LayoutEle(甚至普通 Element)容器后就被跳过, Button 同理; `EnableFocus/EnableSwitchFocus` 都在也无效, `EnableKeyTab` 是"控件自己接收 Tab 输入"(Edit 之类)不是加入焦点链。所以分隔条(以及分页/标签栏等嵌在卡片里的可聚焦元素)不能用 Tab 聚焦: 先鼠标点击获得焦点, 再用方向键/Home/End。不要在任何组件文档里承诺"Tab 可聚焦"(见第七节)。
+    - **键盘同 152**: 分隔条 `EnableFocus(true) + EnableSwitchFocus(true)` 后方向键会被框架先拿去切焦点, 必须挂窗口级 KeyDown 并先判 `XWnd_GetFocusEle == 手柄`。
+    - **合成输入的坐标要按 DPI 换算, 且双击不能用 PostMessage**: `XEle_GetWndClientRect` 返回**逻辑**坐标, 而 `ClientToScreen` / `SetCursorPos` / `mouse_event` 走物理坐标 —— 150% 下直接拿逻辑值会在左侧 1/3 处落下(实测窗口收到按下、元素拿不到)。用 `XEle_GetWndClientRectDPI` 取物理客户区矩形再换算; 直接 `PostMessage(WM_LBUTTONDBLCLK)` 不会派发到元素, 真实双击用两次 `mouse_event`(间隔小于系统双击时间), 且先把光标移进窗口让悬停命中缓存刷新。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1852,5 +1866,6 @@ ui/
 - 字体:`xui.FontSpec{Family, Size, Bold, Italic}`。**没有下划线字段**: `xcc.FontStyle_Underline` 在本框架的 D2D 文本路径下不渲染(探针: 下划线字体与普通字体像素一致), hover:underline 一律手绘 1px 线 —— 宽度取 `xui.TextWidth`, 落点见 Button 的 link 变体与 Accordion 触发区。9pt 以下的**常规**字重由 `FontHandle` 从字体文件创建(GDI+ 取英文族名 + Fonts 注册表找文件), 绕开 xcgui 的小字号宋体替换(见 149); 组件一律用 `FontHandle`, 不要直接 `font.NewEX`
 - 弹层键盘钩子(`popoverPanel`, Select 的 ↑↓/Enter 用): `Window.AddEvent_KeyDown`(窗口级, 焦点在子元素上也先于元素分发)、`popoverPanel.OnKeyDown/OnEsc`(popup.go 预留的钩子) + `Element.SetFocus`(焦点即条目高亮)
 - 轮播(见第八节 140/141): 纯自绘根 Element + 视口 + 每页一个 LayoutEle; 位移过渡复用 `xui.Presence`(`DropTransitions` 后每帧写各页矩形); 拖拽用窗口级 `AddEvent_LButtonDown/MouseMove/LButtonUp` + `Window.SetCaptureEle` + `AddEvent_KeyDown`(焦点在轮播内才响应); 上/下张用 `Button`(outline + icon-sm + rounded-full); 循环位置取正模
+- 可调分栏(见第八节 157): 分组/面板都是 LayoutEle(主轴 Fixed 由百分比算出、交叉轴 Fill); `xc.XEle_GetWndClientRectDPI`(物理客户区矩形 —— 与逻辑坐标的 `XEle_GetWndClientRect` 区分)、`wapi.ClientToScreen`、`wapi.SetCursorPos`、`wapi.LoadImageW(0, wapi.IDC_SIZEWE/IDC_SIZENS/IDC_ARROW, wapi.IMAGE_CURSOR, 0, 0, wapi.LR_DEFAULTSIZE|wapi.LR_SHARED)` + `Element.SetCursor`(col/row-resize 光标)、`Element.AddEvent_LButtonDBClick`(双击复位)
 - 侧边面板 / 抽屉 / 菜单栏(见第八节 120~125): `XWnd_GetBodyRect`(遮罩铺 Body)、`XEle_SetAlpha`(遮罩淡入, 不级联子元素)、`XEle_GetRect/SetRect`(面板整体平移, 逻辑像素)、`XEle_SetCapture`(抓手拖拽捕获鼠标)、`wapi.GetCursorPos`(拖拽用屏幕坐标算增量)、`wapi.GetForegroundWindow/SetForegroundWindow`(子菜单与父弹层的焦点归属判定)、`app.AfterFunc`(弹层关闭后延迟把焦点还给触发区, 否则被随后的窗口激活覆盖)
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`

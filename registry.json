@@ -49,6 +49,10 @@
       "files": ["carousel.go"],
       "deps": ["button"]
     },
+    "resizable": {
+      "files": ["resizable.go"],
+      "deps": []
+    },
     "alert": {
       "files": ["alert.go"],
       "deps": ["label"]

@@ -10,9 +10,19 @@
 
 ## 当前状态(截至 2026-10-29)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 现为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 现为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
+
+- ✅ **批次 8: Resizable 可调整分栏**(2026-10-30, 参 shadcn resizable / react-resizable-panels v4):
+  - **组件**(`components/resizable.go`): `NewResizableGroup(x,y,cx,cy,parent, WithResizableVertical/Disabled/OnResize)` + `AddPanel(WithResizableSize/Min/Max)` + `AddHandle(WithResizableGrip)`; 面板按百分比分主轴空间(手柄固定 4px, 窗口缩放保持相对比例), 像素宽用累计边界取整; 分隔条 1px `bg-border` + 4px 热区 + 可选 4×24 抓手; 拖动捕获到分组(手柄随布局移动, 不能当坐标原点), 相邻面板到 min 后继续挤压同侧更远的、增长端受 max; 方向键 5%、Home/End 到边界、双击"有显式默认值的一侧"复位; 点击分隔条聚焦后方向键可用(嵌套元素不在 xcgui 的 Tab 链上, 见 DESIGN 157)、focus-visible 一条更粗的 ring 单线、col/row-resize 光标; 一侧面板收到 0 时分隔线贴到分组边缘、抓手隐藏; 面板是流式容器, 内容直接放进去。
+  - **踩坑(DESIGN 157)**: ① 分组主轴必须确定尺寸(Auto 下百分比面板停在创建时的 1px); ② 百分比→像素按累计边界取整, 逐块 round 会留 1px 缝/向右溢出; ③ 鼠标捕获必须落到**分组**而不是手柄(手柄只有 4px 且拖动中会移动), 坐标换算到分组客户区; ④ 键盘同 152 挂窗口级; ⑤ 探针合成鼠标: `XEle_GetWndClientRect` 是逻辑坐标而 `ClientToScreen/SetCursorPos/mouse_event` 走物理坐标, 150% 下要 `XEle_GetWndClientRectDPI`; `PostMessage(WM_LBUTTONDBLCLK)` 不会派发到元素, 双击要真实 `mouse_event`(间隔小于系统双击时间), 并先把光标移进窗口刷新悬停命中。
+  - **demo**: 基础3 新增「可调整分栏」卡(横向 35/65 + 右侧嵌套纵向 40/60, 带抓手), 百分比文案跟随 `OnResize` 实时更新; 各面板都设 `WithResizableMin(20)`, 分隔条拖到端点时不会贴到 demo 外框(否则分隔线 + 外框看起来像"两条线")。
+  - **验收**: 探针全绿(初始 35/65 与嵌套 40/60、窗口缩放保持比例、SetSizes、→/Home/End、真实双击复位 30/70、真实拖动 +120 逻辑像素 = 41.19%、纵向 ↓、禁用后键盘无效) + demo 150% DPI 拖动/键盘/双击/切页回归 + 暗色焦点环截图; `go build/vet/test ./...` 全绿; `xui add resizable` 与 `add --all` 闭包编译通过。
+  - **后续修正**(用户截图): ① 抓手没居中(左多右少)—— 抓手用整数 `(Left+Right)/2`, 分隔线按设备像素取整, 150% 下差半个逻辑像素; 改为两者共用 `(c+0.5)/scale` 设备中心, 抓手用 `FillRoundRectF`。② 纵向分隔条拖到上面时出现两条线 —— 焦点环原本是内缩 1px 描边, 在 4px 厚的手柄上变成上下两条平行线; 改为以分隔线为中心的一条 ring 色带(约 3 逻辑像素, 线画在带中央)。③ 二轮反馈"还是偏左": 4 逻辑像素的抓手在 150% 下是 6 物理像素(偶数), 以 1 物理像素的线为中心永远一边多 1px; 厚度轴改取**奇数设备像素**(5), 实测抓手与线中心差 <0.1px。④ 二轮反馈"上面还是两条线": 焦点态不再叠"色带 + 细线", 直接画一条更粗的 ring 色**单线**(约 3 逻辑像素), 从根上避免任何"两条线"的观感; 聚焦/未聚焦都只有一条线, 只是粗细和颜色不同。
+  - **再修正**(二轮截图): ⑤ 用户要求允许面板收到 0 —— demo 去掉 min, 改为"收起侧的分隔线贴到手柄外缘、抓手隐藏": 线画在中心时距外框 2px, 顶边是两条线、底边因取整只差 1px 看着像一条; 贴边后顶/底都并进外框(探针: 顶 95/底 481 各只剩 1 行)。⑥ **Tab 到不了分隔条是 xcgui 的限制**: Tab 链只覆盖窗口内容区的直接子元素, 套一层布局容器就被跳过(探针: 直挂内容的可聚焦 Element 可达, 放进 LayoutEle/Element 后 Button 也跳过; EnableKeyTab 是"接收 Tab 输入"不是加入焦点链); 已从 demo 文案与 DESIGN 中移除"Tab 可聚焦"的承诺, 并在 DESIGN 第七节登记; 分隔条改为点击聚焦后方向键操作。
+  - ⚠️ 如果是在**已拷贝组件**的项目里验收: 本轮修复只在本仓库 `components/resizable.go`, 需要在该项目里 `xui update resizable`(或重新 `xui add resizable`)才会生效。
+  - registry: 新增 `resizable`(单文件, 无依赖)。
 
 - ✅ **Tabs / Tooltip 补齐上游特性**(2026-10-29, 参 shadcn radix tabs / tooltip 文档, DESIGN 155/156):
   - **Tabs**(`components/tabs.go`): `NewTabsItems` + `TabsItem{Text, Icon, Disabled}` 支持行内图标(size-4 + gap-1.5)与单标签禁用(文字/图标 50% 预混、点击与方向键都跳过); 键盘改为 **radix 的 roving focus**: 整块列表一个 Tab 站点, 标签按钮全部 `EnableFocus(false)`, ←/→/↑/↓ 移动内部焦点、Home/End 首末、端点不循环, `WithTabsActivation`/`WithTabsManual` 控制"移动即切换 / Enter·空格才切换"(默认 automatic), 焦点环只画在内部焦点标签、且仅键盘来源; value 语义 `WithTabsValues` + `ActiveValue`/`SetActiveValue`/`OnValueChange`; `BindPanel` 按选中项显隐面板并重排父级; line 变体补 gap-1 与"下划线贴当前行底边"; 暗色选中态改 `bg-input/30 + border-input`。
@@ -701,7 +711,7 @@
 ## 待办
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
-- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~6 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Resizable / Chart / Sidebar 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
+- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~8 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Chart / Sidebar 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
   - **已有等价实现(不新增)**: Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
   - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
@@ -711,6 +721,7 @@
   - **批次 5 — 导航**: 已完成(2026-10-27): Navigation Menu(共享视口 + 悬停开合 + 内容滑入)。
   - **批次 6 — 轮播**: 已完成(2026-10-28): Carousel(整页滑动 / 循环 / 拖拽吸附 / 自动翻页)。
   - **批次 7 — 选择控件**: 已完成(2026-10-28): Checkbox 不确定态 / aria-invalid / 空格切换、Radio 校验态 / 空格选中、RadioGroup(组值 / 跨层互斥 / ↑↓←→·Home/End·Space 导航 / 组级禁用与校验)。
+  - **批次 8 — 分栏**: 已完成(2026-10-30): Resizable(百分比分栏 / 拖动 / 方向键 5% / Home·End / 双击复位 / 分隔条键盘焦点 / 暗色焦点环)。
   - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Resizable、Chart、Sidebar(★★★★~★★★★★)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
   - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义)。
@@ -730,7 +741,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 empty field item breadcrumb kbd skeleton spinner toggle
 │                                 native_select select inputotp accordion
                                  popover hovercard avatar command
-                                 sheet drawer menubar navigationmenu carousel
+                                 sheet drawer menubar navigationmenu carousel resizable
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
