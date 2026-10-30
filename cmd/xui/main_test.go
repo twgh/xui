@@ -463,6 +463,14 @@ func TestParseComponentArgs(t *testing.T) {
 	if _, err := parseComponentArgs([]string{"--wat"}); err == nil {
 		t.Error("未知选项应报错")
 	}
+	// 短选项也接受 = 形式(与 --path= 一致)
+	if got, err := parseComponentArgs([]string{"-p=src", "button"}); err != nil || got.uiDir != "src" {
+		t.Errorf("-p=src 解析失败: %+v, %v", got, err)
+	}
+	// 值位置紧跟另一个选项时要报缺值, 不能把 --all 当成目录名
+	if _, err := parseComponentArgs([]string{"-p", "--all"}); err == nil {
+		t.Error("-p 后紧跟选项应报缺值")
+	}
 }
 
 func TestParseListArgs(t *testing.T) {
@@ -481,6 +489,15 @@ func TestParseListArgs(t *testing.T) {
 		if _, err := parseListArgs(args); err == nil {
 			t.Errorf("%v 应报错", args)
 		}
+	}
+	// 短选项 = 形式
+	if got, err := parseListArgs([]string{"-q=card", "-l=2", "-o=1"}); err != nil ||
+		got.query != "card" || got.limit != 2 || got.offset != 1 {
+		t.Errorf("短选项 = 形式解析失败: %+v, %v", got, err)
+	}
+	// -q 后面紧跟选项: 以前会把 "-l" 当搜索词, 静默吞掉后续参数
+	if _, err := parseListArgs([]string{"-q", "-l", "3"}); err == nil {
+		t.Error("-q 后紧跟选项应报缺值")
 	}
 }
 
@@ -523,6 +540,58 @@ func TestExtractGlobal(t *testing.T) {
 	}
 	if _, err := extractGlobal([]string{"--cwd"}); err == nil {
 		t.Error("--cwd 缺值应报错")
+	}
+	// 短选项 = 形式与长选项一致
+	if _, err := extractGlobal([]string{"-c=" + dir}); err != nil {
+		t.Errorf("-c=dir 应可用: %v", err)
+	}
+	// 值位置紧跟另一个选项 → 报缺值(不能把 -s 当目录)
+	if _, err := extractGlobal([]string{"-c", "-s"}); err == nil {
+		t.Error("-c 后紧跟选项应报缺值")
+	}
+}
+
+// 未知命令必须以非零码退出 —— 脚本里 `xui foo || exit 1` 要能判错(以前打 usage 后返回 0)。
+func TestUnknownCommandExitsNonZero(t *testing.T) {
+	if os.Getenv("XUI_TEST_UNKNOWN_CMD") == "1" {
+		os.Args = []string{"xui", "definitely-not-a-command"}
+		main()
+		os.Exit(0) // 走到这里说明没报错
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=TestUnknownCommandExitsNonZero")
+	cmd.Env = append(os.Environ(), "XUI_TEST_UNKNOWN_CMD=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("未知命令应非零退出, 输出: %s", out)
+	}
+	if !strings.Contains(string(out), "未知命令") {
+		t.Errorf("报错文案不对: %s", out)
+	}
+}
+
+// -h/--help 在任何位置都打帮助(包括子命令参数位置), 且退出码为 0。
+func TestHelpFlagAnywhere(t *testing.T) {
+	if os.Getenv("XUI_TEST_HELP") == "1" {
+		os.Args = []string{"xui", "add", "--help"}
+		main()
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=TestHelpFlagAnywhere")
+	cmd.Env = append(os.Environ(), "XUI_TEST_HELP=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("--help 应正常退出(码 0): %v, %s", err, out)
+	}
+	if !strings.Contains(string(out), "xui — shadcn") {
+		t.Errorf("应打印帮助: %s", out)
 	}
 }
 

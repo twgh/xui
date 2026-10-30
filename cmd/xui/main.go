@@ -297,11 +297,24 @@ func main() {
 	if len(os.Args) < 2 {
 		usage()
 	}
-	cmd := os.Args[1]
-	args, err := extractGlobal(os.Args[2:])
+	// 先剥全局选项再认命令: `xui -s list` 与 `xui list -s` 等价(以前只认后者,
+	// 前者会被当成"未知命令 -s")。
+	rest, err := extractGlobal(os.Args[1:])
 	if err != nil {
 		fatal("%v", err)
 	}
+	if len(rest) == 0 {
+		usage()
+	}
+	// -h/--help 优先于一切: 任何位置出现都直接打帮助。否则 `xui add --help` 会走到
+	// 参数解析里报"未知选项 --help"。
+	for _, a := range rest {
+		if a == "-h" || a == "--help" {
+			usage()
+		}
+	}
+	cmd := rest[0]
+	args := rest[1:]
 	switch cmd {
 	case "init":
 		opts, err := parseInitArgs(args)
@@ -343,7 +356,7 @@ func main() {
 		}
 		infoCommand()
 	default:
-		usage()
+		fatal("未知命令 %q (见 xui --help)", cmd)
 	}
 }
 
@@ -362,6 +375,20 @@ func infoRaw(s string) {
 	}
 }
 
+// nextValue 取选项后面的值。缺值(到末尾、或后面紧跟另一个选项)时报错 ——
+// 否则 `xui add -p --all` 会把 --all 当成目录名, 最后报出莫名其妙的
+// "用法: xui add <组件...>"。负数不算选项, 让 `-l -1` 落到"需要正整数"那条分支。
+func nextValue(args []string, i int, flag string) (string, error) {
+	if i+1 >= len(args) {
+		return "", fmt.Errorf("%s 需要一个值", flag)
+	}
+	v := args[i+1]
+	if _, err := strconv.Atoi(v); err != nil && strings.HasPrefix(v, "-") {
+		return "", fmt.Errorf("%s 需要一个值 (后面紧跟的是选项 %q)", flag, v)
+	}
+	return v, nil
+}
+
 // extractGlobal 抽出所有命令通用的 -c/--cwd 与 -s/--silent, 其余原样返回。
 // cwd 在解析阶段就生效, 后续相对路径(项目目录 / ui 目录 / 数据源本地路径)都以它为基准。
 func extractGlobal(args []string) ([]string, error) {
@@ -370,11 +397,20 @@ func extractGlobal(args []string) ([]string, error) {
 		a := args[i]
 		switch {
 		case a == "-c" || a == "--cwd":
-			if i+1 >= len(args) || args[i+1] == "" {
-				return nil, fmt.Errorf("%s 需要一个目录", a)
+			v, err := nextValue(args, i, a)
+			if err != nil {
+				return nil, err
 			}
 			i++
-			if err := os.Chdir(args[i]); err != nil {
+			if err := os.Chdir(v); err != nil {
+				return nil, fmt.Errorf("切换工作目录失败: %v", err)
+			}
+		case strings.HasPrefix(a, "-c="):
+			dir := strings.TrimPrefix(a, "-c=")
+			if dir == "" {
+				return nil, fmt.Errorf("-c 需要一个目录")
+			}
+			if err := os.Chdir(dir); err != nil {
 				return nil, fmt.Errorf("切换工作目录失败: %v", err)
 			}
 		case strings.HasPrefix(a, "--cwd="):
@@ -410,11 +446,12 @@ func parseInitArgs(args []string) (initOptions, error) {
 		a := args[i]
 		switch {
 		case a == "-n" || a == "--name":
-			if i+1 >= len(args) || args[i+1] == "" {
-				return o, fmt.Errorf("%s 需要一个项目名", a)
+			v, err := nextValue(args, i, a)
+			if err != nil {
+				return o, err
 			}
 			i++
-			o.project = args[i]
+			o.project = v
 		case strings.HasPrefix(a, "-n="):
 			if o.project = strings.TrimPrefix(a, "-n="); o.project == "" {
 				return o, fmt.Errorf("-n 需要一个项目名")
@@ -474,11 +511,16 @@ func parseComponentArgs(args []string) (componentOptions, error) {
 		case a == "-a" || a == "--all":
 			o.all = true
 		case a == "-p" || a == "--path":
-			if i+1 >= len(args) || args[i+1] == "" {
-				return o, fmt.Errorf("%s 需要一个目录", a)
+			v, err := nextValue(args, i, a)
+			if err != nil {
+				return o, err
 			}
 			i++
-			o.uiDir = args[i]
+			o.uiDir = v
+		case strings.HasPrefix(a, "-p="):
+			if o.uiDir = strings.TrimPrefix(a, "-p="); o.uiDir == "" {
+				return o, fmt.Errorf("-p 需要一个目录")
+			}
 		case strings.HasPrefix(a, "--path="):
 			if o.uiDir = strings.TrimPrefix(a, "--path="); o.uiDir == "" {
 				return o, fmt.Errorf("--path 需要一个目录")
@@ -530,21 +572,31 @@ func parseListArgs(args []string) (listOptions, error) {
 		a := args[i]
 		switch {
 		case a == "-q" || a == "--query":
-			if i+1 >= len(args) {
-				return o, fmt.Errorf("%s 需要一个搜索词", a)
+			v, err := nextValue(args, i, a)
+			if err != nil {
+				return o, err
 			}
 			i++
-			o.query = args[i]
+			o.query = v
+		case strings.HasPrefix(a, "-q="):
+			o.query = strings.TrimPrefix(a, "-q=")
 		case strings.HasPrefix(a, "--query="):
 			o.query = strings.TrimPrefix(a, "--query=")
 		case a == "-l" || a == "--limit":
-			if i+1 >= len(args) {
-				return o, fmt.Errorf("%s 需要一个数字", a)
+			v, err := nextValue(args, i, a)
+			if err != nil {
+				return o, err
 			}
 			i++
-			n, err := intValue(a, args[i])
+			n, err := intValue(a, v)
 			if err != nil || n <= 0 {
-				return o, fmt.Errorf("%s 需要正整数: %q", a, args[i])
+				return o, fmt.Errorf("%s 需要正整数: %q", a, v)
+			}
+			o.limit = n
+		case strings.HasPrefix(a, "-l="):
+			n, err := intValue("-l", strings.TrimPrefix(a, "-l="))
+			if err != nil || n <= 0 {
+				return o, fmt.Errorf("-l 需要正整数")
 			}
 			o.limit = n
 		case strings.HasPrefix(a, "--limit="):
@@ -554,13 +606,20 @@ func parseListArgs(args []string) (listOptions, error) {
 			}
 			o.limit = n
 		case a == "-o" || a == "--offset":
-			if i+1 >= len(args) {
-				return o, fmt.Errorf("%s 需要一个数字", a)
+			v, err := nextValue(args, i, a)
+			if err != nil {
+				return o, err
 			}
 			i++
-			n, err := intValue(a, args[i])
+			n, err := intValue(a, v)
 			if err != nil || n < 0 {
-				return o, fmt.Errorf("%s 需要非负整数: %q", a, args[i])
+				return o, fmt.Errorf("%s 需要非负整数: %q", a, v)
+			}
+			o.offset = n
+		case strings.HasPrefix(a, "-o="):
+			n, err := intValue("-o", strings.TrimPrefix(a, "-o="))
+			if err != nil || n < 0 {
+				return o, fmt.Errorf("-o 需要非负整数")
 			}
 			o.offset = n
 		case strings.HasPrefix(a, "--offset="):
@@ -622,6 +681,9 @@ func usage() {
   -o, --offset <n>      list/search: 跳过前 n 个
   -c, --cwd <目录>      先切换到该目录, 后续相对路径都以它为准
   -s, --silent          只打印警告与错误
+  -h, --help            显示本帮助(任何位置都能用)
+
+短选项也接受 -x=值 的写法(与 --long=值 一致), 例如 -p=src -l=5。
 
 数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
   不设                  自动选路: 直连 → Gitee 镜像 → GitCode 镜像 →
@@ -1226,11 +1288,16 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 				inst.Files[f] = sha256Hex(data)
 				info("更新 %s (版本升级)", dst)
 			default:
+				// dry-run 只是预览, 文案统一用"将…", 别让用户以为已经动过文件。
+				verb := "跳过"
+				if dryRun {
+					verb = "将跳过"
+				}
 				if len(inst.Files) == 0 {
-					warn("%s 内容与远端不同, 且没有安装清单可判断来源, 跳过 (确认本地无改动后加 -o/--overwrite 覆盖)", dst)
+					warn("%s 内容与远端不同, 且没有安装清单可判断来源, %s (确认本地无改动后加 -o/--overwrite 覆盖)", dst, verb)
 					continue
 				}
-				warn("%s 本地已修改, 跳过 (确认后加 -o/--overwrite 覆盖)", dst)
+				warn("%s 本地已修改, %s (确认后加 -o/--overwrite 覆盖)", dst, verb)
 			}
 		}
 	}
@@ -1307,6 +1374,7 @@ func infoCommand() {
 
 // diffFiles 把本地文件与 registry 内容做逐行 diff(不写本地); filter 非空时按文件名过滤。
 func diffFiles(src *source, reg *registry, order []string, uiDir, filter string) {
+	inst := loadManifest(uiDir)
 	done := map[string]bool{}
 	found := false
 	for _, name := range order {
@@ -1328,6 +1396,18 @@ func diffFiles(src *source, reg *registry, order []string, uiDir, filter string)
 				continue
 			}
 			found = true
+			// 给差异标出来源, 否则光看 diff 分不清"是我改的"还是"版本升级" ——
+			// 这正是 update 要不要 -o 的分界。
+			note := ""
+			switch {
+			case os.IsNotExist(err):
+				note = " (本地没有, update 会创建)"
+			case inst.Files[f] == sha256Hex(local):
+				note = " (本地未改动, 纯版本差异 —— update 会直接替换)"
+			default:
+				note = " (本地已修改 —— update 会跳过, 需 -o 覆盖)"
+			}
+			info("\n=== %s%s ===", dst, note)
 			infoRaw(unifiedDiff(dst, "components/"+f, string(local), remote))
 		}
 	}

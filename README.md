@@ -264,7 +264,9 @@ xui info                # 显示 CLI / 项目环境信息
 - `add --dry-run`: 预览动作, 不写文件;
 - `add --view[=文件]` / `--diff[=文件]`: 查看源码 / 与本地对比, 不写文件;
 - `list/search -q, --query <词>` / `-l, --limit <n>` / `-o, --offset <n>`: 过滤、限制数量、跳过前 n 个;
-- 通用 `-c, --cwd <目录>` 先切工作目录, `-s, --silent` 只打印警告与错误。
+- 通用 `-c, --cwd <目录>` 先切工作目录(`xui -c dir list` 与 `xui list -c dir` 等价), `-s, --silent` 只打印警告与错误;
+- `-h, --help`: 显示帮助, 任何位置都能用(`xui --help` / `xui add --help`);
+- 短选项也接受 `-x=值` 的写法, 与长选项一致: `-p=src`、`-c=dir`、`-q=table`、`-l=5`、`-o=2`。
 
 组件源码拷进项目后归你所有;`add` / `update` 都不会覆盖你本地改过的文件,确认要丢弃本地改动时加 `-o/--overwrite`。
 

@@ -19,6 +19,15 @@
   - **做法**: `add` / `update` 结束时在组件目录写 `.xui-manifest.json`(CLI 版本 + 文件名 → sha256, 点开头 go 工具链忽略)。update 时逐文件: 缺失 → 创建; 内容一致 → 跳过; **本地哈希 == 清单哈希**(装完没人动过) → 直接替换并报"更新: 版本升级"; 哈希对不上 / 没有清单 → 保持"警告 + 跳过", `-o` 覆盖后清单重建。
   - **兼容**: 老项目没有清单 → 退回保守模式(一律跳过, 提示"没有安装清单可判断来源"), 加一次 `-o` 即重建清单。
   - **验收**: 新增 `TestUpdateUsesManifestToTellUpgradeFromLocalEdit`(add 写清单 → 远端升级自动替换 → 手改后跳过 → 删清单回退保守); 真实 CLI 在临时项目走通四条路径(add 生成清单 / 换源升级"更新 (版本升级)" / 手改后跳过 / `-o` 丢弃改动)。帮助文本与 README 同步(update 行改写 + "更新时的判定"表)。
+- ✅ **CLI 参数一致性审查**(2026-10-30):
+  - **未知命令的退出码**: 以前打 usage 后返回 0, 脚本里 `xui foo || exit 1` 判不出来; 现在 `xui: 未知命令 "foo" (见 xui --help)` + 退出 1。
+  - **`-h` / `--help`**: 任何位置都打帮助(`xui add --help` 以前报"未知选项 --help"), 退出 0; usage 的选项表补上这一行。
+  - **需要值的选项不再吞掉后面的选项**: `xui add -p --all` 以前把 `--all` 当目录名, 最后报出莫名其妙的"用法: xui add <组件...>"; 现在 `-p 需要一个值 (后面紧跟的是选项 "--all")`。统一走 `nextValue`(负数不算选项, `-l -1` 仍落到"需要正整数")。
+  - **短选项支持 `-x=值`**: `-p=src` / `-c=dir` / `-q=词` / `-l=5` / `-o=2`, 以前只有 `-n=` 与长选项支持, `-p=ui` 会报"未知选项 -p=ui"。
+  - **全局选项可放在命令前**: `xui -s list` 以前把 `-s` 当未知命令; 现在先剥全局选项再认命令。
+  - **`--diff` 标出差异来源**: 每个文件头注明「本地没有 / 本地未改动, 纯版本差异 —— update 会直接替换 / 本地已修改 —— update 会跳过, 需 -o」, 与 update 的判定对齐。
+  - **dry-run 文案**: 跳过类提示改为"将跳过"(其余分支都已是"将创建/将覆盖/将更新")。
+  - 单测: 未知命令退出码(子进程)、`-h` 任意位置、短选项 = 形式、选项后紧跟选项报缺值; `go build/vet/test ./...` 全绿, 真实 CLI 逐条实测退出码与文案。
 - ✅ **批次 10: Chart 图表**(2026-10-30, 参 shadcn chart / recharts 示例):
   - **组件**(`components/chart.go`): `NewChart(x,y,cx,cy,parent, WithChartKind(ChartBar/ChartLine/ChartArea/ChartPie/ChartDonut), WithChartData(labels, ChartSeries{Label, Values}...), WithChartStacked/Curve/Dots/BarLabels/Grid/Tooltip/Legend, WithChartYFormat/YDomain, WithChartInnerRatio, WithChartCenter(title, sub))`;运行时 `SetData/SetKind/SetStacked/SetCurve/SetDots/SetGrid/SetTooltip/SetLegend/SetBarLabels/SetYFormat/SetYDomain/SetCenter/SetInnerRatio`,点击数据点 `OnPointClick`。
   - **形态**: 柱状(多路并排, 柱顶数值 + 数据端圆角 4)、**横向柱(`WithChartHorizontal`)**、堆叠柱、折线(平滑采样 + 数据点)、堆叠面积、饼图、环形图(中心两行文字)、**径向图(`ChartRadial`, 每分类一层同心弧 + 背景轨)**、**雷达图(`ChartRadar`, 等角轴 + 闭合多边形 + 悬停轴高亮)**;数值轴按数据自动取整齐刻度(1/2/2.5/5 × 10^n),图例可点(点后临时隐藏该分类)。
