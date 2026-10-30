@@ -22,6 +22,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -603,7 +604,8 @@ func usage() {
                              打印组件源码, 不写本地
   xui add <组件...> --diff[=文件]
                              与本地文件做逐行 diff, 不写本地
-  xui update [组件...]       更新已装组件(省略组件名 = ui 目录里已装的全部)
+  xui update [组件...]       升级已装组件(省略组件名 = ui 目录里已装的全部);
+                             安装后没改过的文件直接替换, 改过的跳过(见 -o)
   xui list | xui search      列出/搜索组件
   xui view <组件...>         打印组件源码
   xui info                   显示 CLI / 项目环境信息
@@ -1100,8 +1102,75 @@ func installedComponents(reg *registry, uiDir string) []string {
 	return names
 }
 
-// install 逐文件写入: 本地没有则创建, 内容一致则跳过, 用户改过则警告跳过
-// (-o/--overwrite 覆盖)。dryRun 只打印将要发生的动作, 不创建任何文件/目录。
+// manifestName 是安装清单的文件名(放在组件目录里, 点开头 —— go 工具链忽略)。
+//
+// 为什么需要它: 过去 install 只比较"本地内容 vs 远端内容", 分不清"用户改过"和"版本升级
+// 导致源码变了" —— 跨版本 update 时每个文件都算"有差异", 默认全跳过, update 等于空转。
+// 有清单后: 本地哈希 == 清单哈希 ⇒ 这份文件自安装后没人动过 ⇒ 可以安全升级(直接替换);
+// 不相等 ⇒ 用户改过 ⇒ 保持原来的"警告 + 跳过", 要 -o 才覆盖。
+const manifestName = ".xui-manifest.json"
+
+// installation 是 .xui-manifest.json 的内容: 安装时的 CLI 版本 + 文件名 → sha256。
+type installation struct {
+	Version string            `json:"version,omitempty"`
+	Files   map[string]string `json:"files"`
+}
+
+// loadManifest 读清单; 缺失或损坏都当作"没有清单"(行为退回保守的"警告跳过")。
+func loadManifest(uiDir string) installation {
+	m := installation{Files: map[string]string{}}
+	data, err := os.ReadFile(filepath.Join(uiDir, manifestName))
+	if err != nil {
+		return m
+	}
+	var got installation
+	if json.Unmarshal(data, &got) != nil || got.Files == nil {
+		return m
+	}
+	m.Files = got.Files
+	m.Version = got.Version
+	return m
+}
+
+func (m installation) save(uiDir string) error {
+	if m.Files == nil {
+		m.Files = map[string]string{}
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(uiDir, manifestName), append(data, '\n'), 0o644)
+}
+
+// sha256Hex 是清单里的文件指纹(记录"安装那一刻"的内容)。
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%x", sum[:])
+}
+
+// cliVersion 当前 CLI 的模块版本; go run 本地源码 / devel 构建时为空。
+func cliVersion() string {
+	bi, ok := rdebug.ReadBuildInfo()
+	if !ok || bi.Main.Version == "" || !isReleaseVersion(bi.Main.Version) {
+		return ""
+	}
+	return bi.Main.Version
+}
+
+func writeFileOrFatal(path string, data []byte) {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		fatal("写入失败: %v", err)
+	}
+}
+
+// install 逐文件写入, 四种情况:
+//   - 本地没有 → 创建;
+//   - 内容一致 → 跳过("已一致");
+//   - 内容不同, 但本地哈希等于清单里的哈希(安装后没人动过) → 版本升级, 直接替换;
+//   - 内容不同, 没有清单或哈希对不上 → 用户改过, 警告跳过(-o 覆盖)。
+//
+// dryRun 只打印将要发生的动作, 不创建任何文件/目录、不写清单。
 // 多个组件共享同一文件(separator/badge)时只处理一次。
 func install(src *source, reg *registry, order []string, uiDir string, overwrite, dryRun bool) {
 	if !dryRun {
@@ -1109,6 +1178,8 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 			fatal("创建目录失败: %v", err)
 		}
 	}
+	inst := loadManifest(uiDir)
+	prevVersion := inst.Version
 	done := map[string]bool{}
 	for _, name := range order {
 		for _, f := range reg.Components[name].Files {
@@ -1127,27 +1198,53 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 			case missing:
 				if dryRun {
 					info("将创建 %s (%s)", dst, name)
-				} else {
-					if err := os.WriteFile(dst, data, 0o644); err != nil {
-						fatal("写入失败: %v", err)
-					}
-					info("创建 %s (%s)", dst, name)
+					continue
 				}
+				writeFileOrFatal(dst, data)
+				inst.Files[f] = sha256Hex(data)
+				info("创建 %s (%s)", dst, name)
 			case string(old) == string(data):
+				if !dryRun {
+					inst.Files[f] = sha256Hex(data)
+				}
 				info("已一致 %s", dst)
 			case overwrite:
 				if dryRun {
 					info("将覆盖 %s (本地修改已丢弃)", dst)
-				} else {
-					if err := os.WriteFile(dst, data, 0o644); err != nil {
-						fatal("写入失败: %v", err)
-					}
-					info("覆盖 %s (本地修改已丢弃)", dst)
+					continue
 				}
+				writeFileOrFatal(dst, data)
+				inst.Files[f] = sha256Hex(data)
+				info("覆盖 %s (本地修改已丢弃)", dst)
+			case inst.Files[f] == sha256Hex(old):
+				// 本地文件与"上次安装"逐字节一致 ⇒ 差异只可能来自版本升级, 安全替换。
+				if dryRun {
+					info("将更新 %s (版本升级)", dst)
+					continue
+				}
+				writeFileOrFatal(dst, data)
+				inst.Files[f] = sha256Hex(data)
+				info("更新 %s (版本升级)", dst)
 			default:
+				if len(inst.Files) == 0 {
+					warn("%s 内容与远端不同, 且没有安装清单可判断来源, 跳过 (确认本地无改动后加 -o/--overwrite 覆盖)", dst)
+					continue
+				}
 				warn("%s 本地已修改, 跳过 (确认后加 -o/--overwrite 覆盖)", dst)
 			}
 		}
+	}
+	if dryRun {
+		return
+	}
+	if v := cliVersion(); v != "" {
+		if prevVersion != "" && prevVersion != v {
+			info("组件版本 %s → %s", prevVersion, v)
+		}
+		inst.Version = v
+	}
+	if err := inst.save(uiDir); err != nil {
+		warn("写入安装清单失败: %v", err)
 	}
 }
 

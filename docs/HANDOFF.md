@@ -14,6 +14,11 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **CLI: `update` 区分"版本升级"与"本地改动"**(2026-10-30):
+  - **背景**: 以前 `install` 只比对"本地内容 vs 远端内容", 分不清"用户改过"和"版本升级导致源码变了" —— 跨版本 update 时每个文件都算"有差异", 默认全部跳过, `xui update` 实际等于空转(只刷一串警告)。
+  - **做法**: `add` / `update` 结束时在组件目录写 `.xui-manifest.json`(CLI 版本 + 文件名 → sha256, 点开头 go 工具链忽略)。update 时逐文件: 缺失 → 创建; 内容一致 → 跳过; **本地哈希 == 清单哈希**(装完没人动过) → 直接替换并报"更新: 版本升级"; 哈希对不上 / 没有清单 → 保持"警告 + 跳过", `-o` 覆盖后清单重建。
+  - **兼容**: 老项目没有清单 → 退回保守模式(一律跳过, 提示"没有安装清单可判断来源"), 加一次 `-o` 即重建清单。
+  - **验收**: 新增 `TestUpdateUsesManifestToTellUpgradeFromLocalEdit`(add 写清单 → 远端升级自动替换 → 手改后跳过 → 删清单回退保守); 真实 CLI 在临时项目走通四条路径(add 生成清单 / 换源升级"更新 (版本升级)" / 手改后跳过 / `-o` 丢弃改动)。帮助文本与 README 同步(update 行改写 + "更新时的判定"表)。
 - ✅ **批次 10: Chart 图表**(2026-10-30, 参 shadcn chart / recharts 示例):
   - **组件**(`components/chart.go`): `NewChart(x,y,cx,cy,parent, WithChartKind(ChartBar/ChartLine/ChartArea/ChartPie/ChartDonut), WithChartData(labels, ChartSeries{Label, Values}...), WithChartStacked/Curve/Dots/BarLabels/Grid/Tooltip/Legend, WithChartYFormat/YDomain, WithChartInnerRatio, WithChartCenter(title, sub))`;运行时 `SetData/SetKind/SetStacked/SetCurve/SetDots/SetGrid/SetTooltip/SetLegend/SetBarLabels/SetYFormat/SetYDomain/SetCenter/SetInnerRatio`,点击数据点 `OnPointClick`。
   - **形态**: 柱状(多路并排, 柱顶数值 + 数据端圆角 4)、**横向柱(`WithChartHorizontal`)**、堆叠柱、折线(平滑采样 + 数据点)、堆叠面积、饼图、环形图(中心两行文字)、**径向图(`ChartRadial`, 每分类一层同心弧 + 背景轨)**、**雷达图(`ChartRadar`, 等角轴 + 闭合多边形 + 悬停轴高亮)**;数值轴按数据自动取整齐刻度(1/2/2.5/5 × 10^n),图例可点(点后临时隐藏该分类)。

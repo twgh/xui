@@ -622,3 +622,70 @@ func TestAddDryRunDoesNotWrite(t *testing.T) {
 		t.Errorf("正常 add 应写文件: %v", err)
 	}
 }
+
+// 安装清单让 update 能区分"用户改过"和"版本升级": 本地未动过的文件随版本替换,
+// 改过的仍然跳过, 没有清单的老项目退回保守跳过。
+func TestUpdateUsesManifestToTellUpgradeFromLocalEdit(t *testing.T) {
+	const v1 = "package ui\n// button v1\n"
+	const v2 = "package ui\n// button v2\n"
+	const v3 = "package ui\n// button v3\n"
+
+	remote := v1
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/registry.json":
+			w.Write([]byte(`{"components":{"button":{"files":["button.go"],"deps":[]}}}`))
+		case "/components/button.go":
+			w.Write([]byte(remote))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("XUI_REGISTRY", srv.URL)
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	if m := loadManifest(filepath.Join(dir, "ui")); m.Files["button.go"] != sha256Hex([]byte(v1)) {
+		t.Fatalf("add 后清单应记录文件哈希, 实为 %+v", m)
+	}
+
+	// 远端升到 v2、本地没动过 → 直接替换
+	remote = v2
+	update(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	if data, _ := os.ReadFile(filepath.Join(dir, "ui", "button.go")); string(data) != v2 {
+		t.Errorf("本地未改动的文件应随版本升级替换, 实为 %q", data)
+	}
+
+	// 用户改过 → 远端再到 v3 也跳过, 且清单保持"上次安装"的哈希不变
+	dst := filepath.Join(dir, "ui", "button.go")
+	if err := os.WriteFile(dst, []byte("package ui\n// mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	remote = v3
+	update(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	if data, _ := os.ReadFile(dst); string(data) != "package ui\n// mine\n" {
+		t.Errorf("改过的文件不该被覆盖, 实为 %q", data)
+	}
+
+	// 删掉清单(老项目) → 内容不同只能保守跳过
+	if err := os.Remove(filepath.Join(dir, "ui", manifestName)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, []byte(v2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	update(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	if data, _ := os.ReadFile(dst); string(data) != v2 {
+		t.Errorf("无清单时应保守跳过, 实为 %q", data)
+	}
+}
