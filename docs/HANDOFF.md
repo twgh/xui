@@ -8,11 +8,20 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-29)
+## 当前状态(截至 2026-10-30)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 现为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 后为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);同日补齐**批次 9: Sidebar**(inset/floating/默认三种外观、offcanvas/icon/none 折叠、左右贴边、分组/子菜单/徽章/动作钮、折叠 tooltip、Ctrl+B, 新增 demo **导航4**, 现为 **18 页**);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
+
+- ✅ **批次 9: Sidebar 侧边栏**(2026-10-30, 参 shadcn sidebar / radix-nova):
+  - **组件**(`components/sidebar.go`): `NewSidebar(x,y,cx,cy,parent, WithSidebarSide/Variant/Collapsible/Width/IconWidth/Open/Rail/NoShortcut/OnOpenChange)`;外壳 = 左侧(或右侧)面板 + 主内容区 `Main()`, 只接受确定高度(内部 Content 是 ScrollArea, 吃剩余高度)。`Header()` / `Content()` / `Footer()` 三段 + `AddHeaderItem` / `AddFooterItem`;`AddGroup(label)` 返回分组(标签/组动作/菜单), `AddItem(text, icon, WithSidebarItemActive/Size/Variant/Badge/Tooltip/Disabled/OnClick/Action/ActionOnHover)`;`AddSub()` 子菜单(`mx-3.5 + 1px 竖线 + px-2.5`, 右侧 chevron, 点击父项 200ms 开合, `SubOpen` / `SetSubOpen` / `ToggleSub`);`AddSeparator` / `AddTrigger`;`Open` / `SetOpen` / `Toggle` / `OnOpenChange`;`SetActive` / `SetBadge` / `SetTooltip` / `SetAction` / `SetDisabled`。
+  - **交互**: 宽度 200ms 过渡(offcanvas 面板滑出 / icon 收成 3rem 图标栏 / none 固定);icon 折叠时菜单项 32×32、分组标签/子菜单/徽章/动作隐藏, 菜单项悬停弹右侧 tooltip(delay 0);子菜单点击父项开合、chevron 旋转;Ctrl+B 开合;rail 16px 热区悬停出 2px 线、点击开合;三种外观(sidebar 内缘 1px 分隔线 / floating 8px 边距 + 圆角 + 描边 / inset 外层 sidebar 底色 + 主内容区圆角卡片)。
+  - **踩坑(DESIGN 158)**: ① 原生 Button 会截走子元素鼠标事件且 BnClick 仍发到整行 —— 菜单动作钮改成按钮内部 20×20 命中区;② Button 事件 `pPt` 与元素客户区口径不一致, 用 `GetCursorPos + ClientToScreen + XEle_GetWndClientRectDPI` 反算;③ 普通 Element 悬停不自动重绘(In ScrollArea 里 MouseStay 也不可靠), rail 改窗口级 MouseMove 命中;④ 构造期 `SetZOrderEx` 访问违例, 用 `SetZOrder(0)`;⑤ 面板高度必须确定(Content 的 Weight);⑥ icon 折叠必须同时关掉动作命中, 否则不可见命中区会盖住中央图标;⑦ 初始 `WithSidebarOpen(false)` 要直接把 progress 落 0。
+  - **demo**: 新增**导航4**(13 号页) —— inset 外观 + icon 折叠 + 分组/子菜单/徽章/显示在悬停的动作钮 + rail + Ctrl+B;主内容区状态文字跟随点击/动作/分组动作实时更新。页签总数 18(基础4 / 表单5 / 导航4 / 反馈3 / 数据 / 图标)。
+  - **上游参考**: `shadcn/src/components/ui/sidebar.tsx`(registry new-york-v4, 727 行)+ `src/hooks/use-mobile.ts` + `skeleton.tsx`, App.tsx 导航页加对照卡(固定高容器内 override `sidebar-container:absolute`), `pnpm build` 通过。
+  - **验收**: 探针(展开 256 / icon 收起 48、floating 收起 66(面板 50)、offcanvas 收起 main 全宽且面板滑出、右侧镜像; item/label/sub 矩形; 长文本省略; 禁用降色)+ 真实交互(demo 150% DPI: 点击触发器/菜单项/动作钮/分组 +、子菜单开合与 chevron 旋转、Ctrl+B、rail 悬停 2px 线并点击、折叠态 tooltip、亮/暗主题、状态文字跟随)+ `go build/vet/test ./...` 全绿; `xui add sidebar` 闭包与 `add --all` 编译通过。
+  - registry: 新增 `sidebar`(files: sidebar/scrollarea/scrollbar/tooltip/button/group/textopt/press; deps: 无)。
 
 - ✅ **批次 8: Resizable 可调整分栏**(2026-10-30, 参 shadcn resizable / react-resizable-panels v4):
   - **组件**(`components/resizable.go`): `NewResizableGroup(x,y,cx,cy,parent, WithResizableVertical/Disabled/OnResize)` + `AddPanel(WithResizableSize/Min/Max)` + `AddHandle(WithResizableGrip)`; 面板按百分比分主轴空间(手柄固定 4px, 窗口缩放保持相对比例), 像素宽用累计边界取整; 分隔条 1px `bg-border` + 4px 热区 + 可选 4×24 抓手; 拖动捕获到分组(手柄随布局移动, 不能当坐标原点), 相邻面板到 min 后继续挤压同侧更远的、增长端受 max; 方向键 5%、Home/End 到边界、双击"有显式默认值的一侧"复位; 点击分隔条聚焦后方向键可用(嵌套元素不在 xcgui 的 Tab 链上, 见 DESIGN 157)、focus-visible 一条更粗的 ring 单线、col/row-resize 光标; 一侧面板收到 0 时分隔线贴到分组边缘、抓手隐藏; 面板是流式容器, 内容直接放进去。
@@ -711,7 +720,7 @@
 ## 待办
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
-- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~8 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Chart / Sidebar 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
+- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~9 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式, 以及 Chart 等大件。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
   - **已有等价实现(不新增)**: Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
   - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
@@ -722,7 +731,8 @@
   - **批次 6 — 轮播**: 已完成(2026-10-28): Carousel(整页滑动 / 循环 / 拖拽吸附 / 自动翻页)。
   - **批次 7 — 选择控件**: 已完成(2026-10-28): Checkbox 不确定态 / aria-invalid / 空格切换、Radio 校验态 / 空格选中、RadioGroup(组值 / 跨层互斥 / ↑↓←→·Home/End·Space 导航 / 组级禁用与校验)。
   - **批次 8 — 分栏**: 已完成(2026-10-30): Resizable(百分比分栏 / 拖动 / 方向键 5% / Home·End / 双击复位 / 分隔条键盘焦点 / 暗色焦点环)。
-  - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Resizable、Chart、Sidebar(★★★★~★★★★★)。
+  - **批次 9 — 侧栏**: 已完成(2026-10-30): Sidebar(inset/floating/默认外观、offcanvas/icon/none、分组/子菜单/徽章/动作、折叠 tooltip、Ctrl+B、rail)。
+  - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)、Chart(★★★★~★★★★★)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
   - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义)。
 
@@ -742,6 +752,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 native_select select inputotp accordion
                                  popover hovercard avatar command
                                  sheet drawer menubar navigationmenu carousel resizable
+                                 sidebar
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
@@ -783,7 +794,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
-# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..16 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/反馈1/反馈2/反馈3/数据/图标
+# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..17 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/导航4/反馈1/反馈2/反馈3/数据/图标
 #     XUI_ANIM_SCALE=5 把 hover / 弹层 / Collapsible 的过渡慢放 5 倍(抓中间帧用)
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
@@ -884,5 +895,5 @@ go build ./ui
 - `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), **每图标一个 `IconXxx` 常量**;按名字取用 `icons.Path("eye")`(给"名字来自用户输入/配置"的场合)。数据由 `scripts/gen_icons.py` 生成(默认取最新版, `--version` 可钉版)
 - 出图走**直通 D2D 几何填充**(`d2dicon.go`), GDI 模式(`app.New(false)`)自动回落折线描边
 - 体积(实测, 同基准 `-s -w`): 只用常量 **+0 字节**;调 `Path/Names` 引用整张表 **+426KB**
-- demo 第 17 页「图标」是浏览入口(`XUI_HOME_PAGE=16`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
+- demo 第 18 页「图标」是浏览入口(`XUI_HOME_PAGE=17`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
 - **原理、坑、性能结论见 DESIGN 第八节 43(抗锯齿 / figure 数)与 44(资源预处理 / 名字单射 / arc 标志位)**

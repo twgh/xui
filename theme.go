@@ -56,7 +56,7 @@ type Theme struct {
 	Chart4 Color
 	Chart5 Color
 
-	// 侧边栏(shadcn 的 --sidebar-*): 同样的理由, 供用户应用的自定义侧栏取用。
+	// 侧边栏(shadcn 的 --sidebar-*): ui.Sidebar 分组/条目/描边/焦点环的取色来源。
 	// 亮色 = 比页面略亮的中性面, 暗色 = 比页面略亮一档的面; Border 等语义与主色板平行。
 	Sidebar                   Color
 	SidebarForeground         Color

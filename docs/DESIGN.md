@@ -108,7 +108,7 @@ type Theme struct {
 ```
 
 > **字段命名约定**: 字段名 = shadcn CSS 变量的**直接 CamelCase, 不做缩写** —— `--accent-foreground` → `AccentForeground`。缩写会迫使批量转译社区主题时带一张特例表。
-> 两处与上游的差异要知道:① `DestructiveForeground` 是本库的**扩展令牌** —— nova 预设已删除 `--destructive-foreground`(破坏性按钮直接写死白字), 我们保留它以便组件取"破坏色上的文字"; ② `--chart-1..5` 与 `--sidebar-*` 已建模(`Chart1..5` / `Sidebar*`), **组件库自己不用、是给用户应用取用的** —— 机械转译社区主题时一并填上即可(内置主题的换算值与 `manager_test.go` 的漏填守卫都在)。
+> 两处与上游的差异要知道:① `DestructiveForeground` 是本库的**扩展令牌** —— nova 预设已删除 `--destructive-foreground`(破坏性按钮直接写死白字), 我们保留它以便组件取"破坏色上的文字"; ② `--chart-1..5` 与 `--sidebar-*` 已建模(`Chart1..5` / `Sidebar*`): **chart 色板只提供给用户应用**(组件库不画图表), **sidebar 令牌由 `ui.Sidebar` 使用**(分组/条目/描边/焦点环全部取自这组色) —— 机械转译社区主题时两组都要填上(内置主题的换算值与 `manager_test.go` 的漏填守卫都在)。
 > 基准圆角与 shadcn 一致: `--radius` 在 nova 预设下 = 0.625rem = 10px, 对应 `Theme.Radius = 10`。
 
 Color 封装 uint32,提供 `xui.Hex("#fafafa")`(底层 `xc.HexRGB2RGBA`)。主题文件长得和 CSS 一样,任何 shadcn 社区主题都能机械转译成 Go(`init` 生成的 `ui/theme.go` 默认取内置主题的**副本** —— `light = *xui.Light`, 见 `cmd/xui/main.go` 的 `themeTemplate`):
@@ -311,6 +311,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **navigation menu**: 根列表 gap-1; 触发区 h-9 px-4 rounded-md text-sm, 悬停 bg-accent、展开 bg-accent/50(悬停回全亮), chevron 12 随展开旋转 180°(300ms); 顶级普通链接 p-2; **所有菜单共用一个视口**, 贴列表左缘下方 mt-1.5、p-2、rounded-md border bg-popover, 宽高随当前菜单内容变化; 内容链接行 p-3(标题 20 + 间距 4 + 说明 20), 悬停/键盘高亮 bg-accent, 键盘高亮另画 focus-visible 环; 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开; ←→ 移动顶级焦点、↓ 进入内容、↑↓/Home/End 选链接、Enter 激活、ESC/Tab 关闭; 内容页面切换时从切换方向滑入 208px + 淡入(200ms) | navigation-menu.tsx(radix-nova) + 第八节 137~139 |
 | **carousel**: 每页 basis-full 整页位移, 页间 16 间隙(`-ml-4` + `pl-4`); 上/下张 = outline + icon-sm + rounded-full 按钮, 在内容左右(纵向时上下)48px 处, 到边界禁用、loop 时始终可用; ←/→ 在轮播内控件获焦时翻页; 循环首尾相接(最后一张的下一页紧跟第一张); 拖拽跟手、松手吸附最近一页(阈值 6 区分点击) | carousel.tsx + embla 默认 loop=false/align=start + 第八节 140/141 |
 | **resizable**: 分组内面板按**百分比**分主轴空间, 手柄各占固定 4px, 窗口缩放时保持相对比例; 分隔条 = 1px `bg-border` 视线 + 4px 热区, `withHandle` 时中间一根 4×24 圆角抓手; 拖动只伸缩两侧面板(相邻到 min 后继续挤压同侧更远的), 增长端受 max; ←/→(纵向 ↑/↓)每次 **5 个百分点**、Home/End 到边界、双击分隔条把"有显式默认值的那一侧"复位; 点击分隔条获得焦点(嵌套元素不在 xcgui 的 Tab 链上, 见第八节 157), focus-visible 画一条更粗的 ring 色单线; 一侧面板收到 0 时分隔线贴到分组边缘(与外层边框重合)且抓手隐藏; 光标 col-resize / row-resize | resizable.tsx + react-resizable-panels v4(方向键 5%、双击复位) + 第八节 157 |
+| **sidebar**: 展开 16rem(256)/ 图标栏 3rem(48), floating/inset 收起宽度 = 48+16+2 = 66(面板 50); Header/Footer = p-2 + gap-2, Group = p-2, 组间 gap-2; 菜单按钮 h-8 text-sm(sm h-7 text-xs / lg h-12), 选中 = bg-sidebar-accent + 加粗; outline 变体 = bg-background + 1px sidebar-border(悬停边框转 accent); 徽章/动作钮贴右(right-1), 动作钮 20×20、`showOnHover` 只在悬停时显示(选中只换图标色, 不显示动作); 子菜单 mx-3.5 + 1px 竖线 + px-2.5, 子项 h-7; **有子菜单的条目右侧有 chevron(展开转 90°), 点击整行开合(200ms 高度过渡)**; **icon 折叠**: 菜单项压成 32×32 只留居中图标, 分组标签/子菜单/徽章/动作/chevron 隐藏(点图标不切换子菜单), 悬停菜单项弹右侧 tooltip(delay 0); **offcanvas 折叠**: 面板整体滑出视野(gap 256→0), 内容不缩窄; 宽度过渡 200ms(Ctrl+B 或触发钮/rail); inset 变体 = 外层 sidebar 底色 + 主内容区 m-2(收起态靠侧栏一侧再加 8)圆角卡片; rail = 内缘 16px 热区, 悬停出 2px sidebar-border 线, 点击开合 | sidebar.tsx(radix-nova) + 第八节 158 |
 | slider = **纯自绘**(普通 Element, 不用原生 SliderBar——其滑块按钮 BkInfo 残留绘制压不住, 见第八节 25):轨道 h-1 bg-muted + 已完成区间 bg-primary + 滑块 size-3 border-ring bg-white(字面量 white),滑块热区 hover / 拖动中 / focus-visible 显示 ring-3; **值用数组表达**(长度 = 滑块数量: 1 个普通、2 个范围、3 个以上多滑块), 单滑块区间从值域下限的几何位置画到滑块、多滑块画首尾之间; 相邻滑块间距受 `minStepsBetweenThumbs` 约束 | slider.tsx + 第八节 144 |
 | slider 元素沿轨道方向比可见轨道多 18(两端各 9 = 滑块半径 6 + ring 3, 见第八节 26); 水平 `cx` / 垂直 `cy` 是**可见轨道长度**, 滑块中心在轨道两端之间移动; 垂直默认轨道 160(radix `min-h-40`), 值从下往上 | slider.tsx(radix 滑块中心贴轨道端点) + 第八节 144 |
 | slider 交互全自实现:点击跳转(按在滑块上不跳值、按轨道把最近滑块跳过去)+ LButtonDown 起 `XEle_SetCapture` 拖拽 + MouseStay/MouseLeave 自跟踪 hover(拖完移开光环即消失, 与 shadcn 一致)+ 方向键(水平 ←→ / 垂直 ↑↓; 连续 ±5%、有 step 时一步)/PageUp·PageDown(10 步)/Home/End; `inverted` 反转取值方向; 禁用 = `SetDisabled`(鼠标与键盘一起关); `OnValuesChange` / `OnValuesCommit` 对应 onValueChange / onValueCommit | — + 第八节 144 |
@@ -412,7 +413,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Pagination(形态/键盘) | `WithPaginationSimple()`(只有页码) / `WithPaginationNavOnly()`(只有上一页下一页) / `WithPaginationHideText()`(只留 chevron); 键盘 ←/→/↑/↓、Home/End、Enter/空格 | 见 152/153 |
 | Resizable | `NewResizableGroup(x,y,cx,cy,parent, WithResizableVertical/Disabled/OnResize)` + `AddPanel(WithResizableSize/Min/Max)` + `AddHandle(WithResizableGrip)`; `Sizes/SetSizes/OnResize/SetDisabled/Disabled`; 面板是流式容器, 内容直接放进去 | 对应 resizable.tsx 的 `PanelGroup/Panel/Handle`; 未做 `collapsible/collapsedSize`(Enter 折叠)、`preserve-pixel-size`、F6 在分隔条之间跳焦点、面板/分隔条级 disabled; 尺寸只支持百分比(上游还能写 px/rem); 面板是容器而非独立元素, 没有 `data-panel` 之类的 DOM 钩子 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
-| 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | 组件库自己不用, 供你的应用取用; 机械转译新主题时一并填(运行时的主题测试有守卫) |
+| 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | chart 色板供你的应用取用(组件库不画图表); sidebar 令牌由 `ui.Sidebar` 使用; 机械转译新主题时两组一并填(运行时的主题测试有守卫) |
 
 **下划线(Button link / Badge link / Accordion 触发区)**: xcgui 没有下划线文本标志位(`TextFormatFlag_` 里没有), 字体侧 `FontStyle_Underline` 在 D2D 文本路径下也不渲染(见第八节 110), 只能手绘: 宽度用 `xui.TextWidth` 量, y = 行盒中心 + 0.3em + offset(`underline-offset-4` 用 4px; Accordion 的 hover:underline 没有 offset, 用行盒底边 - 2px), 1px 线(`button.go` / `separator.go` / `accordion.go`)。实测(150% DPI): "Link" 下方 1 条 43 物理像素宽的横线, 紧贴文字下沿。
 
@@ -485,7 +486,7 @@ ui/
 | Dialog 没有 zoom-in-95 / AlertDialog 没有 text-balance | 元素级缩放对自绘元素无效(第八节 47); 自绘文字没有平衡排版能力 |
 | 没有 `asChild` / `data-slot` / `data-state` | React/DOM 概念, Go 侧没有对应物 |
 | Card 的 `overflow-hidden` / 首末图片自动圆角、AspectRatio 的圆角裁剪 | xcgui **会按父元素矩形裁剪子元素**(探针实测, 见第八节 97), 但没有圆角裁剪/overflow-hidden 语义: 超出圆角的四角区域仍会画出来; 需要圆角裁剪的图片/内容请自己按路径裁 |
-| `--chart-*` / `--sidebar-*` 令牌只提供取值 | 组件库自身不用, 供你的应用取用 |
+| `--chart-*` 色板只提供取值 | 组件库不画图表; 这组令牌供你的应用取用(机械转译主题时一并填) |
 | Calendar 不做 RTL(dir=rtl)/波斯·Jalali 历/timeZone/自然语言日期(chrono-node) | 文字渲染只有 LTR; 历法换算与时区数据是另一套领域库, Go 侧没有 chrono-node 的等价物 —— 绝对/相对日期的键入用 DatePicker 的可输入形态(`ParseDateText`)覆盖最常用场景; 范围色带跨月时在两个月块之间不连续(上游同样是每月一张独立表格) |
 | Field 横向 `Content` 的嵌套列只认 Fixed 宽 | xcgui 不会把 Weight/Percent 宽度传给嵌套布局的 Fill 子项(实测子项宽恒为 0, 内容不显示); 组件默认 Fixed 240, 用 `xui.ItemWidth` 覆盖(第八节 101) |
 | EmptyDescription / FieldDescription / FieldError 不自动折行 | Label 的高度不会随折行自撑; 需要多行时调用方用 `SetWrap` + `WrappedHeight` 量高后写回高度(同 Alert 的做法) |
@@ -512,6 +513,10 @@ ui/
 | Carousel 拖拽按"最近一页"吸附, 没有 velocity 惯性 | 桌面鼠标够用; 触摸手势、RTL 与 wheel 翻页未做(embla 的这些能力不在 shadcn 核心弹层语义里) |
 | Progress 的不确定态是"短条往返", 上游是空轨道 | shadcn 的 indeterminate 只暴露 `data-state`, 指示器平移到轨道外; 短条往返是"进行中但未知进度"的通行视觉(见第八节 145) |
 | Slider 是一个焦点元素, 键盘只调整"当前操作滑块" | 桌面 Tab 惯例是整条滑动条一个焦点; radix 的每 thumb 独立 roving tabindex 需要子元素级焦点, 与自绘单元素冲突(见第八节 144) |
+| Sidebar 没有移动端 Sheet 分支 | shadcn 的 `isMobile` 是浏览器媒体查询(窗口 <768px 时把侧栏换成 Sheet); 桌面窗口没有"移动端"这一层, 窄窗口用 offcanvas/icon 收起即可; 没有做断点自动切换 |
+| Sidebar 的动作钮(菜单项右侧 …)只支持鼠标点击 | 原生 Button 会截走子元素的鼠标事件,BnClick 仍会发到整行 —— 动作钮只能做成按钮内部的命中区, 且键盘激活一律算整行(见第八节 158); 分组标签的 + 是普通 Element 的子元素, 鼠标/键盘都可用 |
+| Sidebar 菜单项不能用 Tab 聚焦 | 与第八节 157 同一条 xcgui 限制: Tab 链只覆盖窗口内容区的直接子元素, 侧栏菜单嵌在 ScrollArea/布局容器里; 鼠标点击后可回车激活 |
+| Sidebar 图标栏里内容区仍可滚动 | 上游 icon 折叠是 `overflow-hidden`(只能靠 tooltip 辨认); 我们的 ScrollArea 仍保留滚动/滚动条, 长菜单在 48px 栏里也能滚到 |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1818,6 +1823,19 @@ ui/
     - **键盘同 152**: 分隔条 `EnableFocus(true) + EnableSwitchFocus(true)` 后方向键会被框架先拿去切焦点, 必须挂窗口级 KeyDown 并先判 `XWnd_GetFocusEle == 手柄`。
     - **合成输入的坐标要按 DPI 换算, 且双击不能用 PostMessage**: `XEle_GetWndClientRect` 返回**逻辑**坐标, 而 `ClientToScreen` / `SetCursorPos` / `mouse_event` 走物理坐标 —— 150% 下直接拿逻辑值会在左侧 1/3 处落下(实测窗口收到按下、元素拿不到)。用 `XEle_GetWndClientRectDPI` 取物理客户区矩形再换算; 直接 `PostMessage(WM_LBUTTONDBLCLK)` 不会派发到元素, 真实双击用两次 `mouse_event`(间隔小于系统双击时间), 且先把光标移进窗口让悬停命中缓存刷新。
 
+
+158. **侧边栏: 原生 Button 会吞掉子元素的点击, 动作钮只能做内部命中区**(`components/sidebar.go`, 探针 + 真实点击实测):
+    - **菜单动作钮不能建成 Button 的子元素**: 子元素 `LButtonUp` 收不到, 而原生 Button 仍会派发一次 `BnClick` —— 点"更多操作"会连带触发整行回调(实测状态文字被整行点击覆盖)。改成在菜单按钮内部按坐标命中动作区: `BnClick` 里先判断光标是否落在右侧 20×20 区域, 是则执行动作并直接返回。分组标签是普通 Element(不截事件), 它的 + 仍用真正的子元素按钮(鼠标/键盘均可)。
+    - **Button 鼠标事件里的 `pPt` 与元素客户区不同口径**: 同一位置按 `pPt` 算出来落在元素右边 2.7px 外(实测 150% DPI, 元素 224 宽), 按 `XEle_GetWndClientRect` 的坐标算又偏到别处。要判断"这次点击是不是动作区", 用物理屏幕坐标反算: `wapi.GetCursorPos`(物理) − `wapi.ClientToScreen(hwnd, 0,0)` − `XEle_GetWndClientRectDPI`(物理客户区矩形), 再除以 `XWnd_GetDPI/96`; 不要用事件 `pPt` 直接比元素内的逻辑矩形。
+    - **普通 Element 悬停不会自动重绘**: rail(16px 热区)与分组动作钮(+ / …)的 `StateOf` 已变成 hover, 但画面不刷新, 淡入的底色/细线永远不出现; 在 ScrollArea 里补 `AddEvent_MouseStay` 也不可靠(同第八节 21)。改成宿主窗口级 `AddEvent_MouseMove` + `XEle_GetWndClientRect` 命中: 状态翻转时 `Redraw(true)`, 之后由 `xui.Hover` 的过渡定时器逐帧重绘。
+    - **构造期不能调 `SetZOrderEx`**: 窗口还没显示时它在 xcgui 内部访问违例(建页阶段直接崩, 栈在 `XEle_SetZOrderEx`)。要让 rail 压在 main 之上, 用索引入口 `SetZOrder(0)`(InputGroup 同款, 构造期安全)。
+    - **面板必须有确定高度**: 面板内部是 Header(Auto) + Content(ScrollArea, Weight 1) + Footer(Auto), Weight 只有父级高度确定时才算得出剩余空间 —— 外壳 `cy` 默认固定 480, 放进布局时用 `ItemHeight`/`ItemFillHeight` 给确定高度, 不要 Auto。
+    - **两种收起的几何**: icon = 面板宽度本身从 256 收到 48(内容按新宽度重排); offcanvas = 面板保持 256 宽、x 随 gap 滑出(内容不缩, 由父级裁剪)。floating/inset 的收起宽度是 66(外边距 8×2 + 2px 余量), 面板 50。
+    - **图标栏必须把动作/徽章/子菜单真正隐藏**: 菜单动作是绘制在按钮里的命中区, 图标栏里若只跳过绘制, 20×20 的命中区会盖在 34px 宽图标格的中央, 把图标点击吃掉。`applyIconMode` 里要关掉命中(`actionShown` 直接返回 false), 同时把子菜单/组标签 `Show(false)`(布局立即回缩)、菜单项高度改成 32(上游 `size-8!`, 所有尺寸档都一样)。
+    - **隐藏组标签留下的旧矩形不影响布局**: `Show(false)` 后 label 的 rect 还是旧值, 但父级布局会跳过它, 后面的菜单从 y=0 开始排; 不要用透明度代替 Show(false), 否则 32px 空档会一直在。
+    - **初始收起要直接把 progress 落到 0**: `Presence` 只在 SetOpen 时驱动过渡; 构造时 `WithSidebarOpen(false)` 必须同时把 `progress` 置 0(或 collapsible=none 时置 1), 否则首帧是展开宽度、下一帧才跳。
+    - **子菜单开合要自己量高并逐帧写回**: 子菜单是 LayoutEle, 收起时 `Show(false)` 让布局立即回缩; 做 200ms 过渡时先 `Show(true)+Auto` 量自然高, 再锁 `Fixed` 从 0/目标值逐帧写到 `target*v`, 每帧重排所在菜单/分组 + ScrollArea 内容(否则滚动范围与下方条目停在旧位置), 到位后展开恢复 `Auto`、收起再 `Show(false)`。chevron 用 `IconRotated(chevron-right, ±90°)` 表示开合, 图标栏形态下不画。初始展开的子菜单也要把它的 presence 键预热到 1, 否则第一次收起瞬跳(同侧栏宽度)。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
@@ -1869,3 +1887,4 @@ ui/
 - 可调分栏(见第八节 157): 分组/面板都是 LayoutEle(主轴 Fixed 由百分比算出、交叉轴 Fill); `xc.XEle_GetWndClientRectDPI`(物理客户区矩形 —— 与逻辑坐标的 `XEle_GetWndClientRect` 区分)、`wapi.ClientToScreen`、`wapi.SetCursorPos`、`wapi.LoadImageW(0, wapi.IDC_SIZEWE/IDC_SIZENS/IDC_ARROW, wapi.IMAGE_CURSOR, 0, 0, wapi.LR_DEFAULTSIZE|wapi.LR_SHARED)` + `Element.SetCursor`(col/row-resize 光标)、`Element.AddEvent_LButtonDBClick`(双击复位)
 - 侧边面板 / 抽屉 / 菜单栏(见第八节 120~125): `XWnd_GetBodyRect`(遮罩铺 Body)、`XEle_SetAlpha`(遮罩淡入, 不级联子元素)、`XEle_GetRect/SetRect`(面板整体平移, 逻辑像素)、`XEle_SetCapture`(抓手拖拽捕获鼠标)、`wapi.GetCursorPos`(拖拽用屏幕坐标算增量)、`wapi.GetForegroundWindow/SetForegroundWindow`(子菜单与父弹层的焦点归属判定)、`app.AfterFunc`(弹层关闭后延迟把焦点还给触发区, 否则被随后的窗口激活覆盖)
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`
+- 侧边栏(见第八节 158): `wapi.GetCursorPos` + `wapi.ClientToScreen(hwnd, &pt)` + `xc.XEle_GetWndClientRectDPI`(物理客户区矩形) + `xc.XWnd_GetDPI` 换算动作钮命中; `Element.SetZOrder(0)`(构造期抬升 Z 序, `SetZOrderEx` 在窗口未显示时会崩); `Window.AddEvent_MouseMove/AddEvent_MouseLeave`(普通 Element 的悬停兜底); `XWidget_IsShow`; `Painter.TextF` + `xcc.TextFormatFlag_NoWrap|xcc.TextTrimming_EllipsisCharacter`(菜单项长文本省略); `xui.Hover` + `Presence`(宽度 200ms 过渡, 挂宿主窗口)
