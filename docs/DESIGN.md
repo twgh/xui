@@ -241,6 +241,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Field | LayoutEle + Label/Element | 表单字段组合: Field/Set/Group 全是流式布局容器; Label/Description 走 Label, Separator 自绘线 + 背景压字, Error 多条 Label 去重; 横向 Content 固定 240(第八节 101) | field.tsx(radix-nova) |
 | Checkbox/Radio | embed Button | 画方框/圆 + 勾线, 文字原生 | BeautifyCheckBox/RadioButton 示例 |
 | Input | embed Edit | 只画边框+焦点环, 原生光标/IME | BeautifyEdit 示例 |
+| Textarea | embed Edit | Input 的多行预设 + **随内容自动长高**(第八节 166): 上下内边距 8(py-2)、最小高 64(min-h-16); 行数取原生 Edit 的显示行数(含折行), 内容装得下, 不挂滚动条 | textarea.tsx(radix-nova) |
 | InputGroup | LayoutEle(外框 + 三行) + 裸 Input | 输入框与 addon 共用一层边框/焦点环: 内层是 `WithInputBare` 裸输入, 环/禁用/校验由容器画; addon 四向(inline-start/end、block-start/end), 内容可 Text/Icon/Button/IconButton/Kbd/Spinner/MenuButton/自定义; 复合 addon(多控件、下拉菜单、按钮尺寸档)见第八节 165 | input-group.tsx |
 | Switch | 纯自绘 Element | 轨道+滑块, 尺寸预设; hover 过渡走运行时 `anim.go`(第八节 45); aria-invalid 红边 + 常驻红环, 空格切换, `SetDisabled` 关鼠标与键盘(第八节 146) | — |
 | Label/Separator/Badge | 纯 Element | paint | — |
@@ -286,6 +287,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | hover:bg-primary/80(实心)/80 透明度 | button.tsx variant.default |
 | focus-visible 键盘才显示焦点框,ring-3 ring-ring/50,边框变 Ring 色;destructive 变体**覆写**为 border-destructive/40 + ring-destructive/20;焦点内芯**先铺宿主底色再叠 bg** —— bg 可能是半透明色(destructive/10), 直接叠在 halo 上会变成 30% 红、内芯比光环还深, 浏览器里两者是各自独立合成在页面底色上的;幽灵/链接(bg=None)铺 Card 即"透明底透出面板色"(halo 画在元素矩形内, 口径同 FocusFrame) | button/input/checkbox 的 focus-visible:* |
 | 文本输入框点击聚焦也显示环(浏览器对文本控件恒匹配 focus-visible);禁用 = `bg-input/50`(暗色另有 `dark:bg-input/80`)再按组级乘 50%, 字色预混变淡 | input.tsx + 第八节 61 |
+| 文本域 = 输入框同款壳体/焦点环/校验环/禁用态 + **高度随内容自动增长**(min-h 64、上下内边距 8, 内容装得下所以没有滚动条);选中/输入法/右键菜单全部是原生多行 Edit 行为 | textarea.tsx(`field-sizing-content` / `min-h-16` / `py-2`) + 第八节 166 |
 | disabled:opacity-50 原色半透明 | 各组件 disabled:* |
 | **禁用/未选态的半透明令牌要"乘"不要"覆盖", 且先铺宿主底色**(暗色 input/border 令牌自带 alpha) | checkbox/radio/switch/input.tsx + 第八节 61 |
 | active:translate-y-px 按下整体下沉 1px(含文字→文字手动绘制);**aria-haspopup 触发区(菜单/下拉)不下沉**;aria-expanded 展开时 outline/ghost 换 bg-muted、secondary 保持 secondary 底 | button.tsx 基类 + aria-expanded 变体 |
@@ -398,6 +400,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | DatePicker / TimePicker | `WithDatePickerPlaceholder/Value/Invalid` / `WithTimePickerPlaceholder/Value/Invalid` + 运行时 `SetInvalid`; 程序化开关 `Open/Close/IsOpen`; DatePicker 另有 `Clear/SetValue/Text`; **范围**: `WithDatePickerRange` + `WithDatePickerRangeValue` + `Range/SetRange/OnRangeChange/RangeMode`; `WithDatePickerPresets` / `WithDatePickerYearRange` / `WithDatePickerDisabled` / `WithDatePickerEditable`(可输入触发区, 配 `ParseDateText(s)` 解析) | 选项名带组件前缀(组件同在 package ui); 弹层骨架 `popup.go` 是两个组件的内部实现, 随组件一起拷贝 |
 | 校验失败态(aria-invalid) | `WithButtonInvalid` / `WithInputInvalid` / `WithComboInvalid` + 运行时 `SetInvalid(bool)` | 选项名带组件前缀, 因为组件同在 `package ui`(Button/Input/ComboBox 三处语义相同); 详见语义表 |
 | Input 内嵌附加件 | `WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible(bool)` / `PasswordVisible()`) / `WithCounter(max)`; 步进器 `WithStepper(min,max,step)` + `SetNumber/Number/OnStep`(`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态, `WithStepperAutoHide` 让按钮只在悬停/聚焦时出现; 悬停底色/按下保持底色 + 箭头下沉 1px, 与 −/+ 一致) | shadcn 的 input-group 是"输入框 + 兄弟 addon"的复合结构(`InputGroupAddon` 里还能放按钮), 我们是**壳体内部自绘**的简化形态(不建子元素): 前置图标 + 前后缀文字 + 两个 ghost 钮(清除/眼睛) + 计数; 计数放在壳内右侧(上游示例是输入框**下方**右对齐的一行); stepper 上游没有官方组件, 语义取社区通行形态; 显隐切换需重排(见第八节 84) |
+| Textarea | `NewTextarea(x, y, cx, cy, parent, opts...)`(`opts` 与 Input 相同) + `SetValue` / `Refresh`; `cy` = 最小高度(0 = 64) | 对应 textarea.tsx: Input 的多行预设, 上下内边距 8(py-2)、min-h-16 + **field-sizing-content 自动长高**(见第八节 166); 行数取原生 Edit 的显示行数, 所以换行/缩放/换字体都对得上; 内容永远装得下 → 不挂滚动条; 需要固定高度或溢出滚动条时用 `Input` + `WithMultiline`(高度写在创建参数里) |
 | Input Group | `NewInputGroup(..., WithInputGroupInvalid/Disabled)` + `Addon(InputGroupInlineStart/InlineEnd/BlockStart/BlockEnd)` + `Input/Textarea/Search`; addon 内容 `Text` / `Icon` / `Button` / `IconButton` / `Kbd` / `Spinner` / `MenuButton(text, icon, build)` / `Content()`; `SetInvalid/SetDisabled/Focus` | 对应 input-group.tsx 的 `InputGroup/InputGroupAddon/InputGroupButton/InputGroupInput/InputGroupTextarea`: 按钮默认 ghost + xs、字号跟正文、圆角按 InputGroupButton 语义(147); 一个 addon 可放多个控件, 外扩量按 addon 整体算(165); `MenuButton` 用原生菜单(模态)承载下拉, 上游是 radix 非模态菜单 |
 | Card 头 | `ui.NewCardHeader(parent, space)` + `TitleStack` / `ActionStack` | 对应 `CardHeader` + `CardAction`(上游是 grid 1fr_auto); 动作区跨两行贴右上 |
 | ScrollArea | **本组件库形态**: 原生 LayoutFrame 载体 + 主题化滚动条(10px 轨道 + 8px 圆头滑块, 与 Table/Tree/ComboBox/多行 Input 共用 `scrollbar.go` 的统一收敛); 显隐同 radix 的 hover 淡入(150ms 淡入淡出); 只做纵向(上游 ScrollBar 有 horizontal 档); 隐藏页恢复可见后要延迟重排一次页面, 否则子控件命中区停在旧滚动位置 | 页面滚动容器; 语义与踩坑见第八节 66 |
@@ -1870,6 +1873,12 @@ xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
     - **外扩加在 addon, 不是每个按钮**: 上游 `has-[>button]:ml-[-0.3rem]` 写在 **addon** 上(has 选择器只判断有没有按钮); 照搬到按钮上会让"一个 addon 里两个按钮"各外扩 5 —— 输入框多占 10px, 两按钮之间也少 5px 间距。改为 `applyWidth` 里按 `hasBtn`(5)/`hasKbd`(2)给 addon 设一次负外边距; 删掉 `pullButton`。
     - **按钮布局高不能写死 24**: `fixButtonBox` 原先固定 24+pressShift, 把 sm/icon-sm(视觉 28)的按钮压成 23 并让文字偏上。改为 `b.Spec().height`(xs/icon-xs=24, sm/icon-sm=28)再加 pressShift, 底边距仍吃 -pressShift。
     - **复合 addon 的下拉菜单**: `MenuButton(text, icon, build)` = 组内按钮 + 原生菜单; 菜单只 build 一次(勾选/单选状态跨次打开保持), 点击走 `BnClick` → `Menu.PopupAtElement`, 并带 `WithButtonHasPopup`(按下不整体下沉)。原生菜单是模态的, 选完即关 —— 这是与 radix 非模态下拉的已知差异, 与库内其它 Menu 一致。
+
+166. **文本域自动长高: 行数取原生 Edit 的显示行数, 重排只交给 ScrollArea 框架**(`textarea.go`):
+    - **量高不能用文本宽度反推折行**: 自动换行是原生 Edit 自己折的, 同一段文字在不同宽度下行数不同。用 `XEdit_GetRowCountEx`(含折行)取显示行数, 行高用 `GetPoint(0,0).Y − 上内边距` 反推 —— 行坐标以元素客户区为原点, **不受滚动位置影响**(实测滚到底仍是同一个值); 高度 = 行数 × 行高 + 上下内边距, 再与最小高度(cy)取大。
+    - **不要在父链上逐级 AdjustLayout**: 文本域长高后逐级调用, 会让中间 Weight 布局在量算趟里把卡片/内容区宽度临时排成 0(实测), 兄弟位置反而没更新、下面的控件被压在文本域底下。只对最近的 ScrollArea 的 `LayoutFrame`(或窗口)调一次 `XEle_AdjustLayout`, 框架会统一更新内容区高度、兄弟位置与滚动范围(同 157 的 `adjustAncestors`)。
+    - **原生滚动条要关掉**: 留着的话内容在"改高度的那一帧"会先溢出、滚动条闪现, 它还占掉一行宽度, 下一帧宽度变了又要重新折行。`EnableAutoShowScrollBar(false)` + 两个滚动条 `Show(false)`; 自动长高后内容永远装得下。
+    - **触发点**: 内容变化(`AddEvent_Edit_Changed`; 程序化 `SetText` 另接 `AddEvent_Edit_Set`)、宽度变化(`AddEvent_Size`)、换主题(字体/字号变了行高也变, 且要重新钉住 8px 内边距)。量高一律 `AfterFunc(0)` 合并到下一轮, 避免在编辑/尺寸事件里重入布局; 改高度自身触发的那次 Size 用高度比对挡掉。
 
 ---
 

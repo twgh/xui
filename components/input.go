@@ -128,6 +128,9 @@ type Input struct {
 	// 左右内边距也改由外层按 addon 位置设置(setBareInsets)。
 	bare         bool
 	bareL, bareR int32
+	// padY 是文本域形态的上下文字内边距(0 = 默认 6)。Textarea 用 8 对齐上游 textarea.tsx
+	// 的 py-2; 单行输入框的 7/5 与它无关。
+	padY int32
 
 	leadingIcon string // 前置图标(lucide path)
 	prefix      string // 前置文字
@@ -415,7 +418,11 @@ func (i *Input) syncPadding() {
 	if i.multiline {
 		// 文本域必须自己给四周内边距: 原生 Edit 默认内边距为 0, 正文会压住圆角描边、
 		// 纵向滚动条也会贴着右边框(多行没有附加件, 所以这里不用算宽度)。
-		i.SetBorderSize(inputPadX, 6, inputPadX, 6)
+		padY := i.padY
+		if padY <= 0 {
+			padY = 6
+		}
+		i.SetBorderSize(inputPadX, padY, inputPadX, padY)
 		return
 	}
 	t := xui.Current()

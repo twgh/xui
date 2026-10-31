@@ -25,6 +25,10 @@
       "files": ["input.go", "scrollbar.go", "group.go"],
       "deps": []
     },
+    "textarea": {
+      "files": ["textarea.go", "input.go", "scrollbar.go", "group.go"],
+      "deps": []
+    },
     "label": {
       "files": ["label.go"],
       "deps": []
