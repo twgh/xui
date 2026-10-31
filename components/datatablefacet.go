@@ -16,10 +16,10 @@ import (
 // 圆角壳(无选中 = 描边, 有选中 = secondary 填充) + 前置 ⊕ 图标 + 列名 + 竖分隔 + 胶囊。
 
 const (
-	facetTriggerH int32 = 28 // h-7 附近, 与工具栏里 ButtonSizeSm 同高
+	facetTriggerH int32 = 28 // 与工具栏里 ButtonSizeSm 同高
 	facetChipH    int32 = 19
 	facetChipPad  int32 = 6
-	facetPadX     int32 = 6 // px-2 略宽一点, 胶囊贴着边不好看
+	facetPadX     int32 = 6
 	facetIconGap  int32 = 5
 	facetGap      int32 = 4 // 胶囊之间 gap-1
 )
@@ -28,30 +28,25 @@ const (
 type facetTrigger struct {
 	*widget.Element
 
-	title   string
-	icon    string
-	values  []string // 选中的选项文字(已按选项顺序)
-	open    bool     // 弹层是否展开(画成按下/展开色)
-	onClick func()
+	title  string
+	icon   string
+	values []string // 选中的选项文字(已按选项顺序)
+	open   bool     // 弹层是否展开(画成按下/展开色)
 }
 
-func newFacetTrigger(x, y, w, h int32, parent int, title, icon string, onClick func()) *facetTrigger {
+func newFacetTrigger(x, y, w, h int32, parent int, title, icon string) *facetTrigger {
 	ele := widget.NewElement(x, y, w, h, parent)
 	if ele == nil {
 		return nil
 	}
-	f := &facetTrigger{Element: ele, title: title, icon: icon, onClick: onClick}
+	f := &facetTrigger{Element: ele, title: title, icon: icon}
 	ele.EnableBkTransparent(true)
 	ele.EnableDrawBorder(false)
 	ele.EnableFocus(false)
 	ele.EnableSwitchFocus(false)
 	ele.AddEvent_Paint(f.onPaint)
-	ele.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-		if f.onClick != nil {
-			f.onClick()
-		}
-		return 0
-	})
+	// 点击交给 Popover 自己注册的 LButtonUp 处理(见 NewPopover) —— 不要在这里再挂一个
+	// 回调: 每个会话都新建一个 Popover 会给同一个元素反复挂 toggle, 点一次切多次(闪烁越开越多)。
 	return f
 }
 
@@ -75,18 +70,18 @@ func (f *facetTrigger) SetOpen(open bool) *facetTrigger {
 	return f
 }
 
-// naturalWidth 按内容算宽度(含胶囊): 与 Button.naturalWidth 同口径, 供工具栏设 ItemWidth。
+// naturalWidth 按内容算宽度(含胶囊), 供工具栏设 ItemWidth。
 func (f *facetTrigger) naturalWidth(t *xui.Theme) int32 {
 	if f == nil {
 		return 0
 	}
 	w := facetPadX*2 + 14 + facetIconGap + xui.TextWidth(f.title, f.fontHandle(t, false))
-	if len(f.values) > 0 {
-		w += 9 // 竖分隔左右各 4 + 1
-		for _, c := range f.chips() {
+	if chips := f.chips(); len(chips) > 0 {
+		w += 9 // 竖分隔: 左 4 + 1 + 右 4
+		for _, c := range chips {
 			w += xui.TextWidth(c, f.fontHandle(t, true)) + facetChipPad*2
 		}
-		w += int32(len(f.chips())-1) * facetGap
+		w += int32(len(chips)-1) * facetGap
 	}
 	return w
 }
@@ -126,14 +121,12 @@ func (f *facetTrigger) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	active := len(f.values) > 0
 
 	if active {
-		// 有选中 = secondary(与 Button.ButtonSecondary 同色), 悬停再压一档
 		bg := t.Secondary
 		if st.Hover || f.open {
 			bg = xui.Fade(t.Secondary, t.Accent, hv)
 		}
 		p.FillRound(&rc, bg, radius)
 	} else {
-		// 无选中 = 描边空态(近似 border-dashed 的观感)
 		if st.Hover || f.open {
 			p.FillRound(&rc, xui.Fade(t.Background, t.Accent, hv), radius)
 		}
@@ -151,7 +144,6 @@ func (f *facetTrigger) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	x += 14 + facetIconGap
 
-	// 列名
 	if fh := f.fontHandle(t, false); fh != 0 {
 		p.Draw.SetFont(fh)
 	}
@@ -165,7 +157,6 @@ func (f *facetTrigger) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		return 0
 	}
 
-	// 竖分隔(对应 shadcn 的 Separator, 高 h-4)
 	x += 4
 	sep := xc.RECT{Left: x, Top: mid - 8, Right: x + 1, Bottom: mid + 8}
 	p.FillRound(&sep, t.Border, 0)
@@ -186,9 +177,7 @@ func (f *facetTrigger) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	return 0
 }
 
-// ===== 分面筛选弹层(Command 承载搜索 + 多选 + 计数) =====
-
-const facetClearValue = "\x00clear"
+// ===== 分面筛选弹层(Popover + Command: 搜索 / 多选不关闭 / 计数 / 清除) =====
 
 // facetCounts 统计某列各选项在**当前其它筛选条件**下的行数(TanStack 的
 // getFacetedUniqueValues 口径: 统计时排除该列自身的分面筛选, 否则随便勾一个,
@@ -211,91 +200,6 @@ func (d *DataTable) facetCounts(ci int) map[string]int {
 	return out
 }
 
-// facetPanel 一次弹层的会话状态: 关掉就丢(计数与勾选都从 d 现算)。
-type facetPanel struct {
-	d     *DataTable
-	ci    int
-	pop   *Popover
-	cmd   *Command
-	items map[string]*CommandItem
-}
-
-// showFacetPanel 弹出某列的分面筛选面板。与旧版(Menu.Check)的差别: 面板里带搜索、
-// 点一项不关闭、右侧显示该选项当前行数、底部有"清除筛选"(对应 shadcn 的
-// DataTableFacetedFilter = Popover + Command)。
-func (d *DataTable) showFacetPanel(ci int) {
-	if ci < 0 || ci >= len(d.cols) {
-		return
-	}
-	col := d.cols[ci]
-	btn := d.facetBtns[ci]
-	if btn == nil {
-		return
-	}
-	// 再点一次 = 收起
-	if d.facetPanel != nil {
-		d.facetPanel.close()
-		return
-	}
-
-	const panelW int32 = 232 // 对齐 shadcn 的 w-[200px] + 内边距
-	p := &facetPanel{d: d, ci: ci, items: map[string]*CommandItem{}}
-
-	var pop *Popover
-	pop = NewPopover(btn.Handle,
-		WithPopoverWidth(panelW),
-		WithPopoverPadding(0),
-		WithPopoverOnOpenChange(func(open bool) {
-			btn.SetOpen(open)
-			if !open && d.facetPanel == p {
-				d.facetPanel = nil
-			}
-		}),
-		WithPopoverContent(func(content int) {
-			rowH := commandInputH + int32(len(col.FilterOptions))*commandItemH + commandGroupPad*2
-			p.cmd = NewCommand(0, 0, panelW, rowH, content,
-				WithCommandPlaceholder(col.Title),
-				WithCommandOnEscape(func() { pop.Close() }),
-				WithCommandOnSelect(func(v string) { p.selectValue(v) }),
-			)
-			xui.ItemWidth(p.cmd, panelW)
-			g := p.cmd.AddGroup("")
-			for _, opt := range col.FilterOptions {
-				opt := opt
-				v := opt.value()
-				opts := []CommandItemOption{
-					WithCommandItemChecked(d.facetHas(ci, v)),
-					WithCommandItemCount(0),
-					WithCommandItemKeywords(v),
-				}
-				if opt.Icon != "" {
-					opts = append(opts, WithCommandItemIcon(opt.Icon))
-				}
-				p.items[v] = g.AddItem(v, opt.Label, opts...)
-			}
-			clear := NewButton(0, 0, 0, 0, "清除筛选", content,
-				WithVariant(ButtonGhost), WithSize(ButtonSizeSm))
-			xui.ItemFill(clear)
-			clear.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-				d.clearFacet(ci)
-				p.refresh()
-				pop.Close()
-				return 0
-			})
-		}))
-	if pop == nil {
-		return
-	}
-	p.pop = pop
-	d.facetPanel = p
-	btn.SetOpen(true)
-	pop.Open()
-	p.refresh()
-	if p.cmd != nil {
-		p.cmd.Focus()
-	}
-}
-
 // facetLabels 返回某列已选选项的**显示文字**, 按选项声明顺序(触发胶囊与弹层都按这个顺序)。
 func (d *DataTable) facetLabels(ci int) []string {
 	if ci < 0 || ci >= len(d.cols) {
@@ -314,11 +218,100 @@ func (d *DataTable) facetLabels(ci int) []string {
 	return out
 }
 
+// facetPanel 一列分面筛选的常驻会话: 弹层/内容只建一次, 之后每次打开只刷新勾选与计数。
+// **不能每次点击都 NewPopover** —— 每个 Popover 都会往触发元素上挂一个 toggle 回调与
+// 一个 Destroy 订阅, 越开越多, 点一次切 N 次(表现为"越用越闪")。
+type facetPanel struct {
+	d     *DataTable
+	ci    int
+	btn   *facetTrigger
+	pop   *Popover
+	cmd   *Command
+	items map[string]*CommandItem
+}
+
+// newFacetPanel 建一列的面板(在 buildToolbar 里一次性创建, 不阻塞)。
+func (d *DataTable) newFacetPanel(ci int, btn *facetTrigger) *facetPanel {
+	p := &facetPanel{d: d, ci: ci, btn: btn, items: map[string]*CommandItem{}}
+	col := d.cols[ci]
+
+	const panelW int32 = 232
+	p.pop = NewPopover(btn.Handle,
+		WithPopoverWidth(panelW),
+		WithPopoverPadding(0),
+		WithPopoverAlign(PopoverAlignStart), // 左对齐, 与触发区起始边对齐(shadcn 的 align="start")
+		WithPopoverOnOpenChange(func(open bool) {
+			btn.SetOpen(open)
+			if open {
+				p.refresh()
+				if p.cmd != nil {
+					p.cmd.Focus()
+				}
+			}
+		}),
+		WithPopoverContent(func(content int) {
+			// 高度按内容精确给: Command 的 List 会把多出来的高度留成底部空白
+			// (空分组标签不画标题, 所以不要再加 commandHeadingH)。
+			h := commandInputH + commandGroupPad*2 + int32(len(col.FilterOptions))*commandItemH
+			p.cmd = NewCommand(0, 0, panelW, h, content,
+				WithCommandPlaceholder(col.Title),
+				WithCommandOnEscape(func() { p.pop.Close() }),
+				WithCommandOnSelect(func(v string) { p.selectValue(v) }),
+			)
+			xui.ItemWidth(p.cmd, panelW)
+			g := p.cmd.AddGroup("")
+			for _, opt := range col.FilterOptions {
+				opt := opt
+				v := opt.value()
+				opts := []CommandItemOption{
+					WithCommandItemCheckable(),
+					WithCommandItemChecked(d.facetHas(ci, v)),
+					WithCommandItemCount(0),
+					WithCommandItemKeywords(v),
+				}
+				if opt.Icon != "" {
+					opts = append(opts, WithCommandItemIcon(opt.Icon))
+				}
+				p.items[v] = g.AddItem(v, opt.Label, opts...)
+			}
+			// 列表与底部按钮之间的一条分割线(1px, 与 popover 等宽)
+			line := widget.NewElement(0, 0, panelW, 1, content)
+			if line != nil {
+				line.EnableBkTransparent(true)
+				line.EnableDrawBorder(false)
+				line.EnableFocus(false)
+				line.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+					pp := xui.BeginPaint(hEle, hDraw)
+					if pp != nil {
+						*pbHandled = true
+						pp.FillRound(&pp.Rc, xui.Current().Border, 0)
+					}
+					return 0
+				})
+				xui.ItemWidth(line, panelW)
+				xui.ItemHeight(line, 1)
+			}
+			// 清除筛选: 固定宽度而不是 Fill —— Fill 会按内容区全宽再叠边距, 悬停底色溢到弹窗外
+			clearW := panelW - 12
+			clear := NewButton(0, 0, clearW, 26, "清除筛选", content,
+				WithVariant(ButtonGhost), WithSize(ButtonSizeSm))
+			xui.ItemSize(clear, clearW, 26)
+			xui.ItemMargin(clear, 6, 4, 6, 6)
+			clear.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+				d.clearFacet(ci)
+				p.refresh()
+				p.pop.Close()
+				return 0
+			})
+		}))
+	if p.pop == nil {
+		return nil
+	}
+	return p
+}
+
 // selectValue 处理一次勾选/取消: 面板不关闭, 表格与计数实时刷新(shadcn 的多选语义)。
 func (p *facetPanel) selectValue(v string) {
-	if v == facetClearValue {
-		return
-	}
 	p.d.setFacet(p.ci, v, !p.d.facetHas(p.ci, v))
 	p.refresh()
 }
@@ -330,16 +323,5 @@ func (p *facetPanel) refresh() {
 		it.SetChecked(p.d.facetHas(p.ci, v))
 		it.SetCount(counts[v])
 	}
-	if p.d.facetPanel == p && p.ci < len(p.d.facetBtns) {
-		p.d.updateToolbar()
-	}
-}
-
-func (p *facetPanel) close() {
-	if p.pop != nil {
-		p.pop.Close()
-	}
-	if p.d.facetPanel == p {
-		p.d.facetPanel = nil
-	}
+	p.d.updateToolbar()
 }

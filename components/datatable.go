@@ -188,10 +188,10 @@ type DataTable struct {
 	viewBtn  *Button
 
 	// 分面筛选: facet 的键是 d.cols 下标, 值是选中的 Value 集合(列内 OR)。
-	facet      map[int]map[string]bool
-	facetBtns  map[int]*facetTrigger
-	facetPanel *facetPanel
-	resetBtn   *Button
+	facet       map[int]map[string]bool
+	facetBtns   map[int]*facetTrigger
+	facetPanels map[int]*facetPanel
+	resetBtn    *Button
 
 	filter     string
 	filterCols []int
@@ -327,15 +327,19 @@ func (d *DataTable) buildToolbar() {
 	// 分面筛选触发区(tasks 的 DataTableFacetedFilter): 自绘胶囊, 选中项直接显示在列名右侧
 	// (Button 只会画一行居中文字, 画不出分隔线 + 胶囊, 见 datatablefacet.go)。
 	d.facetBtns = map[int]*facetTrigger{}
+	d.facetPanels = map[int]*facetPanel{}
 	for ci := range d.cols {
 		if len(d.cols[ci].FilterOptions) == 0 {
 			continue
 		}
 		ci := ci
 		b := newFacetTrigger(0, 0, 0, facetTriggerH, d.toolbar.Handle,
-			d.cols[ci].Title, icons.IconCirclePlus, func() { d.showFacetPanel(ci) })
+			d.cols[ci].Title, icons.IconCirclePlus)
 		xui.ItemMargin(b, dataTableGap, 2, 0, 2)
 		d.facetBtns[ci] = b
+		// 面板随触发区一次建好(内容懒构建): 点击由 Popover 自己的 toggle 处理,
+		// 每次都新建 Popover 会重复挂事件, 越开越闪(见新建处的注释)。
+		d.facetPanels[ci] = d.newFacetPanel(ci, b)
 	}
 	// 重置(tasks 的 Reset): 关键字或分面筛选任一生效才出现。
 	d.resetBtn = NewButton(0, 0, 0, 0, "重置", d.toolbar.Handle,

@@ -1928,7 +1928,10 @@ xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
     - **为什么不用 Menu**: shadcn 的 `DataTableFacetedFilter` 是 Popover 里塞 Command —— 顶部搜索、条目带勾选框和右侧计数、点一项**不关闭**、底部"清除筛选"。原生 Menu 既没有内嵌编辑框、也画不出条目右侧计数、更做不到点完不关。改成 `NewPopover` + `NewCommand`, 并给 `CommandItem` 补了两档显示位(`WithCommandItemChecked` / `WithCommandItemCount`, 见 API 清单)。
     - **计数要排除本列自身的筛选**: 统计某列各选项行数时, 用 `dataTableView` 传一份**去掉该列**的 facet map —— 否则勾一个选项后其余选项的计数全变 0(与 TanStack 的 `getFacetedUniqueValues` 口径一致)。
     - **触发区必须自绘**(`facetTrigger`): Button 只画一行居中文字, 画不出"列名 | 竖分隔 | 选中项胶囊"。有选中铺 `secondary`、无选中 1px 描边; 胶囊最多两个, 第 3 个起收敛成"N 个已选"(对应 shadcn 的 3 selected)。宽度按内容算后写回 `ItemWidth`, 改完要 `AdjustLayout` + 重绘(见 172/173)。
-    - **状态不落地**: 勾选只进 `d.facet`, 面板每次打开按它现算勾选与计数; Popover 的开关回调里把会话对象清空并复位胶囊配色, 关掉即无残留。
+    - **状态不落地**: 勾选只进 `d.facet`, 面板每次打开按它现算勾选与计数; Popover 的开关回调里复位胶囊配色, 关掉即无残留。
+    - **面板必须常驻复用**: `NewPopover` 会往触发元素上挂 `LButtonUp`(toggle) 与 `Destroy` 订阅,**每次点击都新建一个 Popover** 就会越挂越多 —— 表现为"用得越久弹层越闪、点一次切多次"。做法: `buildToolbar` 里按列各建一个 `facetPanel`(Popover 内容懒构建), 之后只 `Open/Close` 与 `refresh`, 触发区自己**不要**再挂点击回调。
+    - **对齐与留白三个坑**: ① `PopoverAlignStart` 才能让面板与触发区左对齐(默认居中, 面板比触发区宽时会两边各溢出一半); ② 条目要 `WithCommandItemCheckable()` 让**未选中也画空框**, 否则勾选行比未选中行左移 24px, 整列文字对不齐; ③ Command 的 `cy` 要按"输入行 + 分组内边距 + 条目数 × 条目高"精确给(空分组不画标题, **别再加 heading 高度**), 多给的高度会全落在最后一项与底部按钮之间。
+    - **底部"清除筛选"**: 固定宽度 + 左右 6px 外边距, 不要用 `ItemFill` —— Fill 会按内容区全宽再叠边距, 悬停底色溢出弹窗两侧; 按钮上方单独放一条 1px 自绘元素当分割线(`Command` 的 `AddSeparator` 只在列表内部, 分隔线要跨整个弹层)。
 
 ---
 

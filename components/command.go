@@ -406,10 +406,16 @@ func WithCommandItemOnSelect(fn func(value string)) CommandItemOption {
 	return func(i *CommandItem) { i.onselect = fn }
 }
 
+// WithCommandItemCheckable 让条目**始终**保留左侧勾选框位置(未选中画空框)。
+// 只有勾选的条目才画框时, 选中与未选中的条目左边会差 24px, 整列文字对不齐。
+func WithCommandItemCheckable() CommandItemOption {
+	return func(i *CommandItem) { i.checkable = true }
+}
+
 // WithCommandItemChecked 设置条目左侧的勾选框(shadcn 的 CommandItem data-checked)。
 // 与下面几个用于"分面筛选"这类多选面板: 条目点击不关闭面板, 勾选态由调用方回写。
 func WithCommandItemChecked(on bool) CommandItemOption {
-	return func(i *CommandItem) { i.checked = on }
+	return func(i *CommandItem) { i.checkable = true; i.checked = on }
 }
 
 // WithCommandItemCount 在条目右侧显示一个数量(分面筛选里各选项的行数)。
@@ -474,10 +480,11 @@ type CommandItem struct {
 	active   bool
 	onselect func(value string)
 
-	// 分面筛选用的两个附加显示位(见 WithCommandItemChecked / WithCommandItemCount)
-	checked  bool
-	count    int
-	hasCount bool
+	// 分面筛选用的附加显示位(见 WithCommandItemCheckable / Checked / Count)
+	checkable bool
+	checked   bool
+	count     int
+	hasCount  bool
 }
 
 // SetChecked 更新勾选态(分面筛选在面板不关闭的情况下实时改)。
@@ -577,11 +584,16 @@ func (i *CommandItem) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	fg = fg.WithAlpha(alpha)
 
 	x := p.Rc.Left + 8
-	if i.checked {
+	if i.checkable {
 		box := xc.RECT{Left: x, Top: p.Rc.Top + 8, Right: x + 16, Bottom: p.Rc.Top + 24}
-		p.FillRound(&box, t.Primary.WithAlpha(alpha), t.RadiusSm())
-		ic := xc.RECT{Left: box.Left + 2, Top: box.Top + 2, Right: box.Right - 2, Bottom: box.Bottom - 2}
-		p.Icon(icons.IconCheck, &ic, t.PrimaryForeground.WithAlpha(alpha), 2.2)
+		if i.checked {
+			p.FillRound(&box, t.Primary.WithAlpha(alpha), t.RadiusSm())
+			ic := xc.RECT{Left: box.Left + 2, Top: box.Top + 2, Right: box.Right - 2, Bottom: box.Bottom - 2}
+			p.Icon(icons.IconCheck, &ic, t.PrimaryForeground.WithAlpha(alpha), 2.2)
+		} else {
+			// 未选中也画空框(与 shadcn 的 Checkbox 一致), 保证整列文字对齐
+			p.StrokeRound(&box, t.Border, t.RadiusSm(), 1)
+		}
 		x += 24 // 16 勾选框 + 8 gap-2
 	}
 	if i.icon != "" {
