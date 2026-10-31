@@ -59,6 +59,25 @@ type DataColumn struct {
 	Render func(p *xui.Painter, cell DataCell)
 	// Hidden 初始隐藏, 可在工具栏"视图"下拉里重新勾出(需要 WithDataTableColumnToggle)。
 	Hidden bool
+	// NoHide 为 true 时列头菜单里不提供"隐藏"(对应 tasks 的 canHide: false, 行操作列)。
+	NoHide bool
+	// FilterOptions 该列的分面筛选项: 非空时工具栏多出一个按钮(tasks 的
+	// DataTableFacetedFilter)。列内多选是 OR、列间是 AND, 并与关键字同时生效。
+	FilterOptions []DataFilterOption
+}
+
+// DataFilterOption 是一个分面筛选项: 与单元格**原始文本**相等即命中。
+type DataFilterOption struct {
+	Label string // 菜单里显示的文字
+	Value string // 比较用的值(空 = 用 Label)
+	Icon  string // 可选的 lucide path, 画在条目前的图标
+}
+
+func (o DataFilterOption) value() string {
+	if o.Value != "" {
+		return o.Value
+	}
+	return o.Label
 }
 
 // DataCell 传给 DataColumn.Render 的单元格信息。
@@ -133,12 +152,14 @@ func WithDataTableColumnToggle() DataTableOption {
 	return func(d *DataTable) { d.toggleOn = true }
 }
 
-// DataTable 数据表格: 在 Table 之上提供 **列排序 / 关键字筛选 / 分页**。
+// DataTable 数据表格: 在 Table 之上提供 **列排序 / 分面筛选 / 关键字筛选 / 分页**。
 //
 // 对齐 shadcn 的 Data Table 模式(TanStack Table 的 tasks 示例):
-//   - 可排序列的表头点击后在 升序 → 降序 → 不排序 之间循环, 图标依次是
-//     arrow-up-down(muted) / arrow-up / arrow-down;
-//   - 顶部筛选框输入即过滤(不区分大小写, 子串匹配), 过滤后回到第一页;
+//   - 列头点击弹菜单(升序 / 降序 / 隐藏): 升序降序是勾选项, 再点当前项 = 取消排序,
+//     图标依次是 arrow-up-down(muted) / arrow-up / arrow-down;
+//   - 顶部筛选框输入即过滤(不区分大小写, 子串匹配), 过滤后回到第一页; 配了
+//     DataColumn.FilterOptions 的列还会在工具栏多一个多选按钮(列内 OR、列间 AND);
+//   - 关键字或分面筛选生效时工具栏出现"重置";
 //   - 页脚: 左侧总行数(筛选中显示"筛选出 x / y 行"), 右侧每页行数下拉 +
 //     第 x / y 页 + 首页/上一页/下一页/末页按钮, 到端点自动禁用;
 //   - 排序列与筛选条件变化都会回到第一页(autoResetPageIndex 语义)。
@@ -165,6 +186,11 @@ type DataTable struct {
 
 	toggleOn bool
 	viewBtn  *Button
+
+	// 分面筛选: facet 的键是 d.cols 下标, 值是选中的 Value 集合(列内 OR)。
+	facet     map[int]map[string]bool
+	facetBtns map[int]*Button
+	resetBtn  *Button
 
 	filter     string
 	filterCols []int
@@ -199,6 +225,7 @@ type DataTable struct {
 	onRow    func(row int)
 	onCell   func(row, col int)
 	onSel    func(rows []int)
+	onFacet  func(col int, values []string)
 }
 
 // NewDataTable 创建数据表格。cols 末列 Width<=0 时占满剩余宽度。
@@ -230,6 +257,7 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 		d.pageSizes = append([]int{d.pageSize}, d.pageSizes...)
 	}
 	d.selected = map[int]bool{}
+	d.facet = map[int]map[string]bool{}
 	d.visible = d.initVisible()
 
 	ele.EnableHorizon(false)
@@ -243,7 +271,7 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 	// 根是 Auto 高时, 里面 Weight 高的表格不会撑出高度(整块塌成 0, 实测见 DESIGN 8.164)。
 	if cy <= 0 {
 		total := d.minBodyH() + dataTableFooterH + dataTableGap
-		if d.searchOn || d.toggleOn {
+		if d.toolbarOn() {
 			total += dataTableToolbarH + dataTableGap
 		}
 		ele.SetHeight(total)
@@ -258,8 +286,23 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 	return d
 }
 
+// hasFacets 报告是否存在分面筛选列(某列配了 FilterOptions)。
+func (d *DataTable) hasFacets() bool {
+	for _, c := range d.cols {
+		if len(c.FilterOptions) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// toolbarOn 报告工具栏是否出现(筛选框 / 分面筛选 / 视图下拉 任一开启)。
+func (d *DataTable) toolbarOn() bool {
+	return d.searchOn || d.toggleOn || d.hasFacets()
+}
+
 func (d *DataTable) buildToolbar() {
-	if !d.searchOn && !d.toggleOn {
+	if !d.toolbarOn() {
 		return
 	}
 	d.toolbar = xui.HStack(d.Handle, dataTableToolbarH, 0)
@@ -280,6 +323,34 @@ func (d *DataTable) buildToolbar() {
 			}
 		})
 	}
+	// 分面筛选按钮(tasks 的 DataTableFacetedFilter): 列内多选, 选中数写进按钮文字。
+	d.facetBtns = map[int]*Button{}
+	for ci := range d.cols {
+		if len(d.cols[ci].FilterOptions) == 0 {
+			continue
+		}
+		ci := ci
+		b := NewButton(0, 0, 0, 0, d.cols[ci].Title, d.toolbar.Handle,
+			WithVariant(ButtonOutline), WithSize(ButtonSizeSm),
+			WithButtonLeadingIcon(icons.IconCirclePlus))
+		xui.ItemMargin(b, dataTableGap, 2, 0, 2)
+		d.facetBtns[ci] = b
+		b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+			d.showFacetMenu(ci, hEle)
+			return 0
+		})
+	}
+	// 重置(tasks 的 Reset): 关键字或分面筛选任一生效才出现。
+	d.resetBtn = NewButton(0, 0, 0, 0, "重置", d.toolbar.Handle,
+		WithVariant(ButtonGhost), WithSize(ButtonSizeSm))
+	xui.ItemSize(d.resetBtn, 0, 28) // 默认收起(固定宽 0 + 隐藏)
+	xui.ItemMargin(d.resetBtn, 0, 2, 0, 2)
+	d.resetBtn.Show(false)
+	d.resetBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		d.ResetFilters()
+		return 0
+	})
+	d.updateToolbar()
 	if d.toggleOn {
 		// 对应 tasks 示例工具栏右侧的 View 下拉(DataTableViewOptions): 逐列显隐。
 		d.viewBtn = NewButton(0, 0, 0, 0, "视图", d.toolbar.Handle,
@@ -350,10 +421,12 @@ func (d *DataTable) buildTable() {
 			*pbHandled = true
 			return 0
 		}
-		if ci := d.colAt(iItem); ci >= 0 && d.cols[ci].Sortable {
-			d.toggleSort(ci)
-			*pbHandled = true
+		ci := d.colAt(iItem)
+		if ci < 0 || (!d.cols[ci].Sortable && !d.canHide(ci)) {
+			return 0 // 既不能排序也不能隐藏: 表头当普通文字用
 		}
+		d.showHeaderMenu(ci)
+		*pbHandled = true
 		return 0
 	})
 
@@ -699,6 +772,200 @@ func (d *DataTable) showViewMenu(hEle int) {
 	m.PopupAtElement(hEle)
 }
 
+// ===== 分面筛选 =====
+
+// showFacetMenu 弹出某列的分面筛选菜单(Menu.Check, 列内多选)。
+func (d *DataTable) showFacetMenu(ci, hEle int) {
+	if ci < 0 || ci >= len(d.cols) {
+		return
+	}
+	col := d.cols[ci]
+	if b := d.facetBtns[ci]; b != nil {
+		b.SetExpanded(true)
+		b.Redraw(true) // 原生菜单阻塞, 不先重绘就看不到展开色
+		defer b.SetExpanded(false)
+	}
+	m := NewMenu()
+	m.Width(176)
+	m.Label(col.Title)
+	for _, opt := range col.FilterOptions {
+		opt := opt
+		v := opt.value()
+		mo := []MenuOpt{MenuOnCheck(func(on bool) { d.setFacet(ci, v, on) })}
+		if opt.Icon != "" {
+			mo = append(mo, MenuIcon(opt.Icon))
+		}
+		m.Check(opt.Label, d.facetHas(ci, v), mo...)
+	}
+	if len(d.facet[ci]) > 0 {
+		m.Separator()
+		m.Item("清除筛选", MenuOnSelect(func() { d.clearFacet(ci) }))
+	}
+	m.PopupAtElement(hEle)
+}
+
+// setFacet 勾选/取消一个分面值(value 是该列的单元格原始文本)。
+func (d *DataTable) setFacet(col int, value string, on bool) {
+	if d.facet == nil {
+		d.facet = map[int]map[string]bool{}
+	}
+	set := d.facet[col]
+	if on {
+		if set == nil {
+			set = map[string]bool{}
+			d.facet[col] = set
+		}
+		set[value] = true
+	} else if set != nil {
+		delete(set, value)
+		if len(set) == 0 {
+			delete(d.facet, col)
+		}
+	}
+	d.afterFacetChange(col)
+}
+
+// clearFacet 清掉某列的全部分面选择。
+func (d *DataTable) clearFacet(col int) {
+	if _, ok := d.facet[col]; !ok {
+		return
+	}
+	delete(d.facet, col)
+	d.afterFacetChange(col)
+}
+
+func (d *DataTable) afterFacetChange(col int) {
+	d.apply(true)
+	d.updateToolbar()
+	if d.onFacet != nil {
+		d.onFacet(col, d.FacetValues(col))
+	}
+}
+
+func (d *DataTable) facetHas(col int, value string) bool {
+	return d.facet[col][value]
+}
+
+// facetActive 报告是否有任一分面筛选生效。
+func (d *DataTable) facetActive() bool {
+	for _, set := range d.facet {
+		if len(set) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// filtersActive 报告关键字或分面筛选是否有生效的(决定页脚文案与"重置"是否出现)。
+func (d *DataTable) filtersActive() bool {
+	return strings.TrimSpace(d.filter) != "" || d.facetActive()
+}
+
+// updateToolbar 按筛选状态刷新工具栏: 分面按钮显示"列名 + 已选数", "重置"按需出现。
+func (d *DataTable) updateToolbar() {
+	if d.toolbar == nil {
+		return
+	}
+	th := xui.Current()
+	for ci, b := range d.facetBtns {
+		text := d.cols[ci].Title
+		if n := len(d.facet[ci]); n > 0 {
+			text = fmt.Sprintf("%s %d", text, n)
+		}
+		if b.GetText() != text {
+			b.SetText(text)
+		}
+		w := b.naturalWidth(th)
+		b.SetWidth(w)
+		xui.ItemWidth(b, w)
+		// 有选中时是"已生效"的弱化填充, 没选中是虚线描边的空态(tasks 示例的
+		// border-dashed + bg-secondary), 这里用 secondary/outline 两档变体近似。
+		if len(d.facet[ci]) > 0 {
+			b.SetVariant(ButtonSecondary)
+		} else {
+			b.SetVariant(ButtonOutline)
+		}
+		b.Redraw(false)
+	}
+	if d.resetBtn != nil {
+		on := d.filtersActive()
+		if on {
+			w := d.resetBtn.naturalWidth(th)
+			d.resetBtn.Show(true)
+			d.resetBtn.SetWidth(w)
+			xui.ItemWidth(d.resetBtn, w)
+			xui.ItemMargin(d.resetBtn, dataTableGap, 2, 0, 2)
+		} else {
+			d.resetBtn.Show(false)
+			xui.ItemWidth(d.resetBtn, 0)
+			xui.ItemMargin(d.resetBtn, 0, 2, 0, 2)
+		}
+	}
+	xc.XEle_AdjustLayout(d.toolbar.Handle)
+}
+
+// ResetFilters 清空关键字与全部分面筛选(工具栏"重置"按钮的行为)。
+func (d *DataTable) ResetFilters() *DataTable {
+	d.facet = map[int]map[string]bool{}
+	hadFilter := d.filter != ""
+	d.filter = ""
+	if d.search != nil && d.search.Value() != "" {
+		d.suppressSearch = true
+		d.search.SetValue("")
+		d.suppressSearch = false
+		d.search.Redraw(false) // 清除钮的命中区是 paint 时重建的(见 DESIGN 8.163)
+	}
+	d.apply(true)
+	d.updateToolbar()
+	if hadFilter && d.onFilter != nil {
+		d.onFilter("")
+	}
+	if d.onFacet != nil {
+		d.onFacet(-1, nil)
+	}
+	return d
+}
+
+// FacetValues 返回某列当前选中的分面值(升序)。
+func (d *DataTable) FacetValues(col int) []string {
+	set := d.facet[col]
+	out := make([]string, 0, len(set))
+	for v, on := range set {
+		if on {
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// SetFacet 用给定值覆盖某列的分面筛选(空列表 = 清除), 回到第一页。
+func (d *DataTable) SetFacet(col int, values ...string) *DataTable {
+	if col < 0 || col >= len(d.cols) {
+		return d
+	}
+	if len(values) == 0 {
+		d.clearFacet(col)
+		return d
+	}
+	set := make(map[string]bool, len(values))
+	for _, v := range values {
+		set[v] = true // 空串也是合法值: 用来筛"这一列没填"的行
+	}
+	if d.facet == nil {
+		d.facet = map[int]map[string]bool{}
+	}
+	d.facet[col] = set
+	d.afterFacetChange(col)
+	return d
+}
+
+// OnFacetChange 注册分面筛选变化回调(col = -1 表示整体重置, values 是升序的值快照)。
+func (d *DataTable) OnFacetChange(fn func(col int, values []string)) *DataTable {
+	d.onFacet = fn
+	return d
+}
+
 // ===== 内部: 勾选状态 =====
 
 // pageSelection 统计当前页的(已勾选数, 行数) —— 表头全选的判断口径(TanStack 的
@@ -781,7 +1048,7 @@ func (d *DataTable) apply(resetPage bool) {
 	if d.sortCol >= 0 && d.sortCol < len(d.cols) {
 		cmp = d.cols[d.sortCol].Compare
 	}
-	d.view = dataTableView(d.rows, d.filter, d.filterCols, d.sortCol, d.sortDir, cmp)
+	d.view = dataTableView(d.rows, d.filter, d.filterCols, d.facet, d.sortCol, d.sortDir, cmp)
 	if resetPage {
 		d.page = 0
 	}
@@ -856,7 +1123,7 @@ func (d *DataTable) syncFooter() {
 	pages := d.PageCount()
 	if d.totalLabel != nil {
 		text := fmt.Sprintf("共 %d 行", len(d.rows))
-		if strings.TrimSpace(d.filter) != "" {
+		if d.filtersActive() {
 			text = fmt.Sprintf("筛选出 %d / %d 行", len(d.view), len(d.rows))
 		}
 		// 有勾选时优先显示"已选 x / y 行"(tasks 示例页脚的 "{n} of {m} row(s) selected"),
@@ -892,9 +1159,54 @@ func (d *DataTable) syncFooter() {
 	}
 }
 
-// toggleSort 按 升序 → 降序 → 不排序 循环(同 TanStack 的默认排序移除语义)。
-func (d *DataTable) toggleSort(col int) {
-	d.sortCol, d.sortDir = nextDataSort(d.sortCol, d.sortDir, col)
+// canHide 报告该列能否隐藏: 显式 NoHide 的列不行, 最后一列也不能(表格会变空壳)。
+func (d *DataTable) canHide(ci int) bool {
+	if ci < 0 || ci >= len(d.cols) || d.cols[ci].NoHide {
+		return false
+	}
+	return len(d.visible) > 1
+}
+
+// showHeaderMenu 弹出列头菜单(tasks 的 DataTableColumnHeader): 升序 / 降序 / 隐藏。
+// 升序降序是勾选项 —— 再点一次当前项 = 取消排序, 保留"升→降→取消"的能力;
+// 隐藏走 SetColumnVisible(重建列结构, 见 8.169)。
+func (d *DataTable) showHeaderMenu(ci int) {
+	col := d.cols[ci]
+	m := NewMenu()
+	m.Width(160)
+	if col.Sortable {
+		m.Check("升序", d.sortCol == ci && d.sortDir == DataSortAsc,
+			MenuIcon(icons.IconArrowUp), MenuOnCheck(func(on bool) {
+				d.applyHeaderSort(ci, DataSortAsc, on)
+			}))
+		m.Check("降序", d.sortCol == ci && d.sortDir == DataSortDesc,
+			MenuIcon(icons.IconArrowDown), MenuOnCheck(func(on bool) {
+				d.applyHeaderSort(ci, DataSortDesc, on)
+			}))
+	}
+	if d.canHide(ci) {
+		if col.Sortable {
+			m.Separator()
+		}
+		m.Item("隐藏", MenuIcon(icons.IconEyeOff), MenuOnSelect(func() {
+			d.SetColumnVisible(ci, false)
+		}))
+	}
+	// 表头点击不带元素句柄, 直接在光标处弹(鼠标就在该列表头上)。
+	m.PopupAtCursor(xc.XWidget_GetHWINDOW(d.Handle))
+	if d.table != nil {
+		d.table.Redraw(false) // 排序图标要跟着新状态变
+	}
+}
+
+// applyHeaderSort 处理列头菜单的勾选: on=false 表示点了当前已激活的那一项 = 取消排序。
+func (d *DataTable) applyHeaderSort(ci int, dir DataSort, on bool) {
+	switch {
+	case on:
+		d.sortCol, d.sortDir = ci, dir
+	case d.sortCol == ci && d.sortDir == dir:
+		d.sortCol, d.sortDir = -1, DataSortNone
+	}
 	d.apply(true)
 	if d.onSort != nil {
 		d.onSort(d.sortCol, d.sortDir)
@@ -1021,20 +1333,6 @@ func (d *DataTable) paintEmpty(hEle, hDraw int, pbHandled *bool) int {
 
 // ===== 纯逻辑(单测覆盖) =====
 
-// nextDataSort 是表头点击的排序循环: 新列 → 升序; 同列升序 → 降序; 同列降序 → 取消。
-func nextDataSort(curCol int, curDir DataSort, col int) (int, DataSort) {
-	switch {
-	case curCol != col:
-		return col, DataSortAsc
-	case curDir == DataSortAsc:
-		return col, DataSortDesc
-	case curDir == DataSortDesc:
-		return -1, DataSortNone
-	default:
-		return col, DataSortAsc
-	}
-}
-
 func dataPageCount(n, size int) int {
 	if size <= 0 {
 		size = 1
@@ -1046,12 +1344,15 @@ func dataPageCount(n, size int) int {
 	return pages
 }
 
-// dataTableView 返回过滤 + 排序后的原始行下标。compare 为 nil 时用 dataCompare。
-func dataTableView(rows [][]string, filter string, filterCols []int, sortCol int, dir DataSort,
-	compare func(a, b string) int) []int {
+// dataTableView 返回过滤(分面 + 关键字) + 排序后的原始行下标。compare 为 nil 时用 dataCompare。
+func dataTableView(rows [][]string, filter string, filterCols []int, facets map[int]map[string]bool,
+	sortCol int, dir DataSort, compare func(a, b string) int) []int {
 	f := strings.ToLower(strings.TrimSpace(filter))
 	view := make([]int, 0, len(rows))
 	for i, row := range rows {
+		if !dataRowMatchesFacets(row, facets) {
+			continue
+		}
 		if f != "" && !dataRowMatches(row, f, filterCols) {
 			continue
 		}
@@ -1080,6 +1381,24 @@ func dataTableView(rows [][]string, filter string, filterCols []int, sortCol int
 		return c < 0
 	})
 	return view
+}
+
+// dataRowMatchesFacets 判断行是否命中全部分面筛选: **列内多选是 OR, 列间是 AND**,
+// 与单元格原始文本做**相等**比较(tasks 里的状态/优先级筛选就是这个口径)。
+func dataRowMatchesFacets(row []string, facets map[int]map[string]bool) bool {
+	for col, set := range facets {
+		if len(set) == 0 {
+			continue
+		}
+		cell := ""
+		if col >= 0 && col < len(row) {
+			cell = row[col]
+		}
+		if !set[cell] {
+			return false
+		}
+	}
+	return true
 }
 
 func dataRowMatches(row []string, filter string, cols []int) bool {

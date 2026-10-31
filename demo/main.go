@@ -3040,14 +3040,25 @@ func buildDataPage(body *widget.LayoutEle) {
 	// ---- 数据表格(整行占满剩余高度, 表格跟随窗口长高) ----
 	_, v := stretchCard(colStretch(r.Handle, 3, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v.Handle))
-	xui.ItemFill(desc(v.Handle, "DataTable(tasks 风格): 勾选列 + 富单元格 + 视图列显隐 + 表头排序 + 筛选翻页。"))
+	xui.ItemFill(desc(v.Handle, "DataTable(tasks 风格): 勾选列 + 富单元格 + 分面筛选 + 列头菜单 + 视图显隐。"))
 	xui.ItemFillHeight(v) // 内容区占满卡片剩余高度
 	dt := ui.NewDataTable(0, 0, 0, 0, v.Handle, []ui.DataColumn{
 		{Title: "任务", Width: 92, Sortable: true, Render: taskIDCell},
 		{Title: "标题", Sortable: true, Render: taskTitleCell}, // Width<=0: 占满剩余宽度
-		{Title: "状态", Width: 104, Sortable: true, Render: taskStatusCell},
-		{Title: "优先级", Width: 92, Sortable: true, Render: taskPriorityCell},
-		{Title: "操作", Width: 52, Render: taskActionCell},
+		{Title: "状态", Width: 104, Sortable: true, Render: taskStatusCell,
+			FilterOptions: []ui.DataFilterOption{ // 工具栏"状态"多选(列内 OR)
+				{Label: "待办", Icon: icons.IconCircleDashed},
+				{Label: "进行中", Icon: icons.IconTimer},
+				{Label: "已完成", Icon: icons.IconCircleCheck},
+				{Label: "已取消", Icon: icons.IconCircleX},
+			}},
+		{Title: "优先级", Width: 92, Sortable: true, Render: taskPriorityCell,
+			FilterOptions: []ui.DataFilterOption{
+				{Label: "高", Icon: icons.IconArrowUp},
+				{Label: "中", Icon: icons.IconArrowRight},
+				{Label: "低", Icon: icons.IconArrowDown},
+			}},
+		{Title: "操作", Width: 52, NoHide: true, Render: taskActionCell}, // 行操作列不进"隐藏"
 	},
 		ui.WithDataTableSelection(),
 		ui.WithDataTableColumnToggle(),
@@ -3070,6 +3081,9 @@ func buildDataPage(body *widget.LayoutEle) {
 	})
 	dt.OnSelectionChange(func(sel []int) {
 		fmt.Printf("勾选: %v\n", sel)
+	})
+	dt.OnFacetChange(func(col int, values []string) {
+		fmt.Printf("分面筛选: 列 %d = %v (剩 %d 行)\n", col, values, dt.FilteredRows())
 	})
 	dt.OnCellClick(func(row, col int) {
 		if col == taskColAction { // 行操作: 在光标处弹官方 tasks 菜单

@@ -27,7 +27,7 @@ func TestDataTableViewFilter(t *testing.T) {
 		{"无匹配", "zzz", nil, []int{}},
 	}
 	for _, c := range cases {
-		got := dataTableView(rows, c.filter, c.cols, -1, DataSortNone, nil)
+		got := dataTableView(rows, c.filter, c.cols, nil, -1, DataSortNone, nil)
 		if !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}
@@ -40,19 +40,19 @@ func TestDataTableViewSort(t *testing.T) {
 		{"李四", "¥300.00", "2026-10-01"},
 		{"王五", "¥99.00", "2026-10-02"},
 	}
-	asc := dataTableView(rows, "", nil, 1, DataSortAsc, nil)
+	asc := dataTableView(rows, "", nil, nil, 1, DataSortAsc, nil)
 	if want := []int{2, 1, 0}; !reflect.DeepEqual(asc, want) {
 		t.Fatalf("金额升序: got %v, want %v", asc, want)
 	}
-	desc := dataTableView(rows, "", nil, 1, DataSortDesc, nil)
+	desc := dataTableView(rows, "", nil, nil, 1, DataSortDesc, nil)
 	if want := []int{0, 1, 2}; !reflect.DeepEqual(desc, want) {
 		t.Fatalf("金额降序: got %v, want %v", desc, want)
 	}
-	dateAsc := dataTableView(rows, "", nil, 2, DataSortAsc, nil)
+	dateAsc := dataTableView(rows, "", nil, nil, 2, DataSortAsc, nil)
 	if want := []int{1, 2, 0}; !reflect.DeepEqual(dateAsc, want) {
 		t.Fatalf("日期升序: got %v, want %v", dateAsc, want)
 	}
-	none := dataTableView(rows, "", nil, -1, DataSortNone, nil)
+	none := dataTableView(rows, "", nil, nil, -1, DataSortNone, nil)
 	if want := []int{0, 1, 2}; !reflect.DeepEqual(none, want) {
 		t.Fatalf("不排序保持原始顺序: got %v, want %v", none, want)
 	}
@@ -64,7 +64,7 @@ func TestDataTableViewSortStableAndCustom(t *testing.T) {
 		{"a", "2"},
 		{"c", "1"},
 	}
-	got := dataTableView(rows, "", nil, 1, DataSortAsc, nil)
+	got := dataTableView(rows, "", nil, nil, 1, DataSortAsc, nil)
 	if want := []int{2, 0, 1}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("同值保持原始顺序(稳定排序): got %v, want %v", got, want)
 	}
@@ -78,7 +78,7 @@ func TestDataTableViewSortStableAndCustom(t *testing.T) {
 		}
 		return 0
 	}
-	got = dataTableView(rows, "", nil, 0, DataSortAsc, cmp)
+	got = dataTableView(rows, "", nil, nil, 0, DataSortAsc, cmp)
 	if want := []int{2, 0, 1}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("自定义比较: got %v, want %v", got, want)
 	}
@@ -106,23 +106,34 @@ func TestDataCompareNumericAndNatural(t *testing.T) {
 	}
 }
 
-func TestNextDataSortCycle(t *testing.T) {
-	col, dir := -1, DataSortNone
-	col, dir = nextDataSort(col, dir, 2)
-	if col != 2 || dir != DataSortAsc {
-		t.Fatalf("首次点击 → 升序, got col=%d dir=%v", col, dir)
+func TestDataTableViewFacets(t *testing.T) {
+	rows := [][]string{
+		{"A", "进行中", "高"},
+		{"B", "待办", "低"},
+		{"C", "进行中", "低"},
+		{"D", "已完成", ""},
 	}
-	col, dir = nextDataSort(col, dir, 2)
-	if col != 2 || dir != DataSortDesc {
-		t.Fatalf("第二次点击 → 降序, got col=%d dir=%v", col, dir)
+	// 列内多选是 OR: 进行中 或 待办
+	got := dataTableView(rows, "", nil, map[int]map[string]bool{1: {"进行中": true, "待办": true}},
+		-1, DataSortNone, nil)
+	if want := []int{0, 1, 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("列内 OR: got %v, want %v", got, want)
 	}
-	col, dir = nextDataSort(col, dir, 2)
-	if col != -1 || dir != DataSortNone {
-		t.Fatalf("第三次点击 → 取消排序, got col=%d dir=%v", col, dir)
+	// 列间是 AND: 状态 ∈ {进行中} 且 优先级 ∈ {低}
+	got = dataTableView(rows, "", nil,
+		map[int]map[string]bool{1: {"进行中": true}, 2: {"低": true}}, -1, DataSortNone, nil)
+	if want := []int{2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("列间 AND: got %v, want %v", got, want)
 	}
-	col, dir = nextDataSort(col, dir, 1)
-	if col != 1 || dir != DataSortAsc {
-		t.Fatalf("换列 → 升序, got col=%d dir=%v", col, dir)
+	// 空串可以作为值(筛"这一列没填"的行)
+	got = dataTableView(rows, "", nil, map[int]map[string]bool{2: {"": true}}, -1, DataSortNone, nil)
+	if want := []int{3}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("空值筛选: got %v, want %v", got, want)
+	}
+	// 分面 + 关键字叠加
+	got = dataTableView(rows, "c", nil, map[int]map[string]bool{1: {"进行中": true}}, -1, DataSortNone, nil)
+	if want := []int{2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("分面 ∩ 关键字: got %v, want %v", got, want)
 	}
 }
 

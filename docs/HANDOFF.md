@@ -29,6 +29,12 @@
   - **demo**: 表单1 输入组卡新增两行(下拉菜单 / 一个 addon 里两个按钮 sm + icon-sm)。
   - **验收**: 探针矩形(单按钮 addon 溢出 5 / 按钮右缘距边框 3、两按钮只溢出 5 且间距 8 / 元素高 29、Kbd 溢出 2 且距边框 6、菜单点击出现 All/Files)+ demo 亮/暗 150% DPI(无裁切/重叠)+ `go build/vet/test ./...` 全绿;`xui add input-group` 闭包与 `add --all` 编译通过。
   - registry: `input-group` 的 deps 加 `menu`(MenuButton)。
+- ✅ **批次 11B: Data Table 分面筛选 / 列头菜单**(2026-10-31, 参 shadcn tasks 示例的 `data-table-faceted-filter.tsx` / `data-table-column-header.tsx`):
+  - **分面筛选**: `DataColumn.FilterOptions []DataFilterOption{Label,Value,Icon}` —— 工具栏按列生成 `⊕ 列名` 按钮, 点开 `Menu.Check` 勾选清单(带图标), 有选中时按钮文字变"列名 N"并切 `ButtonSecondary`, 菜单底部有"清除筛选"; 判定 = 单元格**原始文本**相等, 列内 OR / 列间 AND, 与关键字叠加; 新增 `SetFacet/FacetValues/ResetFilters/OnFacetChange`, 关键字或分面生效时工具栏出现"重置"。
+  - **列头菜单**: 表头点击不再循环排序, 改为弹 `升序 / 降序 / 隐藏` 菜单(`Menu.PopupAtCursor`); 升序降序是勾选项, 再点当前项 = 取消排序(保住原来的"升→降→取消"); `DataColumn.NoHide` 让行操作列不出现在"隐藏"里; 删掉 `nextDataSort`。
+  - **踩坑(DESIGN 171/172)**: 分面筛选必须比原始文本(自绘列的原生文本是空串, 拿渲染结果没法比); 布局项"收起"要 `ItemWidth(0)` + `ItemMargin(0,…)` + `Show(false)` 三件套, 展开后按 `naturalWidth` 重算并 `XEle_AdjustLayout`, 只 `Show(false)` 会留一块空白。
+  - **demo**: 状态列挂 4 个筛选项(待办/进行中/已完成/已取消, 带状态图标)、优先级列挂 3 个(高/中/低, 带箭头), 操作列 `NoHide`; 卡片描述改为"分面筛选 + 列头菜单"。
+  - **验收**: 真实鼠标点 `状态` → 菜单四项带图标 → 勾"进行中" → 表只剩 7 行、按钮显示"状态 1"、"重置"出现、页脚"筛选出 7 / 24 行"、页码回 1/1; 点列头 → 升序/降序/隐藏菜单;`go build/vet/test ./...` 全绿;`xui add data-table` 闭包 + `add --all` 编译通过。
 - ✅ **批次 11A: Data Table 富单元格 / 行勾选 / 列显隐**(2026-10-31, 参 shadcn tasks 示例的 `columns.tsx` / `data-table-view-options.tsx`):
   - **Table**(`components/table.go`): 加 `TableColumn.Align`(原生文本对齐)、`Table.SetColumns(cols)` 换列结构(`DeleteColumnAll` 后**必须重建行适配器**, 见 DESIGN 169)、内部钩子 `onCellExtra`(按单元格的扩展绘制, 见 167/168)。
   - **DataTable**: `WithDataTableSelection`(勾选列 + 表头整页全选 / 不确定态, 勾选按**原始行**存, 翻页 / 排序 / 筛选不丢, 勾选行整行铺 `Muted`)、`WithDataTableColumnToggle`(工具栏"视图"下拉 = `Menu.Check` 列清单)、`DataColumn{Render,Align,Hidden}`(富单元格不写原生文本)、`OnCellClick(row,col)`、`Selected/SetSelected/ClearSelection/IsSelected/SelectedCount/OnSelectionChange`、`SetColumnVisible/ColumnVisible/SetColumns`; 有勾选时页脚把总行数换成"已选 x / y 行"。
@@ -773,9 +779,9 @@
 
 ## 待办
 
-- ⬜ **Data Table 对齐 shadcn 官方 tasks 示例**(用户提出: 现在的数据页示例太简单; 官方 https://ui.shadcn.com/docs/components/data-table 的示例有完整工具栏 / 勾选列 / 行操作)。**批次 A 已完成**(富单元格 / 行勾选 / 列显隐 / 行操作, 见批次 11A), 余下:
-  - **批次 B(筛选与列头)**: ⑤**分面筛选** —— `DataColumn.FilterOptions` + 工具栏 Status / Priority 多选(复选菜单 + 已选计数)+ 有筛选时显示 Reset。⑥**列头下拉** —— Asc / Desc / Hide(官方 DataTableColumnHeader); **会改变现有「表头点击循环排序」语义**, 改前先更新 DESIGN 第四节末的语义汇总表。
-  - 上游参考: `apps/v4/app/(app)/examples/tasks/components/{columns,data-table,data-table-toolbar,data-table-pagination,data-table-view-options,data-table-row-actions,data-table-column-header}.tsx`(仓库 `shadcn-ui/ui`); 现状差异见 DESIGN 差异表「DataTable(未做)」。
+- ✅ **Data Table 对齐 shadcn 官方 tasks 示例**: 批次 A(富单元格 / 行勾选 / 列显隐 / 行操作, 见批次 11A)与批次 B(分面筛选 / 列头菜单, 见批次 11B)均已完成。
+  - **仍未做**: 多列排序、列拖拽、跨页"全选所有筛选结果"(只做整页)、行拖拽、表头 hover 底色(原生 List 表头悬停不触发重绘)。
+  - 上游参考: `apps/v4/app/(app)/examples/tasks/components/{columns,data-table,data-table-toolbar,data-table-pagination,data-table-view-options,data-table-row-actions,data-table-column-header,data-table-faceted-filter}.tsx`(仓库 `shadcn-ui/ui`); 差异见 DESIGN 差异表「DataTable(未做)」。
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)。
 - ⬜ **可选(不阻塞)**: 补齐本地 shadcn 参考实现中旧批次组件的 tsx 与 App.tsx 对照卡(alert / alert-dialog / aspect-ratio / breadcrumb / button-group / calendar / chart / context-menu / empty / field / item / sonner / toggle / toggle-group); 对应 Go 组件均已实现并验收, 仅用于逐像素视觉对照。calendar / chart / sonner 需要额外 npm 依赖。Data Table / Combobox 是组合模式, 无独立 tsx。
 
