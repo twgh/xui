@@ -2570,7 +2570,7 @@ func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(rt2)
 	tipRight := mkTipBtn("右侧", rt2)
 	tip.BindTip(tipRight.Handle, "右对齐 + 6px 间距", ui.WithTipSide(ui.TipRight),
-		ui.WithTipAlign(ui.TipAlignEnd), ui.WithTipOffset(6))
+		ui.WithTipAlign(ui.TipAlignCenter), ui.WithTipOffset(6))
 	tipKbd := mkTipBtn("快捷键", rt2)
 	tip.BindTip(tipKbd.Handle, "打开命令面板", ui.WithTipShortcut("Ctrl+K"))
 

@@ -78,7 +78,7 @@
       "deps": ["button"]
     },
     "tooltip": {
-      "files": ["tooltip.go"],
+      "files": ["tooltip.go", "group.go", "press.go"],
       "deps": []
     },
     "toast": {

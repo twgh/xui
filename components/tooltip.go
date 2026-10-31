@@ -507,6 +507,12 @@ func (t *Tooltip) showNow(hEle int) {
 	// 箭头尖端扎进目标元素里)。
 	var rc, wr xc.RECT
 	xc.XEle_GetWndClientRect(hEle, &rc)
+	// Button 的元素高度比可见壳体多 pressShift(按下位移预留, 见 press.go), 底边比壳体低
+	// 1px。对齐要按壳体算: 否则 align=end 时气泡底边探出按钮底边(用户反馈"右侧提示偏下"),
+	// side=bottom 的气泡也会离按钮远 1px。
+	if xc.XEle_GetUserData(hEle) == uiRoleButton {
+		rc.Bottom -= pressShift
+	}
 	xc.XWnd_GetRect(hWnd, &wr)
 	sx, sy := wr.Left+rc.Left, wr.Top+rc.Top
 	ex, ey := rc.Right-rc.Left, rc.Bottom-rc.Top
@@ -616,8 +622,22 @@ func (t *Tooltip) showNow(hEle int) {
 	xc.XEle_SetRect(t.ele.Handle, &xc.RECT{Left: 0, Top: 0, Right: ww, Bottom: wh}, false, xcc.AdjustLayout_No)
 	// 注意: XWnd_SetWindowPos 直接透传给 Win32, 用的是物理像素(框架内部坐标是逻辑像素,
 	// 窗口创建时由框架按 DPI 缩放), 所以这里要自己乘 DPI 比例, 否则窗口会跑到 1/scale 处。
-	px := int32(float64(x) * scale)
-	py := int32(float64(y) * scale)
+	//
+	// 乘的时候不能拿 x/y 直接乘: XWnd_GetRect 返回的逻辑屏幕坐标是框架从物理矩形取整来的,
+	// 再乘回去等于取整两次 —— 显示器原点不是 scale 的整数倍时(150% 下 x=2570 / y=-743 的
+	// 副屏), 主屏上的"偏上 1px"到副屏就变成"偏下 1px", 同一条提示换个屏幕对齐就不一样。
+	// 用元素左上角的**物理**位置做锚点, 只把逻辑相对偏移 (x-sx)/(y-sy) 换算成物理像素。
+	anchorX, anchorY := float64(sx)*scale, float64(sy)*scale
+	if hwnd := xc.XWnd_GetHWND(hWnd); hwnd != 0 {
+		var rcd, wpr xc.RECT
+		xc.XEle_GetWndClientRectDPI(hEle, &rcd)
+		wapi.GetWindowRect(hwnd, &wpr)
+		if rcd.Right > rcd.Left && rcd.Bottom > rcd.Top { // 取不到/元素无尺寸时退回逻辑换算
+			anchorX, anchorY = float64(wpr.Left+rcd.Left), float64(wpr.Top+rcd.Top)
+		}
+	}
+	px := int32(math.Round(anchorX + float64(x-sx)*scale))
+	py := int32(math.Round(anchorY + float64(y-sy)*scale))
 	fresh := !t.shown
 	t.fadeGen++ // 作废上一次的进场/退场帧(见 fadeGen 的说明)
 	gen := t.fadeGen
