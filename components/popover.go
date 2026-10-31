@@ -220,6 +220,21 @@ func (p *Popover) Refresh() *Popover {
 	return p
 }
 
+// SetContentHeight 直接指定内容高度, 打开中也立刻生效(不经过离屏测量, 不闪)。
+// 用于内容高度可以自己算准的场景 —— 比如"底部按钮按需显隐"的面板: 子项显隐后
+// 走 Refresh 只会 AdjustLayout, 窗口高度不会跟着变, 于是按钮那一段变成空白。
+func (p *Popover) SetContentHeight(h int32) *Popover {
+	if p == nil || h <= 0 {
+		return p
+	}
+	p.height = h
+	if p.panel != nil && p.panel.IsOpen() && p.panel.alive() {
+		p.panel.resize(p.width, h)
+	}
+	p.measured = true
+	return p
+}
+
 // measure 量一次内容高度/应用固定高度; 首次 Open 与 Refresh 时调用。
 func (p *Popover) measure() {
 	if p.height > 0 {

@@ -36,6 +36,7 @@
   - registry: `data-table` 的 `files` 加 `datatablefacet.go`, `deps` 加 `command`、`popover`。
   - **验收**: 打开面板 → 4 项带图标与计数(7/7/6/4)、搜索框可用; 勾 1 个 → 表实时过滤、触发区出现一个胶囊; 勾 3 个 → 胶囊收敛"3 个已选"、面板不关闭、页脚同步; `go build/vet/test ./...` 全绿; 单装 + `add --all` 编译通过。
   - **用户复看后的修**: ① 面板改 `PopoverAlignStart` 左对齐; ② **每列只建一个常驻 Popover**(原来每次点击都新建 → 触发元素上的 toggle 回调越挂越多, 表现为"越开越闪"); ③ `WithCommandItemCheckable` 让未选中也画空框(否则勾选行左移 24px 对不齐); ④ Command 高度去掉多余的 heading 高度(最后一项与清除按钮之间原来空一大块); ⑤ 清除按钮改固定宽 + 左右 6px 边距(原来 `ItemFill` 让悬停底色溢出弹窗); ⑥ 列表与清除按钮之间补 1px 分割线。
+  - **第二轮复看**: ⑦ 清除按钮高度 26 → 32(悬停底色太窄看着不舒服), 左右边距 6 → 4; ⑧ **Command 的布局项高度一起钉住**(`ItemSize`), 只设宽时分割线被推到更低的位置 → 那才是"空白太大"的真因, `cy = 输入行 + 条目数×条目高 + 8`(再少就裁行 + 出滚动条); ⑨ **未勾选时不显示清除按钮**(与 shadcn 一致), 收起要连布局项一起归零, 高度用新加的 `Popover.SetContentHeight` 直接改窗口(打开中 Refresh 不改高度, 会整块空白); ⑩ 点清除按钮时 `Command.ClearActive()`, 否则列表里那行还留着高亮(看着像两处都有焦点)。
 - ✅ **批次 11B: Data Table 分面筛选 / 列头菜单**(2026-10-31, 参 shadcn tasks 示例的 `data-table-faceted-filter.tsx` / `data-table-column-header.tsx`):
   - **分面筛选**: `DataColumn.FilterOptions []DataFilterOption{Label,Value,Icon}` —— 工具栏按列生成 `⊕ 列名` 按钮, 点开 `Menu.Check` 勾选清单(带图标), 有选中时按钮文字变"列名 N"并切 `ButtonSecondary`, 菜单底部有"清除筛选"; 判定 = 单元格**原始文本**相等, 列内 OR / 列间 AND, 与关键字叠加; 新增 `SetFacet/FacetValues/ResetFilters/OnFacetChange`, 关键字或分面生效时工具栏出现"重置"。
   - **列头菜单**: 表头点击不再循环排序, 改为弹 `升序 / 降序 / 隐藏` 菜单(`Menu.PopupAtCursor`); 升序降序是勾选项, 再点当前项 = 取消排序(保住原来的"升→降→取消"); `DataColumn.NoHide` 让行操作列不出现在"隐藏"里; 删掉 `nextDataSort`。

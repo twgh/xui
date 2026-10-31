@@ -227,6 +227,8 @@ type facetPanel struct {
 	btn   *facetTrigger
 	pop   *Popover
 	cmd   *Command
+	line  *widget.Element
+	clear *Button
 	items map[string]*CommandItem
 }
 
@@ -235,7 +237,7 @@ func (d *DataTable) newFacetPanel(ci int, btn *facetTrigger) *facetPanel {
 	p := &facetPanel{d: d, ci: ci, btn: btn, items: map[string]*CommandItem{}}
 	col := d.cols[ci]
 
-	const panelW int32 = 232
+	const panelW = facetPanelW
 	p.pop = NewPopover(btn.Handle,
 		WithPopoverWidth(panelW),
 		WithPopoverPadding(0),
@@ -250,15 +252,16 @@ func (d *DataTable) newFacetPanel(ci int, btn *facetTrigger) *facetPanel {
 			}
 		}),
 		WithPopoverContent(func(content int) {
-			// 高度按内容精确给: Command 的 List 会把多出来的高度留成底部空白
-			// (空分组标签不画标题, 所以不要再加 commandHeadingH)。
-			h := commandInputH + commandGroupPad*2 + int32(len(col.FilterOptions))*commandItemH
-			p.cmd = NewCommand(0, 0, panelW, h, content,
+			// Command 的高度按内容精确给: List 会把多出来的高度留在底部, 分割线就被推远了。
+			// (空分组标签不画标题, 所以不要再加 commandHeadingH。)
+			p.cmd = NewCommand(0, 0, panelW, p.cmdHeight(), content,
 				WithCommandPlaceholder(col.Title),
 				WithCommandOnEscape(func() { p.pop.Close() }),
 				WithCommandOnSelect(func(v string) { p.selectValue(v) }),
 			)
-			xui.ItemWidth(p.cmd, panelW)
+			// 布局项高度必须一起钉住: 只设宽度时竖向流按"自动高度"排, 分割线会被推到
+			// 一个比 Command 实际矩形更低的位置, 看着就是最后一项与分割线之间空一大块。
+			xui.ItemSize(p.cmd, panelW, p.cmdHeight())
 			g := p.cmd.AddGroup("")
 			for _, opt := range col.FilterOptions {
 				opt := opt
@@ -274,7 +277,7 @@ func (d *DataTable) newFacetPanel(ci int, btn *facetTrigger) *facetPanel {
 				}
 				p.items[v] = g.AddItem(v, opt.Label, opts...)
 			}
-			// 列表与底部按钮之间的一条分割线(1px, 与 popover 等宽)
+			// 列表与底部按钮之间的一条分割线(1px, 与弹层等宽)
 			line := widget.NewElement(0, 0, panelW, 1, content)
 			if line != nil {
 				line.EnableBkTransparent(true)
@@ -290,24 +293,84 @@ func (d *DataTable) newFacetPanel(ci int, btn *facetTrigger) *facetPanel {
 				})
 				xui.ItemWidth(line, panelW)
 				xui.ItemHeight(line, 1)
+				p.line = line
 			}
-			// 清除筛选: 固定宽度而不是 Fill —— Fill 会按内容区全宽再叠边距, 悬停底色溢到弹窗外
-			clearW := panelW - 12
-			clear := NewButton(0, 0, clearW, 26, "清除筛选", content,
+			// 清除筛选: 固定宽度而不是 Fill —— Fill 会按内容区全宽再叠边距, 悬停底色溢到弹窗外。
+			// 高度取 32(shadcn 的 h-8), 太矮时悬停底色像一条窄条。
+			clearW, clearH := panelW-8, int32(32)
+			clear := NewButton(0, 0, clearW, clearH, "清除筛选", content,
 				WithVariant(ButtonGhost), WithSize(ButtonSizeSm))
-			xui.ItemSize(clear, clearW, 26)
-			xui.ItemMargin(clear, 6, 4, 6, 6)
+			xui.ItemSize(clear, clearW, clearH)
+			xui.ItemMargin(clear, 4, 4, 4, 4)
 			clear.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+				// 焦点落到按钮上, 列表里的高亮项要撤掉, 否则看起来两处都有焦点
+				p.cmd.ClearActive()
 				d.clearFacet(ci)
 				p.refresh()
 				p.pop.Close()
 				return 0
 			})
+			p.clear = clear
+			p.layout() // 构建完就把高度/显隐定下来(首次 Open 的 measure 直接用这个高度)
 		}))
 	if p.pop == nil {
 		return nil
 	}
 	return p
+}
+
+// facetPanelW 弹层宽度(对齐 shadcn 的 w-[200px] + 内边距)。
+const facetPanelW int32 = 232
+
+// facetClearH 底部"清除筛选"按钮高度(shadcn 的 h-8; 太矮时悬停底色像一条窄条)。
+const facetClearH int32 = 32
+
+// cmdHeight Command 区的精确高度。Command 的 List 会把多出来的高度留在底部,
+// 所以不能再按"整段"给, 否则最后一项与分割线之间会空一大块。
+func (p *facetPanel) cmdHeight() int32 {
+	n := int32(len(p.d.cols[p.ci].FilterOptions))
+	// +8 是 Command 列表的上下内边距: 少给几像素列表就出滚动条, 多给几像素最后一项
+	// 与分割线之间就空一块, 实测 8 是不出滚动条的最小值。
+	// +8 是 Command 列表能不出滚动条的最小余量(再少一行被裁、且右侧出滚动条),
+	// 这部分会变成最后一项与分割线之间的留白, 与 shadcn 的 p-1 视觉相当。
+	return commandInputH + n*commandItemH + 8
+}
+
+// layout 按"当前是否勾选"决定底部那一段(分割线 + 清除按钮)在不在, 并把弹层高度
+// 改成精确值: 未勾选时 shadcn 不显示清除按钮, 留白要一起收掉(只 Show(false) 布局项
+// 仍占位, 见 172)。高度用 SetContentHeight 直接改窗口, 不走离屏测量(那样会闪)。
+func (p *facetPanel) layout() {
+	if p.pop == nil {
+		return
+	}
+	has := len(p.d.facet[p.ci]) > 0
+	h := p.cmdHeight()
+	if has {
+		if p.line != nil {
+			p.line.Show(true)
+			xui.ItemWidth(p.line, facetPanelW)
+			xui.ItemHeight(p.line, 1)
+		}
+		if p.clear != nil {
+			p.clear.Show(true)
+			xui.ItemSize(p.clear, facetPanelW-8, facetClearH)
+			xui.ItemMargin(p.clear, 4, 4, 4, 4)
+		}
+		h += 1 + 8 + facetClearH + 12
+	} else {
+		if p.line != nil {
+			p.line.Show(false)
+			xui.ItemWidth(p.line, 0)
+			xui.ItemHeight(p.line, 0)
+		}
+		if p.clear != nil {
+			p.clear.Show(false)
+			xui.ItemSize(p.clear, 0, 0)
+			xui.ItemMargin(p.clear, 0, 0, 0, 0)
+		}
+		h += 4
+	}
+	p.pop.SetContentHeight(h)
 }
 
 // selectValue 处理一次勾选/取消: 面板不关闭, 表格与计数实时刷新(shadcn 的多选语义)。
@@ -323,5 +386,6 @@ func (p *facetPanel) refresh() {
 		it.SetChecked(p.d.facetHas(p.ci, v))
 		it.SetCount(counts[v])
 	}
+	p.layout()
 	p.d.updateToolbar()
 }

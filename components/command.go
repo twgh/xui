@@ -487,6 +487,18 @@ type CommandItem struct {
 	hasCount  bool
 }
 
+// ClearActive 清掉当前高亮项。焦点移到弹层外的控件(比如底部按钮)时调用,
+// 否则列表里那一行还留着 accent 底色, 看起来像"两处同时有焦点"。
+func (c *Command) ClearActive() *Command {
+	if c == nil {
+		return c
+	}
+	for _, it := range c.items {
+		it.setActive(false)
+	}
+	return c
+}
+
 // SetChecked 更新勾选态(分面筛选在面板不关闭的情况下实时改)。
 func (i *CommandItem) SetChecked(on bool) *CommandItem {
 	if i == nil || i.checked == on {
