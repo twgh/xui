@@ -149,6 +149,12 @@ type Input struct {
 	hoverInput bool            // 鼠标是否停在输入框上(stepAuto 用)
 	pressed    inputPart       // 当前按下的内嵌件(按压反馈"下沉"用; partNone = 无)
 	parts      []inputPartRect // 内嵌件命中区(paint 时重算)
+
+	// changeFns: OnChange 注册的内容变化回调。清除按钮清空文本走的是程序化
+	// XEdit_SetText, 原生不发变更事件 —— 不自己广播的话"点 × 清空后筛选/搜索不刷新"。
+	changeFns      []func(string)
+	changeWired    bool
+	suppressChange bool // 内部程序化改文本(清除)期间屏蔽原生事件, 避免回调读到旧值
 }
 
 // InputOption 组件配置项。
@@ -796,7 +802,12 @@ func (i *Input) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool
 func (i *Input) activate(part inputPart) {
 	switch part {
 	case partClear:
+		// XEdit_SetText 不发原生变更事件, 且事件(如果有)可能读到旧文本:
+		// 内部替换期间屏蔽事件, 替换完自己广播一次, 回调拿到的必然是新值。
+		i.suppressChange = true
 		i.SetText("")
+		i.suppressChange = false
+		i.emitChange()
 		i.SetFocus()
 	case partToggle:
 		i.setMasked(!i.password)
@@ -962,13 +973,31 @@ func (i *Input) SetValue(s string) *Input {
 	return i
 }
 
-// OnChange 注册内容变化回调。
+// OnChange 注册内容变化回调。用户输入、清除按钮清空都会触发; 程序化 SetValue 触发
+// 原生变更事件时同样会回调(与过去一致)。
 func (i *Input) OnChange(fn func(text string)) *Input {
-	i.AddEvent_Edit_Changed(func(hEle int, pbHandled *bool) int {
-		fn(i.GetText())
-		return 0
-	})
+	i.changeFns = append(i.changeFns, fn)
+	if !i.changeWired {
+		i.changeWired = true
+		i.AddEvent_Edit_Changed(func(hEle int, pbHandled *bool) int {
+			if i.suppressChange {
+				return 0
+			}
+			i.emitChange()
+			return 0
+		})
+	}
 	return i
+}
+
+func (i *Input) emitChange() {
+	if len(i.changeFns) == 0 {
+		return
+	}
+	text := i.GetText()
+	for _, fn := range i.changeFns {
+		fn(text)
+	}
 }
 
 func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {

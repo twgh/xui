@@ -121,6 +121,10 @@
       "files": ["table.go", "scrollbar.go"],
       "deps": []
     },
+    "data-table": {
+      "files": ["datatable.go"],
+      "deps": ["table", "input", "button", "label", "select"]
+    },
     "tree": {
       "files": ["tree.go", "scrollbar.go"],
       "deps": []

@@ -30,25 +30,25 @@ import (
 
 // 页面序号, 与 pageTitles 一一对应。
 const (
-	pageBase1 = iota // 基础1: 按钮 / 按钮组 / 切换按钮
-	pageBase2        // 基础2: 徽章 / 分隔线 / 标签 / 快捷键 / 加载 / 骨架 / 头像
-	pageBase3        // 基础3: 弹出层 / 轮播 / 分栏 / 卡片 / 比例容器
-	pageBase4        // 基础4: 滚动容器 / 列表项 / 手风琴
-	pageForm1        // 表单1: 输入 / 验证码 / 滑动条
-	pageForm2        // 表单2: 复选 / 单选 / 开关 / 下拉框 / Select
-	pageForm3        // 表单3: 字段与分组(Field / FieldSet)
-	pageForm4        // 表单4: 日期与时间 / 月历 / 范围与预设
-	pageForm5        // 表单5: 单选组 / 复选框三态与校验
-	pageNav1         // 导航1: 命令面板 / 下拉菜单 / 右键菜单
-	pageNav2         // 导航2: 标签页 / 面包屑 / 分页 / 可折叠面板
-	pageNav3         // 导航3: 导航菜单(NavigationMenu) + 菜单栏(Menubar)
-	pageNav4         // 导航4: 侧边栏(Sidebar)
-	pageFeed1        // 反馈1: 对话框 / 提示气泡 / 警示对话框 / 对话框变体
-	pageFeed2        // 反馈2: 提示条 / 通知 / 进度 / 空状态
-	pageFeed3        // 反馈3: 侧边 Sheet / 底部 Drawer
-	pageCharts       // 图表: 柱状 / 折线 / 面积 / 饼环
-	pageData         // 数据: 表格 / 树
-	pageIcons        // 图标: 图标总览
+	pageBase1  = iota // 基础1: 按钮 / 按钮组 / 切换按钮
+	pageBase2         // 基础2: 徽章 / 分隔线 / 标签 / 快捷键 / 加载 / 骨架 / 头像
+	pageBase3         // 基础3: 弹出层 / 轮播 / 分栏 / 卡片 / 比例容器
+	pageBase4         // 基础4: 滚动容器 / 列表项 / 手风琴
+	pageForm1         // 表单1: 输入 / 验证码 / 滑动条
+	pageForm2         // 表单2: 复选 / 单选 / 开关 / 下拉框 / Select
+	pageForm3         // 表单3: 字段与分组(Field / FieldSet)
+	pageForm4         // 表单4: 日期与时间 / 月历 / 范围与预设
+	pageForm5         // 表单5: 单选组 / 复选框三态与校验
+	pageNav1          // 导航1: 命令面板 / 下拉菜单 / 右键菜单
+	pageNav2          // 导航2: 标签页 / 面包屑 / 分页 / 可折叠面板
+	pageNav3          // 导航3: 导航菜单(NavigationMenu) + 菜单栏(Menubar)
+	pageNav4          // 导航4: 侧边栏(Sidebar)
+	pageFeed1         // 反馈1: 对话框 / 提示气泡 / 警示对话框 / 对话框变体
+	pageFeed2         // 反馈2: 提示条 / 通知 / 进度 / 空状态
+	pageFeed3         // 反馈3: 侧边 Sheet / 底部 Drawer
+	pageCharts        // 图表: 柱状 / 折线 / 面积 / 饼环
+	pageData          // 数据: 数据表格(DataTable) / 树
+	pageIcons         // 图标: 图标总览
 	pageCount
 )
 
@@ -2905,8 +2905,6 @@ func buildDrawerDemo(hWindow int, openBtn *ui.Button, status *ui.Label) {
 	dr.BindTrigger(openBtn)
 }
 
-// ===== 页 17: 数据(表格 / 树) =====
-
 // ===== 页 17: 图表(Chart) =====
 // 每张卡片一张图: 柱状(分组/堆叠) / 折线 / 面积(堆叠) / 环形 / 饼图。
 // 图表高度是显式常量(240): 自绘几何按元素矩形算, 高度必须确定, 不能靠内容自撑。
@@ -3018,24 +3016,24 @@ func buildChartPage(body *widget.LayoutEle) {
 	xui.ItemFill(radar)
 }
 
+// ===== 页 18: 数据(DataTable / 树) =====
 func buildDataPage(body *widget.LayoutEle) {
 	r := rowStretch(body.Handle, gap) // 铺满型页面: 表格/树跟随窗口长高(内容区已 SetContentFill)
 
-	// ---- 表格(整行占满剩余高度, 表格跟随窗口长高) ----
+	// ---- 数据表格(整行占满剩余高度, 表格跟随窗口长高) ----
 	_, v := stretchCard(colStretch(r.Handle, 3, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v.Handle))
-	xui.ItemFill(desc(v.Handle, "原生 List 载体 + 全自绘皮肤: 表头 / 行底 / 行边框 / 滚动条。"+
-		"行悬浮 hover:bg-muted/50, 选中的行 bg-muted, 最后一行不画底边。"))
+	xui.ItemFill(desc(v.Handle, "DataTable: 表头排序(升→降→取消) + 顶部筛选 + 页脚翻页。底层仍是 Table。"))
 	xui.ItemFillHeight(v) // 内容区占满卡片剩余高度
-	table := ui.NewTable(0, 0, 0, 0, v.Handle, []ui.TableColumn{
-		{Title: "客户", Width: 200},
-		{Title: "状态", Width: 120},
-		{Title: "金额", Width: 120},
-		{Title: "日期"}, // Width<=0: 占满剩余宽度
-	})
-	xui.ItemFill(table)
-	xui.ItemFillHeight(table) // 表格占满内容区里"标题/说明之外"的剩余高度
-	for _, cells := range [][4]string{
+	dt := ui.NewDataTable(0, 0, 0, 0, v.Handle, []ui.DataColumn{
+		{Title: "客户", Width: 160, Sortable: true},
+		{Title: "状态", Width: 110, Sortable: true},
+		{Title: "金额", Width: 130, Sortable: true},
+		{Title: "日期", Sortable: true}, // Width<=0: 占满剩余宽度
+	}, ui.WithDataTablePageSize(10), ui.WithDataTablePageSizes(10, 20, 30))
+	xui.ItemFill(dt)
+	xui.ItemFillHeight(dt) // 表格占满内容区里"标题/说明之外"的剩余高度
+	dt.SetRows([][]string{
 		{"张三", "已支付", "¥1,250.00", "2026-10-01"},
 		{"李四", "待支付", "¥300.00", "2026-10-02"},
 		{"王五", "已退款", "¥99.00", "2026-10-03"},
@@ -3048,12 +3046,12 @@ func buildDataPage(body *widget.LayoutEle) {
 		{"王二", "已支付", "¥880.00", "2026-10-10"},
 		{"冯三", "处理中", "¥640.00", "2026-10-11"},
 		{"陈四", "已支付", "¥1,990.00", "2026-10-12"},
-	} {
-		table.AddRow(cells[0], cells[1], cells[2], cells[3])
-	}
-	table.Select(1)
-	table.OnSelect(func(row int32) {
-		fmt.Printf("选中行: %d\n", row)
+	})
+	dt.OnSortChange(func(col int, dir ui.DataSort) {
+		fmt.Printf("排序: 列 %d, 方向 %d\n", col, dir)
+	})
+	dt.OnRowClick(func(row int) {
+		fmt.Printf("点击数据行: %d\n", row)
 	})
 
 	// ---- 树 ----
@@ -3071,7 +3069,7 @@ func buildDataPage(body *widget.LayoutEle) {
 	})
 }
 
-// ===== 页 18: 图标(icons 资源子包) =====
+// ===== 页 19: 图标(icons 资源子包) =====
 // 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
 // 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
 // 点击把名字复制到剪贴板。

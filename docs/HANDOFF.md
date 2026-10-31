@@ -10,10 +10,19 @@
 
 ## 当前状态(截至 2026-10-30)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 后为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);同日补齐**批次 9: Sidebar**(inset/floating/默认三种外观、offcanvas/icon/none 折叠、左右贴边、分组/子菜单/徽章/动作钮、折叠 tooltip、Ctrl+B, 新增 demo **导航4**);同日补齐**批次 10: Chart**(柱状 / 折线 / 面积 / 饼环 + 堆叠 / 平滑 / 数据点 / 图例 / 提示卡 / 点击回调, 新增 demo **图表**页, 现为 **19 页**);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 后为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);同日补齐**批次 9: Sidebar**(inset/floating/默认三种外观、offcanvas/icon/none 折叠、左右贴边、分组/子菜单/徽章/动作钮、折叠 tooltip、Ctrl+B, 新增 demo **导航4**);同日补齐**批次 10: Chart**(柱状 / 折线 / 面积 / 饼环 + 堆叠 / 平滑 / 数据点 / 图例 / 提示卡 / 点击回调, 新增 demo **图表**页, 现为 **19 页**);2026-10-31 补齐**批次 11: Data Table**(在 Table 之上做排序 / 关键字筛选 / 分页 + 每页行数 / 空状态, 见 DESIGN 162~164);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **批次 11: Data Table 数据表格**(2026-10-31, 参 shadcn data-table 文档 / TanStack Table 的 tasks 示例):
+  - **组件**(`components/datatable.go`): `NewDataTable(x,y,cx,cy,parent, []DataColumn{Title/Width/Sortable/Compare}, WithDataTableSearch/NoSearch/PageSize/PageSizes/FilterColumns)`;`SetRows/AddRow/Refresh`、`SetFilter/Filter`、`SetSort/Sort`、`SetPage/Page/PageCount`、`SetPageSize/PageSize`、`TotalRows/FilteredRows`、`OnSortChange/OnPageChange/OnFilterChange/OnRowClick`。
+  - **交互**: 可排序表头点击循环 **升序 → 降序 → 取消**(图标 arrow-up-down/up/down, 平局保持原顺序);排序与筛选变化都回第一页;顶部筛选不区分大小写、子串匹配、默认全列;页脚 = 总行数(筛选时"筛选出 x / y 行")+ 每页行数 Select + "第 x / y 页" + 首页/上一页/下一页/末页(到端点禁用);空态"暂无数据 / 没有匹配的数据";行点击沿用 Table 的原生单选, 回调回传**原始数据**行下标。
+  - **排序口径**: 数字(允许货币符号/千分位/百分号)按数值;英文与数字段按自然顺序(同 `localeCompare numeric:true`);中文按 UTF-8 码位;`DataColumn.Compare` 可覆盖。
+  - **踩坑(DESIGN 162~164)**: ① 排序图标必须在 Table 的表头绘制回调里追加 —— 另注册 `AddEvent_List_Header_DrawItem` 会被组件自己的不透明底色盖掉;空状态走 List 的 `PAINT_END`;② Input 的清除按钮走程序化 `XEdit_SetText`, **不发原生变更事件**, 清空后筛选不刷新;修在 Input(内部 `changeFns` + 清除后 `emitChange`), 并在程序化 `SetFilter` 后补 `Redraw`(内嵌件命中区是 paint 时重建的);③ `cy=0` 时 Auto 父级里的 Weight 表格塌成 0, 连 `ItemMinSize` 都不算 —— 根元素要先把初始高度设成"工具栏 + 每页行数 + 页脚"。
+  - **附带修复**: `Input` 的清除按钮现在会触发 `OnChange`(所有 `WithClearButton + OnChange` 的输入框同步受益, 此前点 × 清空后回调不执行)。
+  - **demo**: 数据页「数据表格」卡改用 DataTable(12 行客户数据、页大小 10/20/30、全列可排序), 树卡片保留;页签仍 19 页。
+  - **验收**: 探针(清除筛选 6→12 行、表头点击 sort col/dir、页脚 Select 弹出窗口 1→2、下一页/首页、Auto 高 484)+ demo 150% DPI 亮/暗(排序三态与图标、输入筛选 6/12、空态、每页行数 10→20→10、翻到第 2 页、运行中切主题)+ `go build/vet/test ./...` 全绿;`xui add data-table` 闭包与 `add --all` 编译通过。
+  - registry: 新增 `data-table`(files: datatable.go; deps: table/input/button/label/select)。
 - ✅ **CLI: `update` 区分"版本升级"与"本地改动"**(2026-10-30):
   - **背景**: 以前 `install` 只比对"本地内容 vs 远端内容", 分不清"用户改过"和"版本升级导致源码变了" —— 跨版本 update 时每个文件都算"有差异", 默认全部跳过, `xui update` 实际等于空转(只刷一串警告)。
   - **做法**: `add` / `update` 结束时在组件目录写 `.xui-manifest.json`(CLI 版本 + 文件名 → sha256, 点开头 go 工具链忽略)。update 时逐文件: 缺失 → 创建; 内容一致 → 跳过; **本地哈希 == 清单哈希**(装完没人动过) → 直接替换并报"更新: 版本升级"; 哈希对不上 / 没有清单 → 保持"警告 + 跳过", `-o` 覆盖后清单重建。
@@ -743,9 +752,9 @@
 ## 待办
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)
-- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~10 已完成, 剩余 Input Group 的复合 addon、Data Table 的排序/过滤/分页模式。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
+- ⬜ **shadcn 组件补齐**(对照 https://www.shadcn.com.cn/docs/components): 批次 1~11 已完成, 剩余 Input Group 的复合 addon。每项落地都要 `registry.json` 登记 + demo 展示 + 逐组件安装编译回归; 发现 xcgui 未文档化行为再补 DESIGN 第八节。
   - **已有等价实现(不新增)**: Textarea = `Input` + `WithMultiline`、Sonner/Toast = `NewToaster`、Dropdown Menu / Context Menu = `NewMenu` / `NewContextMenu`。
-  - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)、Data Table(只有 Table 原语, 无排序/过滤/分页模式)。
+  - **部分覆盖待补**: Input Group(现为 Input 内嵌简化形态, 无复合 addon)、Popover(`popoverPanel` 仅内部使用)。
   - **批次 1 — 纯组合/绘制**: 已完成(2026-10-24): Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner。
   - **批次 2 — 表单闭环**: 已完成(2026-10-24): Toggle / Toggle Group / Native Select / Select / Input OTP / Accordion(复用 Collapsible)。
   - **批次 3 — 弹层基座**: 已完成(2026-10-25): Popover / Hover Card / Avatar / Command。
@@ -756,9 +765,10 @@
   - **批次 8 — 分栏**: 已完成(2026-10-30): Resizable(百分比分栏 / 拖动 / 方向键 5% / Home·End / 双击复位 / 分隔条键盘焦点 / 暗色焦点环)。
   - **批次 9 — 侧栏**: 已完成(2026-10-30): Sidebar(inset/floating/默认外观、offcanvas/icon/none、分组/子菜单/徽章/动作、折叠 tooltip、Ctrl+B、rail)。
   - **批次 10 — 图表**: 已完成(2026-10-30): Chart(柱状 / 折线 / 面积 / 饼环 + 堆叠 / 平滑 / 数据点 / 图例 / 提示卡 / 点击回调)。
-  - **大件延后**: Data Table(按 Table 的排序/过滤/分页 demo 模式做, 不新增控件)。
+  - **批次 11 — 数据表格**: 已完成(2026-10-31): DataTable(排序 asc/desc/none + 箭头图标、关键字筛选、分页与每页行数、空状态; 见 DESIGN 162~164)。
+  - **剩余**: Input Group 的复合 addon(把下拉菜单/Select/徽章放进前后缀与 block 形态)。
   - **不做**: Direction(xcgui 无 RTL)、Typography(文档级样式, 低价值)。
-  - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义)。
+  - **前置(部分完成)**: 本地 shadcn 参考实现已有 20 个旧组件 + collapsible; 批次 2 落地时已随源码补齐 native-select / input-otp / accordion 的 tsx 与 App.tsx 对照卡 —— **后续批次实施前同样先补上游源码**(AGENTS 硬规则: 先读源码再改交互语义); Data Table 是 shadcn 文档的**组合模式**(依赖 TanStack Table), 没有对应 tsx, 按文档语义实现(见 DESIGN 162)。
 
 ## 仓库结构
 
@@ -770,7 +780,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── components\                   组件源码 = registry 内容(扁平单包 package ui)
 │                                 button checkbox radio radiogroup input label separator(含 Badge) card alert
 │                                 switch progress slider tabs collapsible tooltip toast window combobox dialog alertdialog
-│                                 menu table tree pagination scrollarea
+│                                 menu table datatable tree pagination scrollarea
 │                                 calendar datepicker timepicker(弹层骨架 popup.go)
 │                                 empty field item breadcrumb kbd skeleton spinner toggle
 │                                 native_select select inputotp accordion
@@ -818,7 +828,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
-# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..17 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/导航4/反馈1/反馈2/反馈3/数据/图标
+# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..18 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/导航4/反馈1/反馈2/反馈3/图表/数据/图标
 #     XUI_ANIM_SCALE=5 把 hover / 弹层 / Collapsible 的过渡慢放 5 倍(抓中间帧用)
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
@@ -920,5 +930,5 @@ go build ./ui
 - `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), **每图标一个 `IconXxx` 常量**;按名字取用 `icons.Path("eye")`(给"名字来自用户输入/配置"的场合)。数据由 `scripts/gen_icons.py` 生成(默认取最新版, `--version` 可钉版)
 - 出图走**直通 D2D 几何填充**(`d2dicon.go`), GDI 模式(`app.New(false)`)自动回落折线描边
 - 体积(实测, 同基准 `-s -w`): 只用常量 **+0 字节**;调 `Path/Names` 引用整张表 **+426KB**
-- demo 第 18 页「图标」是浏览入口(`XUI_HOME_PAGE=17`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
+- demo 第 19 页「图标」是浏览入口(`XUI_HOME_PAGE=18`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
 - **原理、坑、性能结论见 DESIGN 第八节 43(抗锯齿 / figure 数)与 44(资源预处理 / 名字单射 / arc 标志位)**

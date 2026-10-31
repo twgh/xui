@@ -256,6 +256,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Menu | 原生菜单 | `XMenu_EnableDrawBackground/EnableDrawItem` + `AddEvent_Menu_Draw_Background/DrawItem`(第八节 36) | element.go 已确认事件存在 |
 | Tooltip | FloatWindow | paint, 异型透明窗口 + 进出场 fade/slide(第八节 24/47); 上下左右四方向 + align/sideOffset + 自动翻转夹紧(第八节 156), 延迟/skipDelay、键盘焦点触发、快捷键块 | tooltip.tsx(radix-nova) |
 | Table | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做 | Basic/List 示例 + 本库探针 |
+| DataTable | LayoutEle(工具栏 + Table + 页脚) | 在 Table 之上做排序/筛选/分页: `view` = 过滤 + 稳定排序后的原始行下标, 排序与分页全部在 Go 侧做(不启用原生 `SetSort`, 见第八节 162); 排序图标由 Table 的内部表头扩展钩子绘制(另注册 DrawItem 会被底色盖掉); 筛选是带清除钮的 Input(清除按钮要自己广播变更, 见 163); 页脚每页行数用 Select、翻页用 outline 图标钮; 空状态画在 List 的 `PAINT_END`(见 162); cy=0 时根高度按工具栏/每页行数/页脚配好(见 164) | shadcn data-table 文档(tasks 示例 + TanStack Table 的 autoResetPageIndex / enableSortingRemoval 语义) |
 | Tree | 原生 Tree + 项模板 | `XE_TREE_DRAWITEM` 自绘行底/参考线/chevron, 模板子元素保留(第八节 42) | 库文档 + 探针 |
 | Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53); 简洁 / 仅导航 / 只留图标三种形态; 一个 Tab 站点 + 内部方向键(键盘必须挂窗口级, 第八节 152/153) | — |
 | Icon | 直通 D2D 几何绘制 | lucide path → 描边几何 + `DrawGeometry`(圆角样式), 色点走 `FillGeometry`(第八节 43); 回落折线描边 / `svg.Svg` | svg 包 + D2D 探针 |
@@ -320,6 +321,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | select 触发区 h-8 rounded-lg border-input **bg-transparent(放卡上 = Card 色)** + 右侧 chevron-down 用 **text-muted-foreground 全色**(非前景半透明);触发区对滚轮无响应(`EnableEvent_XE_MOUSEWHEEL(false)`);弹层 = **item-aligned 定位**(盖住触发元素, 选中项正对触发位置, select.tsx `position="item-aligned"`);弹层条目 = p-1 容器 + 条目 h-7(28) rounded-md hover:bg-accent + 选中项右侧 Check 图标 + 打开时自动高亮选中项;ring-1 描边画在 `XE_PAINT_END`(内缩 1px, 见第八节 30);内容高度自适应(≤10 项不出滚动条);**弹层不做进场淡入**(上游是 fade-in-0 100ms, 整窗 alpha 在这个异型窗上会概率性冻结 → 弹层看不见还吞点击, 见第八节 30/69);**aria-invalid** = 红边框 + ring-3 destructive/20(暗色 /40), 见上表 | select.tsx + combobox.go(弹层接管路线见第八节 30) |
 | menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场**不做动画**(与原生菜单一致, 弹出即全内容 —— 整窗 alpha 会透出背景文字、只淡内容会先出一帧空白面板, 两种都闪, 见 99; 位移/缩放会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; **前置图标 `MenuIcon`**(16px, left-6, 文字从 28 起, 同 shadcn 条目内联 SVG); 勾选/单选选中项右侧 Check 图标(right-2 size-4), **未选中也保留右侧 24(pr-8)**, 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; `MenuInset` 对普通条目 / `Label` / `Sub` 都可用(pl-7, 文字左缘 28); 弹层宽 = `Width(w)` 显式指定, 否则 max(触发区宽, 128)(shadcn `w-(--radix-dropdown-menu-trigger-width) min-w-32`); 无触发区的右键菜单 = 内容自适应 + 128 下限; 子菜单 = 内容自适应 + min-w-96; **所有条目宽度按自绘字体显式算**(原生菜单字体与自绘 14px 不一致, 留自然宽会裁长文本, 见第八节 99); **右键触发区 `NewContextMenu`** = 窗口级右键事件 + 触发区矩形命中(含子元素), `SetEnabled` / `OnOpenChange` | dropdown-menu.tsx + context-menu.tsx + menu.go(原生菜单皮肤, 见第八节 36/64/99) |
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx + table.go(原生 List 接管路线见第八节 40) |
+| **data table 排序**: 可排序列的表头点击循环 **升序 → 降序 → 不排序**(第三次恢复原始顺序, 平局保持原顺序);图标随状态 `arrow-up-down`(muted)/`arrow-up`/`arrow-down`;排序或筛选变化都**回到第一页**(autoResetPageIndex);单列排序, 不弹列头菜单 | shadcn data-table 的 DataTableColumnHeader(ArrowUpDown/ArrowUp/ArrowDown)+ TanStack 默认 `enableSortingRemoval` / `autoResetPageIndex` |
+| **data table 筛选/分页**: 顶部输入即过滤(不区分大小写、子串匹配; 默认匹配所有列, 可用 `WithDataTableFilterColumns` 限定); 页脚 = 总行数(筛选中显示"筛选出 x / y 行") + 每页行数下拉(默认 10) + "第 x / y 页" + 首页/上一页/下一页/末页(到端点禁用); 行点击沿用 Table 的原生单选, `OnRowClick` 回传**原始数据**下标 | tasks 示例的 DataTablePagination / DataTableToolbar; 行点击回调是本库扩展 |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本库令牌 | App.tsx 手写 TreeRow 对照卡(无官方 tree.tsx) + tree.go(原生 Tree 接管路线见第八节 42) |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53);三种形态 = 完整 / 简洁(只有页码) / 仅导航(只有上一页下一页, 配"每页行数"选择器), 另有只留 chevron(对应文字上的 `hidden sm:block`);**键盘**: 整块一个 Tab 站点, 进入后 ←/→/↑/↓ 在条目间移动(跳过省略号与到边界的导航项)、Home/End 首末、Enter/空格激活, 到端点不循环, 焦点环只画在**当前条目**上且仅键盘获焦时出现(见第八节 152/153) | pagination.tsx + 第八节 53/152/153 |
 | collapsible: 根容器竖向流(触发区 + 内容区); 触发区是普通按钮(可绑定任意 Button), 点击切换, 展开态走 Button 的 aria-expanded 视觉(bg-muted); 内容收起时隐藏且不占布局, 展开时高度按内容自撑; **本实现**展开/收起带 200ms 高度过渡, 收起动画结束后才隐藏内容(radix presence 语义) | collapsible.tsx + radix CollapsibleContent 的 `--radix-collapsible-content-height` 动画示例 + 第八节 97 |
@@ -411,6 +414,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长/`OnClose/OnAutoClose/OnDismiss`) + `Success/Error/Warning/Info/Loading` 快捷方法 + `Promise(fn, ToastPromise{Loading, Success, Error})`; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible/RichColors/CloseButton`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置六种(四角 + `ToastTopCenter`/`ToastBottomCenter`), `richColors` 通过 `WithToastRichColors` / `ToastOptions.RichColors` 开启; `Loading`/`Promise` 的转圈图标由 `xui.Spin` 驱动(退出加载态要显式停表, 见第八节 154), `Promise` 的 fn 在 goroutine 跑、结果经 `xc.Auto` 回 UI 线程 |
 | Pagination | **本库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | Pagination(形态/键盘) | `WithPaginationSimple()`(只有页码) / `WithPaginationNavOnly()`(只有上一页下一页) / `WithPaginationHideText()`(只留 chevron); 键盘 ←/→/↑/↓、Home/End、Enter/空格 | 见 152/153 |
+| DataTable | `NewDataTable(x,y,cx,cy,parent, []DataColumn{Title,Width,Sortable,Compare}, WithDataTableSearch/NoSearch/PageSize/PageSizes/FilterColumns)` + `SetRows/AddRow/Refresh`、`SetFilter/Filter`、`SetSort/Sort`、`SetPage/Page/PageCount`、`SetPageSize/PageSize`、`TotalRows/FilteredRows`、`OnSortChange/OnPageChange/OnFilterChange/OnRowClick` | 对应 shadcn data-table 文档(tasks 示例, TanStack Table): 排序状态只有**单列**(升/降/无), 筛选是工具栏输入框的子串匹配, 分页在页脚; 未做 Row Selection / Column Visibility / 多列排序(见第八节 162 与差异表) |
+| DataTable | **本库形态**: `NewDataTable` 自带工具栏/表格/页脚三段; shadcn 的 data-table 是"用户用 TanStack 组合"的模式, 没有对应组件 —— 我们把它收敛成一个可复用控件 | 见 162~164 |
+| DataTable(未做) | 行选择勾选列 / 列显隐下拉 / 多列排序 / 列拖拽; 表头没有 hover 底色(原生 List 表头悬停不触发重绘) | Row Selection / Column Visibility 是 TanStack 的插件示例; 排序/筛选/分页是本实现的核心范围; 行点击沿用 Table 原生单选 |
+| DataTable(排序口径) | 数字(允许 `¥$€£,` 与 `%`)按数值、英文与数字段按自然顺序(同 `localeCompare numeric:true`); **中文按 UTF-8 码位**, 不按拼音 | Go 侧没有浏览器中文拼音排序; 需要业务语义时用 `DataColumn.Compare` 自定义 |
 | Resizable | `NewResizableGroup(x,y,cx,cy,parent, WithResizableVertical/Disabled/OnResize)` + `AddPanel(WithResizableSize/Min/Max)` + `AddHandle(WithResizableGrip)`; `Sizes/SetSizes/OnResize/SetDisabled/Disabled`; 面板是流式容器, 内容直接放进去 | 对应 resizable.tsx 的 `PanelGroup/Panel/Handle`; 未做 `collapsible/collapsedSize`(Enter 折叠)、`preserve-pixel-size`、F6 在分隔条之间跳焦点、面板/分隔条级 disabled; 尺寸只支持百分比(上游还能写 px/rem); 面板是容器而非独立元素, 没有 `data-panel` 之类的 DOM 钩子 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | chart 色板供你的应用取用(组件库不画图表); sidebar 令牌由 `ui.Sidebar` 使用; 机械转译新主题时两组一并填(运行时的主题测试有守卫) |
@@ -469,7 +476,7 @@ ui/
   | `sheet.go` | 侧边面板(复用 Dialog 的模态基座) | dialog 的文件清单(模态分支) / drawer |
   | `menu_model.go` | 菜单条目模型与 `MenuOpt` 构造器 | menu / menubar |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`、`data-table → table + input + button + label + select`;`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在 `ui/` 里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update` 或 `xui update button`(只更新该组件及其依赖)。
 
@@ -521,6 +528,10 @@ ui/
 | Sidebar 的动作钮(菜单项右侧 …)只支持鼠标点击 | 原生 Button 会截走子元素的鼠标事件,BnClick 仍会发到整行 —— 动作钮只能做成按钮内部的命中区, 且键盘激活一律算整行(见第八节 158); 分组标签的 + 是普通 Element 的子元素, 鼠标/键盘都可用 |
 | Sidebar 菜单项不能用 Tab 聚焦 | 与第八节 157 同一条 xcgui 限制: Tab 链只覆盖窗口内容区的直接子元素, 侧栏菜单嵌在 ScrollArea/布局容器里; 鼠标点击后可回车激活 |
 | Sidebar 图标栏里内容区仍可滚动 | 上游 icon 折叠是 `overflow-hidden`(只能靠 tooltip 辨认); 我们的 ScrollArea 仍保留滚动/滚动条, 长菜单在 48px 栏里也能滚到 |
+| DataTable 没有行选择勾选列 / 列显隐 / 多列排序 / 列拖拽 | 都是 TanStack 的插件示例(Row Selection / Column Visibility); 本实现聚焦排序/筛选/分页三件核心能力, 行点击沿用 Table 的原生单选并回调 `OnRowClick` |
+| DataTable 表头没有 hover 底色 | 原生 List 的表头是独立子元素, 悬停不会触发元素重绘(见第八节 162); 可排序列只响应点击, 图标本身随排序状态变化 |
+| DataTable 的中文按 UTF-8 码位排序 | Go 侧没有中文拼音排序; 数字/英文自然排序已对齐, 业务口径用 `DataColumn.Compare` 覆盖 |
+| DataTable 的表头排序只能鼠标点击 | 表头是原生 List 的子元素, 不参与 Tab 焦点链; 页脚按钮/下拉嵌在布局容器里, 同样到不了 Tab(见上一条); 表头没有可聚焦元素, 也无法补按键处理 |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -1863,6 +1874,24 @@ ui/
     - **雷达图的量程取各轴峰值, 不套整齐刻度**: 走 `domain()` 会拿到 400 这种刻度上界, 峰值 305 的多边形只画到 3/4 半径, 看着像数据没到顶。
     - **雷达标签要按角度换对齐并夹回元素内**: 顶点在外圈, 靠左右的标签框会顶出元素被裁; 右侧顶点左对齐、左侧右对齐、正上/正下居中, 再把整框平移到 `[元素左边+2, 元素右边-2]` 内。
     - **雷达没有可高亮的"块"**: 悬停反馈只能落在轴上 —— 画一条从圆心到顶点的提亮轴线, 并把该轴标签从 `MutedForeground` 提到 `Foreground`。
+
+162. **数据表格: 表头排序图标要挂在 Table 的表头绘制回调里, 点击用 Header_Click**(`components/datatable.go` + `components/table.go`, 截图实测):
+    - **另注册表头 DrawItem 画图标会被盖掉**: `AddEvent` 的回调**后注册的先执行**; 给 List 再注册一个 `AddEvent_List_Header_DrawItem` 画排序图标时, Table 自己的回调随后铺不透明底色与 1px 底边, 把图标盖得一点不剩。修法: Table 增加内部字段 `onHeaderExtra`, 在自己的 `onHeaderDrawItem` 末尾(底色/底边之后)调用; DataTable 与 Table 同包, 直接赋值即可。
+    - **图标位置**: 起点 = `rc.Left + tableCellPadX + TextWidth(标题)`(与表头文字同源), 再留一点间距; 列太窄时右对齐夹到 `rc.Right - tableCellPadX`, 不越过单元格。图标 14px + strokeWidth 2, 未排序 `arrow-up-down`(muted), 升/降 `arrow-up/down`(foreground)。
+    - **表头点击**: `AddEvent_List_Header_Click`(签名 `func(hEle int, iItem int32, pbHandled *bool) int`), 只处理 `Sortable` 列并置 `pbHandled`; 排序状态在 Go 侧算(原生 `SetSort` 走适配器排序, 与显示文本/自定义比较器对不上, 也做不了"第三次点击恢复原序")。
+    - **空状态画在 `PAINT_END`**: 先 `EnableEvent_XE_PAINT_END()` 再 `AddEvent_Paint_End`; List 的内容区由原生重排, 往里塞覆盖元素会被摆到奇怪位置。文字从表头高度往下居中, 有筛选词时显示"没有匹配的数据", 否则"暂无数据"。表头悬停不会触发元素重绘(原生 List 表头是独立子元素), 所以可排序表头没有 hover 底色 —— 这是已知差异, 不要试图用元素级 MouseStay 补。
+    - **顶部筛选框与页脚**: 页脚每页行数用 `Select`, 翻页是 outline 图标按钮; 四个按钮到端点 `Enable(false)`(Button 的 disabled 视觉由 State 读元素使能状态)。
+
+163. **输入框的清除按钮: 程序化 SetText 不发变更事件, 内嵌件命中区又是 paint 时建的**(`components/input.go` + `components/datatable.go`, 探针实测):
+    - **现象 1**: 点 × 后输入框已清空, 依赖 `OnChange` 的筛选/搜索不刷新。根因是 `activate(partClear)` 走 `XEdit_SetText("")`, 原生 `Edit_Changed` **不发**; OnChange 是挂在原生事件上的, 自然收不到。
+    - **修法**: Input 内部维护 `changeFns`, `OnChange` 只登记回调并只挂一次原生事件; 清除时 `suppressChange=true` → SetText("") → 复位 → 自己 `emitChange()`(回调读到的必然是新值)。所有用 `WithClearButton + OnChange` 的输入框同步受益。
+    - **现象 2**: 程序化 `SetFilter` 后画面上出现了 ×, 点它没反应 —— 内嵌件的命中区 `parts` 是在 paint 里重建的, 直接 SetText 后没重绘, `parts` 还是空的。修法: 程序化改值后补一次 `Redraw(false)`。
+    - **调试提示**: 用真实鼠标点内嵌按钮时, 先确认命中区已建立(有绘制)再断言; 探针里按元素矩形算点击坐标比按截图目测可靠。
+
+164. **DataTable 的高度: Auto 父级里的 Weight 子项不会撑高, 连 `ItemMinSize` 也不行**(`components/datatable.go`, 探针实测):
+    - **现象**: `NewDataTable(..., cy=0)` 后根元素高度为 0(整块消失)。根是 LayoutEle(Auto 布局项), 表格是 Weight 高 —— Auto 父级里 Weight 恒为 0(同 8.55), 给表格设 `ItemMinSize` 也不参与 Auto 高的计算。
+    - **修法**: cy<=0 时把**根元素初始高度**设为"工具栏 + 每页行数×行高 + 表头 + 页脚 + 间距"; Auto 布局项取元素现有高度, 内部 Weight 才有确定的父高可分配。cy>0(调用方给 Fixed/Fill/Weight)时照常让表格吃剩余高度, 两者都不需要调用方额外处理。
+    - 注意表格元素只该有**一个**主轴高度声明: 同时 `ItemFillHeight` 与 `ItemHeight(Fixed)` 会互相覆盖, 改高度时要按 8.55 的尺寸语义来。
 
 ---
 

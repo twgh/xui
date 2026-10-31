@@ -56,6 +56,10 @@ type Table struct {
 	onSel   func(row int32)
 	sbWide  bool  // 当前列宽是否已为滚动条让位
 	lastW   int32 // 上次算自适应列宽时元素的宽度, 用于判断"宽度真的变了"(见 relayout)
+	// onHeaderExtra 在表头单元格底色/底边之后追加绘制(DataTable 用它画排序图标)。
+	// 必须在 onHeaderDrawItem 里调用, **不能**让调用方另注册 AddEvent_List_Header_DrawItem ——
+	// AddEvent 后注册的回调先执行, 组件自己的回调后铺不透明底色, 会把追加内容盖掉。
+	onHeaderExtra func(p *xui.Painter, rc xc.RECT, col int32)
 }
 
 // TableOption 组件配置项。
@@ -435,6 +439,9 @@ func (t *Table) onHeaderDrawItem(hEle, hDraw int, pItem *xc.List_Header_Item_, p
 	rc := pItem.RcItem
 	p.FillRound(&rc, t.surface(th), 0)
 	p.Line(rc.Left, rc.Bottom-1, rc.Right, rc.Bottom-1, th.Border, 1)
+	if t.onHeaderExtra != nil {
+		t.onHeaderExtra(p, rc, pItem.Index)
+	}
 	return 0
 }
 
