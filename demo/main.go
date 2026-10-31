@@ -1307,7 +1307,7 @@ func buildForm1Page(body *widget.LayoutEle) {
 	_, vg := autoCard(colL.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "输入组", vg.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"InputGroup: 输入框与附加件共用一层边框与焦点环; addon 四向(inline-start/end、block-start/end)", vg.Handle))
+		"InputGroup: 输入框与附加件共用一层边框与焦点环; addon 四向, 可放图标/文字/按钮/Kbd/下拉菜单", vg.Handle))
 
 	xui.ItemFill(hint(vg.Handle, "前置图标 / 后置按钮"))
 	g1 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle)
@@ -1339,6 +1339,24 @@ func buildForm1Page(body *widget.LayoutEle) {
 	g5.Textarea(80, ui.WithPlaceholder("输入留言…"))
 	g5.Addon(ui.InputGroupBlockEnd).Text("0/280").Button("发送")
 	xui.ItemFill(g5)
+
+	xui.ItemFill(hint(vg.Handle, "复合 addon: 下拉菜单 / 多控件 + 尺寸档"))
+	g8 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle)
+	g8.Input(ui.WithPlaceholder("Search In..."))
+	g8.Addon(ui.InputGroupInlineEnd).MenuButton("", icons.IconChevronDown, func(m *ui.Menu) {
+		m.Item("All")
+		m.Item("Files")
+		m.Item("Code")
+		m.Item("Web")
+	})
+	xui.ItemFill(g8)
+
+	g9 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle)
+	g9.Input(ui.WithPlaceholder("一个 addon 里放两个按钮(sm / icon-sm)"))
+	end9 := g9.Addon(ui.InputGroupInlineEnd)
+	end9.Button("发送", ui.WithSize(ui.ButtonSizeSm))
+	end9.IconButton(icons.IconEllipsis, ui.WithSize(ui.ButtonSizeIconSm))
+	xui.ItemFill(g9)
 
 	xui.ItemFill(hint(vg.Handle, "校验失败 / 禁用"))
 	g6 := ui.NewInputGroup(0, 0, 0, 0, vg.Handle, ui.WithInputGroupInvalid())

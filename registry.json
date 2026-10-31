@@ -187,7 +187,7 @@
     },
     "input-group": {
       "files": ["inputgroup.go", "input.go", "scrollbar.go", "group.go", "button.go", "kbd.go", "spinner.go", "textopt.go", "press.go"],
-      "deps": []
+      "deps": ["menu"]
     },
     "input-otp": {
       "files": ["inputotp.go"],

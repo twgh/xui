@@ -22,7 +22,8 @@ const (
 	inputGroupBlockX    int32 = 10
 	inputGroupBlockY    int32 = 8
 	inputGroupGap       int32 = 8
-	inputGroupBtnPull   int32 = 5 // addon 首/尾按钮的外扩量(负外边距)
+	inputGroupBtnPull   int32 = 5 // addon 含按钮时的外扩量(负外边距, -0.3rem)
+	inputGroupKbdPull   int32 = 2 // addon 只含 Kbd 时的外扩量(-0.15rem)
 	inputGroupTextH     int32 = 24
 	inputGroupIconSz    int32 = 16
 	inputGroupTextareaH int32 = 64
@@ -446,7 +447,8 @@ type InputGroupAddon struct {
 	padR     int32
 	contentW int32 // 已追加内容的宽度合计
 	items    int32 // 已追加内容个数(用来算间距)
-	hasBtn   bool  // 含自绘文字按钮(文字排版要跟按钮共用 textVDy, 见 Text)
+	hasBtn   bool  // 含按钮(整组外扩 -5px; 文字排版也跟按钮共用 textVDy, 见 Text)
+	hasKbd   bool  // 只含 Kbd 时外扩 -2px(同上游 has-[>kbd]:-ml-[0.15rem])
 }
 
 // grow 记一笔内容宽度并重算 addon 宽度。
@@ -465,20 +467,47 @@ func (a *InputGroupAddon) applyWidth() {
 	if a.align == InputGroupBlockStart || a.align == InputGroupBlockEnd {
 		return // block 侧是整宽(Fill), 宽度交给布局
 	}
-	w := a.contentW + a.padL + a.padR
-	if a.items > 1 {
-		w += (a.items - 1) * inputGroupGap
-	}
-	if w < 1 {
-		w = 1
-	}
+	w := inputGroupAddonWidth(a.contentW, a.padL, a.padR, a.items)
 	a.SetWidth(w)
 	a.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
+	// 首/尾内容贴到容器边缘: 上游把负外边距加在 **addon** 上(has-[>button]:ml/-mr),
+	// 一个 addon 只外扩一次 —— 加在按钮上时"一个 addon 里放两个按钮"会被外扩两次,
+	// 输入框多占 10px、按钮之间也少 5px 的间距。
+	pull := inputGroupAddonPull(a.hasBtn, a.hasKbd)
+	switch a.align {
+	case InputGroupInlineStart:
+		xc.XWidget_LayoutItem_SetMargin(a.Handle, -pull, 0, 0, 0)
+	case InputGroupInlineEnd:
+		xc.XWidget_LayoutItem_SetMargin(a.Handle, 0, 0, -pull, 0)
+	}
 	// 宽度是布局项声明, 必须让父级重排才生效(自己 AdjustLayout 只重排内部)。
 	if a.group != nil {
 		a.group.AdjustLayout()
 	}
 	a.AdjustLayout()
+}
+
+// inputGroupAddonWidth 是 addon 的固定宽: 内容宽合计 + 左右内边距 + 子项间距。
+func inputGroupAddonWidth(contentW, padL, padR, items int32) int32 {
+	w := contentW + padL + padR
+	if items > 1 {
+		w += (items - 1) * inputGroupGap
+	}
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// inputGroupAddonPull 返回 addon 相对输入框一侧的外扩量: 有按钮按按钮(5), 只有 Kbd 按 Kbd(2)。
+func inputGroupAddonPull(hasBtn, hasKbd bool) int32 {
+	if hasBtn {
+		return inputGroupBtnPull
+	}
+	if hasKbd {
+		return inputGroupKbdPull
+	}
+	return 0
 }
 
 // Content 返回附加件容器句柄(自由放置原生控件用)。
@@ -589,9 +618,8 @@ func (a *InputGroupAddon) Button(text string, opts ...ButtonOption) *Button {
 		a.hasBtn = true
 		a.Redraw(true)
 	}
-	a.pullButton(b)
 	a.fixButtonBox(b)
-	a.grow(b.GetWidth() - inputGroupBtnPull)
+	a.grow(b.GetWidth()) // 外扩量由 applyWidth 统一加在 addon 上(见上)
 	a.group.buttons = append(a.group.buttons, b)
 	return b
 }
@@ -620,7 +648,13 @@ func (a *InputGroupAddon) fixButtonBox(b *Button) {
 	if a == nil || b == nil {
 		return
 	}
-	b.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 24+pressShift)
+	// 视觉高要按按钮自己的尺寸档算: xs / icon-xs 是 24, sm / icon-sm 是 28。
+	// 写死 24 会把 sm 按钮压扁(复合 addon 的尺寸行会暴露)。
+	h := b.Spec().height
+	if h <= 0 {
+		h = 24
+	}
+	b.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h+pressShift)
 	var m xc.RECT
 	xc.XWidget_LayoutItem_GetMargin(b.Handle, &m)
 	xc.XWidget_LayoutItem_SetMargin(b.Handle, m.Left, m.Top, m.Right, -pressShift)
@@ -644,24 +678,52 @@ func (a *InputGroupAddon) IconButton(icon string, opts ...ButtonOption) *Button 
 		return nil
 	}
 	applyInputGroupButton(b)
-	a.pullButton(b)
+	if !a.hasBtn {
+		a.hasBtn = true
+	}
 	a.fixButtonBox(b)
-	a.grow(b.GetWidth() - inputGroupBtnPull)
+	a.grow(b.GetWidth())
 	a.group.buttons = append(a.group.buttons, b)
 	return b
 }
 
-// pullButton 让 addon 内的首个/末个按钮向容器边缘外扩(has-[>button]:ml-[-0.3rem])。
-func (a *InputGroupAddon) pullButton(b *Button) {
-	if a == nil || b == nil {
-		return
+// MenuButton 追加一个下拉菜单触发按钮(复合 addon): build 定义的菜单在点击时弹出。
+// text 为空 = 纯图标按钮(默认 ghost + icon-xs); icon 为空 = 纯文字按钮; 都非空时
+// 图标放在文字尾部(与文档的 chevron 一致)。菜单只 build 一次, 勾选/单选状态在
+// 多次打开之间保持(与 ui.NewMenu 相同)。
+//
+//	group.Addon(ui.InputGroupInlineEnd).MenuButton("", icons.IconChevronDown,
+//		func(m *ui.Menu) { m.Item("All"); m.Item("Files") })
+func (a *InputGroupAddon) MenuButton(text, icon string, build func(*Menu), opts ...ButtonOption) *Button {
+	if a == nil || (text == "" && icon == "") {
+		return nil
 	}
-	switch a.align {
-	case InputGroupInlineStart, InputGroupBlockStart:
-		xc.XWidget_LayoutItem_SetMargin(b.Handle, -inputGroupBtnPull, 0, 0, 0)
-	case InputGroupInlineEnd, InputGroupBlockEnd:
-		xc.XWidget_LayoutItem_SetMargin(b.Handle, 0, 0, -inputGroupBtnPull, 0)
+	all := make([]ButtonOption, 0, len(opts)+2)
+	if text != "" && icon != "" {
+		all = append(all, WithButtonTrailingIcon(icon))
 	}
+	all = append(all, opts...)
+	all = append(all, WithButtonHasPopup()) // aria-haspopup: 按下不整体下沉
+	var b *Button
+	if text == "" {
+		b = a.IconButton(icon, all...)
+	} else {
+		b = a.Button(text, all...)
+	}
+	if b == nil {
+		return nil
+	}
+	m := NewMenu()
+	if build != nil {
+		build(m)
+	}
+	b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		if b.IsEnable() {
+			m.PopupAtElement(b.Handle)
+		}
+		return 0
+	})
+	return b
 }
 
 // Kbd 追加一个键帽(如 "⌘K"), 与 input-group 文档的 Kbd 示例一致。
@@ -671,6 +733,7 @@ func (a *InputGroupAddon) Kbd(text string) *InputGroupAddon {
 		return a
 	}
 	if k := NewKbd(a.Handle, text); k != nil {
+		a.hasKbd = true
 		a.grow(k.GetWidth())
 	}
 	return a
