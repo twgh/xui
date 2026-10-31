@@ -34,7 +34,8 @@
   - **列头菜单**: 表头点击不再循环排序, 改为弹 `升序 / 降序 / 隐藏` 菜单(`Menu.PopupAtCursor`); 升序降序是勾选项, 再点当前项 = 取消排序(保住原来的"升→降→取消"); `DataColumn.NoHide` 让行操作列不出现在"隐藏"里; 删掉 `nextDataSort`。
   - **踩坑(DESIGN 171/172)**: 分面筛选必须比原始文本(自绘列的原生文本是空串, 拿渲染结果没法比); 布局项"收起"要 `ItemWidth(0)` + `ItemMargin(0,…)` + `Show(false)` 三件套, 展开后按 `naturalWidth` 重算并 `XEle_AdjustLayout`, 只 `Show(false)` 会留一块空白。
   - **demo**: 状态列挂 4 个筛选项(待办/进行中/已完成/已取消, 带状态图标)、优先级列挂 3 个(高/中/低, 带箭头), 操作列 `NoHide`; 卡片描述改为"分面筛选 + 列头菜单"。
-  - **验收**: 真实鼠标点 `状态` → 菜单四项带图标 → 勾"进行中" → 表只剩 7 行、按钮显示"状态 1"、"重置"出现、页脚"筛选出 7 / 24 行"、页码回 1/1; 点列头 → 升序/降序/隐藏菜单;`go build/vet/test ./...` 全绿;`xui add data-table` 闭包 + `add --all` 编译通过。
+  - **验收**: 真实鼠标点 `状态` → 菜单四项带图标 → 勾"进行中" → 表只剩 7 行、按钮显示"状态 1"、"重置"出现、页脚"筛选出 7 / 24 行"、页码回 1/1; 点列头 → 升序/降序/隐藏菜单(锚在该列正下方);`go build/vet/test ./...` 全绿;`xui add data-table` 闭包 + `add --all` 编译通过。
+  - **后续修复(用户报障, DESIGN 173/174)**: ① 工具栏在菜单里改状态后残留旧像素(旧输入框边框线 / 取消勾选后少一段边框) —— 模态菜单关闭时会用自己保存的屏幕盖回去, 改成菜单返回后 `updateToolbar() + Redraw(true)`;② 列头菜单跟着鼠标松开处跑 —— 表头绘制时缓存 `RcItem`, 用 `Menu.PopupAtElementRect` 锚到该列下方, 并试过 `LButtonDown` 按下即弹(会被随后的松开消息立刻关掉, 已回退)。
 - ✅ **批次 11A: Data Table 富单元格 / 行勾选 / 列显隐**(2026-10-31, 参 shadcn tasks 示例的 `columns.tsx` / `data-table-view-options.tsx`):
   - **Table**(`components/table.go`): 加 `TableColumn.Align`(原生文本对齐)、`Table.SetColumns(cols)` 换列结构(`DeleteColumnAll` 后**必须重建行适配器**, 见 DESIGN 169)、内部钩子 `onCellExtra`(按单元格的扩展绘制, 见 167/168)。
   - **DataTable**: `WithDataTableSelection`(勾选列 + 表头整页全选 / 不确定态, 勾选按**原始行**存, 翻页 / 排序 / 筛选不丢, 勾选行整行铺 `Muted`)、`WithDataTableColumnToggle`(工具栏"视图"下拉 = `Menu.Check` 列清单)、`DataColumn{Render,Align,Hidden}`(富单元格不写原生文本)、`OnCellClick(row,col)`、`Selected/SetSelected/ClearSelection/IsSelected/SelectedCount/OnSelectionChange`、`SetColumnVisible/ColumnVisible/SetColumns`; 有勾选时页脚把总行数换成"已选 x / y 行"。

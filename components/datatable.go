@@ -425,7 +425,10 @@ func (d *DataTable) buildTable() {
 		if ci < 0 || (!d.cols[ci].Sortable && !d.canHide(ci)) {
 			return 0 // 既不能排序也不能隐藏: 表头当普通文字用
 		}
-		d.showHeaderMenu(ci)
+		// 菜单按**被点的列**定位(showHeaderMenu 内部用绘制缓存里的表头矩形做锚点),
+		// 不用 PopupAtCursor —— 否则按住鼠标拖到别处再松开, 菜单会跟着跑到松开的位置。
+		// 不能改到 LButtonDown 里弹: 菜单一弹出就被紧随其后的松开消息关掉(实测)。
+		d.showHeaderMenu(ci, iItem)
 		*pbHandled = true
 		return 0
 	})
@@ -770,6 +773,10 @@ func (d *DataTable) showViewMenu(hEle int) {
 		}))
 	}
 	m.PopupAtElement(hEle)
+	// 原生菜单是模态的: 打开期间的失效区域会被它关闭时的"还原屏幕"盖回去, 所以关闭后
+	// 必须再立即重绘一次, 否则工具栏/表格停在菜单打开前的像素(表现为残留的半截边框)。
+	d.updateToolbar()
+	d.Redraw(true)
 }
 
 // ===== 分面筛选 =====
@@ -802,6 +809,9 @@ func (d *DataTable) showFacetMenu(ci, hEle int) {
 		m.Item("清除筛选", MenuOnSelect(func() { d.clearFacet(ci) }))
 	}
 	m.PopupAtElement(hEle)
+	// 同 showViewMenu: 菜单关闭时会还原屏幕, 关闭后再刷一次工具栏与表格。
+	d.updateToolbar()
+	d.Redraw(true)
 }
 
 // setFacet 勾选/取消一个分面值(value 是该列的单元格原始文本)。
@@ -902,6 +912,11 @@ func (d *DataTable) updateToolbar() {
 		}
 	}
 	xc.XEle_AdjustLayout(d.toolbar.Handle)
+	// AdjustLayout 只重排, 不擦旧像素: 分面按钮文字变宽(状态 → 状态 1)或重置钮出现/消失
+	// 会把筛选框挤窄, 旧位置的边框残留在那里(实测是半截横线)。这里整块重绘一次
+	// (工具栏 + 组件根, 根负责把卡片底色铺回去)。
+	d.toolbar.Redraw(false)
+	d.Redraw(false)
 }
 
 // ResetFilters 清空关键字与全部分面筛选(工具栏"重置"按钮的行为)。
@@ -1170,7 +1185,7 @@ func (d *DataTable) canHide(ci int) bool {
 // showHeaderMenu 弹出列头菜单(tasks 的 DataTableColumnHeader): 升序 / 降序 / 隐藏。
 // 升序降序是勾选项 —— 再点一次当前项 = 取消排序, 保留"升→降→取消"的能力;
 // 隐藏走 SetColumnVisible(重建列结构, 见 8.169)。
-func (d *DataTable) showHeaderMenu(ci int) {
+func (d *DataTable) showHeaderMenu(ci int, tcol int32) {
 	col := d.cols[ci]
 	m := NewMenu()
 	m.Width(160)
@@ -1192,11 +1207,20 @@ func (d *DataTable) showHeaderMenu(ci int) {
 			d.SetColumnVisible(ci, false)
 		}))
 	}
-	// 表头点击不带元素句柄, 直接在光标处弹(鼠标就在该列表头上)。
-	m.PopupAtCursor(xc.XWidget_GetHWINDOW(d.Handle))
+	// 表头点击回调不带坐标: 用绘制时缓存的表头单元格矩形做锚点, 弹层固定落在该列下方 ——
+	// 用 PopupAtCursor 的话, 按住鼠标拖到别处再松开, 菜单会跑到松开的位置。
 	if d.table != nil {
-		d.table.Redraw(false) // 排序图标要跟着新状态变
+		if rc, ok := d.table.HeaderCellRect(tcol); ok {
+			m.PopupAtElementRect(d.table.Handle, rc)
+		} else {
+			m.PopupAtCursor(xc.XWidget_GetHWINDOW(d.Handle))
+		}
+		// 排序图标 / 隐藏列都要等菜单关闭后再立即重绘(关闭会还原屏幕, 见 showFacetMenu)。
+		d.table.Redraw(true)
+		d.updateToolbar()
+		return
 	}
+	m.PopupAtCursor(xc.XWidget_GetHWINDOW(d.Handle))
 }
 
 // applyHeaderSort 处理列头菜单的勾选: on=false 表示点了当前已激活的那一项 = 取消排序。

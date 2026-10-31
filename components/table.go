@@ -77,6 +77,22 @@ type Table struct {
 	// 同样必须走组件内部回调: 另注册 AddEvent_List_DrawItem 会被本组件的行底色盖掉。
 	// 回调里要自带文字/图标 —— 富单元格的原生文本由调用方清空(见 8.168)。
 	onCellExtra func(p *xui.Painter, rc xc.RECT, row, col int32, hover bool)
+	// hdrRects 缓存各表头单元格的矩形(元素客户区坐标), 由 onHeaderDrawItem 填入 ——
+	// 表头点击回调不带坐标, 要按点击的列定位弹层(菜单不能跟着鼠标松开处跑)就靠它。
+	hdrRects []xc.RECT
+}
+
+// HeaderCellRect 返回表头第 col 列的单元格矩形(元素客户区坐标)。只在表头画过之后有效;
+// 没有任何表头绘制过时 ok=false。
+func (t *Table) HeaderCellRect(col int32) (rc xc.RECT, ok bool) {
+	if col < 0 || int(col) >= len(t.hdrRects) {
+		return rc, false
+	}
+	r := t.hdrRects[col]
+	if r.Right <= r.Left || r.Bottom <= r.Top {
+		return rc, false
+	}
+	return r, true
 }
 
 // TableOption 组件配置项。
@@ -302,6 +318,7 @@ func (t *Table) SetColumns(cols []TableColumn) *Table {
 	}
 	t.cols = append([]TableColumn(nil), cols...)
 	t.pickAutoCol()
+	t.hdrRects = nil // 列结构变了, 旧的表头矩形作废(下次绘制重新填)
 	t.DeleteRowAll()
 	t.DeleteColumnAll()
 	w := t.GetWidth()
@@ -516,6 +533,12 @@ func (t *Table) onHeaderDrawItem(hEle, hDraw int, pItem *xc.List_Header_Item_, p
 	*pbHandled = true
 	th := xui.Current()
 	rc := pItem.RcItem
+	if idx := int(pItem.Index); idx >= 0 {
+		if idx >= len(t.hdrRects) {
+			t.hdrRects = append(t.hdrRects, make([]xc.RECT, idx+1-len(t.hdrRects))...)
+		}
+		t.hdrRects[idx] = rc
+	}
 	p.FillRound(&rc, t.surface(th), 0)
 	p.Line(rc.Left, rc.Bottom-1, rc.Right, rc.Bottom-1, th.Border, 1)
 	if t.onHeaderExtra != nil {

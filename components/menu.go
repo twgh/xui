@@ -141,6 +141,16 @@ func (m *Menu) Sub(text string, build func(s *Menu), opts ...MenuOpt) *Menu {
 // PopupAtElement 在触发元素下方弹出(radix DropdownMenuContent 默认定位:
 // align=start, sideOffset=4), 下方放不下翻到上方, 屏幕边缘夹紧。
 func (m *Menu) PopupAtElement(hEle int) {
+	var trig xc.RECT
+	xc.XEle_GetWndClientRect(hEle, &trig)
+	m.PopupAtElementRect(hEle, xc.RECT{Left: 0, Top: 0, Right: trig.Right - trig.Left, Bottom: trig.Bottom - trig.Top})
+}
+
+// PopupAtElementRect 以元素内的一块子矩形为锚点弹出(r 是**元素客户区坐标**, 通常来自
+// 绘制回调里的 RcItem)。用于表头 / 单元格这类"元素内的小块"触发区 —— 它们在点击回调
+// 里拿不到坐标, 用 PopupAtCursor 会让菜单跟着鼠标松开的位置跑。
+// 定位口径与 PopupAtElement 一致: 锚点下方 sideOffset=4, 放不下翻到上方, 屏幕边缘夹紧。
+func (m *Menu) PopupAtElementRect(hEle int, r xc.RECT) {
 	HideTooltip(hEle) // 弹层接管鼠标后触发元素收不到 MouseLeave(见 tooltip.go)
 	var trig xc.RECT
 	xc.XEle_GetWndClientRect(hEle, &trig)
@@ -158,12 +168,12 @@ func (m *Menu) PopupAtElement(hEle int) {
 		return
 	}
 	m.anchor = xc.RECT{
-		Left:   mrc.Left + int32(float64(trig.Left)*sc),
-		Top:    mrc.Top + int32(float64(trig.Top)*sc),
-		Right:  mrc.Left + int32(float64(trig.Right)*sc),
-		Bottom: mrc.Top + int32(float64(trig.Bottom)*sc),
+		Left:   mrc.Left + int32(float64(trig.Left+r.Left)*sc),
+		Top:    mrc.Top + int32(float64(trig.Top+r.Top)*sc),
+		Right:  mrc.Left + int32(float64(trig.Left+r.Right)*sc),
+		Bottom: mrc.Top + int32(float64(trig.Top+r.Bottom)*sc),
 	}
-	m.triggerW = trig.Right - trig.Left // 逻辑像素(XEle_GetWndClientRect 未缩放)
+	m.triggerW = r.Right - r.Left // 逻辑像素(XEle_GetWndClientRect 未缩放)
 	m.popup(hw)
 }
 
