@@ -126,8 +126,8 @@
       "deps": []
     },
     "data-table": {
-      "files": ["datatable.go"],
-      "deps": ["table", "input", "button", "label", "select", "menu"]
+      "files": ["datatable.go", "datatablefacet.go"],
+      "deps": ["table", "input", "button", "label", "select", "menu", "command", "popover"]
     },
     "tree": {
       "files": ["tree.go", "scrollbar.go"],

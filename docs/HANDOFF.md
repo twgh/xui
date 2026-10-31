@@ -29,6 +29,12 @@
   - **demo**: 表单1 输入组卡新增两行(下拉菜单 / 一个 addon 里两个按钮 sm + icon-sm)。
   - **验收**: 探针矩形(单按钮 addon 溢出 5 / 按钮右缘距边框 3、两按钮只溢出 5 且间距 8 / 元素高 29、Kbd 溢出 2 且距边框 6、菜单点击出现 All/Files)+ demo 亮/暗 150% DPI(无裁切/重叠)+ `go build/vet/test ./...` 全绿;`xui add input-group` 闭包与 `add --all` 编译通过。
   - registry: `input-group` 的 deps 加 `menu`(MenuButton)。
+- ✅ **批次 11C: 分面筛选升级成 shadcn 的 Popover+Command 面板**(2026-10-31, 对齐 tasks 的 `DataTableFacetedFilter`):
+  - **面板**(新文件 `datatablefacet.go`): `Popover + Command` 取代原来的 `Menu.Check` —— 顶部搜索选项、条目左侧勾选框 + 右侧**当前行数**、点一项**不关闭**(连续多选)、底部"清除筛选"按钮;计数用 `facetCounts`(统计时排除本列自身的分面筛选, 与 TanStack `getFacetedUniqueValues` 同口径)。
+  - **触发区自绘**(`facetTrigger`): Button 画不出"列名 | 竖分隔 | 选中胶囊", 改成自绘元素 —— 有选中铺 secondary、无选中 1px 描边; 胶囊最多两个, 3 个起收敛成"N 个已选"。
+  - **Command 扩展**: `WithCommandItemChecked / WithCommandItemCount` + `SetChecked/SetCount`(勾选框 16px 在图标左侧, 数量右对齐 12px muted)。
+  - registry: `data-table` 的 `files` 加 `datatablefacet.go`, `deps` 加 `command`、`popover`。
+  - **验收**: 打开面板 → 4 项带图标与计数(7/7/6/4)、搜索框可用; 勾 1 个 → 表实时过滤、触发区出现一个胶囊; 勾 3 个 → 胶囊收敛"3 个已选"、面板不关闭、页脚同步; `go build/vet/test ./...` 全绿; 单装 + `add --all` 编译通过。
 - ✅ **批次 11B: Data Table 分面筛选 / 列头菜单**(2026-10-31, 参 shadcn tasks 示例的 `data-table-faceted-filter.tsx` / `data-table-column-header.tsx`):
   - **分面筛选**: `DataColumn.FilterOptions []DataFilterOption{Label,Value,Icon}` —— 工具栏按列生成 `⊕ 列名` 按钮, 点开 `Menu.Check` 勾选清单(带图标), 有选中时按钮文字变"列名 N"并切 `ButtonSecondary`, 菜单底部有"清除筛选"; 判定 = 单元格**原始文本**相等, 列内 OR / 列间 AND, 与关键字叠加; 新增 `SetFacet/FacetValues/ResetFilters/OnFacetChange`, 关键字或分面生效时工具栏出现"重置"。
   - **列头菜单**: 表头点击不再循环排序, 改为弹 `升序 / 降序 / 隐藏` 菜单(`Menu.PopupAtCursor`); 升序降序是勾选项, 再点当前项 = 取消排序(保住原来的"升→降→取消"); `DataColumn.NoHide` 让行操作列不出现在"隐藏"里; 删掉 `nextDataSort`。

@@ -188,9 +188,10 @@ type DataTable struct {
 	viewBtn  *Button
 
 	// 分面筛选: facet 的键是 d.cols 下标, 值是选中的 Value 集合(列内 OR)。
-	facet     map[int]map[string]bool
-	facetBtns map[int]*Button
-	resetBtn  *Button
+	facet      map[int]map[string]bool
+	facetBtns  map[int]*facetTrigger
+	facetPanel *facetPanel
+	resetBtn   *Button
 
 	filter     string
 	filterCols []int
@@ -323,22 +324,18 @@ func (d *DataTable) buildToolbar() {
 			}
 		})
 	}
-	// 分面筛选按钮(tasks 的 DataTableFacetedFilter): 列内多选, 选中数写进按钮文字。
-	d.facetBtns = map[int]*Button{}
+	// 分面筛选触发区(tasks 的 DataTableFacetedFilter): 自绘胶囊, 选中项直接显示在列名右侧
+	// (Button 只会画一行居中文字, 画不出分隔线 + 胶囊, 见 datatablefacet.go)。
+	d.facetBtns = map[int]*facetTrigger{}
 	for ci := range d.cols {
 		if len(d.cols[ci].FilterOptions) == 0 {
 			continue
 		}
 		ci := ci
-		b := NewButton(0, 0, 0, 0, d.cols[ci].Title, d.toolbar.Handle,
-			WithVariant(ButtonOutline), WithSize(ButtonSizeSm),
-			WithButtonLeadingIcon(icons.IconCirclePlus))
+		b := newFacetTrigger(0, 0, 0, facetTriggerH, d.toolbar.Handle,
+			d.cols[ci].Title, icons.IconCirclePlus, func() { d.showFacetPanel(ci) })
 		xui.ItemMargin(b, dataTableGap, 2, 0, 2)
 		d.facetBtns[ci] = b
-		b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-			d.showFacetMenu(ci, hEle)
-			return 0
-		})
 	}
 	// 重置(tasks 的 Reset): 关键字或分面筛选任一生效才出现。
 	d.resetBtn = NewButton(0, 0, 0, 0, "重置", d.toolbar.Handle,
@@ -782,38 +779,6 @@ func (d *DataTable) showViewMenu(hEle int) {
 // ===== 分面筛选 =====
 
 // showFacetMenu 弹出某列的分面筛选菜单(Menu.Check, 列内多选)。
-func (d *DataTable) showFacetMenu(ci, hEle int) {
-	if ci < 0 || ci >= len(d.cols) {
-		return
-	}
-	col := d.cols[ci]
-	if b := d.facetBtns[ci]; b != nil {
-		b.SetExpanded(true)
-		b.Redraw(true) // 原生菜单阻塞, 不先重绘就看不到展开色
-		defer b.SetExpanded(false)
-	}
-	m := NewMenu()
-	m.Width(176)
-	m.Label(col.Title)
-	for _, opt := range col.FilterOptions {
-		opt := opt
-		v := opt.value()
-		mo := []MenuOpt{MenuOnCheck(func(on bool) { d.setFacet(ci, v, on) })}
-		if opt.Icon != "" {
-			mo = append(mo, MenuIcon(opt.Icon))
-		}
-		m.Check(opt.Label, d.facetHas(ci, v), mo...)
-	}
-	if len(d.facet[ci]) > 0 {
-		m.Separator()
-		m.Item("清除筛选", MenuOnSelect(func() { d.clearFacet(ci) }))
-	}
-	m.PopupAtElement(hEle)
-	// 同 showViewMenu: 菜单关闭时会还原屏幕, 关闭后再刷一次工具栏与表格。
-	d.updateToolbar()
-	d.Redraw(true)
-}
-
 // setFacet 勾选/取消一个分面值(value 是该列的单元格原始文本)。
 func (d *DataTable) setFacet(col int, value string, on bool) {
 	if d.facet == nil {
@@ -878,23 +843,11 @@ func (d *DataTable) updateToolbar() {
 	}
 	th := xui.Current()
 	for ci, b := range d.facetBtns {
-		text := d.cols[ci].Title
-		if n := len(d.facet[ci]); n > 0 {
-			text = fmt.Sprintf("%s %d", text, n)
-		}
-		if b.GetText() != text {
-			b.SetText(text)
-		}
+		// 选中项按选项顺序排(不是点击顺序), 与 shadcn 的 facets 渲染一致
+		b.SetValues(d.facetLabels(ci))
 		w := b.naturalWidth(th)
 		b.SetWidth(w)
 		xui.ItemWidth(b, w)
-		// 有选中时是"已生效"的弱化填充, 没选中是虚线描边的空态(tasks 示例的
-		// border-dashed + bg-secondary), 这里用 secondary/outline 两档变体近似。
-		if len(d.facet[ci]) > 0 {
-			b.SetVariant(ButtonSecondary)
-		} else {
-			b.SetVariant(ButtonOutline)
-		}
 		b.Redraw(false)
 	}
 	if d.resetBtn != nil {

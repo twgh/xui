@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/twgh/xcgui/widget"
@@ -405,6 +406,17 @@ func WithCommandItemOnSelect(fn func(value string)) CommandItemOption {
 	return func(i *CommandItem) { i.onselect = fn }
 }
 
+// WithCommandItemChecked 设置条目左侧的勾选框(shadcn 的 CommandItem data-checked)。
+// 与下面几个用于"分面筛选"这类多选面板: 条目点击不关闭面板, 勾选态由调用方回写。
+func WithCommandItemChecked(on bool) CommandItemOption {
+	return func(i *CommandItem) { i.checked = on }
+}
+
+// WithCommandItemCount 在条目右侧显示一个数量(分面筛选里各选项的行数)。
+func WithCommandItemCount(n int) CommandItemOption {
+	return func(i *CommandItem) { i.count = n; i.hasCount = true }
+}
+
 // AddItem 往分组里添加一个条目。
 func (g *CommandGroup) AddItem(value, text string, opts ...CommandItemOption) *CommandItem {
 	if g == nil || g.cmd == nil {
@@ -461,6 +473,34 @@ type CommandItem struct {
 	match    bool
 	active   bool
 	onselect func(value string)
+
+	// 分面筛选用的两个附加显示位(见 WithCommandItemChecked / WithCommandItemCount)
+	checked  bool
+	count    int
+	hasCount bool
+}
+
+// SetChecked 更新勾选态(分面筛选在面板不关闭的情况下实时改)。
+func (i *CommandItem) SetChecked(on bool) *CommandItem {
+	if i == nil || i.checked == on {
+		return i
+	}
+	i.checked = on
+	i.Redraw(false)
+	return i
+}
+
+// SetCount 更新右侧数量。
+func (i *CommandItem) SetCount(n int) *CommandItem {
+	if i == nil {
+		return i
+	}
+	if i.hasCount && i.count == n {
+		return i
+	}
+	i.count, i.hasCount = n, true
+	i.Redraw(false)
+	return i
 }
 
 // Value 返回条目的程序侧值。
@@ -537,6 +577,13 @@ func (i *CommandItem) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	fg = fg.WithAlpha(alpha)
 
 	x := p.Rc.Left + 8
+	if i.checked {
+		box := xc.RECT{Left: x, Top: p.Rc.Top + 8, Right: x + 16, Bottom: p.Rc.Top + 24}
+		p.FillRound(&box, t.Primary.WithAlpha(alpha), t.RadiusSm())
+		ic := xc.RECT{Left: box.Left + 2, Top: box.Top + 2, Right: box.Right - 2, Bottom: box.Bottom - 2}
+		p.Icon(icons.IconCheck, &ic, t.PrimaryForeground.WithAlpha(alpha), 2.2)
+		x += 24 // 16 勾选框 + 8 gap-2
+	}
 	if i.icon != "" {
 		ir := xc.RECT{Left: x, Top: p.Rc.Top + 8, Right: x + 16, Bottom: p.Rc.Top + 24}
 		ic := muted
@@ -547,6 +594,17 @@ func (i *CommandItem) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		x += 24 // 16 图标 + 8 gap-2
 	}
 	right := p.Rc.Right - 8
+	if i.hasCount {
+		num := strconv.Itoa(i.count)
+		sr := xc.RECT{Left: right - 40, Top: p.Rc.Top, Right: right, Bottom: p.Rc.Bottom}
+		sf := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: 12})
+		if sf != 0 {
+			p.Draw.SetFont(sf)
+		}
+		p.Text(num, &sr, muted.WithAlpha(alpha),
+			xcc.TextAlignFlag_Right|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
+		right -= 48
+	}
 	if i.shortcut != "" {
 		sf := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: 12})
 		if sf != 0 {
