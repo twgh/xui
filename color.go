@@ -1,7 +1,7 @@
 // Package xui 为 github.com/twgh/xcgui 提供一套 shadcn 风格的自绘控件运行时:
 // 设计令牌(主题)管理、绘制助手与状态跟踪。
 //
-// 组件源码不由本包提供, 而是通过 xui CLI 拷贝到用户项目的 ui/ 目录下,
+// 组件源码不由本包提供, 而是通过 xui CLI 拷贝到用户项目的组件目录(默认 ui/),
 // 组件在绘制时通过 Current() 实时解析主题令牌, 因此切换主题只需 SetTheme + 重绘。
 //
 // 图标: 内置 lucide 资源在 github.com/twgh/xui/icons 子包(每图标一个 IconXxx 常量, 另有 Path(name));

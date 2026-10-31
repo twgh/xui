@@ -652,7 +652,7 @@ func parseViewArgs(args []string) ([]string, error) {
 func usage() {
 	fmt.Println(`xui — shadcn 风格的 xcgui 自绘组件
 
-  xui init -n <项目名>       新建完整 Go 项目(go.mod + main.go + README + ui/ 组件)
+  xui init -n <项目名>       新建完整 Go 项目(go.mod + main.go + README + AGENTS.md + ui/ 组件)
   xui init -n .              在当前空目录直接生成项目(项目名取目录名)
   xui init [ui目录]          已有项目: 只初始化组件目录(默认 ui)
   xui add <组件...>          拷贝组件(自动带上依赖组件)
@@ -723,11 +723,22 @@ func initProject(dir string, force bool) {
 	if err := scaffoldUI(dir, force); err != nil {
 		fatal("%v", err)
 	}
+	// 组件目录的 AGENTS.md: README 不在 init 的写入范围(用户项目已有自己的),
+	// 所以用法与改组件规则放在组件目录里, 由 AI 助手在改这个目录时读取。
+	agentsPath := filepath.Join(dir, "AGENTS.md")
+	if _, err := os.Stat(agentsPath); err == nil {
+		info("跳过 %s (已存在)", agentsPath)
+	} else if err := os.WriteFile(agentsPath, []byte(agentsDirTemplate), 0o644); err != nil {
+		warn("写入 AGENTS.md 失败: %v", err)
+	} else {
+		info("创建 %s", agentsPath)
+	}
 	info("\n完成。接下来:")
 	info("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
 	info("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)", dir)
 	info("  3. 主题在 %s 中, 随意修改", filepath.Join(dir, "theme.go"))
 	info("  4. 改组件/主题前先看 %s (xcgui 的坑、令牌表、每个组件的画法都在里面)", filepath.Join(dir, "DESIGN.md"))
+	info("  5. AI 助手先读 %s (组件用法/添加更新/改组件规则)", agentsPath)
 }
 
 // scaffoldUI 写 ui 目录: theme.go + DESIGN.md + 基础组件。普通 init 与 init -n 共用。
@@ -803,6 +814,7 @@ func initNewProject(name string, force, noInstall bool) error {
 		{"go.mod", fmt.Sprintf(goModTemplate, module, xuiVer, xcguiVer)},
 		{"main.go", fmt.Sprintf(mainGoTemplate, module, strconv.Quote(name))},
 		{"README.md", fmt.Sprintf(readmeTemplate, name)},
+		{"AGENTS.md", fmt.Sprintf(agentsProjectTemplate, module)},
 		{".gitignore", gitignoreTemplate},
 	}
 	for _, f := range files {
@@ -1614,6 +1626,126 @@ func newCard(parent int, space int32) (*ui.Card, *widget.LayoutEle) {
 }
 `
 
+// agentsRules 是两份下发的 AGENTS.md(项目根 / 组件目录)共用的改组件规则。
+// 用 ~~~ 而不是 ``` 围栏: Go 原始字符串不能包含反引号。
+const agentsRules = `## 修改/自定义组件
+
+- 先读 DESIGN.md: 交互语义看第四节末的汇总表, xcgui 的坑看第八节(按编号), API 看第九节。
+- 颜色、圆角、字体一律从主题令牌取(xui.Current()), 禁止硬编码颜色; 不要缓存颜色,
+  切换主题用 xui.OnThemeChangeFor(元素句柄, fn) 订阅重绘。
+- 事件一律用 AddEvent* 系列(有 2000 回调上限); hover 过渡用 xui.Hover / xui.Fade,
+  弹层进出场用 xui.Presence, 不要自己起定时器或缓存过渡值。
+- 布局禁止绝对坐标: Fill = 父级整尺寸(不是剩余空间), Weight = 剩余空间(仅父级尺寸确定时
+  有效), Auto = 随内容自撑; 页面/长内容用 ui.ScrollArea(见 DESIGN 8.55/8.56/8.66)。
+- 组件源码里的 "见 DESIGN 第 N 节 / 第八节 N 条" 指 DESIGN.md; 章节与条目编号稳定, 只增不改。
+`
+
+// agentsProjectTemplate 是 `xui init -n` 生成到项目根的 AGENTS.md。
+// README 归项目作者、可能被改写, 所以运行方式与组件用法要在这里留一份给 AI 助手。
+const agentsProjectTemplate = `# AGENTS.md — 给 AI 助手的项目说明
+
+本项目界面使用 xui(shadcn 风格的 xcgui 自绘组件库)。组件源码已经拷贝进 ui/(包名 ui),
+归项目所有, 可以随意修改。README.md 由项目作者维护、可能被改写; 用法与约定以本文件
+和 ui/DESIGN.md 为准。
+
+## 运行
+
+~~~bash
+go run .
+~~~
+
+- 仅支持 Windows(xcgui + Direct2D)。
+- 入口在 main.go: app.InitOrExit() → app.New(true) → 建窗口 → a.Run() → a.Exit()。
+- a.SetPaintFrequency(10) 不能省: 默认 30ms 重绘节流会让悬停与动画发涩。
+
+## 目录
+
+- main.go — 应用入口与示例
+- ui/ — 组件源码(package ui, 扁平单包; 跨文件助手也在这里)
+- ui/theme.go — 主题令牌, 改这里全局换肤
+- ui/DESIGN.md — 完整说明书: 组件解剖、xcgui 踩坑全集(第八节, 按编号)、API 清单(第九节)
+
+## 添加与更新组件
+
+在项目根目录执行(组件名用 xui list 查):
+
+~~~bash
+go run github.com/twgh/xui/cmd/xui@latest add table tree   # 自动带上依赖组件
+go run github.com/twgh/xui/cmd/xui@latest update            # 更新 ui/ 里已装组件
+go run github.com/twgh/xui/cmd/xui@latest list              # 列出可用组件
+~~~
+
+CLI 逐个比对内容: 本地没有则创建、一致则跳过、被改过则警告跳过; 确认丢弃本地改动时加
+-o/--overwrite。组件目录不是 ui/ 时, 用 -p <目录> 指定(相对项目根)。
+
+## 最小用法
+
+~~~go
+import (
+    "github.com/twgh/xcgui/app"
+    "github.com/twgh/xui"
+    ui "%s/ui"
+)
+
+func main() {
+    app.InitOrExit()
+    a := app.New(true) // 固定 Direct2D
+    a.EnableAutoDPI(true).EnableDPI(true)
+    a.SetPaintFrequency(10)
+
+    w := ui.NewAppWindow("标题", 960, 640)
+    content := w.Content()
+    content.SetPadding(24, 24, 24, 24)
+    content.SetSpace(16)
+    xui.ItemFill(ui.NewButton(0, 0, 0, 0, "确定", content.Handle))
+
+    w.Show(true)
+    a.Run()
+    a.Exit()
+}
+~~~
+
+组件的构造函数参数顺序是 x, y, cx, cy, parent(cx/cy 传 0 表示交给布局), 之后是选项
+(ui.WithXxx); 布局用 xui.ItemFill / xui.ItemWidth / xui.HStack / xui.VStack。
+
+` + agentsRules
+
+// agentsDirTemplate 是普通 `xui init [目录]` 生成到组件目录的 AGENTS.md。
+// 目录名可能不叫 ui, 所以全文用"本目录"表述, 不写死路径。
+const agentsDirTemplate = `# AGENTS.md — 给 AI 助手的目录说明
+
+本目录是 xui(shadcn 风格的 xcgui 自绘组件库)的组件源码拷贝(package ui), 归项目所有,
+可以随意修改。README.md 由项目作者维护、可能被改写; 组件用法与修改规则以本文件为准。
+
+- DESIGN.md — 配套说明书: 架构、主题系统、组件解剖、xcgui 踩坑全集(第八节, 按编号)、API 清单(第九节)
+- theme.go — 主题令牌, 改这里全局换肤
+- 其余 *.go — 组件源码(扁平单包, 互相直接调用)
+
+## 添加与更新组件
+
+在项目根目录执行; 本目录不是 ui/ 时, 用 -p 指定它相对项目根的路径:
+
+~~~bash
+go run github.com/twgh/xui/cmd/xui@latest add table tree -p <目录>
+go run github.com/twgh/xui/cmd/xui@latest update -p <目录>
+go run github.com/twgh/xui/cmd/xui@latest list
+~~~
+
+CLI 不会覆盖被改过的文件; 确认丢弃本地改动时加 -o/--overwrite。
+
+## 组件速用
+
+~~~go
+import ui "<模块路径>/<本目录>"
+
+xui.ItemFill(ui.NewButton(0, 0, 0, 0, "确定", parent.Handle))
+xui.ItemWidth(ui.NewInput(0, 0, 0, 0, parent.Handle, ui.WithPlaceholder("搜索")), 240)
+~~~
+
+所有组件的构造函数都是 x, y, cx, cy, parent(cx/cy 传 0 交给布局), 之后是选项(ui.WithXxx)。
+
+` + agentsRules
+
 const readmeTemplate = `# %s
 
 由 xui 生成的项目骨架: Go + xcgui + xui(shadcn 风格自绘组件)。
@@ -1629,6 +1761,7 @@ go run .
 ## 目录
 
 - main.go — 应用入口(AppWindow + 示例卡片)
+- AGENTS.md — 给 AI 助手的使用说明与修改规则(README 改写后仍然有效)
 - ui/ — 组件源码拷贝, 归你所有, 可随意修改
 - ui/theme.go — 主题令牌, 改这里全局换肤
 - ui/DESIGN.md — 组件自定义指南与 xcgui 踩坑全集

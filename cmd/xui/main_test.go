@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -386,7 +387,7 @@ func TestInitNewProject(t *testing.T) {
 	}
 
 	for _, f := range []string{
-		"go.mod", "main.go", "README.md", ".gitignore",
+		"go.mod", "main.go", "README.md", "AGENTS.md", ".gitignore",
 		"ui/theme.go", "ui/DESIGN.md", "ui/button.go", "ui/window.go",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, "myapp", f)); err != nil {
@@ -423,6 +424,17 @@ func TestInitNewProject(t *testing.T) {
 		t.Errorf("生成的 main.go 语法错误: %v", err)
 	}
 
+	agents, err := os.ReadFile(filepath.Join(dir, "myapp", "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(agents), "SetPaintFrequency(10)") {
+		t.Errorf("项目根 AGENTS.md 缺少运行约定:\n%s", agents)
+	}
+	if !strings.Contains(string(agents), `ui "myapp/ui"`) {
+		t.Errorf("项目根 AGENTS.md 的导入路径没替换成模块名:\n%s", agents)
+	}
+
 	// 非空目录默认拒绝, --force 放行且不删除无关文件
 	if err := initNewProject("myapp", false, true); err == nil {
 		t.Error("非空目录未加 --force 应报错")
@@ -436,6 +448,43 @@ func TestInitNewProject(t *testing.T) {
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Error("--force 不应删除无关文件")
+	}
+}
+
+// 组件目录可能不叫 ui: DESIGN.md 的文件引用必须是同目录的裸文件名,
+// AGENTS.md 要落在组件目录里, 且重复 init 不覆盖用户改过的版本。
+func TestInitProjectDocsAreDirAgnostic(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	dir := filepath.Join(t.TempDir(), "widgets")
+	initProject(dir, false)
+
+	doc, err := os.ReadFile(filepath.Join(dir, "DESIGN.md"))
+	if err != nil {
+		t.Fatalf("缺少 DESIGN.md: %v", err)
+	}
+	if m := regexp.MustCompile(`(?:^|[^A-Za-z0-9_/])ui/[a-z0-9]+\.go`).FindString(string(doc)); m != "" {
+		t.Errorf("DESIGN.md 写死了 ui/ 路径: %q", m)
+	}
+	if !strings.Contains(string(doc), "组件实现以组件目录下的 `*.go` 为准") {
+		t.Error("DESIGN.md 缺少“组件目录下的 *.go”口径")
+	}
+
+	agents, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("缺少 AGENTS.md: %v", err)
+	}
+	for _, want := range []string{"DESIGN.md", "xui.Current()", "ui.ScrollArea"} {
+		if !strings.Contains(string(agents), want) {
+			t.Errorf("AGENTS.md 缺少 %q", want)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("custom"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	initProject(dir, false)
+	if got, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md")); string(got) != "custom" {
+		t.Error("重复 init 覆盖了已有的 AGENTS.md")
 	}
 }
 

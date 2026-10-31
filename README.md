@@ -49,9 +49,9 @@ go run .
 ```
 
 `-n` 会创建一个完整项目目录:`go.mod` + `main.go`(AppWindow + 示例卡片) + `README.md` +
-`.gitignore` + `ui/`(theme.go + 基础组件 + DESIGN.md), 并**自动执行 `go mod tidy`** 装好
-依赖(生成 `go.sum`)。目录已存在且非空时需加 `-f/--force`; 想跳过依赖安装(如离线)加
-`--no-install`, 之后手动跑一次 `go mod tidy`。
+`AGENTS.md`(给 AI 助手的用法与修改规则) + `.gitignore` + `ui/`(theme.go + 基础组件 + DESIGN.md),
+并**自动执行 `go mod tidy`** 装好依赖(生成 `go.sum`)。目录已存在且非空时需加 `-f/--force`;
+想跳过依赖安装(如离线)加 `--no-install`, 之后手动跑一次 `go mod tidy`。
 
 ### 已有项目
 
@@ -61,8 +61,9 @@ go run github.com/twgh/xui/cmd/xui@latest init
 ```
 
 此时 `init` 只创建 `ui/` 目录:写入 `theme.go`(你的主题文件)、拷入全部基础组件,外加一份
-`DESIGN.md` —— 组件源码的注释里到处是"见 DESIGN 第 N 节",这份**自定义指南**随源码一起安装在你的项目里:
-令牌表、组件解剖、xcgui 踩坑全集、已验证 API 清单都在里面。改组件前先翻它。
+`DESIGN.md` 和一份 `AGENTS.md` —— 组件源码的注释里到处是"见 DESIGN 第 N 节",这份**自定义指南**
+随源码一起安装在你的项目里:令牌表、组件解剖、xcgui 踩坑全集、已验证 API 清单都在里面。
+改组件前先翻它;`AGENTS.md` 是给 AI 助手的同目录说明书(README 被改写也不影响)。
 
 ```go
 package main
@@ -235,9 +236,9 @@ paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存归�
 ## CLI
 
 ```bash
-xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + ui/)
+xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + ui/)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
-xui init [ui目录]       # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md; 已存在则跳过)
+xui init [ui目录]       # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
 xui add button card     # 追加拷贝指定组件(自动带上依赖)
 xui add --all           # 拷贝全部组件
 xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地
@@ -354,7 +355,7 @@ XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dial
 | 文档 | 内容 |
 |---|---|
 | README.md | 本文:安装 / 用法 / 组件一览 |
-| [docs/DESIGN.md](docs/DESIGN.md) | **自定义指南(随 `xui init` 安装为 `ui/DESIGN.md`)**:架构原理、主题系统、组件解剖、**xcgui 踩坑全集(第八节)**、已验证 API 清单 |
+| [docs/DESIGN.md](docs/DESIGN.md) | **自定义指南(随 `xui init` 安装到组件目录, 默认 `ui/DESIGN.md`)**:架构原理、主题系统、组件解剖、**xcgui 踩坑全集(第八节)**、已验证 API 清单 |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 仓库维护者用:当前进度 / 待办 / 仓库结构 / 常用命令 / 视觉验证工作流 |
 | [AGENTS.md](AGENTS.md) | 仓库维护者用:AI 会话入口硬规则与文档导航 |
 
