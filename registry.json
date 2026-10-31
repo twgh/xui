@@ -127,7 +127,7 @@
     },
     "data-table": {
       "files": ["datatable.go"],
-      "deps": ["table", "input", "button", "label", "select"]
+      "deps": ["table", "input", "button", "label", "select", "menu"]
     },
     "tree": {
       "files": ["tree.go", "scrollbar.go"],

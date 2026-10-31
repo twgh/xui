@@ -25,11 +25,23 @@ const (
 	tableSBW int32 = 14
 )
 
+// DataAlign 单元格文字的水平对齐(只影响原生文本; 自绘单元格自己决定排版)。
+type DataAlign int
+
+const (
+	DataAlignLeft   DataAlign = iota // 默认, px-2 左对齐
+	DataAlignCenter                  // 居中
+	DataAlignRight                   // 右对齐(金额 / 数字列)
+)
+
 // TableColumn 表格列定义。
 type TableColumn struct {
 	Title string
-	// Width 列宽(逻辑像素)。<= 0 表示占满剩余宽度 —— 只对最后一列有意义。
+	// Width 列宽(逻辑像素)。<= 0 表示占满剩余宽度: 只有**第一个** <= 0 的列吃剩余宽度
+	// (中间的标题列也能自适应), 其余 <= 0 的列按 120 固定宽排。
 	Width int32
+	// Align 原生文本的对齐方式(默认左对齐)。
+	Align DataAlign
 }
 
 // Table 是 shadcn 风格的多列表格: 表头 + 数据行 + 行悬浮 / 选中。
@@ -60,6 +72,11 @@ type Table struct {
 	// 必须在 onHeaderDrawItem 里调用, **不能**让调用方另注册 AddEvent_List_Header_DrawItem ——
 	// AddEvent 后注册的回调先执行, 组件自己的回调后铺不透明底色, 会把追加内容盖掉。
 	onHeaderExtra func(p *xui.Painter, rc xc.RECT, col int32)
+	// onCellExtra 在单元格底色之后、行底边之前追加绘制(DataTable 用它画勾选列 /
+	// 富单元格 / 行操作钮)。参数 col 是**当前可见列**的下标(见 8.167)。
+	// 同样必须走组件内部回调: 另注册 AddEvent_List_DrawItem 会被本组件的行底色盖掉。
+	// 回调里要自带文字/图标 —— 富单元格的原生文本由调用方清空(见 8.168)。
+	onCellExtra func(p *xui.Painter, rc xc.RECT, row, col int32, hover bool)
 }
 
 // TableOption 组件配置项。
@@ -88,7 +105,7 @@ func NewTable(x, y, cx, cy int32, hParent int, cols []TableColumn, opts ...Table
 	}
 	t := &Table{
 		List:    widget.NewList(x, y, cx, cy, hParent),
-		cols:    cols,
+		cols:    append([]TableColumn(nil), cols...), // 归一化 Width 时不要改到调用方的切片
 		autoCol: -1,
 		rowH:    tableRowH,
 		lastW:   -1,
@@ -102,9 +119,7 @@ func NewTable(x, y, cx, cy int32, hParent int, cols []TableColumn, opts ...Table
 	if cy <= 0 {
 		t.SetHeight(tableHeaderH + tableInset*2 + t.rowH*5)
 	}
-	if cols[len(cols)-1].Width <= 0 {
-		t.autoCol = int32(len(cols) - 1)
-	}
+	t.pickAutoCol()
 
 	// 数据适配器: 表头与列表项各一个(List 不挂适配器就是空壳)
 	t.CreateAdapterHeader()
@@ -254,6 +269,53 @@ func (t *Table) Refresh() *Table {
 
 // ===== 布局 / 主题 =====
 
+// tableDefaultColW 是"多余的自适应列"的兜底宽度: 只有**第一个** Width<=0 的列
+// 吃掉剩余宽度(同 shadcn 里只有一个 `w-full` 的列), 其余 Width<=0 的列按固定宽排,
+// 否则每列都会算出同一份剩余宽度、把表格撑出可视区。
+const tableDefaultColW int32 = 120
+
+// pickAutoCol 选出占满剩余宽度的列(第一个 Width<=0 的), 其余 Width<=0 的列归一成固定宽。
+func (t *Table) pickAutoCol() {
+	t.autoCol = -1
+	for i, c := range t.cols {
+		if c.Width > 0 {
+			continue
+		}
+		if t.autoCol < 0 {
+			t.autoCol = int32(i)
+			continue
+		}
+		t.cols[i].Width = tableDefaultColW
+	}
+}
+
+
+// SetColumns 重建列结构(列显隐 / 动态列)。行数据会被清空 —— 调用方随后要重新
+// AddRow(DataTable 的 render 就是这么做的)。
+//
+// 不能只 DeleteColumnAll + AddColumnText: 原生 List 的**行数据适配器**仍按旧列数
+// 工作, 新加的第 4 列写进去会被丢掉(探针实测 rows 不变、GetItemText(0,3) 恒为空)。
+// 必须 DeleteColumnAll 之后重新 CreateAdapter(新列数)(见 DESIGN 8.169)。
+func (t *Table) SetColumns(cols []TableColumn) *Table {
+	if len(cols) == 0 {
+		cols = []TableColumn{{Title: ""}}
+	}
+	t.cols = append([]TableColumn(nil), cols...)
+	t.pickAutoCol()
+	t.DeleteRowAll()
+	t.DeleteColumnAll()
+	w := t.GetWidth()
+	for i, c := range cols {
+		t.AddColumnText(t.colWidth(int32(i), w, t.sbWide), fmt.Sprintf("name%d", i+1), c.Title)
+	}
+	t.CreateAdapter(int32(len(cols)))
+	t.lastW = -1
+	t.applyTheme(xui.Current()) // 重设表头/单元格字体、边距与对齐
+	t.relayout(true)
+	t.Redraw(false)
+	return t
+}
+
 // colWidth 计算第 i 列的宽度。scrolling 为 true 时给滚动条让出宽度。
 func (t *Table) colWidth(i int32, cx int32, scrolling bool) int32 {
 	if w := t.cols[i].Width; w > 0 {
@@ -342,15 +404,7 @@ func (t *Table) applyTheme(th *xui.Theme) {
 	}
 	for r := start; r <= end && r < t.Rows(); r++ {
 		for c := int32(0); c < t.Columns(); c++ {
-			h := t.GetTemplateObject(r, c, 1)
-			if h == 0 {
-				continue
-			}
-			xc.XShapeText_SetTextColor(h, color)
-			if font != 0 {
-				xc.XShapeText_SetFont(h, font)
-			}
-			xc.XWidget_LayoutItem_SetMargin(h, tableCellPadX, 0, 0, 0)
+			t.styleCell(r, c, th)
 		}
 	}
 	t.styleScrollBars(th)
@@ -365,19 +419,39 @@ func (t *Table) onTempCreate(hEle int, pItem *xc.List_Item_, nFlag int32, pbHand
 		return 0
 	}
 	th := xui.Current()
-	font := xui.FontHandle(th.FontDefault)
 	for i := range t.cols {
-		h := t.GetTemplateObject(pItem.Index, int32(i), 1)
-		if h == 0 {
-			continue
-		}
-		xc.XShapeText_SetTextColor(h, uint32(th.Foreground))
-		if font != 0 {
-			xc.XShapeText_SetFont(h, font)
-		}
-		xc.XWidget_LayoutItem_SetMargin(h, tableCellPadX, 0, 0, 0) // p-2
+		t.styleCell(pItem.Index, int32(i), th)
 	}
 	return 0
+}
+
+// styleCell 把主题字体/字色/对齐下发给某一格的形状文本。
+// 对齐按列(TableColumn.Align)设置: 右/居中对齐时对侧也留 px-2 内边距,
+// 否则贴到单元格边缘(与表头 px-2 的观感不一致)。
+func (t *Table) styleCell(row, col int32, th *xui.Theme) {
+	h := t.GetTemplateObject(row, col, 1)
+	if h == 0 {
+		return
+	}
+	font := xui.FontHandle(th.FontDefault)
+	xc.XShapeText_SetTextColor(h, uint32(th.Foreground))
+	if font != 0 {
+		xc.XShapeText_SetFont(h, font)
+	}
+	align := xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter
+	padLeft, padRight := tableCellPadX, int32(0)
+	if col >= 0 && int(col) < len(t.cols) {
+		switch t.cols[col].Align {
+		case DataAlignRight:
+			align = xcc.TextAlignFlag_Right | xcc.TextAlignFlag_Vcenter
+			padRight = tableCellPadX
+		case DataAlignCenter:
+			align = xcc.TextAlignFlag_Center | xcc.TextAlignFlag_Vcenter
+			padRight = tableCellPadX
+		}
+	}
+	xc.XShapeText_SetTextAlign(h, align)
+	xc.XWidget_LayoutItem_SetMargin(h, padLeft, 0, padRight, 0) // p-2
 }
 
 // onHeaderTempCreate 表头模板实例化时同步文字样式。
@@ -416,10 +490,15 @@ func (t *Table) onDrawItem(hEle, hDraw int, pItem *xc.List_Item_, pbHandled *boo
 	// 悬停色叠在它上面并按过渡值淡入淡出(行上的 transition-colors, 见 table.tsx);
 	// 选中态立即到位(点击结果不该有延迟)。
 	p.FillRound(&rc, t.surface(th), 0)
+	hover := pItem.NState == xcc.List_Item_State_Stay
 	if pItem.NState == xcc.List_Item_State_Select {
 		p.FillRound(&rc, th.Muted, 0) // data-[state=selected]:bg-muted
-	} else if hv := xui.HoverItem(hEle, pItem.Index, pItem.NState == xcc.List_Item_State_Stay); hv > 0 {
+	} else if hv := xui.HoverItem(hEle, pItem.Index, hover); hv > 0 {
 		p.FillRound(&rc, th.Muted.ScaleAlpha(0.5*hv), 0) // hover:bg-muted/50
+	}
+	// 富单元格: 在底色之上、行底边之下(底边不能被单元格内容盖住)。
+	if t.onCellExtra != nil {
+		t.onCellExtra(p, rc, pItem.Index, pItem.ISubItem, hover)
 	}
 	// 行底边: 最后一行不画(tbody 的 [&_tr:last-child]:border-0)
 	if pItem.Index < t.Rows()-1 {

@@ -21,6 +21,12 @@ const (
 	dataTableGap      int32 = 8
 	dataTableSortIcon int32 = 14
 	dataTableSortGap  int32 = 6
+	// dataTableSelectW 是勾选列宽(w-8): 16 的复选框 + 单元格 p-2(8×2)。
+	dataTableSelectW int32 = 32
+	// dataTableCheckSize 是勾选框边长(shadcn checkbox 的 size-4)。
+	dataTableCheckSize int32 = 16
+	// dataTableToggleW 是工具栏"视图"按钮宽(图标 + "视图" 两字)。
+	dataTableToggleW int32 = 88
 )
 
 // DataSort 排序方向。
@@ -35,7 +41,8 @@ const (
 // DataColumn 数据表格的列定义。
 type DataColumn struct {
 	Title string
-	// Width 列宽(逻辑像素)。<= 0 表示占满剩余宽度 —— 只对最后一列有意义(同 TableColumn)。
+	// Width 列宽(逻辑像素)。<= 0 表示占满剩余宽度(同 TableColumn); 多个 <= 0 时只有
+	// 第一个吃掉剩余宽度, 其余按 120 固定宽排。
 	Width int32
 	// Sortable 允许点击表头排序: 每次点击在 升序 → 降序 → 不排序 之间循环
 	// (同 TanStack 的 enableSortingRemoval 默认语义)。
@@ -44,6 +51,25 @@ type DataColumn struct {
 	// (允许货币符号 / 千分位 / 百分号)时按数值, 否则按大小写不敏感的自然顺序
 	// (字符串里的数字段按数值比较, 同 localeCompare 的 numeric: true)。
 	Compare func(a, b string) int
+	// Align 原生文本的水平对齐(默认左对齐)。金额 / 数字列用 DataAlignRight。
+	Align DataAlign
+	// Render 自定义单元格绘制(徽章 / 状态图标 / 行操作钮), 对应 tasks 示例里
+	// `columns.tsx` 的 cell 渲染函数。设置后该列**不再向原生 List 写文本** ——
+	// 原生 shape text 是独立子元素, 会叠在自绘内容上; 所以回调必须自己画文字。
+	Render func(p *xui.Painter, cell DataCell)
+	// Hidden 初始隐藏, 可在工具栏"视图"下拉里重新勾出(需要 WithDataTableColumnToggle)。
+	Hidden bool
+}
+
+// DataCell 传给 DataColumn.Render 的单元格信息。
+type DataCell struct {
+	Row      int        // 原始数据行下标(不是当前页里的下标)
+	Col      int        // 列下标(DataColumn 序列, 含隐藏列)
+	Text     string     // 该单元格的原始文本(未经过任何格式化)
+	Rc       xc.RECT    // 单元格矩形(逻辑像素, 相对表格元素; 内容按 p-2 自己内缩 8)
+	Hover    bool       // 所在行是否处于悬停态
+	Selected bool       // 所在行是否被勾选
+	DTable   *DataTable // 反向引用(便于回调里改选择状态)
 }
 
 // DataTableOption 组件配置项。
@@ -93,6 +119,20 @@ func WithDataTableFilterColumns(cols ...int) DataTableOption {
 	return func(d *DataTable) { d.filterCols = append([]int(nil), cols...) }
 }
 
+// WithDataTableSelection 启用行勾选: 表格最左侧多一列复选框(表头是全选 / 不确定态),
+// 勾选状态按**原始数据行**保存 —— 翻页 / 排序 / 筛选都不会丢。
+//
+// 勾选列的点击只切勾选, 不再让原生 List 单选高亮(行点击与勾选解耦, 见 DESIGN 8.170)。
+func WithDataTableSelection() DataTableOption {
+	return func(d *DataTable) { d.selectOn = true }
+}
+
+// WithDataTableColumnToggle 在工具栏右侧加"视图"下拉(Menu.Check 列表), 逐列显隐。
+// 列显隐会重建 List 列结构并重加当前页(见 Table.SetColumns / DESIGN 8.169)。
+func WithDataTableColumnToggle() DataTableOption {
+	return func(d *DataTable) { d.toggleOn = true }
+}
+
 // DataTable 数据表格: 在 Table 之上提供 **列排序 / 关键字筛选 / 分页**。
 //
 // 对齐 shadcn 的 Data Table 模式(TanStack Table 的 tasks 示例):
@@ -111,12 +151,20 @@ func WithDataTableFilterColumns(cols ...int) DataTableOption {
 type DataTable struct {
 	*widget.LayoutEle
 
-	cols []DataColumn
-	rows [][]string
-	view []int // 过滤 + 排序后的原始行下标
+	cols    []DataColumn
+	rows    [][]string
+	view    []int // 过滤 + 排序后的原始行下标
+	visible []int // 当前显示的列(d.cols 下标); 列显隐改变的只是它
 
 	sortCol int
 	sortDir DataSort
+
+	// 行勾选: selected 的键是**原始数据行**下标, 翻页 / 排序 / 筛选都不影响它。
+	selectOn bool
+	selected map[int]bool
+
+	toggleOn bool
+	viewBtn  *Button
 
 	filter     string
 	filterCols []int
@@ -149,6 +197,8 @@ type DataTable struct {
 	onPage   func(page int)
 	onFilter func(text string)
 	onRow    func(row int)
+	onCell   func(row, col int)
+	onSel    func(rows []int)
 }
 
 // NewDataTable 创建数据表格。cols 末列 Width<=0 时占满剩余宽度。
@@ -163,7 +213,7 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 	}
 	d := &DataTable{
 		LayoutEle:         ele,
-		cols:              cols,
+		cols:              append([]DataColumn(nil), cols...), // 列显隐会改 Hidden, 别改到调用方的切片
 		sortCol:           -1,
 		pageSize:          10,
 		pageSizes:         []int{10, 20, 30, 40, 50},
@@ -179,6 +229,8 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 	if !dataHasInt(d.pageSizes, d.pageSize) {
 		d.pageSizes = append([]int{d.pageSize}, d.pageSizes...)
 	}
+	d.selected = map[int]bool{}
+	d.visible = d.initVisible()
 
 	ele.EnableHorizon(false)
 	ele.EnableLayout(true)
@@ -191,7 +243,7 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 	// 根是 Auto 高时, 里面 Weight 高的表格不会撑出高度(整块塌成 0, 实测见 DESIGN 8.164)。
 	if cy <= 0 {
 		total := d.minBodyH() + dataTableFooterH + dataTableGap
-		if d.searchOn {
+		if d.searchOn || d.toggleOn {
 			total += dataTableToolbarH + dataTableGap
 		}
 		ele.SetHeight(total)
@@ -207,33 +259,83 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 }
 
 func (d *DataTable) buildToolbar() {
-	if !d.searchOn {
+	if !d.searchOn && !d.toggleOn {
 		return
 	}
 	d.toolbar = xui.HStack(d.Handle, dataTableToolbarH, 0)
-	d.search = NewInput(0, 0, 0, dataTableToolbarH, d.toolbar.Handle,
-		WithPlaceholder(d.searchPlaceholder),
-		WithLeadingIcon(icons.IconSearch),
-		WithClearButton())
-	xui.ItemWeight(d.search, 1)
-	d.search.OnChange(func(text string) {
-		if d.suppressSearch {
-			return
+	if d.searchOn {
+		d.search = NewInput(0, 0, 0, dataTableToolbarH, d.toolbar.Handle,
+			WithPlaceholder(d.searchPlaceholder),
+			WithLeadingIcon(icons.IconSearch),
+			WithClearButton())
+		xui.ItemWeight(d.search, 1)
+		d.search.OnChange(func(text string) {
+			if d.suppressSearch {
+				return
+			}
+			d.filter = text
+			d.apply(true)
+			if d.onFilter != nil {
+				d.onFilter(text)
+			}
+		})
+	}
+	if d.toggleOn {
+		// 对应 tasks 示例工具栏右侧的 View 下拉(DataTableViewOptions): 逐列显隐。
+		d.viewBtn = NewButton(0, 0, 0, 0, "视图", d.toolbar.Handle,
+			WithVariant(ButtonOutline), WithSize(ButtonSizeSm),
+			WithButtonLeadingIcon(icons.IconSlidersHorizontal))
+		xui.ItemSize(d.viewBtn, dataTableToggleW, 28)
+		xui.ItemMargin(d.viewBtn, dataTableGap, 2, 0, 2)
+		d.viewBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+			d.showViewMenu(hEle)
+			return 0
+		})
+	}
+}
+
+// initVisible 初始化可见列: 过滤掉 Hidden, 并保证至少留一列(全隐藏等于表格变空壳)。
+func (d *DataTable) initVisible() []int {
+	out := make([]int, 0, len(d.cols))
+	for i, c := range d.cols {
+		if !c.Hidden {
+			out = append(out, i)
 		}
-		d.filter = text
-		d.apply(true)
-		if d.onFilter != nil {
-			d.onFilter(text)
-		}
-	})
+	}
+	if len(out) == 0 {
+		out = append(out, 0)
+		d.cols[0].Hidden = false
+	}
+	return out
+}
+
+// tableColumns 把可见列翻成 Table 的列定义(勾选列在前)。
+func (d *DataTable) tableColumns() []TableColumn {
+	tc := make([]TableColumn, 0, len(d.visible)+1)
+	if d.selectOn {
+		tc = append(tc, TableColumn{Title: "", Width: dataTableSelectW})
+	}
+	for _, ci := range d.visible {
+		c := d.cols[ci]
+		tc = append(tc, TableColumn{Title: c.Title, Width: c.Width, Align: c.Align})
+	}
+	return tc
+}
+
+// colAt 把 Table 的列下标翻成 d.cols 下标(勾选列返回 -1)。
+func (d *DataTable) colAt(tcol int32) int {
+	i := int(tcol)
+	if d.selectOn {
+		i--
+	}
+	if i < 0 || i >= len(d.visible) {
+		return -1
+	}
+	return d.visible[i]
 }
 
 func (d *DataTable) buildTable() {
-	tc := make([]TableColumn, len(d.cols))
-	for i, c := range d.cols {
-		tc[i] = TableColumn{Title: c.Title, Width: c.Width}
-	}
-	d.table = NewTable(0, 0, 0, 0, d.Handle, tc)
+	d.table = NewTable(0, 0, 0, 0, d.Handle, d.tableColumns())
 	xui.ItemFill(d.table)
 	// 表格吃掉工具栏/页脚之间的剩余高度; 高度 Auto 的父级里 Weight 会退化成 0
 	// (DESIGN 8.55), cy=0 的情况由构造函数的"根初始高度"兜底(见 8.164)。
@@ -241,10 +343,44 @@ func (d *DataTable) buildTable() {
 	xui.ItemMinSize(d.table, 0, d.minBodyH())
 
 	d.table.onHeaderExtra = d.paintHeaderExtra
+	d.table.onCellExtra = d.paintCell
 	d.table.AddEvent_List_Header_Click(func(hEle int, iItem int32, pbHandled *bool) int {
-		if iItem >= 0 && int(iItem) < len(d.cols) && d.cols[iItem].Sortable {
-			d.toggleSort(int(iItem))
+		if d.selectOn && iItem == 0 {
+			d.togglePageSelection()
 			*pbHandled = true
+			return 0
+		}
+		if ci := d.colAt(iItem); ci >= 0 && d.cols[ci].Sortable {
+			d.toggleSort(ci)
+			*pbHandled = true
+		}
+		return 0
+	})
+
+	// 勾选模式下自己在按下时做命中测试: 原生 List 的单选高亮只表示"刚点过",
+	// 与勾选无关, 吞掉按下消息不让它改选中行(见 DESIGN 8.170)。
+	d.table.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		if !d.selectOn || pPt == nil {
+			return 0
+		}
+		var row, sub int32
+		if !d.table.HitTestOffset(pPt, &row, &sub) {
+			return 0
+		}
+		raw := d.rawRow(row)
+		if raw < 0 {
+			return 0
+		}
+		*pbHandled = true
+		if int(sub) == 0 { // 勾选列
+			d.toggleRowSelected(raw)
+			return 0
+		}
+		if ci := d.colAt(sub); ci >= 0 && d.onCell != nil {
+			d.onCell(raw, ci)
+		}
+		if d.onRow != nil {
+			d.onRow(raw)
 		}
 		return 0
 	})
@@ -448,6 +584,196 @@ func (d *DataTable) OnRowClick(fn func(row int)) *DataTable {
 	return d
 }
 
+// OnCellClick 注册单元格点击回调(需要 WithDataTableSelection, 这一模式下原生 List
+// 的单选被接管)。row 是原始行下标, col 是 d.cols 下标 —— 行操作列靠它区分。
+func (d *DataTable) OnCellClick(fn func(row, col int)) *DataTable {
+	d.onCell = fn
+	return d
+}
+
+// ===== 行勾选 =====
+
+// OnSelectionChange 注册勾选变化回调(rows 是升序的原始行下标快照)。
+func (d *DataTable) OnSelectionChange(fn func(rows []int)) *DataTable {
+	d.onSel = fn
+	return d
+}
+
+// Selected 返回被勾选的原始行下标(升序)。
+func (d *DataTable) Selected() []int {
+	out := make([]int, 0, len(d.selected))
+	for raw, on := range d.selected {
+		if on {
+			out = append(out, raw)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
+// IsSelected 报告某原始行是否被勾选。
+func (d *DataTable) IsSelected(row int) bool { return d.selected[row] }
+
+// SelectedCount 返回被勾选且**在当前筛选结果里**的行数(页脚分母口径)。
+func (d *DataTable) SelectedCount() int { return d.selectedInView() }
+
+// SetSelected 用给定原始行下标覆盖勾选集合。
+func (d *DataTable) SetSelected(rows ...int) *DataTable {
+	d.selected = make(map[int]bool, len(rows))
+	for _, r := range rows {
+		if r >= 0 && r < len(d.rows) {
+			d.selected[r] = true
+		}
+	}
+	d.afterSelectionChange(true)
+	return d
+}
+
+// ClearSelection 清空勾选。
+func (d *DataTable) ClearSelection() *DataTable {
+	d.selected = map[int]bool{}
+	d.afterSelectionChange(true)
+	return d
+}
+
+// ===== 列显隐 =====
+
+// SetColumnVisible 显示 / 隐藏某列(d.cols 下标)。至少保留一列 —— 全隐藏时调用被忽略。
+func (d *DataTable) SetColumnVisible(col int, on bool) *DataTable {
+	if col < 0 || col >= len(d.cols) || d.cols[col].Hidden == !on {
+		return d
+	}
+	if !on && len(d.visible) <= 1 {
+		return d
+	}
+	d.cols[col].Hidden = !on
+	d.visible = d.initVisible()
+	d.rebuildColumns()
+	return d
+}
+
+// ColumnVisible 返回某列当前是否显示。
+func (d *DataTable) ColumnVisible(col int) bool {
+	return col >= 0 && col < len(d.cols) && !d.cols[col].Hidden
+}
+
+// SetColumns 替换列定义(列名 / 宽度 / 排序 / 渲染函数全部重来), 勾选状态保留。
+func (d *DataTable) SetColumns(cols []DataColumn) *DataTable {
+	if len(cols) == 0 {
+		return d
+	}
+	d.cols = append([]DataColumn(nil), cols...)
+	d.visible = d.initVisible()
+	if d.sortCol >= len(d.cols) {
+		d.sortCol, d.sortDir = -1, DataSortNone
+	}
+	d.rebuildColumns()
+	return d
+}
+
+// rebuildColumns 重建 List 列结构并重加当前页(列数变了必须重建适配器, 见 8.169)。
+func (d *DataTable) rebuildColumns() {
+	if d.table == nil {
+		return
+	}
+	d.table.SetColumns(d.tableColumns())
+	d.render()
+}
+
+// showViewMenu 弹出"视图"列显隐菜单(Menu.Check 支持多选)。
+func (d *DataTable) showViewMenu(hEle int) {
+	if d.viewBtn != nil {
+		d.viewBtn.SetExpanded(true)
+		d.viewBtn.Redraw(true) // 原生菜单阻塞, 不先重绘就看不到展开色
+		defer d.viewBtn.SetExpanded(false)
+	}
+	m := NewMenu()
+	m.Width(176)
+	m.Label("显示列")
+	for i := range d.cols {
+		i := i
+		m.Check(d.cols[i].Title, !d.cols[i].Hidden, MenuOnCheck(func(on bool) {
+			d.SetColumnVisible(i, on)
+		}))
+	}
+	m.PopupAtElement(hEle)
+}
+
+// ===== 内部: 勾选状态 =====
+
+// pageSelection 统计当前页的(已勾选数, 行数) —— 表头全选的判断口径(TanStack 的
+// getIsAllPageRowsSelected: 全选只管当前页, 不是全部筛选结果)。
+func (d *DataTable) pageSelection() (sel, total int) {
+	start, end := d.page*d.pageSize, d.page*d.pageSize+d.pageSize
+	if start > len(d.view) {
+		start = len(d.view)
+	}
+	if end > len(d.view) {
+		end = len(d.view)
+	}
+	for i := start; i < end; i++ {
+		total++
+		if d.selected[d.view[i]] {
+			sel++
+		}
+	}
+	return sel, total
+}
+
+// selectedInView 统计勾选 ∩ 当前筛选结果(页脚分母用筛选后的行数)。
+func (d *DataTable) selectedInView() int {
+	n := 0
+	for _, raw := range d.view {
+		if d.selected[raw] {
+			n++
+		}
+	}
+	return n
+}
+
+func (d *DataTable) toggleRowSelected(raw int) {
+	if d.selected == nil {
+		d.selected = map[int]bool{}
+	}
+	if d.selected[raw] {
+		delete(d.selected, raw)
+	} else {
+		d.selected[raw] = true
+	}
+	d.afterSelectionChange(true)
+}
+
+// togglePageSelection 表头点击: 整页勾满则清空整页, 否则把整页勾上。
+func (d *DataTable) togglePageSelection() {
+	sel, total := d.pageSelection()
+	on := sel < total
+	start, end := d.page*d.pageSize, d.page*d.pageSize+d.pageSize
+	if end > len(d.view) {
+		end = len(d.view)
+	}
+	if d.selected == nil {
+		d.selected = map[int]bool{}
+	}
+	for i := start; i < end; i++ {
+		if on {
+			d.selected[d.view[i]] = true
+		} else {
+			delete(d.selected, d.view[i])
+		}
+	}
+	d.afterSelectionChange(true)
+}
+
+func (d *DataTable) afterSelectionChange(redraw bool) {
+	if d.table != nil && redraw {
+		d.table.Redraw(false)
+	}
+	d.syncFooter()
+	if d.onSel != nil {
+		d.onSel(d.Selected())
+	}
+}
+
 // ===== 内部: 视图 / 分页 / 绘制 =====
 
 func (d *DataTable) apply(resetPage bool) {
@@ -473,6 +799,27 @@ func (d *DataTable) clampPage() {
 	}
 }
 
+// rawRow 把表格行下标(当前页内)翻成原始数据行下标; 越界返回 -1。
+func (d *DataTable) rawRow(row int32) int {
+	i := d.page*d.pageSize + int(row)
+	if row < 0 || i < 0 || i >= len(d.view) {
+		return -1
+	}
+	return d.view[i]
+}
+
+// cellText 取某原始行某列的文本(行比列短时为空)。
+func (d *DataTable) cellText(raw, col int) string {
+	if raw < 0 || raw >= len(d.rows) || col < 0 {
+		return ""
+	}
+	row := d.rows[raw]
+	if col >= len(row) {
+		return ""
+	}
+	return row[col]
+}
+
 func (d *DataTable) render() {
 	if d.table == nil {
 		return
@@ -486,7 +833,20 @@ func (d *DataTable) render() {
 		end = len(d.view)
 	}
 	for i := start; i < end; i++ {
-		d.table.AddRow(d.rows[d.view[i]]...)
+		raw := d.view[i]
+		cells := make([]string, 0, len(d.visible)+1)
+		if d.selectOn {
+			cells = append(cells, "") // 勾选列: 全部自绘
+		}
+		for _, ci := range d.visible {
+			// 自绘列不写原生文本: 原生 shape text 会在自绘内容上再叠一层(见 DESIGN 8.168)。
+			if ci >= 0 && ci < len(d.cols) && d.cols[ci].Render != nil {
+				cells = append(cells, "")
+				continue
+			}
+			cells = append(cells, d.cellText(raw, ci))
+		}
+		d.table.AddRow(cells...)
 	}
 	d.table.Refresh()
 	d.syncFooter()
@@ -498,6 +858,13 @@ func (d *DataTable) syncFooter() {
 		text := fmt.Sprintf("共 %d 行", len(d.rows))
 		if strings.TrimSpace(d.filter) != "" {
 			text = fmt.Sprintf("筛选出 %d / %d 行", len(d.view), len(d.rows))
+		}
+		// 有勾选时优先显示"已选 x / y 行"(tasks 示例页脚的 "{n} of {m} row(s) selected"),
+		// y 取筛选后的行数: 筛选把行藏起来了, 拿总数当分母对不上。
+		if d.selectOn {
+			if n := d.selectedInView(); n > 0 {
+				text = fmt.Sprintf("已选 %d / %d 行", n, len(d.view))
+			}
 		}
 		d.totalLabel.SetText(text)
 		d.totalLabel.Redraw(false)
@@ -534,13 +901,20 @@ func (d *DataTable) toggleSort(col int) {
 	}
 }
 
-func (d *DataTable) paintHeaderExtra(p *xui.Painter, rc xc.RECT, col int32) {
-	if col < 0 || int(col) >= len(d.cols) || !d.cols[col].Sortable {
+func (d *DataTable) paintHeaderExtra(p *xui.Painter, rc xc.RECT, tcol int32) {
+	if d.selectOn && tcol == 0 {
+		// 表头全选: 整页勾满 = 选中, 部分勾选 = 不确定态(减号)
+		sel, total := d.pageSelection()
+		d.paintCheckBox(p, rc, total > 0 && sel >= total, sel > 0 && sel < total)
+		return
+	}
+	ci := d.colAt(tcol)
+	if ci < 0 || ci >= len(d.cols) || !d.cols[ci].Sortable {
 		return
 	}
 	th := xui.Current()
 	path, color := icons.IconArrowUpDown, th.MutedForeground
-	if int(col) == d.sortCol {
+	if ci == d.sortCol {
 		switch d.sortDir {
 		case DataSortAsc:
 			path, color = icons.IconArrowUp, th.Foreground
@@ -549,13 +923,69 @@ func (d *DataTable) paintHeaderExtra(p *xui.Painter, rc xc.RECT, col int32) {
 		}
 	}
 	font := xui.FontHandle(th.FontDefault)
-	x := rc.Left + tableCellPadX + xui.TextWidth(d.cols[col].Title, font) + dataTableSortGap
+	x := rc.Left + tableCellPadX + xui.TextWidth(d.cols[ci].Title, font) + dataTableSortGap
 	if limit := rc.Right - tableCellPadX - dataTableSortIcon; x > limit {
 		x = limit
 	}
 	top := rc.Top + (rc.Bottom-rc.Top-dataTableSortIcon)/2
 	ir := xc.RECT{Left: x, Top: top, Right: x + dataTableSortIcon, Bottom: top + dataTableSortIcon}
 	p.Icon(path, &ir, color, 2)
+}
+
+// paintCell 是 Table 的单元格扩展钩子: 勾选列的复选框 + 各列的自定义渲染。
+func (d *DataTable) paintCell(p *xui.Painter, rc xc.RECT, row, tcol int32, hover bool) {
+	raw := d.rawRow(row)
+	if raw < 0 {
+		return
+	}
+	selected := d.selectOn && d.selected[raw]
+	if selected {
+		// data-[state=selected]:bg-muted —— 勾选行整行铺弱化底色(逐格填 = 整行)
+		p.FillRound(&rc, xui.Current().Muted, 0)
+	}
+	if d.selectOn && tcol == 0 {
+		d.paintCheckBox(p, rc, selected, false)
+		return
+	}
+	ci := d.colAt(tcol)
+	if ci < 0 || ci >= len(d.cols) {
+		return
+	}
+	if fn := d.cols[ci].Render; fn != nil {
+		fn(p, DataCell{
+			Row:      raw,
+			Col:      ci,
+			Text:     d.cellText(raw, ci),
+			Rc:       rc,
+			Hover:    hover,
+			Selected: selected,
+			DTable:   d,
+		})
+	}
+}
+
+// paintCheckBox 在矩形内居中画一个复选框(勾选 / 不确定态), 视觉对齐 Checkbox 组件:
+// rounded-[4px] border-input, 选中 bg-primary + 白勾/白减号, 暗色未选中 bg-input/30。
+func (d *DataTable) paintCheckBox(p *xui.Painter, rc xc.RECT, checked, indeterminate bool) {
+	th := xui.Current()
+	size := dataTableCheckSize
+	left := rc.Left + (rc.Right-rc.Left-size)/2
+	top := rc.Top + (rc.Bottom-rc.Top-size)/2
+	box := xc.RECT{Left: left, Top: top, Right: left + size, Bottom: top + size}
+	if !checked && !indeterminate {
+		if th.IsDark() {
+			p.FillRound(&box, th.Input.ScaleAlpha(0.3), 4)
+		}
+		p.StrokeRound(&box, th.Input, 4, 1)
+		return
+	}
+	p.FillRound(&box, th.Primary, 4)
+	ir := xc.RECT{Left: box.Left + 1, Top: box.Top + 1, Right: box.Right - 1, Bottom: box.Bottom - 1}
+	path := icons.IconCheck
+	if indeterminate {
+		path = icons.IconMinus
+	}
+	p.Icon(path, &ir, th.PrimaryForeground, 2)
 }
 
 func (d *DataTable) paintEmpty(hEle, hDraw int, pbHandled *bool) int {

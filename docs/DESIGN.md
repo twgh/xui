@@ -253,8 +253,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | AlertDialog | 复用 Dialog 覆盖层 | 同一套遮罩/模糊/焦点陷阱/模态栈;面板按 default/sm 排头部与页脚, media 自绘;点遮罩不关、焦点强制 Cancel(第八节 91) | alert-dialog.tsx(radix-nova) |
 | Menu | 原生菜单 | `XMenu_EnableDrawBackground/EnableDrawItem` + `AddEvent_Menu_Draw_Background/DrawItem`(第八节 36) | xcgui 文档 |
 | Tooltip | FloatWindow | paint, 异型透明窗口 + 进出场 fade/slide(第八节 24/47); 上下左右四方向 + align/sideOffset + 自动翻转夹紧(第八节 156), 延迟/skipDelay、键盘焦点触发、快捷键块 | tooltip.tsx(radix-nova) |
-| Table | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做 | Basic/List 示例 |
-| DataTable | LayoutEle(工具栏 + Table + 页脚) | 在 Table 之上做排序/筛选/分页: `view` = 过滤 + 稳定排序后的原始行下标, 排序与分页全部在 Go 侧做(不启用原生 `SetSort`, 见第八节 162); 排序图标由 Table 的内部表头扩展钩子绘制(另注册 DrawItem 会被底色盖掉); 筛选是带清除钮的 Input(清除按钮要自己广播变更, 见 163); 页脚每页行数用 Select、翻页用 outline 图标钮; 空状态画在 List 的 `PAINT_END`(见 162); cy=0 时根高度按工具栏/每页行数/页脚配好(见 164) | shadcn data-table 文档(tasks 示例 + TanStack Table 的 autoResetPageIndex / enableSortingRemoval 语义) |
+| Table | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做; 另有 `TableColumn.Align`(原生文本对齐)、`Table.SetColumns` 换列结构(重建适配器, 见 169)、内部 `onCellExtra` 单元格扩展钩子(见 167/168) | Basic/List 示例 |
+| DataTable | LayoutEle(工具栏 + Table + 页脚) | 在 Table 之上做排序/筛选/分页: `view` = 过滤 + 稳定排序后的原始行下标, 排序与分页全部在 Go 侧做(不启用原生 `SetSort`, 见第八节 162); 排序图标由 Table 的内部表头扩展钩子绘制(另注册 DrawItem 会被底色盖掉); 筛选是带清除钮的 Input(清除按钮要自己广播变更, 见 163); 页脚每页行数用 Select、翻页用 outline 图标钮; 空状态画在 List 的 `PAINT_END`(见 162); cy=0 时根高度按工具栏/每页行数/页脚配好(见 164); 勾选列 / "视图"列显隐 / 富单元格分别见 167~170 | shadcn data-table 文档(tasks 示例 + TanStack Table 的 autoResetPageIndex / enableSortingRemoval 语义) |
 | Tree | 原生 Tree + 项模板 | `XE_TREE_DRAWITEM` 自绘行底/参考线/chevron, 模板子元素保留(第八节 42) | 库文档 |
 | Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53); 简洁 / 仅导航 / 只留图标三种形态; 一个 Tab 站点 + 内部方向键(键盘必须挂窗口级, 第八节 152/153) | — |
 | Icon | 直通 D2D 几何绘制 | lucide path → 描边几何 + `DrawGeometry`(圆角样式), 色点走 `FillGeometry`(第八节 43); 回落折线描边 / `svg.Svg` | svg 包 |
@@ -321,7 +321,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | menu 弹层 = **阴影弹窗**(rounded-lg 由阴影窗 nAngeleSize 逐像素画出 + shadow-md 投影, 官方 DrawMenu 同款, 见第八节 36/64) + bg-popover + ring-1 ring-foreground/10(内缩 1px); **p-1 = 菜单 SetBorderSize(4)**(默认 3); 进场**不做动画**(与原生菜单一致, 弹出即全内容 —— 整窗 alpha 会透出背景文字、只淡内容会先出一帧空白面板, 两种都闪, 见 99; 位移/缩放会崩, 见 64); 条目 h-7(28) rounded-md px-1.5, hover/focus bg-accent + 文字变 accent-foreground; destructive 红字 + hover bg-destructive/10(dark /20); disabled 文字 50% alpha 不响应; **前置图标 `MenuIcon`**(16px, left-6, 文字从 28 起, 同 shadcn 条目内联 SVG); 勾选/单选选中项右侧 Check 图标(right-2 size-4), **未选中也保留右侧 24(pr-8)**, 单选组内互斥; 分组标签 text-xs muted; 分隔栏 1px bg-border **全宽**(-mx-1; 原生槽高仅 4px, shadcn my-1 的 9px 不可达, 已知差异); 快捷键右对齐 text-xs muted; `MenuInset` 对普通条目 / `Label` / `Sub` 都可用(pl-7, 文字左缘 28); 弹层宽 = `Width(w)` 显式指定, 否则 max(触发区宽, 128)(shadcn `w-(--radix-dropdown-menu-trigger-width) min-w-32`); 无触发区的右键菜单 = 内容自适应 + 128 下限; 子菜单 = 内容自适应 + min-w-96; **所有条目宽度按自绘字体显式算**(原生菜单字体与自绘 14px 不一致, 留自然宽会裁长文本, 见第八节 99); **右键触发区 `NewContextMenu`** = 窗口级右键事件 + 触发区矩形命中(含子元素), `SetEnabled` / `OnOpenChange` | dropdown-menu.tsx + context-menu.tsx + menu.go(原生菜单皮肤, 见第八节 36/64/99) |
 | table 表头 = h-10(40) px-2, 文字 foreground, 只有一条 1px 底边(border);数据行 = p-2 + text-sm(36), 行 `border-b`, **最后一行不画**;行悬浮 `hover:bg-muted/50`, 选中 `data-[state=selected]:bg-muted`;表体无外框/无圆角/无纵向网格线(外框交给 Card), 容器 `overflow-x-auto`, `caption-bottom text-sm`;自适应列宽按**元素当前宽度**算, 由组件订阅元素尺寸事件自愈(见第八节 60) | table.tsx + table.go(原生 List 接管路线见第八节 40) |
 | **data table 排序**: 可排序列的表头点击循环 **升序 → 降序 → 不排序**(第三次恢复原始顺序, 平局保持原顺序);图标随状态 `arrow-up-down`(muted)/`arrow-up`/`arrow-down`;排序或筛选变化都**回到第一页**(autoResetPageIndex);单列排序, 不弹列头菜单 | shadcn data-table 的 DataTableColumnHeader(ArrowUpDown/ArrowUp/ArrowDown)+ TanStack 默认 `enableSortingRemoval` / `autoResetPageIndex` |
-| **data table 筛选/分页**: 顶部输入即过滤(不区分大小写、子串匹配; 默认匹配所有列, 可用 `WithDataTableFilterColumns` 限定); 页脚 = 总行数(筛选中显示"筛选出 x / y 行") + 每页行数下拉(默认 10) + "第 x / y 页" + 首页/上一页/下一页/末页(到端点禁用); 行点击沿用 Table 的原生单选, `OnRowClick` 回传**原始数据**下标 | tasks 示例的 DataTablePagination / DataTableToolbar; 行点击回调是本组件库扩展 |
+| **data table 筛选/分页**: 顶部输入即过滤(不区分大小写、子串匹配; 默认匹配所有列, 可用 `WithDataTableFilterColumns` 限定); 页脚 = 总行数(筛选中显示"筛选出 x / y 行") + 每页行数下拉(默认 10) + "第 x / y 页" + 首页/上一页/下一页/末页(到端点禁用); 行点击在无勾选模式下沿用 Table 的原生单选, `OnRowClick` 回传**原始数据**下标(勾选模式下改为组件自己命中并吞掉按下消息, 见 8.170) | tasks 示例的 DataTablePagination / DataTableToolbar; 行点击回调是本组件库扩展 |
+| **data table 行勾选**: 最左勾选列 `w-8` 居中复选框; 表头复选框 = **整页全选**(全选 / 不确定两态); 勾选状态按原始行下标保存, 翻页 / 排序 / 筛选都不丢; 勾选行整行铺 `bg-muted`, 与 hover(`bg-muted/50`)叠色; 有勾选时页脚把总行数换成"已选 x / y 行"(y = 筛选后行数) | tasks 示例的 DataTableRowSelection / TanStack 的 getIsAllPageRowsSelected + getFilteredSelectedRowModel |
+| **data table 列显隐**: 工具栏右侧"视图"钮(图标 + 文字、outline 8 高)弹 `Menu.Check` 列清单, 逐列勾选即显隐; 至少保留一列; 隐藏列的内容仍参与排序与关键字筛选 | tasks 示例的 DataTableViewOptions |
+| **data table 富单元格**: `DataColumn.Render(p, DataCell)` 自绘徽章 / 状态图标 / 优先级 / 行操作钮, 该列**不写原生文本**; 行操作钮点击走 `OnCellClick(row, col)`(col = 可见列下标) | tasks 示例 columns.tsx 的 cell 渲染函数 |
 | tree 行高 32(h-8), 视觉矩形左右内缩 4(mx-1), 圆角 rounded-md(6);行悬浮/选中都 bg-accent(同 select/menu 条目);每级缩进 16(size-4), 祖先层级画 1px 参考线(border 色);chevron size-4 text-muted-foreground, 收起朝右/展开朝下(= rotate-90 两态), 叶节点不画但留空槽位(文字全树对齐);条目文字 text-sm foreground;shadcn 无官方 tree, 语义为社区通行实现 + 本组件库令牌 | shadcn 无官方 tree, 语义为社区通行实现; 原生 Tree 接管路线见第八节 42 |
 | pagination 入口居中(justify-center), 页码 32 方形(ghost / 当前页 outline), 上一页/下一页 = chevron(size-4)+文字, 到边界按禁用画(50% 透明且不响应鼠标), 页数 >7 折叠成 首/末页 + 当前页±1 + 省略号(不可点);本实现用**恒定 7 槽位**(见第八节 53);三种形态 = 完整 / 简洁(只有页码) / 仅导航(只有上一页下一页, 配"每页行数"选择器), 另有只留 chevron(对应文字上的 `hidden sm:block`);**键盘**: 整块一个 Tab 站点, 进入后 ←/→/↑/↓ 在条目间移动(跳过省略号与到边界的导航项)、Home/End 首末、Enter/空格激活, 到端点不循环, 焦点环只画在**当前条目**上且仅键盘获焦时出现(见第八节 152/153) | pagination.tsx + 第八节 53/152/153 |
 | collapsible: 根容器竖向流(触发区 + 内容区); 触发区是普通按钮(可绑定任意 Button), 点击切换, 展开态走 Button 的 aria-expanded 视觉(bg-muted); 内容收起时隐藏且不占布局, 展开时高度按内容自撑; **本实现**展开/收起带 200ms 高度过渡, 收起动画结束后才隐藏内容(radix presence 语义) | collapsible.tsx + radix CollapsibleContent 的 `--radix-collapsible-content-height` 动画示例 + 第八节 97 |
@@ -416,9 +419,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Toast | `NewToaster(hWnd, ...)` + `Show(ToastOptions)`(标题/描述/类型/图标覆盖/动作/关闭按钮/时长/`OnClose/OnAutoClose/OnDismiss`) + `Success/Error/Warning/Info/Loading` 快捷方法 + `Promise(fn, ToastPromise{Loading, Success, Error})`; `WithToastPosition/Width/Offset/Gap/Duration/MaxVisible/RichColors/CloseButton`; 实例 `Update/Close/Handle` | sonner 的 `toast` API 的 Go 形态; 位置六种(四角 + `ToastTopCenter`/`ToastBottomCenter`), `richColors` 通过 `WithToastRichColors` / `ToastOptions.RichColors` 开启; `Loading`/`Promise` 的转圈图标由 `xui.Spin` 驱动(退出加载态要显式停表, 见第八节 154), `Promise` 的 fn 在 goroutine 跑、结果经 `xc.Auto` 回 UI 线程 |
 | Pagination | **本组件库扩展**: shadcn 的 Pagination 是纯展示组件, 省略号要手拼; 我们做了自动折叠(第八节 53) | 见 53 |
 | Pagination(形态/键盘) | `WithPaginationSimple()`(只有页码) / `WithPaginationNavOnly()`(只有上一页下一页) / `WithPaginationHideText()`(只留 chevron); 键盘 ←/→/↑/↓、Home/End、Enter/空格 | 见 152/153 |
-| DataTable | `NewDataTable(x,y,cx,cy,parent, []DataColumn{Title,Width,Sortable,Compare}, WithDataTableSearch/NoSearch/PageSize/PageSizes/FilterColumns)` + `SetRows/AddRow/Refresh`、`SetFilter/Filter`、`SetSort/Sort`、`SetPage/Page/PageCount`、`SetPageSize/PageSize`、`TotalRows/FilteredRows`、`OnSortChange/OnPageChange/OnFilterChange/OnRowClick` | 对应 shadcn data-table 文档(tasks 示例, TanStack Table): 排序状态只有**单列**(升/降/无), 筛选是工具栏输入框的子串匹配, 分页在页脚; 未做 Row Selection / Column Visibility / 多列排序(见第八节 162 与差异表) |
-| DataTable | **本组件库形态**: `NewDataTable` 自带工具栏/表格/页脚三段; shadcn 的 data-table 是"用户用 TanStack 组合"的模式, 没有对应组件 —— 我们把它收敛成一个可复用控件 | 见 162~164 |
-| DataTable(未做) | 行选择勾选列 / 列显隐下拉 / 多列排序 / 列拖拽; 表头没有 hover 底色(原生 List 表头悬停不触发重绘) | Row Selection / Column Visibility 是 TanStack 的插件示例; 排序/筛选/分页是本实现的核心范围; 行点击沿用 Table 原生单选 |
+| DataTable | `NewDataTable(x,y,cx,cy,parent, []DataColumn{Title,Width,Sortable,Compare,Align,Render,Hidden}, WithDataTableSearch/NoSearch/PageSize/PageSizes/FilterColumns/Selection/ColumnToggle)` + `SetRows/AddRow/Refresh/SetColumns`、`SetFilter/Filter`、`SetSort/Sort`、`SetPage/Page/PageCount`、`SetPageSize/PageSize`、`TotalRows/FilteredRows`、`Selected/SetSelected/ClearSelection/IsSelected/SelectedCount`、`SetColumnVisible/ColumnVisible`、`OnSortChange/OnPageChange/OnFilterChange/OnRowClick/OnCellClick/OnSelectionChange` | 对应 shadcn data-table 文档(tasks 示例, TanStack Table): 排序状态只有**单列**(升/降/无), 筛选是工具栏输入框的子串匹配, 分页在页脚; 勾选 = `WithDataTableSelection`(整页全选口径), 列显隐 = `WithDataTableColumnToggle`, 富单元格 = `DataColumn.Render`; 未做多列排序 / 列拖拽(见第八节 162~170 与差异表) |
+| DataTable | **本组件库形态**: `NewDataTable` 自带工具栏/表格/页脚三段; shadcn 的 data-table 是"用户用 TanStack 组合"的模式, 没有对应组件 —— 我们把它收敛成一个可复用控件 | 见 162~170 |
+| DataTable(未做) | 多列排序 / 列拖拽 / 跨页"全选筛选结果"(只做整页) / 行拖拽; 表头没有 hover 底色(原生 List 表头悬停不触发重绘) | 排序 / 筛选 / 分页 / 行勾选 / 列显隐是本实现范围; 跨页全选要另做筛选集遍历 |
 | DataTable(排序口径) | 数字(允许 `¥$€£,` 与 `%`)按数值、英文与数字段按自然顺序(同 `localeCompare numeric:true`); **中文按 UTF-8 码位**, 不按拼音 | Go 侧没有浏览器中文拼音排序; 需要业务语义时用 `DataColumn.Compare` 自定义 |
 | Resizable | `NewResizableGroup(x,y,cx,cy,parent, WithResizableVertical/Disabled/OnResize)` + `AddPanel(WithResizableSize/Min/Max)` + `AddHandle(WithResizableGrip)`; `Sizes/SetSizes/OnResize/SetDisabled/Disabled`; 面板是流式容器, 内容直接放进去 | 对应 resizable.tsx 的 `PanelGroup/Panel/Handle`; 未做 `collapsible/collapsedSize`(Enter 折叠)、`preserve-pixel-size`、F6 在分隔条之间跳焦点、面板/分隔条级 disabled; 尺寸只支持百分比(上游还能写 px/rem); 面板是容器而非独立元素, 没有 `data-panel` 之类的 DOM 钩子 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
@@ -1879,6 +1882,26 @@ xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
     - **不要在父链上逐级 AdjustLayout**: 文本域长高后逐级调用, 会让中间 Weight 布局在量算趟里把卡片/内容区宽度临时排成 0(实测), 兄弟位置反而没更新、下面的控件被压在文本域底下。只对最近的 ScrollArea 的 `LayoutFrame`(或窗口)调一次 `XEle_AdjustLayout`, 框架会统一更新内容区高度、兄弟位置与滚动范围(同 157 的 `adjustAncestors`)。
     - **原生滚动条要关掉**: 留着的话内容在"改高度的那一帧"会先溢出、滚动条闪现, 它还占掉一行宽度, 下一帧宽度变了又要重新折行。`EnableAutoShowScrollBar(false)` + 两个滚动条 `Show(false)`; 自动长高后内容永远装得下。
     - **触发点**: 内容变化(`AddEvent_Edit_Changed`; 程序化 `SetText` 另接 `AddEvent_Edit_Set`)、宽度变化(`AddEvent_Size`)、换主题(字体/字号变了行高也变, 且要重新钉住 8px 内边距)。量高一律 `AfterFunc(0)` 合并到下一轮, 避免在编辑/尺寸事件里重入布局; 改高度自身触发的那次 Size 用高度比对挡掉。
+
+167. **单元格扩展绘制要走 Table 的内部钩子, 列索引在 `pItem.ISubItem`**(`table.go` + `datatable.go`):
+    - **另注册 DrawItem 会被行底色盖掉**: 与 162 同理 —— `AddEvent` 的回调后注册先执行, 自己注册的 `AddEvent_List_DrawItem` 画完富单元格, Table 的回调随后铺一层不透明行底色 + 行底边。修法: Table 增加内部字段 `onCellExtra`, 在自己的 `onDrawItem` 里按"底色 → 悬停/选中 → 扩展 → 行底边"的顺序调用(行底边必须最后画, 否则被单元格内容盖住)。
+    - **列索引不用自己累加列宽**: 绘制回调是**按单元格**触发的, `List_Item_.Index` 是行、`ISubItem` 就是列下标, `RcItem` 是该单元格矩形(相对 List 元素), 直接当自绘坐标系用。
+    - **悬停/选中状态要传给扩展回调**: 富单元格的变色靠行状态(`NState` = `List_Item_State_Stay` / `_Select`), 扩展回调签名带上 hover, 别在回调里另查。
+
+168. **自绘单元格必须把原生文本清空**(`datatable.go`):
+    - **现象**: 状态图标 + 文字的格子里, 图标上又叠了一行原生文字。
+    - **根因**: 单元格文字是项模板里的**独立子元素**(shape text), 不由 DrawItem 回调负责 —— 回调里 `pbHandled = true` 只拦下底色/网格, 拦不住模板子元素, 它的文本来自行数据(`AddRow` 的字符串)。
+    - **修法**: `DataColumn.Render != nil` 的列, 加行时写空串, 文本只留在 Go 侧的 `rows`(排序 / 关键字筛选照旧用它), 内容全部由回调自己画。代价: 该列的右对齐与自动裁剪不再生效, 回调要自己按 `Rc` 内缩 8 并 `SetClipRect`。
+
+169. **删列重建列结构: `DeleteColumnAll` 之后必须重建行适配器**(`table.go` 的 `Table.SetColumns`):
+    - **现象**: 列显隐后重新加回 4 列, 第 4 列的文本写进去永远读回空, 行数也对不上。
+    - **根因**: 行数据在 `AdapterTable` 里, 列数在创建时定死; `DeleteColumnAll` 只删表头列, 不会重建行适配器 —— 新列写进去被丢掉。
+    - **修法**: `DeleteRowAll → DeleteColumnAll → AddColumnText × n → CreateAdapter(n) → 重新 AddRow`(`CreateAdapter` 会清空行), 再重设字体/边距/对齐并 relayout。列显隐走这条路径; 勾选状态在 DataTable 侧按**原始行下标**保存, 重建后不丢。
+
+170. **勾选列与原生单选解耦: 在 `LButtonDown` 里命中测试并吞掉消息**(`datatable.go`):
+    - **现象**: 勾选模式下点行(不是复选框)会让整行亮成 Table 的"选中"底色, 与勾选态混在一起, 翻页后还残留。
+    - **修法**: 勾选模式给表格注册 `AddEvent_LButtonDown`, 用 `List.HitTestOffset`(入参是**元素客户区坐标**, 不是窗口/屏幕坐标)取 `(row, sub)`; 第 0 列(勾选列)切勾选, 其它列回 `OnCellClick` / `OnRowClick`, 最后 `*pbHandled = true` 吞掉消息 —— 原生不再改选中行, 行高亮完全由勾选集合决定(单元格扩展里铺 `Muted`)。勾选行整行高亮也是这么来的: 扩展回调逐格铺底色 = 整行。
+    - **表头全选**: 复用 `AddEvent_List_Header_Click`(与排序一个回调), 第 0 列切"整页全选/清空", 其余列映射到 `d.cols` 再判 `Sortable`。全选口径是**当前页**(TanStack 的 `getIsAllPageRowsSelected`), 页脚计数用"勾选 ∩ 筛选结果"(`getFilteredSelectedRowModel`)。
 
 ---
 
