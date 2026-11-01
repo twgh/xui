@@ -80,6 +80,24 @@ type Table struct {
 	// hdrRects 缓存各表头单元格的矩形(元素客户区坐标), 由 onHeaderDrawItem 填入 ——
 	// 表头点击回调不带坐标, 要按点击的列定位弹层(菜单不能跟着鼠标松开处跑)就靠它。
 	hdrRects []xc.RECT
+	// onHeaderActive 报告该表头列是否可交互(可排序 / 可隐藏)。只有这些列才画
+	// 悬停 / 按下底色, 也才允许拖拽换位; 普通文字表头保持无底色。nil = 全不可交互。
+	onHeaderActive func(col int32) bool
+	// onColumnsMoved 在用户拖拽表头列后回调。from 是 Table 列下标, to 是插入边界
+	// (0..列数); 由调用方决定怎么落地(DataTable 会重排显示顺序)。nil = 不启用拖拽。
+	onColumnsMoved func(from, to int32)
+
+	headerEle   *widget.Element // 表头元素: 鼠标事件挂在它身上(原生表头悬停不会自己重绘)
+	headerHover int32           // 当前悬停的可交互表头列, -1 = 无
+	headerDown  int32           // 当前按下的可交互表头列, -1 = 无
+
+	dragFrom  int32 // 拖拽起始表头列, -1 = 未拖拽
+	dragTo    int32 // 拖拽插入边界(Table 列下标 0..列数)
+	dragDownX int32
+	dragMoved bool
+	// dragSwallowClick 在拖拽结束的那次松开上置位: 若原生仍补发一次表头点击,
+	// 调用方据此吞掉菜单(下一次按下会清掉, 不会误伤后续单击)。
+	dragSwallowClick bool
 }
 
 // HeaderCellRect 返回表头第 col 列的单元格矩形(元素客户区坐标)。只在表头画过之后有效;
@@ -120,11 +138,15 @@ func NewTable(x, y, cx, cy int32, hParent int, cols []TableColumn, opts ...Table
 		cols = []TableColumn{{Title: ""}}
 	}
 	t := &Table{
-		List:    widget.NewList(x, y, cx, cy, hParent),
-		cols:    append([]TableColumn(nil), cols...), // 归一化 Width 时不要改到调用方的切片
-		autoCol: -1,
-		rowH:    tableRowH,
-		lastW:   -1,
+		List:        widget.NewList(x, y, cx, cy, hParent),
+		cols:        append([]TableColumn(nil), cols...), // 归一化 Width 时不要改到调用方的切片
+		autoCol:     -1,
+		rowH:        tableRowH,
+		lastW:       -1,
+		headerHover: -1,
+		headerDown:  -1,
+		dragFrom:    -1,
+		dragTo:      -1,
 	}
 	if t.List == nil {
 		return nil
@@ -167,12 +189,19 @@ func NewTable(x, y, cx, cy int32, hParent int, cols []TableColumn, opts ...Table
 		t.AddColumnText(t.colWidth(int32(i), cx, false), fmt.Sprintf("name%d", i+1), c.Title)
 	}
 
-	// 表头元素也要透明(shadcn 的表头没有底色, 只有一条底边), 并灭掉原生焦点框
+	// 表头元素也要透明(shadcn 的表头没有底色, 只有一条底边), 并灭掉原生焦点框。
+	// 原生表头悬停 / 按下只改项状态、**不会重绘**(见 DESIGN 8.176), 所以悬停底色与
+	// 列拖拽都要自己订阅表头元素的鼠标事件, 在事件里改状态并主动重绘表头。
 	if h := t.GetHeaderHELE(); h > 0 {
 		if hd := widget.NewElementByHandle(h); hd != nil {
 			hd.EnableBkTransparent(true)
 			hd.EnableDrawBorder(false)
 			hd.EnableDrawFocus(false)
+			t.headerEle = hd
+			hd.AddEvent_MouseMove(t.onHeaderMouseMove)
+			hd.AddEvent_MouseLeave(t.onHeaderMouseLeave)
+			hd.AddEvent_LButtonDown(t.onHeaderMouseDown)
+			hd.AddEvent_LButtonUp(t.onHeaderMouseUp)
 		}
 	}
 
@@ -305,7 +334,6 @@ func (t *Table) pickAutoCol() {
 	}
 }
 
-
 // SetColumns 重建列结构(列显隐 / 动态列)。行数据会被清空 —— 调用方随后要重新
 // AddRow(DataTable 的 render 就是这么做的)。
 //
@@ -319,6 +347,9 @@ func (t *Table) SetColumns(cols []TableColumn) *Table {
 	t.cols = append([]TableColumn(nil), cols...)
 	t.pickAutoCol()
 	t.hdrRects = nil // 列结构变了, 旧的表头矩形作废(下次绘制重新填)
+	t.headerHover, t.headerDown = -1, -1
+	t.resetHeaderDrag()
+	t.dragSwallowClick = false
 	t.DeleteRowAll()
 	t.DeleteColumnAll()
 	w := t.GetWidth()
@@ -524,6 +555,137 @@ func (t *Table) onDrawItem(hEle, hDraw int, pItem *xc.List_Item_, pbHandled *boo
 	return 0
 }
 
+// ===== 表头交互(悬停底色 / 列拖拽) =====
+
+// tableHeaderDragMin 是列拖拽的起判距离: 小于它按单击处理(打开列头菜单)。
+const tableHeaderDragMin int32 = 4
+
+// headerColAt 返回表头内 x 坐标命中的列, -1 = 落在列缝或表头之外。
+func (t *Table) headerColAt(x int32) int32 {
+	for i, rc := range t.hdrRects {
+		if x >= rc.Left && x < rc.Right {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+// headerDropIndex 把表头内 x 坐标翻成插入边界(0..列数): 越过某列中线 = 插到它右侧。
+func (t *Table) headerDropIndex(x int32) int32 {
+	for i, rc := range t.hdrRects {
+		if rc.Right <= rc.Left {
+			continue
+		}
+		if x < (rc.Left+rc.Right)/2 {
+			return int32(i)
+		}
+	}
+	return int32(len(t.cols))
+}
+
+// headerActive 报告该表头列是否可交互(悬停底色 / 按下 / 拖拽共用这一口径)。
+func (t *Table) headerActive(col int32) bool {
+	return col >= 0 && t.onHeaderActive != nil && t.onHeaderActive(col)
+}
+
+func (t *Table) redrawHeader() {
+	if t.headerEle != nil {
+		t.headerEle.Redraw(false)
+	}
+}
+
+func (t *Table) resetHeaderDrag() {
+	t.dragFrom, t.dragTo, t.dragDownX, t.dragMoved = -1, -1, 0, false
+}
+
+func (t *Table) onHeaderMouseMove(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+	if pPt == nil {
+		return 0
+	}
+	if t.dragFrom >= 0 {
+		// 松手发生在表头之外时收不到 Up: 回到表头时左键已经不在了, 顺手收掉拖拽状态。
+		if nFlags&0x0001 == 0 {
+			t.resetHeaderDrag()
+			t.headerDown = -1
+			t.redrawHeader()
+			return 0
+		}
+		if !t.dragMoved {
+			dx := pPt.X - t.dragDownX
+			if dx < 0 {
+				dx = -dx
+			}
+			if dx < tableHeaderDragMin {
+				return 0
+			}
+			t.dragMoved = true
+			// 在起拖时就置位: 原生的表头点击可能先于 Up 处理器派发, 等 Up 再置位就晚了。
+			t.dragSwallowClick = true
+			t.headerHover = -1
+		}
+		if to := t.headerDropIndex(pPt.X); to != t.dragTo {
+			t.dragTo = to
+			t.redrawHeader()
+		}
+		return 0
+	}
+	col := t.headerColAt(pPt.X)
+	if !t.headerActive(col) {
+		col = -1
+	}
+	if col != t.headerHover {
+		t.headerHover = col
+		t.redrawHeader()
+	}
+	return 0
+}
+
+func (t *Table) onHeaderMouseLeave(hEle, hEleStay int, pbHandled *bool) int {
+	if t.headerHover != -1 || t.headerDown != -1 {
+		t.headerHover, t.headerDown = -1, -1
+		t.redrawHeader()
+	}
+	return 0
+}
+
+func (t *Table) onHeaderMouseDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+	if pPt == nil {
+		return 0
+	}
+	t.dragSwallowClick = false
+	col := t.headerColAt(pPt.X)
+	if !t.headerActive(col) {
+		if t.headerDown != -1 {
+			t.headerDown = -1
+			t.redrawHeader()
+		}
+		return 0
+	}
+	t.headerDown, t.headerHover = col, col
+	if t.onColumnsMoved != nil {
+		t.dragFrom, t.dragTo, t.dragDownX, t.dragMoved = col, col, pPt.X, false
+	}
+	t.redrawHeader()
+	return 0
+}
+
+func (t *Table) onHeaderMouseUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+	t.headerDown = -1
+	if t.dragFrom >= 0 && t.dragMoved {
+		from, to := t.dragFrom, t.dragTo
+		// 拖拽结束后原生可能仍补发一次表头点击: 标记吞掉它(下一次按下会清掉)。
+		t.dragSwallowClick = true
+		t.resetHeaderDrag()
+		if t.onColumnsMoved != nil && to != from && to != from+1 {
+			t.onColumnsMoved(from, to)
+		}
+	} else {
+		t.resetHeaderDrag()
+	}
+	t.redrawHeader()
+	return 0
+}
+
 // onHeaderDrawItem 自绘表头单元格: 底色 + 底边(横向铺满).
 func (t *Table) onHeaderDrawItem(hEle, hDraw int, pItem *xc.List_Header_Item_, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
@@ -540,9 +702,47 @@ func (t *Table) onHeaderDrawItem(hEle, hDraw int, pItem *xc.List_Header_Item_, p
 		t.hdrRects[idx] = rc
 	}
 	p.FillRound(&rc, t.surface(th), 0)
+	// 可交互表头的悬停 / 按下底色: 原生表头不重绘, 悬停值由表头元素上的鼠标事件驱动
+	// (见 8.176); 底色只铺在单元格内侧, 与 shadcn 的表头按钮观感一致。
+	if t.headerActive(pItem.Index) {
+		active := t.headerHover == pItem.Index || t.headerDown == pItem.Index
+		// 过渡必须挂在**表头元素**上: 表头绘制回调的 hEle 是 List 本体, 与行悬停
+		// 共用动画键(owner + 索引) —— 悬停第 N 个表头会把第 N 行点亮(实测)。
+		hoverOwner := hEle
+		if t.headerEle != nil {
+			hoverOwner = t.headerEle.Handle
+		}
+		hv := xui.HoverItem(hoverOwner, pItem.Index, active)
+		alpha := 0.5 * hv
+		if t.headerDown == pItem.Index {
+			alpha = 1 // 按下立即到位, 不等过渡
+		}
+		if alpha > 0 {
+			bg := rc
+			bg.Left += 2
+			bg.Right -= 2
+			bg.Top += 4
+			bg.Bottom -= 4
+			if bg.Right > bg.Left && bg.Bottom > bg.Top {
+				p.FillRound(&bg, th.Muted.ScaleAlpha(alpha), 6)
+			}
+		}
+	}
 	p.Line(rc.Left, rc.Bottom-1, rc.Right, rc.Bottom-1, th.Border, 1)
 	if t.onHeaderExtra != nil {
 		t.onHeaderExtra(p, rc, pItem.Index)
+	}
+	// 列拖拽插入位置: 边界处画一条主色竖线(最后一列的右边界单独处理)。
+	if t.dragMoved {
+		x := int32(-1)
+		if pItem.Index == t.dragTo {
+			x = rc.Left + 1
+		} else if t.dragTo >= int32(len(t.cols)) && pItem.Index == int32(len(t.cols))-1 {
+			x = rc.Right - 1
+		}
+		if x >= 0 {
+			p.Line(x, rc.Top+4, x, rc.Bottom-4, th.Primary, 2)
+		}
 	}
 	return 0
 }

@@ -40,6 +40,14 @@
   - **第三轮复看(2026-11-01, 前两轮未解决)**: 根因是**结构错了**, 不是数值没调准 —— 清除行是 Popover 内容流里的独立 Button, 内容区给每个子项自带 8px 间距, 于是"最后一项→分割线""分割线→按钮"各多 8px; 窗口高度再按内容补偿, 补少了按钮被裁到底边、补多了又变成白带。这轮把清除行搬进 `Command` 列表内部(内部分隔线 + 居中条目, 对应 shadcn 的 `CommandSeparator` + `CommandGroup` + `CommandItem`), 去掉 `p.line` / `p.clear` 与全部高度余量 → 最后一项→分割线 4、分割线→清除行 4、清除行→底边 4(150% DPI 原生截图逐像素量过)。
   - **第三轮工具栏**: 顺序对齐 tasks = 定宽筛选框(`dataTableSearchW=200`) → 分面触发区 → 重置(文字 + X) → `Weight` 撑开 → 视图。原来搜索框 `Weight 1` 会让胶囊变宽时输入框变窄、分面按钮整体左滑, 弹层却锚在原位 → 就是"状态按钮跑到弹层左边"; 现在输入框定宽, 分面左缘固定、只向右长, 视图始终贴右。窗口缩到 960 时固定 200 + 分面 + 重置会把视图挤出卡片, 所以工具栏 Size 时按可用宽度收窄搜索框(下限 100); 1200 宽下仍恒为 200, 已在 960/1200 双向缩放验证(窄窗收窄时触发区会随输入框移动, 这是固定宽与视图贴右不可兼得时的取舍)。
   - **第三轮行为**: 清除行现在走 CommandItem 的选中路径, 点它**只清选择、不关闭面板**(shadcn 的 Popover 语义), 搜索框焦点保持; 面板高度随底部行显隐前移/后移, 不再出现"按钮贴底"。`Command.ClearActive()` 的 `setActive(-1)` 修复保留(鼠标从底部行移回列表时最后一项能重新高亮)。
+- ✅ **批次 11D: Data Table 多列排序 / 表头悬停 / 列拖拽 / 跨页全选**(2026-11-01, 补齐 11C 之后的待办):
+  - **多列排序**: `DataSortKey{Col,Dir}` + `SetSortKeys/SortKeys/OnSortKeysChange`;`SetSort/Sort` 保留为主键入口。列头菜单仍是单列排序(勾选另一列 = 换成只按它排), **Shift+点击可排序表头**直接在该列上循环 升序 → 降序 → 取消, 未排序时追加为次键; 次键箭头后画次序数字(10px 加粗, 避免 9pt 常规被画成宋体)。`dataTableViewKeys` 按主 → 次逐键比较, 全键相等保持稳定顺序。
+  - **跨页全选**: 表头勾选框普通点击仍只切**整页**; **Shift+点击**跨页勾满/清空当前筛选结果, 新增 `SelectAllFiltered/AllFilteredSelected`; 页脚"已选 x / y"本来按筛选结果统计, 跨页后自动正确。
+  - **表头悬停 / 列拖拽**: 原生 List 表头只改 `NState` 不重绘 → 订阅表头元素 `MouseMove/MouseLeave/LButtonDown/LButtonUp`, 命中缓存的 `hdrRects` 后改状态并 `Redraw(false)`; 悬停底色走 `xui.HoverItem(表头句柄, 列号, active)` 过渡。只有可排序 / 可隐藏的表头可交互(勾选列、`NoHide` 操作列静止)。4px 起判拖拽, 目标边界画 2px 主色竖线; **起拖时**就置"吞点击"标志, 防止原生补发 `Header_Click` 弹出菜单; 松手在表头外时用左键位收掉残留状态。`DataTable.order` 保存全部列的显示顺序(隐藏列位置也保留), 拖拽只重排它, `DataColumn` 下标与排序 / Facet / Render 语义不变; "视图"菜单按当前显示顺序列。
+  - **修复(用户复看)**: 悬停表头时第 N 行数据也跟着亮 —— 表头绘制回调收到的 `hEle` 是 List 本体, 与行悬停共用 `HoverItem` 的 owner+索引键; 改用 `GetHeaderHELE()` 的表头元素句柄做 owner, 行/表头键空间分开(见 DESIGN 176)。
+  - **行拖拽未做**: 原生 List 没有行拖拽; 排序列 / 筛选 / 分页把"看到的位置"与原始行下标解耦, 拖拽落点要由业务定义(是否改原始顺序、跨页与隐藏行怎么算), 组件不替调用方决定 —— 见 DESIGN 差异表「DataTable(未做)」。
+  - **文档**: DESIGN 新增 176(表头事件/拖拽), 162/170 更新, 交互语义表同步; 差异表只留下行拖拽与"拖拽不改列下标"两条。
+  - **验收**: 150% DPI demo 真实鼠标 —— 悬停标题出现内侧圆角底色; Shift+点标题(升)+ Shift+点状态(次键, 显示 ↑2); 普通点标题菜单仍锚在该列下方; 把状态列拖到标题左侧立即换位且不弹菜单; 隐藏/显示优先级后拖拽顺序保留; Shift+点表头复选框页脚"已选 24 / 24 行"、翻到第 3 页仍全勾, 再 Shift+点清空; 普通点表头复选框只选当前页(4 / 24)。`go build/vet/test ./...` 全绿。
 - ✅ **批次 11B: Data Table 分面筛选 / 列头菜单**(2026-10-31, 参 shadcn tasks 示例的 `data-table-faceted-filter.tsx` / `data-table-column-header.tsx`):
   - **分面筛选**: `DataColumn.FilterOptions []DataFilterOption{Label,Value,Icon}` —— 工具栏按列生成 `⊕ 列名` 按钮, 点开 `Menu.Check` 勾选清单(带图标), 有选中时按钮文字变"列名 N"并切 `ButtonSecondary`, 菜单底部有"清除筛选"; 判定 = 单元格**原始文本**相等, 列内 OR / 列间 AND, 与关键字叠加; 新增 `SetFacet/FacetValues/ResetFilters/OnFacetChange`, 关键字或分面生效时工具栏出现"重置"。
   - **列头菜单**: 表头点击不再循环排序, 改为弹 `升序 / 降序 / 隐藏` 菜单(`Menu.PopupAtCursor`); 升序降序是勾选项, 再点当前项 = 取消排序(保住原来的"升→降→取消"); `DataColumn.NoHide` 让行操作列不出现在"隐藏"里; 删掉 `nextDataSort`。
@@ -56,7 +64,7 @@
   - registry: `data-table` 的 deps 加 `menu`(视图下拉), 否则单装 `data-table` 会缺 `NewMenu`/`MenuOnCheck`。
 - ✅ **批次 11: Data Table 数据表格**(2026-10-31, 参 shadcn data-table 文档 / TanStack Table 的 tasks 示例):
   - **组件**(`components/datatable.go`): `NewDataTable(x,y,cx,cy,parent, []DataColumn{Title/Width/Sortable/Compare}, WithDataTableSearch/NoSearch/PageSize/PageSizes/FilterColumns)`;`SetRows/AddRow/Refresh`、`SetFilter/Filter`、`SetSort/Sort`、`SetPage/Page/PageCount`、`SetPageSize/PageSize`、`TotalRows/FilteredRows`、`OnSortChange/OnPageChange/OnFilterChange/OnRowClick`。
-  - **交互**: 可排序表头点击循环 **升序 → 降序 → 取消**(图标 arrow-up-down/up/down, 平局保持原顺序);排序与筛选变化都回第一页;顶部筛选不区分大小写、子串匹配、默认全列;页脚 = 总行数(筛选时"筛选出 x / y 行")+ 每页行数 Select + "第 x / y 页" + 首页/上一页/下一页/末页(到端点禁用);空态"暂无数据 / 没有匹配的数据";行点击沿用 Table 的原生单选, 回调回传**原始数据**行下标。
+  - **交互**: 可排序表头点击循环 **升序 → 降序 → 取消**(后来在 11B 改为列头菜单, 11D 加 Shift+点击多列排序; 图标 arrow-up-down/up/down, 平局保持原顺序);排序与筛选变化都回第一页;顶部筛选不区分大小写、子串匹配、默认全列;页脚 = 总行数(筛选时"筛选出 x / y 行")+ 每页行数 Select + "第 x / y 页" + 首页/上一页/下一页/末页(到端点禁用);空态"暂无数据 / 没有匹配的数据";行点击沿用 Table 的原生单选, 回调回传**原始数据**行下标。
   - **排序口径**: 数字(允许货币符号/千分位/百分号)按数值;英文与数字段按自然顺序(同 `localeCompare numeric:true`);中文按 UTF-8 码位;`DataColumn.Compare` 可覆盖。
   - **踩坑(DESIGN 162~164)**: ① 排序图标必须在 Table 的表头绘制回调里追加 —— 另注册 `AddEvent_List_Header_DrawItem` 会被组件自己的不透明底色盖掉;空状态走 List 的 `PAINT_END`;② Input 的清除按钮走程序化 `XEdit_SetText`, **不发原生变更事件**, 清空后筛选不刷新;修在 Input(内部 `changeFns` + 清除后 `emitChange`), 并在程序化 `SetFilter` 后补 `Redraw`(内嵌件命中区是 paint 时重建的);③ `cy=0` 时 Auto 父级里的 Weight 表格塌成 0, 连 `ItemMinSize` 都不算 —— 根元素要先把初始高度设成"工具栏 + 每页行数 + 页脚"。
   - **附带修复**: `Input` 的清除按钮现在会触发 `OnChange`(所有 `WithClearButton + OnChange` 的输入框同步受益, 此前点 × 清空后回调不执行)。
@@ -791,9 +799,6 @@
 
 ## 待办
 
-- ✅ **Data Table 对齐 shadcn 官方 tasks 示例**: 批次 A(富单元格 / 行勾选 / 列显隐 / 行操作, 见批次 11A)与批次 B(分面筛选 / 列头菜单, 见批次 11B)均已完成。
-  - **仍未做**: 多列排序、列拖拽、跨页"全选所有筛选结果"(只做整页)、行拖拽、表头 hover 底色(原生 List 表头悬停不触发重绘)。
-  - 上游参考: `apps/v4/app/(app)/examples/tasks/components/{columns,data-table,data-table-toolbar,data-table-pagination,data-table-view-options,data-table-row-actions,data-table-column-header,data-table-faceted-filter}.tsx`(仓库 `shadcn-ui/ui`); 差异见 DESIGN 差异表「DataTable(未做)」。
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)。
 - ⬜ **可选(不阻塞)**: 补齐本地 shadcn 参考实现中旧批次组件的 tsx 与 App.tsx 对照卡(alert / alert-dialog / aspect-ratio / breadcrumb / button-group / calendar / chart / context-menu / empty / field / item / sonner / toggle / toggle-group); 对应 Go 组件均已实现并验收, 仅用于逐像素视觉对照。calendar / chart / sonner 需要额外 npm 依赖。Data Table / Combobox 是组合模式, 无独立 tsx。
 

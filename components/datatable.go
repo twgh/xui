@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -21,6 +22,8 @@ const (
 	dataTableGap      int32 = 8
 	dataTableSortIcon int32 = 14
 	dataTableSortGap  int32 = 6
+	// dataTableSortRankW 是次排序键序号的宽度(多列排序时画在箭头右侧)。
+	dataTableSortRankW int32 = 9
 	// dataTableSelectW 是勾选列宽(w-8): 16 的复选框 + 单元格 p-2(8×2)。
 	dataTableSelectW int32 = 32
 	// dataTableCheckSize 是勾选框边长(shadcn checkbox 的 size-4)。
@@ -44,14 +47,22 @@ const (
 	DataSortDesc                 // 降序
 )
 
+// DataSortKey 是一个排序键: 列下标(DataColumn 序列) + 方向。
+// 多个键按优先级排列 —— 第一个是主排序, 前面的键相等时才比较后面的; 同一列只保留一个键。
+type DataSortKey struct {
+	Col int
+	Dir DataSort
+}
+
 // DataColumn 数据表格的列定义。
 type DataColumn struct {
 	Title string
 	// Width 列宽(逻辑像素)。<= 0 表示占满剩余宽度(同 TableColumn); 多个 <= 0 时只有
 	// 第一个吃掉剩余宽度, 其余按 120 固定宽排。
 	Width int32
-	// Sortable 允许点击表头排序: 每次点击在 升序 → 降序 → 不排序 之间循环
-	// (同 TanStack 的 enableSortingRemoval 默认语义)。
+	// Sortable 允许通过列头菜单排序(升序 / 降序, 再点当前项 = 取消, 同 TanStack 的
+	// enableSortingRemoval); Shift+点击表头则在 升序 → 降序 → 取消 之间循环,
+	// 并把该列追加为多列排序的次键(箭头后的数字是次序)。
 	Sortable bool
 	// Compare 覆盖该列的排序比较(负数 = a 在前)。nil = 自动: 两侧都能解析成数字
 	// (允许货币符号 / 千分位 / 百分号)时按数值, 否则按大小写不敏感的自然顺序
@@ -164,9 +175,13 @@ func WithDataTableColumnToggle() DataTableOption {
 // 对齐 shadcn 的 Data Table 模式(TanStack Table 的 tasks 示例):
 //   - 列头点击弹菜单(升序 / 降序 / 隐藏): 升序降序是勾选项, 再点当前项 = 取消排序,
 //     图标依次是 arrow-up-down(muted) / arrow-up / arrow-down;
+//   - 列头菜单仍是单列排序; Shift+点击可排序表头直接循环该列(升 → 降 → 取消)并
+//     追加为多列排序的次键, 次键箭头后有次序数字; 可交互表头有悬停底色,
+//     拖拽表头列可交换显示顺序(隐藏列的位置保留);
 //   - 顶部筛选框输入即过滤(不区分大小写, 子串匹配), 过滤后回到第一页; 配了
 //     DataColumn.FilterOptions 的列还会在工具栏多一个多选按钮(列内 OR、列间 AND);
 //   - 关键字或分面筛选生效时工具栏出现"重置";
+//   - 勾选: 普通点表头复选框 = 整页全选, Shift+点击 = 整个筛选结果跨页全选;
 //   - 页脚: 左侧总行数(筛选中显示"筛选出 x / y 行"), 右侧每页行数下拉 +
 //     第 x / y 页 + 首页/上一页/下一页/末页按钮, 到端点自动禁用;
 //   - 排序列与筛选条件变化都会回到第一页(autoResetPageIndex 语义)。
@@ -183,9 +198,9 @@ type DataTable struct {
 	rows    [][]string
 	view    []int // 过滤 + 排序后的原始行下标
 	visible []int // 当前显示的列(d.cols 下标); 列显隐改变的只是它
+	order   []int // 全部列(d.cols 下标)的显示顺序; 列拖拽只改它, 隐藏列的位置也保留
 
-	sortCol int
-	sortDir DataSort
+	sortKeys []DataSortKey
 
 	// 行勾选: selected 的键是**原始数据行**下标, 翻页 / 排序 / 筛选都不影响它。
 	selectOn bool
@@ -228,13 +243,14 @@ type DataTable struct {
 
 	suppressSearch bool
 
-	onSort   func(col int, dir DataSort)
-	onPage   func(page int)
-	onFilter func(text string)
-	onRow    func(row int)
-	onCell   func(row, col int)
-	onSel    func(rows []int)
-	onFacet  func(col int, values []string)
+	onSort     func(col int, dir DataSort)
+	onSortKeys func(keys []DataSortKey)
+	onPage     func(page int)
+	onFilter   func(text string)
+	onRow      func(row int)
+	onCell     func(row, col int)
+	onSel      func(rows []int)
+	onFacet    func(col int, values []string)
 }
 
 // NewDataTable 创建数据表格。cols 末列 Width<=0 时占满剩余宽度。
@@ -250,7 +266,6 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 	d := &DataTable{
 		LayoutEle:         ele,
 		cols:              append([]DataColumn(nil), cols...), // 列显隐会改 Hidden, 别改到调用方的切片
-		sortCol:           -1,
 		pageSize:          10,
 		pageSizes:         []int{10, 20, 30, 40, 50},
 		searchOn:          true,
@@ -267,6 +282,10 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 	}
 	d.selected = map[int]bool{}
 	d.facet = map[int]map[string]bool{}
+	d.order = make([]int, len(d.cols))
+	for i := range d.order {
+		d.order[i] = i
+	}
 	d.visible = d.initVisible()
 
 	ele.EnableHorizon(false)
@@ -406,17 +425,38 @@ func (d *DataTable) buildToolbar() {
 	}
 }
 
-// initVisible 初始化可见列: 过滤掉 Hidden, 并保证至少留一列(全隐藏等于表格变空壳)。
+// initVisible 初始化可见列(按 order 的显示顺序过滤掉 Hidden), 并保证至少留一列
+// (全隐藏等于表格变空壳)。
 func (d *DataTable) initVisible() []int {
-	out := make([]int, 0, len(d.cols))
-	for i, c := range d.cols {
-		if !c.Hidden {
-			out = append(out, i)
+	if len(d.order) != len(d.cols) { // 列定义被整体替换(SetColumns): 顺序重来
+		d.order = make([]int, len(d.cols))
+		for i := range d.order {
+			d.order[i] = i
 		}
+	}
+	out := make([]int, 0, len(d.cols))
+	for _, i := range d.order {
+		if i < 0 || i >= len(d.cols) || d.cols[i].Hidden {
+			continue
+		}
+		out = append(out, i)
 	}
 	if len(out) == 0 {
 		out = append(out, 0)
 		d.cols[0].Hidden = false
+	}
+	return out
+}
+
+// orderedCols 按当前显示顺序返回全部列(d.cols 下标, 含隐藏列): 列拖拽之后,
+// "视图"菜单也应按用户看到的顺序排。order 长度不对(尚未初始化)时退回定义顺序。
+func (d *DataTable) orderedCols() []int {
+	if len(d.order) == len(d.cols) {
+		return d.order
+	}
+	out := make([]int, len(d.cols))
+	for i := range out {
+		out[i] = i
 	}
 	return out
 }
@@ -456,15 +496,38 @@ func (d *DataTable) buildTable() {
 
 	d.table.onHeaderExtra = d.paintHeaderExtra
 	d.table.onCellExtra = d.paintCell
+	// 只有能排序 / 能隐藏的列表头才画悬停底色、才可拖拽换位(操作列 NoHide 不动)。
+	d.table.onHeaderActive = func(tcol int32) bool {
+		ci := d.colAt(tcol)
+		return ci >= 0 && (d.cols[ci].Sortable || d.canHide(ci))
+	}
+	d.table.onColumnsMoved = d.moveColumn
 	d.table.AddEvent_List_Header_Click(func(hEle int, iItem int32, pbHandled *bool) int {
+		// 拖拽换列后的那次松开可能还会补发点击: 吞掉, 别弹出列头菜单。
+		if d.table.dragSwallowClick {
+			d.table.dragSwallowClick = false
+			*pbHandled = true
+			return 0
+		}
 		if d.selectOn && iItem == 0 {
-			d.togglePageSelection()
+			if dataShiftDown() {
+				d.toggleFilteredSelection() // 跨页全选(只针对当前筛选结果)
+			} else {
+				d.togglePageSelection()
+			}
 			*pbHandled = true
 			return 0
 		}
 		ci := d.colAt(iItem)
 		if ci < 0 || (!d.cols[ci].Sortable && !d.canHide(ci)) {
 			return 0 // 既不能排序也不能隐藏: 表头当普通文字用
+		}
+		// Shift+点击可排序表头 = 直接多列排序(升 → 降 → 取消), 不弹菜单;
+		// 普通点击仍走列头菜单(升序 / 降序 / 隐藏)。
+		if dataShiftDown() && d.cols[ci].Sortable {
+			d.cycleSortKey(ci)
+			*pbHandled = true
+			return 0
 		}
 		// 菜单按**被点的列**定位(showHeaderMenu 内部用绘制缓存里的表头矩形做锚点),
 		// 不用 PopupAtCursor —— 否则按住鼠标拖到别处再松开, 菜单会跟着跑到松开的位置。
@@ -616,21 +679,98 @@ func (d *DataTable) SetFilter(s string) *DataTable {
 // Filter 返回当前关键字。
 func (d *DataTable) Filter() string { return d.filter }
 
-// SetSort 程序化设置排序列(下标; -1 = 不排序)与方向。
+// SetSort 程序化设置排序列(下标; -1 = 不排序)与方向。等价于只传一个键的 SetSortKeys。
 func (d *DataTable) SetSort(col int, dir DataSort) *DataTable {
-	if col < 0 || col >= len(d.cols) || dir == DataSortNone {
-		col, dir = -1, DataSortNone
+	return d.SetSortKeys(DataSortKey{Col: col, Dir: dir})
+}
+
+// SetSortKeys 设置多列排序键(按优先级从主到次)。非法列 / DataSortNone / 重复列会被忽略;
+// 不传 = 取消排序。点击表头列头菜单仍是单列排序, 多列排序的交互是 Shift+点击表头。
+func (d *DataTable) SetSortKeys(keys ...DataSortKey) *DataTable {
+	out := make([]DataSortKey, 0, len(keys))
+	seen := make(map[int]bool, len(keys))
+	for _, k := range keys {
+		if k.Col < 0 || k.Col >= len(d.cols) || k.Dir == DataSortNone || seen[k.Col] {
+			continue
+		}
+		seen[k.Col] = true
+		out = append(out, k)
 	}
-	d.sortCol, d.sortDir = col, dir
+	d.sortKeys = out
 	d.apply(true)
-	if d.onSort != nil {
-		d.onSort(d.sortCol, d.sortDir)
-	}
+	d.notifySort()
 	return d
 }
 
-// Sort 返回当前排序列(未排序为 -1)与方向。
-func (d *DataTable) Sort() (int, DataSort) { return d.sortCol, d.sortDir }
+// Sort 返回主排序列(未排序为 -1)与方向。
+func (d *DataTable) Sort() (int, DataSort) {
+	if len(d.sortKeys) == 0 {
+		return -1, DataSortNone
+	}
+	return d.sortKeys[0].Col, d.sortKeys[0].Dir
+}
+
+// SortKeys 返回当前全部排序键(主 → 次)。
+func (d *DataTable) SortKeys() []DataSortKey {
+	return append([]DataSortKey(nil), d.sortKeys...)
+}
+
+// OnSortKeysChange 注册排序键变化回调(keys 是主 → 次的快照, 空 = 不排序)。
+// 与 OnSortChange 同时注册时两个都会触发; OnSortChange 只给主键, 兼容单列用法。
+func (d *DataTable) OnSortKeysChange(fn func(keys []DataSortKey)) *DataTable {
+	d.onSortKeys = fn
+	return d
+}
+
+func (d *DataTable) notifySort() {
+	col, dir := -1, DataSortNone
+	if len(d.sortKeys) > 0 {
+		col, dir = d.sortKeys[0].Col, d.sortKeys[0].Dir
+	}
+	if d.onSort != nil {
+		d.onSort(col, dir)
+	}
+	if d.onSortKeys != nil {
+		d.onSortKeys(d.SortKeys())
+	}
+}
+
+// sortKeyIndex 返回该列的排序键次序(0 = 主键), -1 = 不在排序键里。
+func (d *DataTable) sortKeyIndex(col int) int {
+	for i, k := range d.sortKeys {
+		if k.Col == col {
+			return i
+		}
+	}
+	return -1
+}
+
+func (d *DataTable) hasSortKey(col int, dir DataSort) bool {
+	i := d.sortKeyIndex(col)
+	return i >= 0 && d.sortKeys[i].Dir == dir
+}
+
+// cycleSortKey 是 Shift+点击可排序表头的行为: 未排序 → 升序(追加为次键),
+// 升序 → 降序, 降序 → 移除该键。
+func (d *DataTable) cycleSortKey(col int) {
+	i := d.sortKeyIndex(col)
+	switch {
+	case i < 0:
+		d.sortKeys = append(d.sortKeys, DataSortKey{Col: col, Dir: DataSortAsc})
+	case d.sortKeys[i].Dir == DataSortAsc:
+		d.sortKeys[i].Dir = DataSortDesc
+	default:
+		d.sortKeys = append(d.sortKeys[:i], d.sortKeys[i+1:]...)
+	}
+	d.apply(true)
+	d.notifySort()
+}
+
+// dataShiftDown 报告 Shift 是否按下(高位置位 = 当前按住; GetAsyncKeyState 返回 int16,
+// 所以用 <0 判断, 不用和 0x8000 做按位与)。
+func dataShiftDown() bool {
+	return wapi.GetAsyncKeyState(xcc.VK_Shift) < 0
+}
 
 // Page 返回当前页(0 起)。
 func (d *DataTable) Page() int { return d.page }
@@ -753,6 +893,24 @@ func (d *DataTable) ClearSelection() *DataTable {
 	return d
 }
 
+// SelectAllFiltered 勾选当前筛选结果中的全部行(跨页; 已被筛掉、但之前勾过的行保持勾选)。
+// 对应表头的 Shift+点击全选: 普通点击只切当前页(TanStack 的 page rows 口径)。
+func (d *DataTable) SelectAllFiltered() *DataTable {
+	if d.selected == nil {
+		d.selected = map[int]bool{}
+	}
+	for _, raw := range d.view {
+		d.selected[raw] = true
+	}
+	d.afterSelectionChange(true)
+	return d
+}
+
+// AllFilteredSelected 报告当前筛选结果是否已全部勾选(结果为空时返回 false)。
+func (d *DataTable) AllFilteredSelected() bool {
+	return len(d.view) > 0 && d.selectedInView() >= len(d.view)
+}
+
 // ===== 列显隐 =====
 
 // SetColumnVisible 显示 / 隐藏某列(d.cols 下标)。至少保留一列 —— 全隐藏时调用被忽略。
@@ -774,16 +932,85 @@ func (d *DataTable) ColumnVisible(col int) bool {
 	return col >= 0 && col < len(d.cols) && !d.cols[col].Hidden
 }
 
+// moveColumn 把拖拽的表头列插到目标边界(Table 列下标, 含勾选列偏移)。
+// 只改 order(全部列的显示顺序): 隐藏列的相对位置也保留, 列显隐 / 排序 / 分面的
+// d.cols 下标语义完全不变。
+func (d *DataTable) moveColumn(from, to int32) {
+	off := 0
+	if d.selectOn {
+		off = 1
+	}
+	f, toVis := int(from)-off, int(to)-off
+	if len(d.visible) <= 1 || f < 0 || f >= len(d.visible) {
+		return
+	}
+	moved := d.visible[f]
+	rem := make([]int, 0, len(d.visible)-1)
+	rem = append(rem, d.visible[:f]...)
+	rem = append(rem, d.visible[f+1:]...)
+	if toVis > f {
+		toVis-- // 源列移除后, 目标边界左移一格
+	}
+	if toVis < 0 {
+		toVis = 0
+	}
+	if toVis > len(rem) {
+		toVis = len(rem)
+	}
+	if toVis == f {
+		return // 落在原位(在本列左/右边界松开都算原位)
+	}
+	pos := -1
+	for i, ci := range d.order {
+		if ci == moved {
+			pos = i
+			break
+		}
+	}
+	if pos < 0 {
+		return
+	}
+	d.order = append(d.order[:pos], d.order[pos+1:]...)
+	at := len(d.order)
+	if toVis < len(rem) {
+		for i, ci := range d.order {
+			if ci == rem[toVis] {
+				at = i
+				break
+			}
+		}
+	} else if len(rem) > 0 {
+		for i, ci := range d.order {
+			if ci == rem[len(rem)-1] {
+				at = i + 1
+				break
+			}
+		}
+	}
+	order := make([]int, 0, len(d.order)+1)
+	order = append(order, d.order[:at]...)
+	order = append(order, moved)
+	order = append(order, d.order[at:]...)
+	d.order = order
+	d.visible = d.initVisible()
+	d.rebuildColumns()
+}
+
 // SetColumns 替换列定义(列名 / 宽度 / 排序 / 渲染函数全部重来), 勾选状态保留。
 func (d *DataTable) SetColumns(cols []DataColumn) *DataTable {
 	if len(cols) == 0 {
 		return d
 	}
 	d.cols = append([]DataColumn(nil), cols...)
+	d.order = nil // 新列定义 = 默认显示顺序
 	d.visible = d.initVisible()
-	if d.sortCol >= len(d.cols) {
-		d.sortCol, d.sortDir = -1, DataSortNone
+	kept := make([]DataSortKey, 0, len(d.sortKeys))
+	for _, k := range d.sortKeys {
+		if k.Col >= 0 && k.Col < len(d.cols) {
+			kept = append(kept, k)
+		}
 	}
+	d.sortKeys = kept
 	d.rebuildColumns()
 	return d
 }
@@ -807,7 +1034,7 @@ func (d *DataTable) showViewMenu(hEle int) {
 	m := NewMenu()
 	m.Width(176)
 	m.Label("显示列")
-	for i := range d.cols {
+	for _, i := range d.orderedCols() {
 		i := i
 		m.Check(d.cols[i].Title, !d.cols[i].Hidden, MenuOnCheck(func(on bool) {
 			d.SetColumnVisible(i, on)
@@ -1082,6 +1309,25 @@ func (d *DataTable) togglePageSelection() {
 	d.afterSelectionChange(true)
 }
 
+// toggleFilteredSelection 是表头勾选框的 Shift+点击: 跨页勾满 / 清空当前筛选结果。
+func (d *DataTable) toggleFilteredSelection() {
+	if len(d.view) == 0 {
+		return
+	}
+	on := !d.AllFilteredSelected()
+	if d.selected == nil {
+		d.selected = map[int]bool{}
+	}
+	for _, raw := range d.view {
+		if on {
+			d.selected[raw] = true
+		} else {
+			delete(d.selected, raw)
+		}
+	}
+	d.afterSelectionChange(true)
+}
+
 func (d *DataTable) afterSelectionChange(redraw bool) {
 	if d.table != nil && redraw {
 		d.table.Redraw(false)
@@ -1094,12 +1340,16 @@ func (d *DataTable) afterSelectionChange(redraw bool) {
 
 // ===== 内部: 视图 / 分页 / 绘制 =====
 
-func (d *DataTable) apply(resetPage bool) {
-	var cmp func(a, b string) int
-	if d.sortCol >= 0 && d.sortCol < len(d.cols) {
-		cmp = d.cols[d.sortCol].Compare
+// compareFor 返回某列的比较函数: 优先用 DataColumn.Compare, 否则走 dataCompare。
+func (d *DataTable) compareFor(col int, a, b string) int {
+	if col >= 0 && col < len(d.cols) && d.cols[col].Compare != nil {
+		return d.cols[col].Compare(a, b)
 	}
-	d.view = dataTableView(d.rows, d.filter, d.filterCols, d.facet, d.sortCol, d.sortDir, cmp)
+	return dataCompare(a, b)
+}
+
+func (d *DataTable) apply(resetPage bool) {
+	d.view = dataTableViewKeys(d.rows, d.filter, d.filterCols, d.facet, d.sortKeys, d.compareFor)
 	if resetPage {
 		d.page = 0
 	}
@@ -1226,11 +1476,11 @@ func (d *DataTable) showHeaderMenu(ci int, tcol int32) {
 	m := NewMenu()
 	m.Width(160)
 	if col.Sortable {
-		m.Check("升序", d.sortCol == ci && d.sortDir == DataSortAsc,
+		m.Check("升序", d.hasSortKey(ci, DataSortAsc),
 			MenuIcon(icons.IconArrowUp), MenuOnCheck(func(on bool) {
 				d.applyHeaderSort(ci, DataSortAsc, on)
 			}))
-		m.Check("降序", d.sortCol == ci && d.sortDir == DataSortDesc,
+		m.Check("降序", d.hasSortKey(ci, DataSortDesc),
 			MenuIcon(icons.IconArrowDown), MenuOnCheck(func(on bool) {
 				d.applyHeaderSort(ci, DataSortDesc, on)
 			}))
@@ -1259,18 +1509,17 @@ func (d *DataTable) showHeaderMenu(ci int, tcol int32) {
 	m.PopupAtCursor(xc.XWidget_GetHWINDOW(d.Handle))
 }
 
-// applyHeaderSort 处理列头菜单的勾选: on=false 表示点了当前已激活的那一项 = 取消排序。
+// applyHeaderSort 处理列头菜单的勾选: on=false 表示点了已勾选的那一项 = 去掉这个键。
+// 列头菜单是单列排序入口 —— 勾选另一列的方向会换成只按那一列排; 多列排序用
+// Shift+点击表头(见 cycleSortKey)。
 func (d *DataTable) applyHeaderSort(ci int, dir DataSort, on bool) {
-	switch {
-	case on:
-		d.sortCol, d.sortDir = ci, dir
-	case d.sortCol == ci && d.sortDir == dir:
-		d.sortCol, d.sortDir = -1, DataSortNone
+	if on {
+		d.sortKeys = []DataSortKey{{Col: ci, Dir: dir}}
+	} else if i := d.sortKeyIndex(ci); i >= 0 && d.sortKeys[i].Dir == dir {
+		d.sortKeys = append(d.sortKeys[:i], d.sortKeys[i+1:]...)
 	}
 	d.apply(true)
-	if d.onSort != nil {
-		d.onSort(d.sortCol, d.sortDir)
-	}
+	d.notifySort()
 }
 
 func (d *DataTable) paintHeaderExtra(p *xui.Painter, rc xc.RECT, tcol int32) {
@@ -1285,9 +1534,10 @@ func (d *DataTable) paintHeaderExtra(p *xui.Painter, rc xc.RECT, tcol int32) {
 		return
 	}
 	th := xui.Current()
+	rank := d.sortKeyIndex(ci)
 	path, color := icons.IconArrowUpDown, th.MutedForeground
-	if ci == d.sortCol {
-		switch d.sortDir {
+	if rank >= 0 {
+		switch d.sortKeys[rank].Dir {
 		case DataSortAsc:
 			path, color = icons.IconArrowUp, th.Foreground
 		case DataSortDesc:
@@ -1295,13 +1545,26 @@ func (d *DataTable) paintHeaderExtra(p *xui.Painter, rc xc.RECT, tcol int32) {
 		}
 	}
 	font := xui.FontHandle(th.FontDefault)
+	rankW := int32(0)
+	if rank > 0 {
+		rankW = dataTableSortRankW
+	}
 	x := rc.Left + tableCellPadX + xui.TextWidth(d.cols[ci].Title, font) + dataTableSortGap
-	if limit := rc.Right - tableCellPadX - dataTableSortIcon; x > limit {
+	if limit := rc.Right - tableCellPadX - dataTableSortIcon - rankW; x > limit {
 		x = limit
 	}
 	top := rc.Top + (rc.Bottom-rc.Top-dataTableSortIcon)/2
 	ir := xc.RECT{Left: x, Top: top, Right: x + dataTableSortIcon, Bottom: top + dataTableSortIcon}
 	p.Icon(path, &ir, color, 2)
+	if rank > 0 {
+		// 多列排序的次序(第 2、第 3 键): 箭头后的数字, 小一号加粗(9pt 常规会被画成宋体)。
+		if nf := xui.FontHandle(xui.FontSpec{Family: th.FontDefault.Family, Size: 10, Bold: true}); nf != 0 {
+			p.Draw.SetFont(nf)
+			nr := xc.RECT{Left: x + dataTableSortIcon + 1, Top: top, Right: x + dataTableSortIcon + 1 + rankW, Bottom: top + dataTableSortIcon}
+			p.Text(strconv.Itoa(rank+1), &nr, th.MutedForeground, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+			p.Draw.SetFont(font)
+		}
+	}
 }
 
 // paintCell 是 Table 的单元格扩展钩子: 勾选列的复选框 + 各列的自定义渲染。
@@ -1404,9 +1667,27 @@ func dataPageCount(n, size int) int {
 	return pages
 }
 
-// dataTableView 返回过滤(分面 + 关键字) + 排序后的原始行下标。compare 为 nil 时用 dataCompare。
+// dataTableView 返回过滤(分面 + 关键字) + 单列排序后的原始行下标。
+// compare 为 nil 时用 dataCompare; 多列排序走 dataTableViewKeys。
 func dataTableView(rows [][]string, filter string, filterCols []int, facets map[int]map[string]bool,
 	sortCol int, dir DataSort, compare func(a, b string) int) []int {
+	var keys []DataSortKey
+	if sortCol >= 0 && dir != DataSortNone {
+		keys = []DataSortKey{{Col: sortCol, Dir: dir}}
+	}
+	cmp := func(col int, a, b string) int {
+		if compare != nil {
+			return compare(a, b)
+		}
+		return dataCompare(a, b)
+	}
+	return dataTableViewKeys(rows, filter, filterCols, facets, keys, cmp)
+}
+
+// dataTableViewKeys 按多个排序键(主 → 次)排序: 前一个键相等才比较后面的键;
+// 全部键相等时保持原始顺序(稳定排序)。compare 按列取比较函数(可为 nil)。
+func dataTableViewKeys(rows [][]string, filter string, filterCols []int, facets map[int]map[string]bool,
+	keys []DataSortKey, compare func(col int, a, b string) int) []int {
 	f := strings.ToLower(strings.TrimSpace(filter))
 	view := make([]int, 0, len(rows))
 	for i, row := range rows {
@@ -1418,27 +1699,39 @@ func dataTableView(rows [][]string, filter string, filterCols []int, facets map[
 		}
 		view = append(view, i)
 	}
-	if sortCol < 0 || dir == DataSortNone {
+	var valid []DataSortKey
+	for _, k := range keys {
+		if k.Col >= 0 && k.Dir != DataSortNone {
+			valid = append(valid, k)
+		}
+	}
+	if len(valid) == 0 {
 		return view
 	}
-	value := func(row []string) string {
-		if sortCol < len(row) {
-			return row[sortCol]
+	value := func(row []string, col int) string {
+		if col < len(row) {
+			return row[col]
 		}
 		return ""
 	}
 	sort.SliceStable(view, func(a, b int) bool {
-		av, bv := value(rows[view[a]]), value(rows[view[b]])
-		var c int
-		if compare != nil {
-			c = compare(av, bv)
-		} else {
-			c = dataCompare(av, bv)
+		for _, k := range valid {
+			av, bv := value(rows[view[a]], k.Col), value(rows[view[b]], k.Col)
+			var c int
+			if compare != nil {
+				c = compare(k.Col, av, bv)
+			} else {
+				c = dataCompare(av, bv)
+			}
+			if c == 0 {
+				continue
+			}
+			if k.Dir == DataSortDesc {
+				return c > 0
+			}
+			return c < 0
 		}
-		if dir == DataSortDesc {
-			return c > 0
-		}
-		return c < 0
+		return false
 	})
 	return view
 }

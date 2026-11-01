@@ -3040,7 +3040,7 @@ func buildDataPage(body *widget.LayoutEle) {
 	// ---- 数据表格(整行占满剩余高度, 表格跟随窗口长高) ----
 	_, v := stretchCard(colStretch(r.Handle, 3, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v.Handle))
-	xui.ItemFill(desc(v.Handle, "DataTable(tasks 风格): 勾选列 + 富单元格 + 分面筛选 + 列头菜单 + 视图显隐。"))
+	xui.ItemFill(desc(v.Handle, "DataTable(tasks): 勾选 / 分面 / 列头菜单 / 视图; Shift 多列排序与跨页全选, 拖拽表头换列。"))
 	xui.ItemFillHeight(v) // 内容区占满卡片剩余高度
 	dt := ui.NewDataTable(0, 0, 0, 0, v.Handle, []ui.DataColumn{
 		{Title: "任务", Width: 92, Sortable: true, Render: taskIDCell},

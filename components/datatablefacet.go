@@ -189,7 +189,7 @@ func (d *DataTable) facetCounts(ci int) map[string]int {
 			others[k] = v
 		}
 	}
-	view := dataTableView(d.rows, d.filter, d.filterCols, others, -1, d.sortDir, nil)
+	view := dataTableView(d.rows, d.filter, d.filterCols, others, -1, DataSortNone, nil)
 	out := make(map[string]int, 8)
 	for _, r := range view {
 		if r < 0 || r >= len(d.rows) || ci < 0 || ci >= len(d.rows[r]) {

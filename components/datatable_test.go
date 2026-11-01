@@ -84,6 +84,47 @@ func TestDataTableViewSortStableAndCustom(t *testing.T) {
 	}
 }
 
+func TestDataTableViewMultiSort(t *testing.T) {
+	rows := [][]string{
+		{"b", "2"},
+		{"a", "2"},
+		{"a", "1"},
+		{"b", "1"},
+	}
+	keys := []DataSortKey{
+		{Col: 0, Dir: DataSortAsc},
+		{Col: 1, Dir: DataSortDesc},
+	}
+	got := dataTableViewKeys(rows, "", nil, nil, keys, nil)
+	if want := []int{1, 2, 0, 3}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("主键升序 + 次键降序: got %v, want %v", got, want)
+	}
+	// 次键相同时保持原始顺序
+	rows2 := [][]string{{"x", "1"}, {"x", "1"}, {"a", "9"}}
+	got = dataTableViewKeys(rows2, "", nil, nil, keys, nil)
+	if want := []int{2, 0, 1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("全键相等保持稳定: got %v, want %v", got, want)
+	}
+	// 逐列的自定义比较函数: 第二列按字符串倒序(数字比较会给 9 > 1, 这里反过来)
+	cmp := func(col int, a, b string) int {
+		if col != 1 {
+			return dataCompare(a, b)
+		}
+		switch {
+		case a > b:
+			return -1
+		case a < b:
+			return 1
+		}
+		return 0
+	}
+	rows3 := [][]string{{"a", "1"}, {"a", "9"}, {"a", "5"}}
+	got = dataTableViewKeys(rows3, "", nil, nil, []DataSortKey{{Col: 1, Dir: DataSortAsc}}, cmp)
+	if want := []int{1, 2, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("逐列自定义比较: got %v, want %v", got, want)
+	}
+}
+
 func TestDataCompareNumericAndNatural(t *testing.T) {
 	cases := []struct {
 		a, b string
