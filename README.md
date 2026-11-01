@@ -289,7 +289,7 @@ go install github.com/twgh/xui/cmd/xui@latest
 
 装一次后直接敲 `xui ...`。二进制在 `$(go env GOPATH)/bin`(Windows 默认
 `%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。升级重跑同一条命令;
-`@latest` 偶尔会被模块代理缓存拖旧, 想立刻用某个版本就直接写 tag(如 `@v0.7.0`)。
+`@latest` 偶尔会被模块代理缓存拖旧, 想立刻用某个版本就直接写 tag(如 `@v0.7.1`)。
 
 不想安装也可以把命令里的 `xui` 换成 `go run github.com/twgh/xui/cmd/xui@latest`, 参数完全一样。
 
@@ -365,7 +365,7 @@ CLI 内嵌源码。选路过程逐行打在 stderr 上, 想看清卡在哪一环
 
 ```bash
 XUI_REGISTRY=D:\path\to\xui xui add dialog                    # 本地目录(离线)
-XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.7.0 xui add dialog   # 锁组件版本(换成实际 tag)
+XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.7.1 xui add dialog   # 锁组件版本(换成实际 tag)
 XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/main xui add dialog     # 只走直连(跳过镜像与代理)
 XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                # 只走 Gitee 镜像
 XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dialog  # 只走 GitCode 镜像
