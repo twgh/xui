@@ -227,8 +227,6 @@ type facetPanel struct {
 	btn   *facetTrigger
 	pop   *Popover
 	cmd   *Command
-	line  *widget.Element
-	clear *Button
 	items map[string]*CommandItem
 }
 
@@ -252,15 +250,12 @@ func (d *DataTable) newFacetPanel(ci int, btn *facetTrigger) *facetPanel {
 			}
 		}),
 		WithPopoverContent(func(content int) {
-			// Command 的高度按内容精确给: List 会把多出来的高度留在底部, 分割线就被推远了。
-			// (空分组标签不画标题, 所以不要再加 commandHeadingH。)
+			// Command 的高度按内容精确给(输入行 + 选项分组 + 底部清除行):
+			// Command 是固定高, 多给的高度会全落在列表底部; 少给则裁行并出滚动条。
 			p.cmd = NewCommand(0, 0, panelW, p.cmdHeight(), content,
 				WithCommandPlaceholder(col.Title),
 				WithCommandOnEscape(func() { p.pop.Close() }),
-				WithCommandOnSelect(func(v string) { p.selectValue(v) }),
 			)
-			// 布局项高度必须一起钉住: 只设宽度时竖向流按"自动高度"排, 分割线会被推到
-			// 一个比 Command 实际矩形更低的位置, 看着就是最后一项与分割线之间空一大块。
 			xui.ItemSize(p.cmd, panelW, p.cmdHeight())
 			g := p.cmd.AddGroup("")
 			for _, opt := range col.FilterOptions {
@@ -271,46 +266,21 @@ func (d *DataTable) newFacetPanel(ci int, btn *facetTrigger) *facetPanel {
 					WithCommandItemChecked(d.facetHas(ci, v)),
 					WithCommandItemCount(0),
 					WithCommandItemKeywords(v),
+					WithCommandItemOnSelect(func(v string) { p.selectValue(v) }),
 				}
 				if opt.Icon != "" {
 					opts = append(opts, WithCommandItemIcon(opt.Icon))
 				}
 				p.items[v] = g.AddItem(v, opt.Label, opts...)
 			}
-			// 列表与底部按钮之间的一条分割线(1px, 与弹层等宽)
-			line := widget.NewElement(0, 0, panelW, 1, content)
-			if line != nil {
-				line.EnableBkTransparent(true)
-				line.EnableDrawBorder(false)
-				line.EnableFocus(false)
-				line.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
-					pp := xui.BeginPaint(hEle, hDraw)
-					if pp != nil {
-						*pbHandled = true
-						pp.FillRound(&pp.Rc, xui.Current().Border, 0)
-					}
-					return 0
-				})
-				xui.ItemWidth(line, panelW)
-				xui.ItemHeight(line, 1)
-				p.line = line
-			}
-			// 清除筛选: 固定宽度而不是 Fill —— Fill 会按内容区全宽再叠边距, 悬停底色溢到弹窗外。
-			// 高度取 32(shadcn 的 h-8), 太矮时悬停底色像一条窄条。
-			clearW, clearH := panelW-8, int32(32)
-			clear := NewButton(0, 0, clearW, clearH, "清除筛选", content,
-				WithVariant(ButtonGhost), WithSize(ButtonSizeSm))
-			xui.ItemSize(clear, clearW, clearH)
-			xui.ItemMargin(clear, 4, 4, 4, 4)
-			clear.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-				// 焦点落到按钮上, 列表里的高亮项要撤掉, 否则看起来两处都有焦点
-				p.cmd.ClearActive()
+			// 清除筛选放进 Command 列表内部(分割线 + 居中条目): shadcn 的 Clear filters
+			// 就是 CommandList 里的一个 CommandItem, 两边都靠分组内边距定位, 不会像
+			// Popover 内容流那样多出 8px 子项间距, 也不需要给窗口高度补余量。
+			// 点它只清选择、**不关闭面板**(shadcn 的 Popover 也只在点外部/ESC 时关闭)。
+			p.cmd.addFooter("__clear__", "清除筛选", func(string) {
 				d.clearFacet(ci)
 				p.refresh()
-				p.pop.Close()
-				return 0
 			})
-			p.clear = clear
 			p.layout() // 构建完就把高度/显隐定下来(首次 Open 的 measure 直接用这个高度)
 		}))
 	if p.pop == nil {
@@ -322,54 +292,34 @@ func (d *DataTable) newFacetPanel(ci int, btn *facetTrigger) *facetPanel {
 // facetPanelW 弹层宽度(对齐 shadcn 的 w-[200px] + 内边距)。
 const facetPanelW int32 = 232
 
-// facetClearH 底部"清除筛选"按钮高度(shadcn 的 h-8; 太矮时悬停底色像一条窄条)。
-const facetClearH int32 = 32
-
-// cmdHeight Command 区的精确高度。Command 的 List 会把多出来的高度留在底部,
-// 所以不能再按"整段"给, 否则最后一项与分割线之间会空一大块。
+// cmdHeight Command 的精确高度(逻辑像素)。Command 是固定高, 高度必须等于
+// 输入行 + 选项分组(上下各 4) + 底部清除行(有勾选时), 多一个像素都会变成列表底部的
+// 空白, 少一个像素就裁行并出滚动条。
 func (p *facetPanel) cmdHeight() int32 {
 	n := int32(len(p.d.cols[p.ci].FilterOptions))
-	// +8 是 Command 列表的上下内边距: 少给几像素列表就出滚动条, 多给几像素最后一项
-	// 与分割线之间就空一块, 实测 8 是不出滚动条的最小值。
-	// +8 是 Command 列表能不出滚动条的最小余量(再少一行被裁、且右侧出滚动条),
-	// 这部分会变成最后一项与分割线之间的留白, 与 shadcn 的 p-1 视觉相当。
-	return commandInputH + n*commandItemH + 8
+	h := commandInputH + n*commandItemH + commandGroupPad*2
+	if len(p.d.facet[p.ci]) > 0 {
+		// 分割线 1 + 底部组上下各 4 + 清除条目 32, 与 shadcn 的
+		// CommandSeparator + CommandGroup(p-1) + CommandItem(h-8) 同几何。
+		h += 1 + commandGroupPad*2 + commandItemH
+	}
+	return h
 }
 
-// layout 按"当前是否勾选"决定底部那一段(分割线 + 清除按钮)在不在, 并把弹层高度
-// 改成精确值: 未勾选时 shadcn 不显示清除按钮, 留白要一起收掉(只 Show(false) 布局项
-// 仍占位, 见 172)。高度用 SetContentHeight 直接改窗口, 不走离屏测量(那样会闪)。
+// layout 按"当前是否勾选"决定底部清除行在不在, 并把 Command 与弹层高度改成精确值。
+// 未勾选时 shadcn 不显示清除行, 这一段要连布局项一起收掉(只 Show(false) 仍占位, 见 172)。
+// 高度用 SetContentHeight 直接改窗口, 不走离屏测量(那样会闪)。
 func (p *facetPanel) layout() {
-	if p.pop == nil {
+	if p.pop == nil || p.cmd == nil {
 		return
 	}
 	has := len(p.d.facet[p.ci]) > 0
+	p.cmd.setFooterVisible(has)
 	h := p.cmdHeight()
-	if has {
-		if p.line != nil {
-			p.line.Show(true)
-			xui.ItemWidth(p.line, facetPanelW)
-			xui.ItemHeight(p.line, 1)
-		}
-		if p.clear != nil {
-			p.clear.Show(true)
-			xui.ItemSize(p.clear, facetPanelW-8, facetClearH)
-			xui.ItemMargin(p.clear, 4, 4, 4, 4)
-		}
-		h += 1 + 8 + facetClearH + 12
-	} else {
-		if p.line != nil {
-			p.line.Show(false)
-			xui.ItemWidth(p.line, 0)
-			xui.ItemHeight(p.line, 0)
-		}
-		if p.clear != nil {
-			p.clear.Show(false)
-			xui.ItemSize(p.clear, 0, 0)
-			xui.ItemMargin(p.clear, 0, 0, 0, 0)
-		}
-		h += 4
-	}
+	p.cmd.SetHeight(h)
+	xui.ItemHeight(p.cmd, h)
+	p.cmd.AdjustLayout()
+	// 内容区只有 Command 一个子项, 没有内容流间距, 弹层高度就是 Command 高度。
 	p.pop.SetContentHeight(h)
 }
 

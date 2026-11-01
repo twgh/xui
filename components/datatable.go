@@ -27,6 +27,12 @@ const (
 	dataTableCheckSize int32 = 16
 	// dataTableToggleW 是工具栏"视图"按钮宽(图标 + "视图" 两字)。
 	dataTableToggleW int32 = 88
+	// dataTableSearchW 是工具栏关键字筛选框的固定宽(对齐 tasks 的 w-[150px] lg:w-[250px])。
+	// 不能再用 Weight 吃满整行: 那样分面胶囊一变宽, 输入框就变窄、把分面按钮整个往左挤。
+	dataTableSearchW int32 = 200
+	// dataTableSearchMinW 是窗口很窄时的下限: 固定宽加上分面胶囊 / 重置 / 视图会超出
+	// 卡片宽度, 视图会被挤出右缘。空间不足时输入框收到这里, 保证视图仍贴右可见。
+	dataTableSearchMinW int32 = 100
 )
 
 // DataSort 排序方向。
@@ -95,6 +101,7 @@ type DataCell struct {
 type DataTableOption func(*DataTable)
 
 // WithDataTableSearch 启用顶部关键字筛选框并指定占位符(默认已启用, 占位符 "筛选...")。
+// 输入框定宽 200(窗口窄到放不下时收窄到 100), 不再吃掉整行剩余宽度。
 func WithDataTableSearch(placeholder string) DataTableOption {
 	return func(d *DataTable) {
 		d.searchOn = true
@@ -202,6 +209,7 @@ type DataTable struct {
 
 	searchOn          bool
 	searchPlaceholder string
+	searchSyncing     bool
 
 	search  *Input
 	table   *Table
@@ -307,12 +315,32 @@ func (d *DataTable) buildToolbar() {
 		return
 	}
 	d.toolbar = xui.HStack(d.Handle, dataTableToolbarH, 0)
+	// 窗口变窄时按可用宽度收窄定宽搜索框(见 dataTableSearchMinW); 工具栏自身宽度
+	// 只由父级决定, 改子项宽度不会反过来触发这个事件, 不会循环。
+	d.toolbar.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		if d.search == nil || d.searchSyncing {
+			return 0
+		}
+		d.searchSyncing = true
+		old := d.search.GetWidth()
+		d.syncSearchWidth(xui.Current())
+		if d.search.GetWidth() != old {
+			xc.XEle_AdjustLayout(d.toolbar.Handle)
+			d.toolbar.Redraw(false)
+		}
+		d.searchSyncing = false
+		return 0
+	})
+	// 关键字筛选框固定宽放最左(tasks 的 DataTableToolbar): 它定宽, 后面的分面触发区
+	// 左缘才不会随勾选变化 —— 触发区自己只向右长, 弹层锚点也就不动。输入框若像原来那样
+	// 用 Weight 吃满剩余宽, 分面胶囊一变宽它就会变窄, 把触发区整个推向左。
 	if d.searchOn {
 		d.search = NewInput(0, 0, 0, dataTableToolbarH, d.toolbar.Handle,
 			WithPlaceholder(d.searchPlaceholder),
 			WithLeadingIcon(icons.IconSearch),
 			WithClearButton())
-		xui.ItemWeight(d.search, 1)
+		xui.ItemWidth(d.search, dataTableSearchW)
+		xui.ItemMargin(d.search, 0, 0, dataTableGap, 0)
 		d.search.OnChange(func(text string) {
 			if d.suppressSearch {
 				return
@@ -324,8 +352,8 @@ func (d *DataTable) buildToolbar() {
 			}
 		})
 	}
-	// 分面筛选触发区(tasks 的 DataTableFacetedFilter): 自绘胶囊, 选中项直接显示在列名右侧
-	// (Button 只会画一行居中文字, 画不出分隔线 + 胶囊, 见 datatablefacet.go)。
+	// 分面筛选触发区(tasks 的 DataTableFacetedFilter): 紧跟在定宽输入框右侧。
+	// 自绘胶囊的选中项直接显示在列名右侧(Button 画不出分隔线 + 胶囊, 见 datatablefacet.go)。
 	d.facetBtns = map[int]*facetTrigger{}
 	d.facetPanels = map[int]*facetPanel{}
 	for ci := range d.cols {
@@ -335,15 +363,18 @@ func (d *DataTable) buildToolbar() {
 		ci := ci
 		b := newFacetTrigger(0, 0, 0, facetTriggerH, d.toolbar.Handle,
 			d.cols[ci].Title, icons.IconCirclePlus)
-		xui.ItemMargin(b, dataTableGap, 2, 0, 2)
+		// 只留右间距: 第一个触发区的左间隙由输入框的右外边距提供, 相邻分面之间 gap 8。
+		xui.ItemMargin(b, 0, 2, dataTableGap, 2)
 		d.facetBtns[ci] = b
 		// 面板随触发区一次建好(内容懒构建): 点击由 Popover 自己的 toggle 处理,
 		// 每次都新建 Popover 会重复挂事件, 越开越闪(见新建处的注释)。
 		d.facetPanels[ci] = d.newFacetPanel(ci, b)
 	}
-	// 重置(tasks 的 Reset): 关键字或分面筛选任一生效才出现。
+	// 重置(tasks 的 Reset + X): 关键字或分面筛选任一生效才出现。左间隙由前一项
+	// (输入框或最后一个分面触发区)的右外边距提供, 所以自身左边距为 0。
 	d.resetBtn = NewButton(0, 0, 0, 0, "重置", d.toolbar.Handle,
-		WithVariant(ButtonGhost), WithSize(ButtonSizeSm))
+		WithVariant(ButtonGhost), WithSize(ButtonSizeSm),
+		WithButtonTrailingIcon(icons.IconX))
 	xui.ItemSize(d.resetBtn, 0, 28) // 默认收起(固定宽 0 + 隐藏)
 	xui.ItemMargin(d.resetBtn, 0, 2, 0, 2)
 	d.resetBtn.Show(false)
@@ -353,6 +384,15 @@ func (d *DataTable) buildToolbar() {
 	})
 	d.updateToolbar()
 	if d.toggleOn {
+		// 用 Weight 撑开左侧内容, 把"视图"钉在工具栏右缘(分面变宽 / 重置按钮出现都不移动它)。
+		spacer := widget.NewElement(0, 0, 0, 0, d.toolbar.Handle)
+		if spacer != nil {
+			spacer.EnableBkTransparent(true)
+			spacer.EnableDrawBorder(false)
+			spacer.EnableFocus(false)
+			spacer.EnableSwitchFocus(false)
+			xui.ItemWeight(spacer, 1)
+		}
 		// 对应 tasks 示例工具栏右侧的 View 下拉(DataTableViewOptions): 逐列显隐。
 		d.viewBtn = NewButton(0, 0, 0, 0, "视图", d.toolbar.Handle,
 			WithVariant(ButtonOutline), WithSize(ButtonSizeSm),
@@ -861,19 +901,58 @@ func (d *DataTable) updateToolbar() {
 			d.resetBtn.Show(true)
 			d.resetBtn.SetWidth(w)
 			xui.ItemWidth(d.resetBtn, w)
-			xui.ItemMargin(d.resetBtn, dataTableGap, 2, 0, 2)
+			xui.ItemMargin(d.resetBtn, 0, 2, 0, 2)
 		} else {
 			d.resetBtn.Show(false)
 			xui.ItemWidth(d.resetBtn, 0)
 			xui.ItemMargin(d.resetBtn, 0, 2, 0, 2)
 		}
 	}
+	d.syncSearchWidth(th)
 	xc.XEle_AdjustLayout(d.toolbar.Handle)
-	// AdjustLayout 只重排, 不擦旧像素: 分面按钮文字变宽(状态 → 状态 1)或重置钮出现/消失
-	// 会把筛选框挤窄, 旧位置的边框残留在那里(实测是半截横线)。这里整块重绘一次
+	// AdjustLayout 只重排, 不擦旧像素: 分面按钮文字变宽(状态 → 状态 1)、重置钮出现/消失,
+	// 或窄窗下搜索框跟着收窄时, 旧位置的边框都会残留(实测是半截横线)。这里整块重绘一次
 	// (工具栏 + 组件根, 根负责把卡片底色铺回去)。
 	d.toolbar.Redraw(false)
 	d.Redraw(false)
+}
+
+// toolbarUsedWidth 汇总工具栏里除搜索框与 Weight 撑开项之外的固定宽(含外边距),
+// 用于按可用宽度给搜索框定宽(见 syncSearchWidth)。
+func (d *DataTable) toolbarUsedWidth(th *xui.Theme) int32 {
+	used := dataTableGap // 输入框的右外边距(它自己贴工具栏左缘, 左边距为 0)
+	for ci := range d.facetBtns {
+		used += d.facetBtns[ci].naturalWidth(th) + dataTableGap
+	}
+	if d.resetBtn != nil && d.resetBtn.IsShow() {
+		used += d.resetBtn.naturalWidth(th)
+	}
+	if d.viewBtn != nil {
+		used += dataTableToggleW + dataTableGap
+	}
+	return used
+}
+
+// syncSearchWidth 把搜索框宽定为 dataTableSearchW; 工具栏窄到放不下时收到
+// dataTableSearchMinW, 让"视图"仍然贴在右缘。正常窗口下宽恒定, 分面胶囊变宽只
+// 会向右长(触发区在最左, 不再被输入框反挤)。
+func (d *DataTable) syncSearchWidth(th *xui.Theme) {
+	if d.search == nil {
+		return
+	}
+	w := dataTableSearchW
+	if tw := d.toolbar.GetWidth(); tw > 0 {
+		if avail := tw - d.toolbarUsedWidth(th); avail < w {
+			w = avail
+		}
+	}
+	if w < dataTableSearchMinW {
+		w = dataTableSearchMinW
+	}
+	xui.ItemWidth(d.search, w)
+	if d.search.GetWidth() != w {
+		d.search.SetWidth(w)
+	}
 }
 
 // ResetFilters 清空关键字与全部分面筛选(工具栏"重置"按钮的行为)。

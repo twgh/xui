@@ -86,6 +86,11 @@ type Command struct {
 	selects   []func(value string)
 	escapes   []func()
 	textColor uint32
+
+	// 列表底部的"分割线 + 单条居中条目"(分面筛选的清除行)。见 addFooter。
+	footerSep *widget.Element
+	footer    *CommandGroup
+	footerOn  bool
 }
 
 // NewCommand 创建命令面板。cx 传 0 = 宽度铺满父级; cy 传 0 = 36+300。
@@ -242,6 +247,114 @@ func (c *Command) AddGroup(label string) *CommandGroup {
 	c.groups = append(c.groups, g)
 	c.syncEmpty()
 	return g
+}
+
+// addFooter 在列表末尾追加"跨弹层的分割线 + 单条居中条目", 对应 shadcn 分面筛选面板里
+// 的 Clear filters 行。条目参与键盘上下选择; 整行显隐由 setFooterVisible 控制,
+// 且**不受搜索词过滤** —— 有勾选时清空操作始终可达。
+//
+// 为什么放在 Command 内部而不是 Popover 内容流里: Popover 内容区是带 8px 子项间距的
+// 纵向流, 外面的"分割线 + 按钮"会各自白得 8px, 窗口高度再按内容补偿就必然出现
+// "最后一项离分割线远、分割线离按钮远、按钮贴底"这一组问题(见 DESIGN 175)。
+func (c *Command) addFooter(value, text string, onSelect func(value string)) *CommandItem {
+	if c == nil {
+		return nil
+	}
+	sep := widget.NewElement(0, 0, 0, 1, c.content.Handle)
+	if sep == nil {
+		return nil
+	}
+	sep.EnableBkTransparent(true)
+	sep.EnableDrawBorder(false)
+	sep.EnableFocus(false)
+	sep.EnableSwitchFocus(false)
+	sep.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	sep.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 1)
+	sep.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		p.FillRound(&p.Rc, xui.Current().Border, 0)
+		return 0
+	})
+	g := c.AddGroup("")
+	if g == nil {
+		sep.Destroy()
+		return nil
+	}
+	// 上下 4 = CommandGroup 的 p-1: 最后一项→分割线、分割线→清除行、清除行→弹层底边
+	// 各留 4, 与 shadcn 的底部区几何一致。
+	xui.ItemMargin(g, 0, commandGroupPad, 0, commandGroupPad)
+	it := g.AddItem(value, text, WithCommandItemOnSelect(onSelect))
+	if it == nil {
+		return nil
+	}
+	it.center = true
+	it.Redraw(false)
+	c.footerSep, c.footer = sep, g
+	c.setFooterVisible(false)
+	return it
+}
+
+// setFooterVisible 控制底部区显隐, 只同步布局项与 visible 列表, **不重建** visible ——
+// 勾选选项后调用时不能把列表高亮重置到第一项。底部条目始终排在 visible 末尾,
+// 所以增删它不影响其它条目的下标。重复调用是幂等的(构建时 applyFilter 已经把它
+// 当普通组显示过一次, 这里要能可靠地收起来)。
+func (c *Command) setFooterVisible(on bool) {
+	if c == nil || c.footer == nil {
+		return
+	}
+	c.footerOn = on
+	if c.footerSep != nil {
+		c.footerSep.Show(on)
+		// 收起要连布局项高度一起归零: 元素 Show(false) 只停绘制, 仍然占位(见 DESIGN 172)。
+		h := int32(1)
+		if !on {
+			h = 0
+		}
+		c.footerSep.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
+	}
+	c.footer.Show(on)
+	if on {
+		c.footer.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+		xui.ItemMargin(c.footer, 0, commandGroupPad, 0, commandGroupPad)
+	} else {
+		c.footer.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 0)
+		xui.ItemMargin(c.footer, 0, 0, 0, 0)
+	}
+	it := c.footer.items[0]
+	it.Show(on)
+	if on {
+		found := false
+		for _, v := range c.visible {
+			if v == it {
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.visible = append(c.visible, it)
+		}
+	} else {
+		if it.active {
+			c.active = -1
+		}
+		it.setActive(false)
+		for idx, v := range c.visible {
+			if v == it {
+				c.visible = append(c.visible[:idx], c.visible[idx+1:]...)
+				break
+			}
+		}
+		if c.active >= int32(len(c.visible)) {
+			c.active = -1
+		}
+	}
+	c.content.AdjustLayout()
+	c.list.AdjustLayout()
+	c.LayoutEle.Redraw(false)
 }
 
 // AddSeparator 添加一条分隔线(过滤时自动隐藏)。
@@ -485,6 +598,9 @@ type CommandItem struct {
 	checked   bool
 	count     int
 	hasCount  bool
+
+	// center 让文字整行居中(shadcn Clear filters 的 justify-center), 不画勾选框/图标/计数。
+	center bool
 }
 
 // ClearActive 清掉当前高亮项。焦点移到弹层外的控件(比如底部按钮)时调用,
@@ -493,9 +609,10 @@ func (c *Command) ClearActive() *Command {
 	if c == nil {
 		return c
 	}
-	for _, it := range c.items {
-		it.setActive(false)
-	}
+	// 必须走 setActive(-1) 把 c.active 一并复位: 只清各项的 active 标记时 c.active
+	// 还停在原下标, 之后鼠标再移到那一项, hover() 里的 setActive(同下标) 会命中等值
+	// 提前返回 —— 于是那一项永远亮不起来(实测: 从底部按钮移回列表, 最后一项不亮)。
+	c.setActive(-1, false)
 	return c
 }
 
@@ -594,6 +711,15 @@ func (i *CommandItem) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		alpha = 128
 	}
 	fg = fg.WithAlpha(alpha)
+
+	if i.center {
+		if f := xui.FontHandle(t.FontDefault); f != 0 {
+			p.Draw.SetFont(f)
+		}
+		p.Text(i.text, &p.Rc, fg,
+			xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
+		return 0
+	}
 
 	x := p.Rc.Left + 8
 	if i.checkable {
@@ -805,6 +931,14 @@ func (c *Command) applyFilter() {
 	q := strings.ToLower(strings.TrimSpace(c.query))
 	c.visible = c.visible[:0]
 	for _, g := range c.groups {
+		// 底部清除行由 footerOn 控制, 不参与搜索过滤(见 addFooter); 显隐与布局项
+		// 由 setFooterVisible 统一维护, 这里只重建可见列表。
+		if g == c.footer {
+			if c.footerOn {
+				c.visible = append(c.visible, g.items[0])
+			}
+			continue
+		}
 		any := false
 		for _, it := range g.items {
 			match := q == "" || strings.Contains(strings.ToLower(it.text), q) ||
