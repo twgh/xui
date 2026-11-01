@@ -28,7 +28,7 @@
 
 ### 示例图
 
-![xui](https://s41.ax1x.com/2026/10/19/pn0t240.png)
+![xui](https://s41.ax1x.com/2026/11/01/pngSYCR.png)
 
 ## 快速开始
 
@@ -42,11 +42,16 @@ go run github.com/twgh/xui/demo@latest
 
 ### 新建项目(推荐)
 
+先装一次 CLI(之后直接敲 `xui`;安装位置与 PATH 见下方 [CLI](#cli) 章节):
+
 ```bash
-go run github.com/twgh/xui/cmd/xui@latest init -n myapp
+go install github.com/twgh/xui/cmd/xui@latest
+xui init -n myapp
 cd myapp
 go run .
 ```
+
+不想安装也可以把 `xui` 换成 `go run github.com/twgh/xui/cmd/xui@latest`, 参数完全一样。
 
 `-n` 会创建一个完整项目目录:`go.mod` + `main.go`(AppWindow + 示例卡片) + `README.md` +
 `AGENTS.md`(给 AI 助手的用法与修改规则) + `.gitignore` + `ui/`(theme.go + 基础组件 + DESIGN.md) +
@@ -78,8 +83,10 @@ ui.NewTray(w.Handle, "", "提示", ui.WithTrayIconHandle(hBig)) // 托盘可复�
 
 ```bash
 # 先在你的项目根目录执行(需要 Go 1.18+;项目要先有 go.mod,没有就先 go mod init)
-go run github.com/twgh/xui/cmd/xui@latest init
+xui init
 ```
+
+没装 CLI 就把 `xui` 换成 `go run github.com/twgh/xui/cmd/xui@latest`。
 
 此时 `init` 只创建 `ui/` 目录:写入 `theme.go`(你的主题文件)、拷入全部基础组件,外加一份
 `DESIGN.md` 和一份 `AGENTS.md` —— 组件源码的注释里到处是"见 DESIGN 第 N 节",这份**自定义指南**
@@ -274,6 +281,20 @@ paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存归�
 
 ## CLI
 
+### 安装 / 升级
+
+```bash
+go install github.com/twgh/xui/cmd/xui@latest
+```
+
+装一次后直接敲 `xui ...`。二进制在 `$(go env GOPATH)/bin`(Windows 默认
+`%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。升级重跑同一条命令;
+`@latest` 偶尔会被模块代理缓存拖旧, 想立刻用某个版本就直接写 tag(如 `@v0.7.0`)。
+
+不想安装也可以把命令里的 `xui` 换成 `go run github.com/twgh/xui/cmd/xui@latest`, 参数完全一样。
+
+### 命令
+
 ```bash
 xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + ui/ + winres/)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
@@ -324,8 +345,8 @@ sha256。之后升级时逐文件比对:
 也就是说:自己没动过的组件文件会跟着版本正常升级,只有你手改过的那些才需要 `-o`。
 清单缺失时(老项目、或手动删了它)行为退回保守模式 —— 一律视为“可能改过”,全部跳过,加 `-o` 一次性解决后清单会重新生成。
 
-**数据源**:默认从仓库 `main` 分支现拉组件,组件永远最新。想锁 CLI 与组件的版本时,把 `@latest`
-换成具体版本号(如 `@v0.1.0`)。默认源**自动选路**:
+**数据源**:默认从仓库 `main` 分支现拉组件,组件永远最新。CLI 本体的版本由 `go install` / `go run`
+时的 `@latest` 或 tag 决定;组件版本用下面的 `XUI_REGISTRY` 锁。默认源**自动选路**:
 
 ```
 直连 https://raw.githubusercontent.com/twgh/xui/main
@@ -344,7 +365,7 @@ CLI 内嵌源码。选路过程逐行打在 stderr 上, 想看清卡在哪一环
 
 ```bash
 XUI_REGISTRY=D:\path\to\xui xui add dialog                    # 本地目录(离线)
-XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.1.0 xui add dialog   # 锁组件版本(换成实际 tag)
+XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.7.0 xui add dialog   # 锁组件版本(换成实际 tag)
 XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/main xui add dialog     # 只走直连(跳过镜像与代理)
 XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                # 只走 Gitee 镜像
 XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dialog  # 只走 GitCode 镜像

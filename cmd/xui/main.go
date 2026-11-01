@@ -1,6 +1,10 @@
 // xui CLI: 把组件源码拷贝进用户项目(shadcn 的 copy-not-install 模式)。
 //
-// 用法:
+// 安装(装一次, 之后直接用 xui):
+//
+//	go install github.com/twgh/xui/cmd/xui@latest
+//
+// 免安装用法:
 //
 //	go run github.com/twgh/xui/cmd/xui@latest init -n myapp   # 新建完整项目
 //	go run github.com/twgh/xui/cmd/xui@latest init [ui目录]   # 已有项目装组件(默认 ui)
@@ -1712,12 +1716,14 @@ xc res make)。ui.AppWindow 内嵌 *window.Window, 需要时可直接调用 SetB
 
 ## 添加与更新组件
 
-在项目根目录执行(组件名用 xui list 查):
+CLI 装一次即可(没装就把 xui 换成 go run github.com/twgh/xui/cmd/xui@latest); 在项目根目录执行
+(组件名用 xui list 查):
 
 ~~~bash
-go run github.com/twgh/xui/cmd/xui@latest add table tree   # 自动带上依赖组件
-go run github.com/twgh/xui/cmd/xui@latest update            # 更新 ui/ 里已装组件
-go run github.com/twgh/xui/cmd/xui@latest list              # 列出可用组件
+go install github.com/twgh/xui/cmd/xui@latest
+xui add table tree   # 自动带上依赖组件
+xui update           # 更新 ui/ 里已装组件
+xui list             # 列出可用组件
 ~~~
 
 CLI 逐个比对内容: 本地没有则创建、一致则跳过、被改过则警告跳过; 确认丢弃本地改动时加
@@ -1768,12 +1774,14 @@ const agentsDirTemplate = `# AGENTS.md — 给 AI 助手的目录说明
 
 ## 添加与更新组件
 
-在项目根目录执行; 本目录不是 ui/ 时, 用 -p 指定它相对项目根的路径:
+CLI 装一次即可(没装就把 xui 换成 go run github.com/twgh/xui/cmd/xui@latest); 在项目根目录执行,
+本目录不是 ui/ 时用 -p 指定它相对项目根的路径:
 
 ~~~bash
-go run github.com/twgh/xui/cmd/xui@latest add table tree -p <目录>
-go run github.com/twgh/xui/cmd/xui@latest update -p <目录>
-go run github.com/twgh/xui/cmd/xui@latest list
+go install github.com/twgh/xui/cmd/xui@latest
+xui add table tree -p <目录>
+xui update -p <目录>
+xui list
 ~~~
 
 CLI 不会覆盖被改过的文件; 确认丢弃本地改动时加 -o/--overwrite。
@@ -1839,8 +1847,11 @@ ui.WithTrayIconHandle。
 
 ## 添加组件
 
+CLI 装一次即可(没装就把 xui 换成 go run github.com/twgh/xui/cmd/xui@latest):
+
 ~~~bash
-go run github.com/twgh/xui/cmd/xui@latest add table tree
+go install github.com/twgh/xui/cmd/xui@latest
+xui add table tree
 ~~~
 
 组件名见 xui list 的输出。

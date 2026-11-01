@@ -497,6 +497,9 @@ func TestInitNewProject(t *testing.T) {
 			t.Errorf("项目根 AGENTS.md 缺少窗口图标说明 %q:\n%s", want, agents)
 		}
 	}
+	if !strings.Contains(string(agents), "go install github.com/twgh/xui/cmd/xui@latest") {
+		t.Errorf("项目根 AGENTS.md 缺少 CLI 安装说明:\n%s", agents)
+	}
 	readme, err := os.ReadFile(filepath.Join(dir, "myapp", "README.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -507,6 +510,11 @@ func TestInitNewProject(t *testing.T) {
 	for _, want := range []string{"SetBigIcon", "SetSmallIcon", "任务栏预览窗口左上角"} {
 		if !strings.Contains(string(readme), want) {
 			t.Errorf("生成的 README 缺少窗口图标说明 %q:\n%s", want, readme)
+		}
+	}
+	for _, want := range []string{"go install github.com/twgh/xui/cmd/xui@latest", "xui add"} {
+		if !strings.Contains(string(readme), want) {
+			t.Errorf("生成的 README 缺少 CLI 使用说明 %q:\n%s", want, readme)
 		}
 	}
 
@@ -579,7 +587,7 @@ func TestInitProjectDocsAreDirAgnostic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("缺少 AGENTS.md: %v", err)
 	}
-	for _, want := range []string{"DESIGN.md", "xui.Current()", "ui.ScrollArea"} {
+	for _, want := range []string{"DESIGN.md", "xui.Current()", "ui.ScrollArea", "go install github.com/twgh/xui/cmd/xui@latest"} {
 		if !strings.Contains(string(agents), want) {
 			t.Errorf("AGENTS.md 缺少 %q", want)
 		}
