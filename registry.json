@@ -93,6 +93,10 @@
       "files": ["screentoast.go"],
       "deps": ["toast"]
     },
+    "screen-popup": {
+      "files": ["screenpopup.go", "popup.go"],
+      "deps": ["button", "label"]
+    },
     "tray": {
       "files": ["tray.go"],
       "deps": ["menu"]

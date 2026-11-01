@@ -177,6 +177,9 @@ func screenRight(hTrigger int) int32 {
 // 收紧到 5 后与菜单弹层的阴影观感一致。
 const popoverShadow int32 = 5
 
+// popoverShadowDepth 是阴影浓度(0-255), 对齐 shadow-md 在白底上的侧缘观感。
+const popoverShadowDepth int32 = 50
+
 // popoverReopenFadeSkip 是"关闭后多久内重开可以跳过进场淡入":
 // 用户在快速交互(连点开关)时, 每次都从透明渐显会让弹层看起来在"眨眼/抖动";
 // 对齐 CSS 过渡的中断语义 —— 刚关就开, 直接以完成态出现, 不重播动画。
@@ -216,9 +219,26 @@ type popoverPanel struct {
 
 	// activate 为 false 时不抢焦点、不因失焦关闭(悬停卡片这类"鼠标移入内容"的弹层)。
 	activate bool
+	// showWithoutActivate 让测量与显示都用 SW_SHOWNOACTIVATE、且不调 SetForegroundWindow:
+	// 窗口本身可被用户点击激活(不能加 WS_EX_NOACTIVATE), 但 Show 不主动拿前台 ——
+	// 屏幕弹窗的"可输入"模式要等用户点它时才把焦点切过去。
+	showWithoutActivate bool
 	// keepOnBlur 为 true 时暂时忽略失焦关闭: Menubar 打开子菜单时焦点会转移到
 	// 子菜单窗口, 父弹层必须保持打开(否则子菜单在鼠标按下时被父层一起关掉)。
 	keepOnBlur bool
+	// presenceKey 是本面板专属的进出场键: 进场/退场共用, 退场中途再 Show 时
+	// 目标反向, 从当前透明度继续(不会先跳到 0 或 1)。
+	presenceKey int32
+	// alwaysAnimate 关闭"快速重开跳过淡入"的优化。退场淡出需要有一条到位的
+	// 进场过渡可反向; fast 路径不建过渡条目, 会让 HideWithFade 无动画可播。
+	alwaysAnimate bool
+	// closing 表示退场淡出进行中: open 已经是 false, 但窗口还没隐藏。
+	closing bool
+	// fadeShadow 让阴影浓度跟元素 alpha 一起变(屏幕弹窗)。阴影是窗口级绘制,
+	// 不随元素 alpha 变化; 只淡内容会在结尾留下"卡片没了、阴影还在"的尾巴。
+	fadeShadow   bool
+	shadowRadius int32
+	shadowColor  uint32
 	// paintRadius / paintBorderSolid 覆盖卡片圆角与描边样式
 	// (0/false = 默认 RadiusLg + foreground 10% 的 ring)。描边**颜色不缓存**:
 	// 绘制时按 xui.Current() 实时取 —— 弹层是懒创建、长期复用的, 创建时存下的
@@ -262,8 +282,13 @@ func newPopoverPanel(cw, ch int32, hAnchor int) *popoverPanel {
 //   - layoutBody: body 换成 LayoutEle, 内容区可以用布局量出自然高度(公开 Popover);
 //   - activate: false = 不抢焦点、不因失焦关闭(HoverCard; 窗口加 WS_EX_NOACTIVATE)。
 func newPopoverPanelEx(cw, ch int32, hAnchor int, layoutBody, activate bool) *popoverPanel {
-	host := xc.XWidget_GetHWINDOW(hAnchor)
-	if host <= 0 {
+	return newPopoverPanelForWindow(cw, ch, xc.XWidget_GetHWINDOW(hAnchor), layoutBody, activate)
+}
+
+// newPopoverPanelForWindow 直接以宿主窗口句柄建弹层: 屏幕弹窗没有触发元素,
+// 只拿得到锚点窗口。hWindow 是 xcgui 窗口句柄, 不是 Win32 HWND。
+func newPopoverPanelForWindow(cw, ch int32, hWindow int, layoutBody, activate bool) *popoverPanel {
+	if hWindow <= 0 {
 		return nil
 	}
 	band := popoverShadow
@@ -278,8 +303,22 @@ func newPopoverPanelEx(cw, ch int32, hAnchor int, layoutBody, activate bool) *po
 	}
 	win.SetBorderSize(0, 0, 0, 0)
 	win.SetTransparentType(xcc.Window_Transparent_Shadow)
-	win.SetShadowInfo(band, 50, xui.Current().RadiusLg(), false, xc.RGBA(0, 0, 0, 128))
+	shadowRadius := xui.Current().RadiusLg()
+	shadowColor := xc.RGBA(0, 0, 0, 128)
+	win.SetShadowInfo(band, popoverShadowDepth, shadowRadius, false, shadowColor)
 	win.SetTransparentAlpha(255)
+	if !activate {
+		// ⚠️ 只设 WS_EX_NOACTIVATE 不够: xcgui 处理点击时会把非激活窗自己顶到前台,
+		// 用户点一下悬停卡片/屏幕弹窗, 正在输入的窗口就丢了焦点(实测前台句柄变成弹层)。
+		// 自己接 WM_MOUSEACTIVATE 返回 MA_NOACTIVATE, 让点击只走鼠标消息、不激活窗口。
+		win.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+			if message == 0x0021 { // WM_MOUSEACTIVATE
+				*pbHandled = true
+				return 3 // MA_NOACTIVATE
+			}
+			return 0
+		})
+	}
 	// ⚠️ 必须垫一层 alpha=0 的窗口背景填充: 弹窗默认背景是**白色**, 淡入用元素 alpha,
 	// 元素全透明时白底就从卡片下面露出来 —— 深色主题下表现为"每次弹出闪一下白"
 	// (逐帧抓图可见第二次显示的首帧 mean=228, 就是这层白底)。
@@ -310,7 +349,8 @@ func newPopoverPanelEx(cw, ch int32, hAnchor int, layoutBody, activate bool) *po
 		}
 	}
 	body.EnableBkTransparent(true)
-	p := &popoverPanel{win: win, body: body, bodyLayout: bodyLayout, cw: cw, ch: ch, activate: activate}
+	p := &popoverPanel{win: win, body: body, bodyLayout: bodyLayout, cw: cw, ch: ch, activate: activate,
+		presenceKey: xui.NextPresenceKey(), shadowRadius: shadowRadius, shadowColor: shadowColor}
 	body.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
 		paint := xui.BeginPaint(hEle, hDraw)
 		if paint == nil {
@@ -419,7 +459,7 @@ func (p *popoverPanel) MeasureContent(padding int32) int32 {
 	// 弹层"打开成功但完全看不见"(实测)。tooltip 一直用 HWND_TOPMOST; 两套弹层统一。
 	p.win.SetWindowPos(xcc.HWND_TOPMOST, -30000, -30000, 0, 0,
 		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
-	if p.activate {
+	if p.activate && !p.showWithoutActivate {
 		p.win.ShowWindow(xcc.SW_SHOW)
 	} else {
 		wapi.ShowWindow(p.win.GetHWND(), 4) // SW_SHOWNOACTIVATE
@@ -663,13 +703,21 @@ func panelScreenPos(p *popoverPanel) (int32, int32) {
 
 // showAt 是 Show/ShowAt 的公共落位与进场路径(x/y 已夹好, 逻辑像素)。
 func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
+	p.showAtHWND(xc.XWidget_GetHWINDOW(hAnchor), x, y)
+}
+
+// showAtHWND 与 showAt 相同, 但锚点直接给 xcgui 窗口句柄(屏幕弹窗没有触发元素)。
+func (p *popoverPanel) showAtHWND(hWnd int, x, y int32) {
 	if p == nil || p.open || !p.alive() {
 		return
 	}
-	hWnd := xc.XWidget_GetHWINDOW(hAnchor)
 	if hWnd <= 0 {
 		return
 	}
+	// 退场淡出中再次 Show: 不能重置元素 alpha, 交给 Presence 把目标反向后
+	// 从当前透明度接着淡入(否则会先跳到全透明/全亮)。
+	wasClosing := p.closing
+	p.closing = false
 	dpi := xc.XWnd_GetDPI(hWnd)
 	if dpi <= 0 {
 		dpi = 96
@@ -690,11 +738,13 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	// 实测两次显示都是瞬间全亮)。元素 alpha 是框架合成时乘上去的, 每帧都生效。
 	//
 	// 关闭后 300ms 内重开(快速连点)直接以完成态出现, 不重播动画 —— 否则弹层反复
-	// "眨眼"(CSS 过渡的中断语义: 刚中断就重启, 直接终态)。
-	fast := !p.lastClose.IsZero() && time.Since(p.lastClose) < popoverReopenFadeSkip
+	// "眨眼"(CSS 过渡的中断语义: 刚中断就重启, 直接终态)。屏幕弹窗用退场淡出,
+	// 它要复用进场过渡的当前值反向, 因此 alwaysAnimate 时一律走 Presence。
+	fast := !p.alwaysAnimate && !wasClosing && !p.lastClose.IsZero() &&
+		time.Since(p.lastClose) < popoverReopenFadeSkip
 	if fast {
 		fadeSubtreeAlpha(p.body.Handle, 255)
-	} else {
+	} else if !wasClosing {
 		fadeSubtreeAlpha(p.body.Handle, 0)
 	}
 
@@ -705,11 +755,11 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	// 表面内容已是透明帧。Win32 窗口坐标范围 ±32768, -30000 安全。
 	p.win.SetWindowPos(xcc.HWND_TOPMOST, -30000, -30000, 0, 0,
 		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
-	if p.activate {
+	if p.activate && !p.showWithoutActivate {
 		p.win.ShowWindow(xcc.SW_SHOW)
 	} else {
-		// 悬停卡片不能抢焦点: 一抢, 用户正在操作的原窗口就丢焦点(输入框光标消失),
-		// 而且弹层会收到 KillFocus 立刻关掉自己。
+		// 悬停卡片/屏幕弹窗不能抢焦点: 一抢, 用户正在操作的原窗口就丢焦点
+		// (输入框光标消失), 而且弹层会收到 KillFocus 立刻关掉自己。
 		wapi.ShowWindow(p.win.GetHWND(), 4) // SW_SHOWNOACTIVATE
 	}
 	// ⚠️ OnFaded 必须在这次重绘**之前**调用: 子控件的"初始隐藏态"(时间列表的滚动条
@@ -722,7 +772,7 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	p.win.Redraw(true) // 在屏幕外把 alpha=0 的透明帧画好(含滚动条隐藏)
 	p.win.SetWindowPos(xcc.HWND_TOPMOST, wx, wy, 0, 0,
 		xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE)
-	if p.activate {
+	if p.activate && !p.showWithoutActivate {
 		wapi.SetForegroundWindow(p.win.GetHWND()) // 拿到焦点才会在点击外部时收到 KillFocus
 	}
 
@@ -742,12 +792,15 @@ func (p *popoverPanel) showAt(hAnchor int, x, y int32) {
 	// 弹窗只有 400×500 物理像素, 每 tick 重绘毫无压力。
 	hBody := p.body.Handle
 	hw := p.win.Handle
-	key := xui.NextPresenceKey()
+	key := p.presenceKey
 	xui.Presence(p.win.Handle, key, true, xui.PopupDuration, func(v float64) {
 		if !xc.XC_IsHXCGUI(hw, xcc.XC_WINDOW) {
 			return
 		}
 		fadeSubtreeAlpha(hBody, byte(v*255+0.5))
+		if p.fadeShadow {
+			p.applyShadowDepth(v)
+		}
 		// 重绘由 hoverTick 对 hOwner(=弹窗) 的立即重绘完成, 这里不重复
 	}, func(v float64) {
 		if p.OnFaded != nil {
@@ -779,6 +832,63 @@ func (p *popoverPanel) Hide() {
 	if p.OnHide != nil {
 		p.OnHide()
 	}
+}
+
+// HideWithFade 播放退场淡出后再隐藏窗口(dur <= 0 时用 PopupDuration)。
+//
+// 逻辑状态立即变为关闭(open=false), 但窗口保留到淡出结束; 淡出期间再次 Show 会
+// 把同一条 presence 过渡的目标反向, 从当前透明度接着淡入。调用方需要面板在
+// Show 时一定建了进场过渡(alwaysAnimate=true), 否则没有可反向的条目。
+func (p *popoverPanel) HideWithFade(dur time.Duration) {
+	if p == nil || !p.open {
+		return
+	}
+	if dur <= 0 {
+		dur = xui.PopupDuration
+	}
+	p.open = false
+	p.lastClose = time.Now()
+	p.closing = true
+	hBody := p.body.Handle
+	finish := func() {
+		if !p.closing || p.open || !p.alive() {
+			return // 淡出期间又被 Show 了
+		}
+		p.closing = false
+		// 同 Hide: 清掉同窗上的残留过渡(滚动条 hover 等), 属性归位到终态;
+		// 下次进场会重新从 0 淡入。
+		xui.DropTransitions(p.win.Handle)
+		fadeSubtreeAlpha(p.body.Handle, 255)
+		if p.OnFaded != nil {
+			p.OnFaded()
+		}
+		p.win.ShowWindow(xcc.SW_HIDE)
+		if p.OnHide != nil {
+			p.OnHide()
+		}
+	}
+	v := xui.Presence(p.win.Handle, p.presenceKey, false, dur, func(v float64) {
+		fadeSubtreeAlpha(hBody, byte(v*255+0.5))
+		if p.fadeShadow {
+			p.applyShadowDepth(v)
+		}
+	}, func(float64) {
+		finish()
+	})
+	if v <= 0 {
+		// 没有可反向的进场条目(理论上 alwaysAnimate 已避免)或出场被立即到位:
+		// Presence 对 target=0 且无条目的情况不会回调 done, 这里补一次收尾。
+		finish()
+	}
+}
+
+// applyShadowDepth 按进度设置窗口阴影浓度(0..1); 只对 fadeShadow 的面板生效。
+func (p *popoverPanel) applyShadowDepth(v float64) {
+	if p == nil || !p.alive() {
+		return
+	}
+	depth := int32(float64(popoverShadowDepth)*v + 0.5)
+	p.win.SetShadowInfo(popoverShadow, depth, p.shadowRadius, false, p.shadowColor)
 }
 
 // Destroy 销毁弹层窗口(触发元素销毁时调用)。

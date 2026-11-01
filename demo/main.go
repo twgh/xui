@@ -72,10 +72,15 @@ var (
 	demoTree    *ui.Tree
 	demoTreeSel int32
 
-	demoWindow     *ui.AppWindow
-	demoScreen     *ui.ScreenToaster
-	demoTray       *ui.TrayIcon
-	demoTrayButton *ui.Button
+	demoWindow      *ui.AppWindow
+	demoScreen      *ui.ScreenToaster
+	demoTray        *ui.TrayIcon
+	demoTrayButton  *ui.Button
+	demoPopup       *ui.ScreenPopup
+	demoFocusPopup  *ui.ScreenPopup
+	demoPopupToggle *ui.Button
+	demoPopupStatus *ui.Label
+	demoPopupLines  int
 
 	demoDark            bool // 当前亮/暗
 	demoThemeColor      int  // demoThemePresets 下标
@@ -2966,6 +2971,109 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(hint(vt.Handle,
 		"启用后右键系统托盘图标: 显示主窗口 / 发送屏幕通知 / 退出。关闭 demo 时托盘随之移除。"))
 
+	// ---- 屏幕弹窗(常驻面板, 不是通知) ----
+	demoPopupLines = 0
+	demoPopup = ui.NewScreenPopup(hWindow,
+		ui.WithScreenPopupWidth(340),
+		ui.WithScreenPopupDuration(10*time.Second),
+		ui.WithScreenPopupHeader("传输队列"),
+		ui.WithScreenPopupOnOpenChange(func(open bool) {
+			if open {
+				syncDemoPopupStatus("已显示: 10 秒后自动关闭, 焦点仍在主窗口")
+			} else {
+				syncDemoPopupStatus("已关闭: 右上角 X / 超时 / 内容按钮都可收起")
+			}
+		}),
+		ui.WithScreenPopupContent(func(c int) {
+			xui.ItemFill(ui.NewLabel(0, 0, 0, 20,
+				"任意 xui 内容; 本卡设了 10 秒自动关闭。", c).SetMuted().SetFontSize(13))
+			pg := ui.NewProgress(0, 0, 0, 0, c, ui.WithProgressMax(100))
+			xui.ItemFill(pg)
+			pg.SetValue(66)
+			rb := xui.HStack(c, 32, 8)
+			add := ui.NewButton(0, 0, 0, 0, "加一行", rb.Handle,
+				ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+			xui.ItemWidth(add, 84)
+			add.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+				demoPopupLines++
+				line := ui.NewLabel(0, 0, 0, 20, fmt.Sprintf("动态追加第 %d 行", demoPopupLines), c).
+					SetMuted().SetFontSize(13)
+				xui.ItemFill(line) // 不设布局项宽度时标签宽 0: 高度算进去了, 字却看不见
+				demoPopup.FitContent()
+				syncDemoPopupStatus("已追加一行: 面板向上长高, 底边不动")
+				return 0
+			})
+			closeBtn := ui.NewButton(0, 0, 0, 0, "关闭", rb.Handle,
+				ui.WithVariant(ui.ButtonPrimary), ui.WithSize(ui.ButtonSizeSm))
+			xui.ItemWidth(closeBtn, 72)
+			closeBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+				demoPopup.Hide()
+				return 0
+			})
+		}))
+	_, vp := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "屏幕弹窗", vp.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"右下角常驻面板: 默认不抢焦点、10 秒自动关;「可输入弹窗」演示 Focusable(true)。", vp.Handle))
+	rp := xui.HStack(vp.Handle, 36, 8)
+	demoPopupToggle = ui.NewButton(0, 0, 0, 0, "显示弹窗", rp.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(demoPopupToggle, 104)
+	demoPopupToggle.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		if demoPopup == nil {
+			return 0
+		}
+		if demoPopup.IsOpen() {
+			demoPopup.Hide()
+		} else {
+			if demoFocusPopup != nil {
+				demoFocusPopup.Hide()
+			}
+			demoPopup.Show()
+		}
+		return 0
+	})
+	focusBtn := ui.NewButton(0, 0, 0, 0, "可输入弹窗", rp.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(focusBtn, 104)
+	focusBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		if demoFocusPopup == nil {
+			demoFocusPopup = ui.NewScreenPopup(hWindow,
+				ui.WithScreenPopupWidth(340),
+				ui.WithScreenPopupFocusable(true),
+				ui.WithScreenPopupHeader("可输入弹窗"),
+				ui.WithScreenPopupOnOpenChange(func(open bool) {
+					if open {
+						syncDemoPopupStatus("已显示且没抢前台: 点输入框激活后打字, ESC 收起")
+					} else {
+						syncDemoPopupStatus("可输入弹窗已收起: 失焦不会自动关, ESC/X/按钮才会")
+					}
+				}),
+				ui.WithScreenPopupContent(func(c int) {
+					xui.ItemFill(ui.NewLabel(0, 0, 0, 20,
+						"Focusable(true): 点击后激活可输入, 失焦不关。", c).
+						SetMuted().SetFontSize(13))
+					xui.ItemFill(ui.NewInput(0, 0, 0, 0, c,
+						ui.WithPlaceholder("在这里输入文字, ESC 收起...")))
+					closeBtn := ui.NewButton(0, 0, 0, 0, "收起", c,
+						ui.WithVariant(ui.ButtonPrimary), ui.WithSize(ui.ButtonSizeSm))
+					xui.ItemWidth(closeBtn, 72)
+					closeBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+						demoFocusPopup.Hide()
+						return 0
+					})
+				}))
+		}
+		if demoPopup != nil {
+			demoPopup.Hide()
+		}
+		demoFocusPopup.Show()
+		return 0
+	})
+	demoPopupStatus = ui.NewLabel(0, 0, 0, 20, "尚未显示", vp.Handle).SetMuted().SetFontSize(13)
+	xui.ItemFill(demoPopupStatus)
+	xui.ItemFill(desc(vp.Handle,
+		"Header 在右上角放 X; Duration 到点自动关(0 = 常驻); FitContent 让窗口向上生长; "+
+			"Focusable(true): 显示不抢前台, 点击后激活可输入, 失焦不自动关。"))
+
 	// ---- 第三行: 空状态 ----
 	rEmpty := row(body.Handle, 0, gap)
 
@@ -3028,6 +3136,25 @@ func toggleDemoTray() {
 	if demoTrayButton != nil {
 		demoTrayButton.SetText("停用托盘")
 	}
+}
+
+// syncDemoPopupStatus 同步「屏幕弹窗」卡的按钮文案与状态行(msg 为空时按开关状态给默认文案)。
+func syncDemoPopupStatus(msg string) {
+	if demoPopup == nil || demoPopupStatus == nil || demoPopupToggle == nil {
+		return
+	}
+	if demoPopup.IsOpen() {
+		demoPopupToggle.SetText("隐藏弹窗").Redraw(false)
+		if msg == "" {
+			msg = "已显示: 面板贴在屏幕右下角, 焦点仍在主窗口"
+		}
+	} else {
+		demoPopupToggle.SetText("显示弹窗").Redraw(false)
+		if msg == "" {
+			msg = "已隐藏"
+		}
+	}
+	demoPopupStatus.SetText(msg).Redraw(false)
 }
 
 func buildDemoTrayMenu(m *ui.Menu) {
