@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"go/parser"
 	"go/token"
 	"net/http"
@@ -188,8 +189,28 @@ func TestInstalledComponentsRequiresAllFiles(t *testing.T) {
 	}
 }
 
+// stubWinresMake 把 winresMake 换成桩(写出假的 .syso), 避免单测依赖本机 xc;
+// 返回的切片记录每次调用的 allowInstall。
+func stubWinresMake(t *testing.T) *[]bool {
+	t.Helper()
+	var calls []bool
+	orig := winresMake
+	winresMake = func(dir string, allowInstall bool) error {
+		calls = append(calls, allowInstall)
+		for _, arch := range []string{"386", "amd64"} {
+			if err := os.WriteFile(filepath.Join(dir, "rsrc_windows_"+arch+".syso"), []byte("stub"), 0o644); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	t.Cleanup(func() { winresMake = orig })
+	return &calls
+}
+
 func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
 	t.Setenv("XUI_REGISTRY", moduleRoot()) // 本地源: 不访问网络
+	stubWinresMake(t)
 	top := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -372,6 +393,7 @@ func TestModuleNameFromProject(t *testing.T) {
 
 func TestInitNewProject(t *testing.T) {
 	t.Setenv("XUI_REGISTRY", moduleRoot()) // 本地源: 不访问网络
+	calls := stubWinresMake(t)
 	dir := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -389,10 +411,38 @@ func TestInitNewProject(t *testing.T) {
 	for _, f := range []string{
 		"go.mod", "main.go", "README.md", "AGENTS.md", ".gitignore",
 		"ui/theme.go", "ui/DESIGN.md", "ui/button.go", "ui/window.go",
+		"winres/icon.ico", "winres/winres.json",
+		"rsrc_windows_386.syso", "rsrc_windows_amd64.syso",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, "myapp", f)); err != nil {
 			t.Errorf("缺少 %s: %v", f, err)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "myapp", "rsrc_windows_arm64.syso")); err == nil {
+		t.Error("不应生成 arm64 syso: xcgui 不支持 ARM")
+	}
+	icon, err := os.ReadFile(filepath.Join(dir, "myapp", "winres", "icon.ico"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(icon) != string(projectIconICO) {
+		t.Error("winres/icon.ico 应写入内嵌的默认图标")
+	}
+	winres, err := os.ReadFile(filepath.Join(dir, "myapp", "winres", "winres.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"RT_GROUP_ICON"`, `"APP"`, `"RT_MANIFEST"`, `"RT_VERSION"`,
+		`"dpi-awareness": "per monitor v2"`,
+		`"OriginalFilename": "myapp.exe"`, `"ProductName": "myapp"`,
+	} {
+		if !strings.Contains(string(winres), want) {
+			t.Errorf("winres.json 缺少 %q:\n%s", want, winres)
+		}
+	}
+	if got := *calls; len(got) == 0 || got[0] {
+		t.Errorf("--no-install 应传 allowInstall=false, calls=%v", got)
 	}
 
 	gomod, err := os.ReadFile(filepath.Join(dir, "myapp", "go.mod"))
@@ -423,6 +473,11 @@ func TestInitNewProject(t *testing.T) {
 	if _, err := parser.ParseFile(token.NewFileSet(), "main.go", mainGo, 0); err != nil {
 		t.Errorf("生成的 main.go 语法错误: %v", err)
 	}
+	for _, want := range []string{"setWindowIcons(w)", "SetBigIcon", "SetSmallIcon"} {
+		if !strings.Contains(string(mainGo), want) {
+			t.Errorf("生成的 main.go 缺少窗口图标设置 %q:\n%s", want, mainGo)
+		}
+	}
 
 	agents, err := os.ReadFile(filepath.Join(dir, "myapp", "AGENTS.md"))
 	if err != nil {
@@ -433,6 +488,26 @@ func TestInitNewProject(t *testing.T) {
 	}
 	if !strings.Contains(string(agents), `ui "myapp/ui"`) {
 		t.Errorf("项目根 AGENTS.md 的导入路径没替换成模块名:\n%s", agents)
+	}
+	if !strings.Contains(string(agents), "xc res make --arch amd64,386") {
+		t.Errorf("项目根 AGENTS.md 缺少 winres 生成说明:\n%s", agents)
+	}
+	for _, want := range []string{"SetBigIcon", "SetSmallIcon", "任务栏预览窗口左上角"} {
+		if !strings.Contains(string(agents), want) {
+			t.Errorf("项目根 AGENTS.md 缺少窗口图标说明 %q:\n%s", want, agents)
+		}
+	}
+	readme, err := os.ReadFile(filepath.Join(dir, "myapp", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(readme), "winres/") || !strings.Contains(string(readme), "xc res make") {
+		t.Errorf("生成的 README 缺少 winres 说明:\n%s", readme)
+	}
+	for _, want := range []string{"SetBigIcon", "SetSmallIcon", "任务栏预览窗口左上角"} {
+		if !strings.Contains(string(readme), want) {
+			t.Errorf("生成的 README 缺少窗口图标说明 %q:\n%s", want, readme)
+		}
 	}
 
 	// 非空目录默认拒绝, --force 放行且不删除无关文件
@@ -448,6 +523,37 @@ func TestInitNewProject(t *testing.T) {
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Error("--force 不应删除无关文件")
+	}
+}
+
+// winres 模板必须是 `xc res init` 的完整三段(图标/清单/版本), 且项目名按 JSON 转义。
+func TestProjectWinresJSON(t *testing.T) {
+	body := projectWinresJSON(`my"app`)
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(body), &doc); err != nil {
+		t.Fatalf("winres.json 不是合法 JSON: %v", err)
+	}
+	for _, key := range []string{"RT_GROUP_ICON", "RT_MANIFEST", "RT_VERSION"} {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("缺少 %s 段", key)
+		}
+	}
+	if !strings.Contains(body, `"OriginalFilename": "my\"app.exe"`) {
+		t.Errorf("项目名未按 JSON 转义:\n%s", body)
+	}
+	if !strings.Contains(body, `"APP"`) {
+		t.Error("图标资源名应为 APP")
+	}
+}
+
+// --no-install 时 xc 不存在不能触发 go install, 只报错。
+func TestFindXcNoInstall(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if p, err := exec.LookPath("xc"); err == nil {
+		t.Skipf("测试环境仍能解析到 xc (%s), 跳过", p)
+	}
+	if _, err := findXc(false); err == nil {
+		t.Error("xc 缺失且不允许安装时应返回错误")
 	}
 }
 

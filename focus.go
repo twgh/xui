@@ -67,6 +67,16 @@ func AttachWindow(hEle int) {
 	if w == nil {
 		return
 	}
+	// 任何承载 xui 组件的窗口(不只是 AppWindow: 屏幕通知小窗、对话框、弹层)
+	// 都在上面登记过主题重绘, 必须在该窗口销毁时摘掉 —— 句柄失效后
+	// SetTheme 里的 XWnd_Redraw 会弹 xcgui 模态错误框(不是静默无效)。
+	w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+		if message == wapi.WM_DESTROY {
+			UnregisterWindow(hWindow)
+			delete(focusSrc.hooked, hWindow)
+		}
+		return 0
+	})
 	w.AddEvent_KeyDown(func(hWindow int, wParam, lParam uintptr, pbHandled *bool) int {
 		if wParam == 0x09 { // VK_TAB: 之后的焦点来自键盘
 			focusSrc.mouse = false

@@ -19,6 +19,7 @@ import (
 
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/common"
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/wapi/wutil"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
@@ -70,7 +71,62 @@ var (
 	tip         *ui.Tooltip
 	demoTree    *ui.Tree
 	demoTreeSel int32
+
+	demoWindow     *ui.AppWindow
+	demoScreen     *ui.ScreenToaster
+	demoTray       *ui.TrayIcon
+	demoTrayButton *ui.Button
+
+	demoDark            bool // 当前亮/暗
+	demoThemeColor      int  // demoThemePresets 下标
+	demoThemeColorLabel *ui.Label
 )
+
+// 主题色预设: 默认(内置主题原样) + 5 个彩色主色。亮/暗各一套, 前景色跟随对比度。
+// 彩色主题只换"主色组"令牌(Primary/Ring/SidebarPrimary), 其余令牌保持内置主题。
+type demoThemePreset struct {
+	name            string
+	light, dark     xui.Color
+	lightFg, darkFg xui.Color
+}
+
+var demoThemePresets = []demoThemePreset{
+	{name: "默认"},
+	{name: "蓝色", light: xui.Hex("#2563eb"), dark: xui.Hex("#3b82f6"), lightFg: xui.Hex("#fafafa"), darkFg: xui.Hex("#0b1220")},
+	{name: "绿色", light: xui.Hex("#16a34a"), dark: xui.Hex("#22c55e"), lightFg: xui.Hex("#fafafa"), darkFg: xui.Hex("#052e16")},
+	{name: "紫色", light: xui.Hex("#7c3aed"), dark: xui.Hex("#a78bfa"), lightFg: xui.Hex("#fafafa"), darkFg: xui.Hex("#1e1b4b")},
+	{name: "玫瑰", light: xui.Hex("#e11d48"), dark: xui.Hex("#fb7185"), lightFg: xui.Hex("#fafafa"), darkFg: xui.Hex("#4c0519")},
+	{name: "橙色", light: xui.Hex("#ea580c"), dark: xui.Hex("#fb923c"), lightFg: xui.Hex("#fafafa"), darkFg: xui.Hex("#431407")},
+}
+
+// applyDemoTheme 按当前亮暗 + 主题色应用主题。克隆内置主题后只替换主色组,
+// 其余令牌(包括暗色模式)保持原样; 组件都在绘制时实时取令牌, 所以无需重建窗口。
+func applyDemoTheme() {
+	base := xui.Light()
+	if demoDark {
+		base = xui.Dark()
+	}
+	p := demoThemePresets[demoThemeColor]
+	if demoThemeColor == 0 {
+		xui.SetTheme(base)
+	} else {
+		t := *base
+		primary, fg := p.light, p.lightFg
+		if demoDark {
+			primary, fg = p.dark, p.darkFg
+		}
+		t.Name = base.Name + "-" + p.name
+		t.Primary = primary
+		t.PrimaryForeground = fg
+		t.Ring = primary
+		t.SidebarPrimary = primary
+		t.SidebarPrimaryForeground = fg
+		xui.SetTheme(&t)
+	}
+	if demoThemeColorLabel != nil {
+		demoThemeColorLabel.SetText("当前主题色: " + p.name).Redraw(false)
+	}
+}
 
 // 页面留白与行/列间距(逻辑像素)。标题栏高度(30)与阴影带(12)由 ui.AppWindow 内置。
 const (
@@ -91,10 +147,8 @@ func main() {
 
 	// 启动主题: 环境变量 XUI_THEME=dark 暗色, 其它/不设为亮色, 免去改代码重建。
 	// 运行中仍可用标题栏按钮一键切换。
-	dark := strings.EqualFold(os.Getenv("XUI_THEME"), "dark")
-	if dark {
-		xui.SetTheme(xui.Dark())
-	}
+	demoDark = strings.EqualFold(os.Getenv("XUI_THEME"), "dark")
+	applyDemoTheme()
 	// 动画慢放倍率(截图抓中间帧用): XUI_ANIM_SCALE=5 把 hover/展开收起放慢 5 倍。
 	if v := os.Getenv("XUI_ANIM_SCALE"); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
@@ -107,10 +161,19 @@ func main() {
 	w := ui.NewAppWindow("xui · shadcn 风格自绘组件", 1200, 860,
 		ui.WithAppWindowMinSize(960, 660),
 		ui.WithAppWindowIcon(icons.IconAppWindow))
+	demoWindow = w
+	// 窗口图标也要设: 只设托盘不会同步任务栏/Alt+Tab/任务栏预览窗。大图标管
+	// 任务栏 + Alt+Tab, 小图标管任务栏预览窗左上角(也影响任务管理器), 见 DESIGN 180。
+	if hIcon := demoAppIcon(); hIcon != 0 {
+		w.SetBigIcon(hIcon)
+	}
+	if hIcon := demoAppSmallIcon(); hIcon != 0 {
+		w.SetSmallIcon(hIcon)
+	}
 	tip = ui.NewTooltip()
 
-	// 标题栏自定义按钮(排在最小化左边): 布局边界 / 主题切换, 都带 tooltip。
-	// 图标显示点击后的动作 —— 隐藏时 eye(去看), 显示时 eye-off(去关)。
+	// 标题栏自定义按钮(排在最小化左边): 布局边界 / 主题设置, 都带 tooltip。
+	// 布局边界按钮的图标显示点击后的动作 —— 隐藏时 eye(去看), 显示时 eye-off(去关)。
 	showLayoutFrame := false
 	var btnFrame *ui.Button
 	btnFrame = w.AddCaptionButton(icons.IconEye, func() {
@@ -121,18 +184,39 @@ func main() {
 	})
 	tip.Bind(btnFrame.Handle, "显示/隐藏布局对象边界")
 
-	// 主题切换按钮: 图标显示切换目标 —— 亮色时 moon(去暗色), 暗色时 sun(去亮色)
+	// 主题设置: 点击标题栏按钮弹出菜单, 亮色/暗色 + 主题色单选。
+	// 用菜单而不是无提示的切换, 便于对照当前状态并验证切主题后的全窗口重绘。
 	var btnTheme *ui.Button
-	btnTheme = w.AddCaptionButton(icons.IconMoon, func() {
-		dark = !dark
-		btnTheme.SetIcon(common.Choose(dark, icons.IconSun, icons.IconMoon))
-		xui.SetTheme(common.Choose(dark, xui.Dark(), xui.Light()))
-		// 切换主题会重绘窗口, 所以按钮不用单独重绘
+	btnTheme = w.AddCaptionButton(icons.IconPalette, func() {
+		m := ui.NewMenu()
+		m.Label("外观")
+		m.Radio("亮色", !demoDark, ui.MenuGroup(1), ui.MenuOnCheck(func(on bool) {
+			if on {
+				demoDark = false
+				applyDemoTheme()
+			}
+		}))
+		m.Radio("暗色", demoDark, ui.MenuGroup(1), ui.MenuOnCheck(func(on bool) {
+			if on {
+				demoDark = true
+				applyDemoTheme()
+			}
+		}))
+		m.Separator()
+		m.Label("主题色")
+		for i := range demoThemePresets {
+			i := i
+			m.Radio(demoThemePresets[i].name, demoThemeColor == i, ui.MenuGroup(2),
+				ui.MenuOnCheck(func(on bool) {
+					if on {
+						demoThemeColor = i
+						applyDemoTheme()
+					}
+				}))
+		}
+		m.PopupAtElement(btnTheme.Handle)
 	})
-	tip.Bind(btnTheme.Handle, "切换主题")
-	if dark {
-		btnTheme.SetIcon(icons.IconSun)
-	}
+	tip.Bind(btnTheme.Handle, "主题设置")
 
 	// 内容区: AppWindow 的纵向流式容器(宽铺满、高占满标题栏以下); 页面自己管留白
 	content := w.Content()
@@ -681,6 +765,33 @@ func buildBase1Page(body *widget.LayoutEle) {
 	gg.AddItem("center", "中", ui.WithToggleIcon(icons.IconAlignCenter))
 	gg.AddItem("right", "右", ui.WithToggleIcon(icons.IconAlignRight))
 	gg.SetValue("center")
+
+	// ---- 主题色: 克隆当前主题替换主色组(Primary/Ring/SidebarPrimary) ----
+	_, vtc := autoCard(colR.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "主题色", vtc.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"克隆当前主题并替换主色组(Primary / Ring / SidebarPrimary), 亮/暗各有一套; 标题栏调色板菜单也能切换", vtc.Handle))
+	xui.ItemFill(hint(vtc.Handle, "点击切换(全窗口实时生效)"))
+	for rowStart := 0; rowStart < len(demoThemePresets); rowStart += 3 {
+		rowEnd := rowStart + 3
+		if rowEnd > len(demoThemePresets) {
+			rowEnd = len(demoThemePresets)
+		}
+		rtc := xui.HStack(vtc.Handle, 36, 8)
+		for i := rowStart; i < rowEnd; i++ {
+			i := i
+			b := ui.NewButton(0, 0, 0, 0, demoThemePresets[i].name, rtc.Handle, ui.WithVariant(ui.ButtonOutline))
+			xui.ItemWidth(b, 72)
+			b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+				demoThemeColor = i
+				applyDemoTheme()
+				return 0
+			})
+		}
+	}
+	demoThemeColorLabel = ui.NewLabel(0, 0, 0, 20,
+		"当前主题色: "+demoThemePresets[demoThemeColor].name, vtc.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(demoThemeColorLabel)
 }
 
 // ===== 页 2: 基础2(徽章 / 分隔线 / 标签 / 头像 / 快捷键 / 加载 / 骨架) =====
@@ -2788,6 +2899,73 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(pColor)
 	pColor.SetValue(70)
 
+	// ---- 屏幕通知 + 系统托盘 ----
+	rScreen := row(body.Handle, 0, gap)
+
+	demoScreen = ui.NewScreenToaster(hWindow)
+	_, vs := autoCard(col(rScreen.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "屏幕通知", vs.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"独立置顶小窗, 固定在屏幕右下角; 应用最小化/隐藏也能看到; 不占任务栏、不抢焦点", vs.Handle))
+	rs1 := xui.HStack(vs.Handle, 36, 8)
+	for _, it := range []struct {
+		text    string
+		variant ui.ToastVariant
+	}{{"成功", ui.ToastSuccess}, {"错误", ui.ToastError}, {"警告", ui.ToastWarning}, {"信息", ui.ToastInfo}} {
+		it := it
+		b := ui.NewButton(0, 0, 0, 0, it.text, rs1.Handle, ui.WithVariant(ui.ButtonOutline))
+		xui.ItemWidth(b, 78)
+		b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+			demoScreen.Show(ui.ToastOptions{
+				Title:       it.text + "通知",
+				Description: "这条通知贴在屏幕右下角, 4 秒后自动关闭。",
+				Variant:     it.variant,
+			})
+			return 0
+		})
+	}
+	rs2 := xui.HStack(vs.Handle, 36, 8)
+	bScreenAction := ui.NewButton(0, 0, 0, 0, "带动作", rs2.Handle, ui.WithVariant(ui.ButtonSecondary))
+	xui.ItemWidth(bScreenAction, 78)
+	bScreenAction.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		demoScreen.Show(ui.ToastOptions{
+			Title:       "已删除项目",
+			Description: "「xui-demo」已移入回收站。",
+			Action:      "撤销",
+			CloseButton: true,
+			OnAction:    func() { fmt.Println("screen toast: 撤销删除") },
+		})
+		return 0
+	})
+	bScreenLong := ui.NewButton(0, 0, 0, 0, "常驻长文本", rs2.Handle, ui.WithVariant(ui.ButtonSecondary))
+	xui.ItemWidth(bScreenLong, 96)
+	bScreenLong.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		demoScreen.Show(ui.ToastOptions{
+			Title: "同步完成",
+			Description: "本次同步共处理 1,284 个文件, 其中 37 个发生冲突已自动合并, " +
+				"3 个需要手动处理。",
+			Variant:     ui.ToastInfo,
+			Duration:    -1,
+			CloseButton: true,
+		})
+		return 0
+	})
+	xui.ItemFill(desc(vs.Handle,
+		"内容与窗口内 Toast 共用一套卡片绘制; 悬停暂停全部倒计时; Duration < 0 常驻。"))
+
+	_, vt := autoCard(col(rScreen.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "系统托盘", vt.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"托盘图标 + 右键 themed 菜单; 左键默认显示主窗口; Explorer 重启后自动重新添加", vt.Handle))
+	demoTrayButton = ui.NewButton(0, 0, 0, 0, "启用托盘", vt.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(demoTrayButton, 104)
+	demoTrayButton.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		toggleDemoTray()
+		return 0
+	})
+	xui.ItemFill(hint(vt.Handle,
+		"启用后右键系统托盘图标: 显示主窗口 / 发送屏幕通知 / 退出。关闭 demo 时托盘随之移除。"))
+
 	// ---- 第三行: 空状态 ----
 	rEmpty := row(body.Handle, 0, gap)
 
@@ -2824,6 +3002,72 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 }
 
 // ===== 页 16: 反馈3(侧边 Sheet / 底部 Drawer) =====
+
+// toggleDemoTray 启用/停用演示托盘图标。图标从 exe 的 APP 资源加载
+// (demo/winres 由 `xc res make` 生成 .syso), 不需要运行时写临时文件。
+func toggleDemoTray() {
+	if demoTray != nil && demoTray.Visible() {
+		demoTray.Destroy()
+		demoTray = nil
+		if demoTrayButton != nil {
+			demoTrayButton.SetText("启用托盘")
+		}
+		return
+	}
+	hIcon := demoAppIcon()
+	if hIcon == 0 {
+		fmt.Println("托盘图标资源 APP 加载失败")
+		return
+	}
+	demoTray = ui.NewTray(demoWindow.Handle, "", "xui demo",
+		ui.WithTrayIconHandle(hIcon), ui.WithTrayMenu(buildDemoTrayMenu))
+	if demoTray == nil {
+		fmt.Println("托盘图标创建失败")
+		return
+	}
+	if demoTrayButton != nil {
+		demoTrayButton.SetText("停用托盘")
+	}
+}
+
+func buildDemoTrayMenu(m *ui.Menu) {
+	m.Label("xui demo")
+	m.Item("显示主窗口", ui.MenuIcon(icons.IconAppWindow), ui.MenuOnSelect(showDemoWindow))
+	m.Item("发送屏幕通知", ui.MenuIcon(icons.IconBell), ui.MenuOnSelect(func() {
+		if demoScreen != nil {
+			demoScreen.Success("来自托盘", "主窗口最小化/隐藏时, 屏幕右下角也能看到通知。")
+		}
+	}))
+	m.Separator()
+	m.Item("退出", ui.MenuDestructive(), ui.MenuOnSelect(quitDemo))
+}
+
+func showDemoWindow() {
+	if demoWindow == nil {
+		return
+	}
+	demoWindow.Show(true)
+	if demoWindow.IsMaxWindow() {
+		demoWindow.ShowWindow(xcc.SW_SHOWMAXIMIZED)
+	} else {
+		demoWindow.ShowWindow(xcc.SW_RESTORE)
+	}
+	wapi.SetForegroundWindow(demoWindow.GetHWND())
+}
+
+func quitDemo() {
+	if demoScreen != nil {
+		demoScreen.Clear()
+	}
+	if demoTray != nil {
+		demoTray.Destroy()
+		demoTray = nil
+	}
+	if demoWindow != nil {
+		demoWindow.CloseWindow()
+	}
+	app.PostQuitMessage(0)
+}
 
 func buildFeed3Page(body *widget.LayoutEle, hWindow int) {
 	r := row(body.Handle, 0, gap)

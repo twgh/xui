@@ -82,6 +82,9 @@ type hoverItem struct {
 type spinItem struct {
 	start time.Time
 	hEle  int
+	// redraw 非 0 时表示元素不在驱动定时器的窗口里(独立小窗里的元素):
+	// 每帧需要额外重绘它所在的小窗, 见 SpinDetached。
+	redraw int
 }
 
 // hoverOwner 是一个重绘目标(元素或窗口)上的全部过渡值与旋转动画。
@@ -168,16 +171,17 @@ func Spin(hOwner int, active bool) float64 {
 	return spinPhase(hOwner, active, spinPeriod, false)
 }
 
-// Pulse 返回 hOwner 上脉冲动画的相位(0..1), 周期 2s(对齐 tailwind 的
-// animate-pulse)。active=false 时停止并返回 0。与 Spin 共用同一个重绘定时器,
-// 键空间互不影响(同一个元素可以同时旋转 + 脉冲)。
+// SpinDetached 用于**元素与驱动定时器的窗口不在同一个窗口**的旋转动画:
+// 定时器仍挂在 hOwner(宿主窗口)上, 但每帧额外重绘元素所在的小窗。
 //
-// 组件自行把相位映射成透明度: tailwind 的关键帧是 1 → 0.5 → 1, 例如
-//
-//	phase := xui.Pulse(hEle, true)
-//	alpha := 0.75 + 0.25*math.Cos(2*math.Pi*phase)
-func Pulse(hOwner int, active bool) float64 {
-	return spinPhase(hOwner, active, pulsePeriod, true)
+// 典型场景是屏幕通知这类独立异型置顶小窗: 异型小窗自己的定时器只有约 10fps
+// (见 DESIGN 47), 无法驱动转圈; 把定时器挂到宿主窗口后, 元素所在的小窗不会
+// 跟着宿主重绘, 所以要由这里补一次。普通窗口内的元素直接用 Spin。
+func SpinDetached(hEle, hOwner int, active bool) float64 {
+	if hEle == 0 || hOwner == 0 {
+		return Spin(hEle, active)
+	}
+	return spinPhaseIn(hEle, hOwner, active, spinPeriod, false)
 }
 
 // animWindow 返回元素所在窗口的句柄(动画定时器挂窗口); 取不到时退回元素本身。
@@ -194,20 +198,34 @@ func spinPhase(hOwner int, active bool, period time.Duration, pulse bool) float6
 	if hOwner == 0 {
 		return 0
 	}
-	owner, key, hEle := hOwner, int32(0), 0
 	if xc.XC_IsHELE(hOwner) {
-		hEle = hOwner
-		owner = animWindow(hOwner)
+		return spinPhaseIn(hOwner, animWindow(hOwner), active, period, pulse)
+	}
+	return spinPhaseIn(0, hOwner, active, period, pulse)
+}
+
+// spinPhaseIn 是 Spin/Pulse 的公共内核。timerOwner 是挂动画定时器的窗口;
+// hEle 是要驱动转圈的元素(0 = 直接挂在窗口上)。
+func spinPhaseIn(hEle, timerOwner int, active bool, period time.Duration, pulse bool) float64 {
+	if timerOwner == 0 {
+		return 0
+	}
+	key := int32(0)
+	redraw := 0
+	if hEle != 0 {
 		// 元素句柄做键: 同一窗口里多个元素互不影响, Spin/Pulse 用最低位区分。
-		key = int32(hOwner) << 1
+		key = int32(hEle) << 1
 		if pulse {
 			key |= 1
+		}
+		if w := animWindow(hEle); w != timerOwner {
+			redraw = w
 		}
 	}
 	now := time.Now()
 	hovers.mu.Lock()
 	defer hovers.mu.Unlock()
-	o := hovers.owners[owner]
+	o := hovers.owners[timerOwner]
 	if !active {
 		if o == nil {
 			return 0
@@ -217,7 +235,7 @@ func spinPhase(hOwner int, active bool, period time.Duration, pulse bool) float6
 			// 没有其它过渡时立刻关定时器; 还有 hover 条目就交给下一帧 tick 收尾。
 			if len(o.spins) == 0 && len(o.items) == 0 {
 				o.running = false
-				setHoverTimer(owner, false)
+				setHoverTimer(timerOwner, false)
 			}
 		}
 		return 0
@@ -226,12 +244,12 @@ func spinPhase(hOwner int, active bool, period time.Duration, pulse bool) float6
 		return 0
 	}
 	if o == nil {
-		o = newHoverOwner(owner)
-		hovers.owners[owner] = o
+		o = newHoverOwner(timerOwner)
+		hovers.owners[timerOwner] = o
 	}
 	it := o.spins[key]
 	if it == nil {
-		it = &spinItem{start: now, hEle: hEle}
+		it = &spinItem{start: now, hEle: hEle, redraw: redraw}
 		o.spins[key] = it
 		o.ensureRunning()
 	}
@@ -240,6 +258,18 @@ func spinPhase(hOwner int, active bool, period time.Duration, pulse bool) float6
 		el = 0
 	}
 	return float64(el%period) / float64(period)
+}
+
+// Pulse 返回 hOwner 上脉冲动画的相位(0..1), 周期 2s(对齐 tailwind 的
+// animate-pulse)。active=false 时停止并返回 0。与 Spin 共用同一个重绘定时器,
+// 键空间互不影响(同一个元素可以同时旋转 + 脉冲)。
+//
+// 组件自行把相位映射成透明度: tailwind 的关键帧是 1 → 0.5 → 1, 例如
+//
+//	phase := xui.Pulse(hEle, true)
+//	alpha := 0.75 + 0.25*math.Cos(2*math.Pi*phase)
+func Pulse(hOwner int, active bool) float64 {
+	return spinPhase(hOwner, active, pulsePeriod, true)
 }
 
 // eleEffectivelyVisible 判断元素及其祖先是否都处于显示状态(页签切走后,
@@ -526,11 +556,16 @@ func hoverTick(hOwner int) {
 	}
 	active := spinActive || itemsActive
 	var spinEles []int
+	detached := map[int]bool{}
 	directSpin := false
 	for _, it := range o.spins {
-		if it.hEle == 0 {
+		switch {
+		case it.hEle == 0:
 			directSpin = true
-		} else {
+		case it.redraw != 0:
+			// 元素在别的小窗里(SpinDetached): 定时器在本窗口, 每帧额外重绘小窗。
+			detached[it.redraw] = true
+		default:
 			spinEles = append(spinEles, it.hEle)
 		}
 	}
@@ -559,10 +594,10 @@ func hoverTick(hOwner int) {
 		switch {
 		case xc.XC_IsHELE(hOwner):
 			xc.XEle_Redraw(hOwner, true)
-		case itemsActive || len(applies) > 0 || directSpin || len(spinEles) == 0:
+		case itemsActive || len(applies) > 0 || directSpin:
 			// 在场过渡/直接挂窗口的动画: 整窗重绘。
 			xc.XWnd_Redraw(hOwner, true)
-		default:
+		case len(spinEles) > 0:
 			// 元素动画: 只重绘动画元素所在的分组矩形(立即重绘, 见 DESIGN 第八节 45/106)。
 			rects := spinRedrawRects(spinEles)
 			if len(rects) == 0 {
@@ -572,6 +607,10 @@ func hoverTick(hOwner int) {
 			for i := range rects {
 				xc.XWnd_RedrawRect(hOwner, &rects[i], true)
 			}
+		}
+		// 独立小窗里的旋转动画: 定时器所在的宿主窗口不必整窗重绘, 只补小窗。
+		for w := range detached {
+			xc.XWnd_Redraw(w, true)
 		}
 	}
 	for _, c := range dones {

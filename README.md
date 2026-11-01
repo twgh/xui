@@ -49,9 +49,30 @@ go run .
 ```
 
 `-n` 会创建一个完整项目目录:`go.mod` + `main.go`(AppWindow + 示例卡片) + `README.md` +
-`AGENTS.md`(给 AI 助手的用法与修改规则) + `.gitignore` + `ui/`(theme.go + 基础组件 + DESIGN.md),
-并**自动执行 `go mod tidy`** 装好依赖(生成 `go.sum`)。目录已存在且非空时需加 `-f/--force`;
-想跳过依赖安装(如离线)加 `--no-install`, 之后手动跑一次 `go mod tidy`。
+`AGENTS.md`(给 AI 助手的用法与修改规则) + `.gitignore` + `ui/`(theme.go + 基础组件 + DESIGN.md) +
+`winres/`(exe 图标与版本信息), 并**自动执行 `go mod tidy`** 装好依赖(生成 `go.sum`)。目录已存在
+且非空时需加 `-f/--force`; 想跳过依赖安装(如离线)加 `--no-install`, 之后手动跑一次 `go mod tidy`。
+
+`winres/` 里是 `icon.ico` 和完整的 `winres.json`(图标组 / 清单 / 版本资源三段), 生成项目时已用
+`xc res make --arch amd64,386` 编好 `rsrc_windows_{386,amd64}.syso`。**只出 386/amd64** ——
+xcgui 不支持 ARM。机器上没有 `xc` 时会自动 `go install github.com/twgh/xc@latest`; 换图标、改版本
+信息后重跑 `xc res make --arch amd64,386` 即可(`--no-install` 不联网装 xc, 但仍会写 `winres/`)。
+
+生成的 `main.go` 已用同一个 `APP` 资源设好窗口图标(`setWindowIcons`, 换图标只需替换
+`winres/icon.ico`) —— 只设托盘不会同步任务栏 / Alt+Tab / 任务栏预览窗, 设法如下:
+
+```go
+hMod := wapi.GetModuleHandleW("")
+hBig := wapi.LoadImageW(hMod, common.StrPtr("APP"), wapi.IMAGE_ICON, 0, 0, wapi.LR_SHARED|wapi.LR_DEFAULTSIZE)
+hSmall := wapi.LoadImageW(hMod, common.StrPtr("APP"), wapi.IMAGE_ICON, 24, 24, wapi.LR_SHARED)
+w.SetBigIcon(hBig)     // 任务栏图标 + Alt+Tab
+w.SetSmallIcon(hSmall) // 任务栏预览窗口左上角, 也影响任务管理器
+ui.NewTray(w.Handle, "", "提示", ui.WithTrayIconHandle(hBig)) // 托盘可复用 hBig
+```
+
+`LR_SHARED` 的 HICON 归系统共享管理, 不要 `DestroyIcon`; `ui.AppWindow` 内嵌 `*window.Window`,
+这两个方法可直接调用(详见 DESIGN 第八节 180)。`Tray` 不在 `init -n` 的默认组件里, 需要时
+`xui add tray`, 再把同一个 `hBig` 传给 `ui.WithTrayIconHandle`。
 
 ### 已有项目
 
@@ -108,6 +129,20 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 主题文件 `ui/theme.go` 默认是**内置主题的副本**(逐字段改即可换肤),也可以照 shadcn 的
 `:root` / `.dark` 自己写一份 —— 令牌与 CSS 变量一一对应(字段表见 DESIGN.md 3.1)。
 
+想运行时换"主题色"时,克隆当前主题并只替换主色组即可(不必重建窗口,下一帧全窗口自动用新色):
+
+```go
+t := *xui.Light()                 // 暗色用 *xui.Dark()
+t.Primary = xui.Hex("#2563eb")
+t.PrimaryForeground = xui.Hex("#fafafa")
+t.Ring = t.Primary                // 焦点环
+t.SidebarPrimary = t.Primary      // 侧边栏主色(如用 Sidebar)
+t.SidebarPrimaryForeground = t.PrimaryForeground
+xui.SetTheme(&t)
+```
+
+demo 的标题栏调色板菜单与「基础1 → 主题色」卡片演示了这套做法(蓝色/绿色/紫色/玫瑰/橙色, 亮暗各一套)。
+
 ## 组件
 
 | 组件 | 说明 |
@@ -155,6 +190,8 @@ xui.SetTheme(xui.Dark())          // 一行全局换肤
 | Menu | 下拉菜单 / 右键菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 / 文字缩进(`MenuInset`, 条目/Label/Sub 都可用) / 前置图标(`MenuIcon`);`NewContextMenu(触发区元素, build)` 右键触发(每次右键重建菜单, 支持 `SetEnabled` / `OnOpenChange`);弹层宽支持 `Width` 固定、触发区对齐、内容自适应 + 128 下限 |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点):上下左右四方向 + 对齐/间距、显示延迟与跳过延迟、键盘焦点也触发、内容可带快捷键块(`WithTipShortcut`) |
 | Toast | 通知(窗口内覆盖元素,默认右下角堆叠,支持四角与上下居中):4 种语义类型(success/error/warning/info)+ 动作按钮 + 可选关闭按钮;`WithToastRichColors` 可让类型给整卡上色;自动关闭(默认 4s)、悬停暂停、进出场滑入淡入;`NewToaster(w.Handle).Success("标题","描述")` |
+| ScreenToast | 屏幕通知(独立置顶小窗,固定在**屏幕**右下角;应用最小化/隐藏也能看到,不占任务栏、不抢焦点):`NewScreenToaster(w.Handle)` 指定宿主窗口(取它的显示器、驱动动画,并在宿主销毁时自动清理小窗);API 与 Toast 一致 —— `Show(ToastOptions)` / `Success/Error/Warning/Info/Loading` / `Promise` / `Update/Close`,选项 `WithScreenToastWidth/Offset/Gap/Duration/MaxVisible/RichColors/CloseButton`;共用 Toast 卡片绘制与 4s 自动关闭、悬停整组暂停 |
+| Tray | 系统托盘(`components/tray.go`):`NewTray(w.Handle, "app.ico", "提示", WithTrayMenu(func(m *ui.Menu){ ... }))` 创建即显示;左键默认还原/前台化绑定窗口(最大化时保持最大化, `WithTrayLeftClick` 可覆盖),右键弹出每次重建的 themed Menu;**图标也可从 exe 资源加载**:`WithTrayIconHandle(wapi.LoadImageW(wapi.GetModuleHandleW(""), common.StrPtr("APP"), wapi.IMAGE_ICON, 0, 0, wapi.LR_SHARED|wapi.LR_DEFAULTSIZE))`(资源由 `xc res` 生成 `.syso`;`LR_SHARED` 的图标不要 `DestroyIcon`),`WithTrayIconHandle` 的 HICON 不代管释放;`SetIcon/SetIconHandle/SetTips/Hide/Show/Balloon/Destroy`;监听 `TaskbarCreated`,Explorer 重启后自动恢复图标;⚠️ 同一进程只应创建一个托盘图标(xcgui 托盘 API 是全局状态) |
 | AppWindow | 主窗口封装:圆角阴影 + 自绘标题栏(最小化/最大化/关闭,双击标题栏最大化/还原,拖动,最大化图标自动切换) + 主题化底色;`NewAppWindow("标题", 640, 480)` 后往 `Content()` 里放内容,`AddCaptionButton` 加标题栏按钮(如切换主题),`WithAppWindowNoMinMax` 只留关闭 |
 | Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述(按宽度折行)+ 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环;`WithDialogScroll` 让内容区滚动、头部/页脚固定,`BindClose` 可把任意控件变成关闭钮 |
 | AlertDialog | 警示对话框:必须明确选择(无右上角 X、点遮罩不关闭、ESC 关闭,焦点落在 Cancel);`AlertDialogSizeDefault` / `Small`(居中头 + 等宽双列页脚)、`WithAlertDialogMedia` 图标块(含破坏性配色);`AddCancel` / `AddAction` 点击后关闭;与 Dialog 共用遮罩/模糊/焦点陷阱,支持对话框内再叠一层 |
@@ -237,7 +274,7 @@ paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存归�
 ## CLI
 
 ```bash
-xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + ui/)
+xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + ui/ + winres/)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
 xui init [ui目录]       # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
 xui add button card     # 追加拷贝指定组件(自动带上依赖)
@@ -260,7 +297,7 @@ xui info                # 显示 CLI / 项目环境信息
 
 - `init -n, --name <项目名>`: 新建项目目录(`-n myapp` 等价于在当前目录创建 `myapp/`);
 - `init -f, --force`: 允许写入非空项目目录(覆盖模板文件, 不动无关文件);
-- `init --no-install`: 跳过生成后的自动 `go mod tidy`(离线时用);
+- `init --no-install`: 跳过生成后的自动 `go mod tidy`(离线时用; 也不会自动安装 `xc`, 但仍写 `winres/`);
 - `add/update -o, --overwrite`: 覆盖本地已修改的组件文件(默认警告并跳过, 见下方“更新时的判定”);
 - `add/update -p, --path <目录>`: 组件目录, 默认 `ui`;
 - `add/update -a, --all`: 全部组件;

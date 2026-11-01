@@ -89,6 +89,14 @@
       "files": ["toast.go"],
       "deps": []
     },
+    "screen-toast": {
+      "files": ["screentoast.go"],
+      "deps": ["toast"]
+    },
+    "tray": {
+      "files": ["tray.go"],
+      "deps": ["menu"]
+    },
     "window": {
       "files": ["window.go"],
       "deps": ["button"]

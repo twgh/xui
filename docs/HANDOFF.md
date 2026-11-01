@@ -8,12 +8,31 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-10-31)
+## 当前状态(截至 2026-11-01)
 
-**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 后为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);同日补齐**批次 9: Sidebar**(inset/floating/默认三种外观、offcanvas/icon/none 折叠、左右贴边、分组/子菜单/徽章/动作钮、折叠 tooltip、Ctrl+B, 新增 demo **导航4**);同日补齐**批次 10: Chart**(柱状 / 折线 / 面积 / 饼环 + 堆叠 / 平滑 / 数据点 / 图例 / 提示卡 / 点击回调, 新增 demo **图表**页, 现为 **19 页**);2026-10-31 补齐**批次 11: Data Table**(在 Table 之上做排序 / 关键字筛选 / 分页 + 每页行数 / 空状态, 见 DESIGN 162~164)与**批次 12: Input Group 复合 addon**(多控件 addon / 下拉菜单 / 按钮尺寸档, 见 DESIGN 165);同日 CLI 的下发文档去掉写死的 `ui/` 路径(源码引用改同目录裸文件名), 并在 `init -n` / `init` 时额外生成 AGENTS.md(README 可能被用户改写, 用法与改组件规则要留给 AI 助手);shadcn 组件清单已全部落地(除明确不做的 Direction / Typography);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
+**阶段**:P0 运行时 + P1/P2/P3 组件全部完成并视觉验收(**P3 已收尾**, 2026-10-17 补上 combobox 弹层进场动画;CLI 远程 registry 已完成);2026-10-23 新增 Collapsible 可折叠面板;2026-10-24 新增 Empty / Field / Item / Breadcrumb / Kbd / Skeleton / Spinner / Toggle / Toggle Group;**批次 2 收尾: 2026-10-24 补齐 Native Select / Select / Input-OTP / Accordion 四项**(上游语义权威 tsx + App.tsx 对照卡已同步); 2026-10-25 补齐批次 3: Popover / Hover Card / Avatar / Command(上游 tsx 已同步), demo 页签拆为 **14 页**;同日补齐**批次 4: Sheet / Drawer / Menubar**,demo 页签再拆为 **16 页**(基础 4 / 表单 4 / 导航 3 / 反馈 3);2026-10-27 补齐**批次 5: Navigation Menu**(共享视口 + 悬停开合, 上游 tsx 已同步);2026-10-28 补齐**批次 6: Carousel**(整页滑动 / 循环 / 拖拽吸附, 上游 tsx 已同步);2026-10-28 补齐**批次 7: Checkbox / Radio 三态与校验态 + RadioGroup**(不确定态、aria-invalid、空格键盘;组值 / 跨层互斥 / 方向键导航 / 组级禁用与校验, 见 DESIGN 143), demo 再拆出**表单5**, 后为 **17 页**(基础 4 / 表单 5 / 导航 3 / 反馈 3);**v0.1.0 已发布(2026-10-19, GitHub 公开 + tag 已推,依赖 xcgui v1.4.3)**;同日修复通知在缩放窗口时跑到左侧(布局项钉位, DESIGN 128)并把 demo 页签行与卡片间距收窄到 16;2026-10-26 复核下游 sitless 项目的上游问题清单, 修复布局内边距溢出 / 弹层 z 序 / 无最大化窗口双击最大化 / HStack 换行 / CLI update 误全量 / init 嵌套目录 / 主题切换 / Toast 居中与 richColors;同日修复副屏(显示器原点非 0)上的菜单弹层错位、ToolTip 恒朝下, 并把动画的"前台暂停"改为"可见即转";同日第二批修复同一块副屏上的 ComboBox 下拉弹层偏下与子菜单错位一行(DESIGN 132~135);同日修复手风琴第一次收起没有过渡、旧帧没擦除(DESIGN 136);2026-10-29 补齐 **Tabs / Tooltip 的上游特性**(行内图标 + 单标签禁用 + roving focus 键盘 + value + 面板绑定;tooltip 四方向 + align/offset + 延迟/跳过延迟 + 键盘焦点 + 快捷键块, 见 DESIGN 155/156);同日 CLI 的组件名支持省略连字符与下划线、大小写随意(`radiogroup` / `RadioGroup` → `radio-group`), 解析失败时给"是否想找 xxx"的候选;同时把 `registry.json` 的 key 全部统一成 kebab-case(`buttongroup` → `button-group`、`datepicker` → `date-picker`、`scrollarea` → `scroll-area`、`navigationmenu` → `navigation-menu` 等 7 个), 旧写法靠归一化继续可用;2026-10-30 补齐**批次 8: Resizable**(百分比分栏 / 拖动 / 键盘 5% / 双击复位 / 暗色焦点环, demo 基础3 加卡);同日补齐**批次 9: Sidebar**(inset/floating/默认三种外观、offcanvas/icon/none 折叠、左右贴边、分组/子菜单/徽章/动作钮、折叠 tooltip、Ctrl+B, 新增 demo **导航4**);同日补齐**批次 10: Chart**(柱状 / 折线 / 面积 / 饼环 + 堆叠 / 平滑 / 数据点 / 图例 / 提示卡 / 点击回调, 新增 demo **图表**页, 现为 **19 页**);2026-10-31 补齐**批次 11: Data Table**(在 Table 之上做排序 / 关键字筛选 / 分页 + 每页行数 / 空状态, 见 DESIGN 162~164)与**批次 12: Input Group 复合 addon**(多控件 addon / 下拉菜单 / 按钮尺寸档, 见 DESIGN 165);同日 CLI 的下发文档去掉写死的 `ui/` 路径(源码引用改同目录裸文件名), 并在 `init -n` / `init` 时额外生成 AGENTS.md(README 可能被用户改写, 用法与改组件规则要留给 AI 助手);shadcn 组件清单已全部落地(除明确不做的 Direction / Typography);2026-11-01 新增 **ScreenToast 屏幕右下角通知**与 **Tray 托盘图标/菜单**, demo 标题栏加主题菜单(亮/暗 + 主题色)与「基础1 → 主题色」演示卡, 并修复"自建窗口承载组件后销毁再切主题会崩"(DESIGN 179)与托盘左键把最大化窗口缩成普通大小; 同日 `xui init -n` 改为生成 `winres/` 图标/版本资源(完整 `xc res init` 三段配置, syso 只出 386/amd64, 缺 `xc` 自动 `go install`), demo 与生成文档补齐窗口图标(任务栏 / Alt+Tab / 任务栏预览窗);P4(文档站、主题画廊)未开始。组件覆盖与已知限制见 DESIGN 第七节。
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **winres 资源 + CLI init 生成图标资源(2026-11-01)**:
+  - **demo 资源重新生成**: 删掉 `rsrc_windows_arm64.syso` —— xcgui 不支持 ARM, 只出 386/amd64; `demo/winres/winres.json` 用 `xc res init` 重新生成, 补齐 `RT_MANIFEST`(per monitor v2)与 `RT_VERSION`(项目名/文件名), 不再是只有图标的精简版; 自定义图标放回 `winres/icon.ico` 后执行 `cd demo && xc res make --arch amd64,386` 重出 syso。
+  - **CLI `init -n` 生成 winres**: 新文件 `cmd/xui/winres.go` —— 内嵌默认图标(`cmd/xui/assets/app.ico`) + `xc res init` 同款完整 winres.json 模板(项目名按 JSON 转义后填进 RT_VERSION); 生成项目时写 `winres/`(已存在则跳过), 再执行 `xc res make --arch amd64,386`(只有 386/amd64)。本机没有 `xc` 时自动 `go install github.com/twgh/xc@latest`, 到 `GOBIN` / `GOPATH/bin` 找可执行文件; `--no-install` 不联网装, 只提示命令。
+  - **测试**: `winresMake` 留测试缝(桩不依赖本机 xc), 断言 `winres/icon.ico`、完整 `winres.json`(三段 + APP + 项目名)、`rsrc_windows_{386,amd64}.syso` 且无 arm64; `projectWinresJSON` 覆盖项目名转义; `findXc(false)` 覆盖 xc 缺失报错。
+  - **窗口图标一起设**: 只在托盘上设图标不会同步任务栏 / Alt+Tab / 任务栏预览窗。`xui init -n` 生成的 main.go 内置 `setWindowIcons`(从 APP 资源取 24x24 小图标与默认大图标)并按下面方式调用, demo 也补了同样两行; 生成的 README / AGENTS.md、仓库 README 与 DESIGN 180 写清三者分工与 `LR_SHARED` 不释放。
+  - **配套**: 生成的 README / AGENTS.md 增加「图标与版本信息」小节(换图标 → `xc res make --arch amd64,386`, 没装先 `go install`, 只支持 386/amd64, 资源名 APP); 仓库 README 的 `init -n` 说明与 `--no-install` 口径同步。
+  - **验收**: `go build/vet/test ./...` 全绿; 临时目录实跑 `xui init -n myapp` 生成 winres + 两个 syso, `go build` 出的 exe 带图标; 删掉 PATH 里的 xc 后重跑会走 `go install` 兜底。
+- ✅ **托盘 + 主题跟进(2026-11-01)**:
+  - **托盘左键保持最大化**: `showHost` 不再无条件 `SW_RESTORE`; `w.IsMaxWindow()` 时走 `SW_SHOWMAXIMIZED`, 否则 `SW_RESTORE`(见 DESIGN 178); demo 菜单的「显示主窗口」同样处理。实测: 最大化时点托盘图标仍最大化; 最大化 → 最小化 → 点托盘, 回到最大化并前台。
+  - **托盘图标改用 exe 资源**: `demo/winres/winres.json` + `icon.ico` 由 `xc res make` 生成 `rsrc_windows_{386,amd64}.syso`(随仓库提交); 启用托盘时 `LoadImageW(GetModuleHandleW(""), "APP", IMAGE_ICON, 0, 0, LR_SHARED|LR_DEFAULTSIZE)` + `WithTrayIconHandle`, 删掉原来"写临时 .ico"的路径, 也顺带给 demo.exe 带上图标。README / DESIGN 178 补充该用法。
+  - **主题色演示**: 标题栏调色板菜单新增「主题色」分组, 基础1 右列新增「主题色」卡片(默认/蓝色/绿色/紫色/玫瑰/橙色); `applyDemoTheme` 克隆内置主题后替换 `Primary / PrimaryForeground / Ring / SidebarPrimary / SidebarPrimaryForeground`, 亮/暗各一套, 全窗口实时生效(不重建窗口); README「换肤」补运行时改主色的代码示例。
+  - **验收**: 亮色点"蓝色"后 Default 系列/步进器箭头/加载条变蓝, 切暗色仍保持蓝色且前景色自动换成深色; 卡片标签与菜单勾选同步; 托盘图标出现在任务栏溢出区(UIA 按名 `xui demo` 找到并可左键); 最大化/最小化恢复如上; `go build/vet/test ./...` 全绿; `xui add tray` 闭包与 `add --all` 编译通过。
+- ✅ **ScreenToast 屏幕通知 + Tray 托盘图标/菜单 + demo 主题菜单**(2026-11-01):
+  - **ScreenToast**(`components/screentoast.go`): 每条通知一个 `Window_Transparent_Shaped + WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE` 置顶小窗, 贴显示器工作区右下角; `NewScreenToaster(hAnchor, WithScreenToastWidth/Offset/Gap/Duration/MaxVisible/RichColors/CloseButton)` + 与 Toast 同形的 `Show/Success/Error/Warning/Info/Loading/Promise/Update/Close/Clear/Count`。卡片排版/绘制复用 `toast.go`; 过渡挂锚点窗口(`withToastAnimOwner`)、转圈走 `xui.SpinDetached`(定时器挂宿主), 悬停整组暂停; 宿主 `WM_DESTROY` 自动销毁全部在屏小窗; 主题切换重新量高/重排(见 DESIGN 177)。
+  - **Tray**(`components/tray.go`): `NewTray(hWindow, iconPath, tips, WithTrayMenu/WithTrayIconHandle/WithTrayLeftClick)`; 左键默认还原宿主, 右键弹出每次重建的 themed 菜单(`Menu.PopupAtCursor`); 监听 `TaskbarCreated` 在 Explorer 重启后恢复; HICON 所有权/宿主销毁清理已处理; xcgui 托盘 API 是进程级全局状态(见 DESIGN 178)。
+  - **demo**: 反馈2 新增「屏幕通知」卡(成功/错误/警告/信息/带动作/常驻长文本)与「系统托盘」卡(启用/停用托盘; 菜单: 显示主窗口 / 发送屏幕通知 / 退出); 标题栏调色板按钮弹出「外观: 亮色/暗色」主题菜单; `demo/winres/icon.ico` 经 `xc res make` 编进 exe, 托盘用 `LoadImageW` 取 HICON(见下方 winres 条目)。
+  - **修复(DESIGN 179)**: 任何承载 xui 组件的窗口都会经 `AttachWindow` 登记进主题重绘表, 但此前只有 AppWindow 在销毁时反注册 —— 关掉屏幕通知后再切主题, `XWnd_Redraw` 打到失效句柄会弹模态错误框并退出。现在 `AttachWindow` 在窗口 `WM_DESTROY` 时自动 `UnregisterWindow`, `SetTheme` 再用 `XC_IsHXCGUI` 过滤失效句柄。验证: 通知在屏时切亮/暗(窗口与通知同步换色)、关掉通知后再切主题不再崩。
+  - **验收**: 150% DPI 真实点击 —— 成功通知 4s 自动关; 常驻通知手动关; 悬停 6s 不关闭、移开后 4s 关闭; 两条通知堆叠(新的在下); 切暗色时通知窗口同步变暗; 启用托盘后图标进入任务栏溢出区, 通过 UIA 触发图标左键回调(showHost 日志), 托盘菜单(同一 builder 弹出)亮/暗主题渲染与条目正确。`go build/vet/test ./...` 全绿; `xui add screen-toast` / `xui add tray` / `add --all` 闭包编译通过。
+  - registry: 新增 `screen-toast`(files: screentoast.go; deps: toast)、`tray`(files: tray.go; deps: menu)。
 - ✅ **CLI: 下发文档不再写死 `ui/` + 新增 AGENTS.md**(2026-10-31):
   - **DESIGN.md 目录无关**: 源码引用从 `ui/button.go` 改为同目录裸文件名(`button.go`), "ui/ 目录"表述改为"组件目录(默认 ui/)"; 目录名是 `widgets` / `src/widgets` 时下发的文档不再指向不存在的 `ui/`。
   - **AGENTS.md**: `xui init -n` 在项目根生成(运行/目录/添加更新/最小用法/改组件规则); `xui init [目录]` 在组件目录生成(不写死目录名)。README 归用户、可能被改写, 所以用法留一份在 AGENTS.md。已存在则跳过, 不覆盖用户改动。
@@ -818,15 +837,18 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 native_select select inputotp accordion
                                  popover hovercard avatar command
                                  sheet drawer menubar navigationmenu carousel resizable
-                                 sidebar
+                                 sidebar screentoast tray
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
 │                                 + icons\lucide_icons_*.go(图标常量, 每 400 个一个文件)
 ├── cmd\xui\                      CLI(init / add / add --all / update / list; 数据源默认
 │                                 远程 main 分支, XUI_REGISTRY 可覆盖, 失败降级内嵌)
+│                                 assets\app.ico = init -n 生成项目用的默认图标
+│                                 winres.go = 生成 winres/ + `xc res make` (缺 xc 自动 go install)
 ├── icons_test.go                 解析器语法 + 资源完整性测试(go test ./...)
 ├── demo\                         演示应用(也是全组件编译测试目标)
+│                                 winres\ = 图标资源(winres.json + icon.ico) + xc res 生成的 rsrc_windows_*.syso
 ├── registry.json                 组件清单(files + deps)
 ├── docs\DESIGN.md                知识库: 架构设计 + xcgui 踩坑全集(第八节必读)
 ├── docs\HANDOFF.md               本文
@@ -845,6 +867,10 @@ D:\GOProject\src\ui\shadcn\       ← 本地部署的 shadcn-ui 参考实现(语
 # xui demo(全部组件的编译+视觉验证目标)
 cd D:\GOProject\src\ui\xui
 go build -ldflags="-s -w -H windowsgui" -trimpath -o demo/demo.exe ./demo && demo\demo.exe
+
+# 改 demo 图标后重新生成 exe 资源(需要 xc 命令行工具; 没有就 go install github.com/twgh/xc@latest)
+# 只出 386/amd64: xcgui 不支持 ARM
+cd demo && xc res make --arch amd64,386
 
 # shadcn 参考实现 dev server(可能已在运行: netstat -ano | findstr 5173)
 cd D:\GOProject\src\ui\shadcn && pnpm dev    # http://localhost:5173

@@ -652,7 +652,7 @@ func parseViewArgs(args []string) ([]string, error) {
 func usage() {
 	fmt.Println(`xui — shadcn 风格的 xcgui 自绘组件
 
-  xui init -n <项目名>       新建完整 Go 项目(go.mod + main.go + README + AGENTS.md + ui/ 组件)
+  xui init -n <项目名>       新建完整 Go 项目(go.mod + main.go + README + AGENTS.md + ui/ 组件 + winres/ 图标资源)
   xui init -n .              在当前空目录直接生成项目(项目名取目录名)
   xui init [ui目录]          已有项目: 只初始化组件目录(默认 ui)
   xui add <组件...>          拷贝组件(自动带上依赖组件)
@@ -672,7 +672,7 @@ func usage() {
 选项:
   -n, --name <项目名>   init: 新建项目目录
   -f, --force           init: 允许写入非空项目目录(覆盖模板文件)
-  --no-install          init -n: 跳过自动 go mod tidy
+  --no-install          init -n: 跳过自动 go mod tidy 与 xc 安装(仍写 winres/)
   -o, --overwrite       add/update: 覆盖本地已修改的文件
   -p, --path <目录>     add/update: 组件目录(默认 ui)
   -a, --all             add/update: 全部组件
@@ -831,6 +831,8 @@ func initNewProject(name string, force, noInstall bool) error {
 	if err := scaffoldUI(filepath.Join(dir, "ui"), force); err != nil {
 		return err
 	}
+	// 图标/版本资源: winres/ 写好即生效, .syso 由 xc 生成; --no-install 不联网装 xc。
+	scaffoldProjectWinres(dir, name, !noInstall)
 
 	depsReady := false
 	if !noInstall {
@@ -1583,6 +1585,8 @@ const mainGoTemplate = `package main
 
 import (
 	"github.com/twgh/xcgui/app"
+	"github.com/twgh/xcgui/common"
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
@@ -1596,6 +1600,7 @@ func main() {
 	a.SetPaintFrequency(10) // 重绘节流 10ms, hover 过渡约 60fps
 
 	w := ui.NewAppWindow(%s, 960, 640, ui.WithAppWindowMinSize(640, 480))
+	setWindowIcons(w)
 	content := w.Content()
 	content.SetPadding(24, 24, 24, 24)
 	content.SetSpace(16)
@@ -1623,6 +1628,19 @@ func newCard(parent int, space int32) (*ui.Card, *widget.LayoutEle) {
 	c.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	c.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
 	return c, c.ContentStack(space)
+}
+
+// setWindowIcons 从 exe 的 APP 图标资源设置窗口图标(资源见 winres/, 由 xc res make 编成 .syso):
+// 大图标管任务栏 + Alt+Tab, 小图标(24x24)管任务栏预览窗口左上角, 也影响任务管理器。
+// LR_SHARED 的 HICON 归系统共享管理, 不要 DestroyIcon。
+func setWindowIcons(w *ui.AppWindow) {
+	hMod := wapi.GetModuleHandleW("")
+	if hIcon := wapi.LoadImageW(hMod, common.StrPtr("APP"), wapi.IMAGE_ICON, 0, 0, wapi.LR_SHARED|wapi.LR_DEFAULTSIZE); hIcon != 0 {
+		w.SetBigIcon(hIcon)
+	}
+	if hIcon := wapi.LoadImageW(hMod, common.StrPtr("APP"), wapi.IMAGE_ICON, 24, 24, wapi.LR_SHARED); hIcon != 0 {
+		w.SetSmallIcon(hIcon)
+	}
 }
 `
 
@@ -1664,6 +1682,33 @@ go run .
 - ui/ — 组件源码(package ui, 扁平单包; 跨文件助手也在这里)
 - ui/theme.go — 主题令牌, 改这里全局换肤
 - ui/DESIGN.md — 完整说明书: 组件解剖、xcgui 踩坑全集(第八节, 按编号)、API 清单(第九节)
+- winres/ — exe 图标与版本信息(icon.ico + winres.json), 由 xc 生成 .syso
+
+## 图标与版本信息
+
+winres/ 里的图标与版本资源已编进程序。换图标替换 winres/icon.ico, 改版本信息编辑
+winres/winres.json, 然后重新生成 syso:
+
+~~~bash
+xc res make --arch amd64,386
+~~~
+
+- 没装 xc 先 go install github.com/twgh/xc@latest。
+- 只生成 386/amd64: xcgui 不支持 ARM。
+- 图标资源名是 APP; 窗口与托盘图标都从这里取(HICON 是 LR_SHARED, 不要 DestroyIcon):
+
+~~~go
+hMod := wapi.GetModuleHandleW("")
+hBig := wapi.LoadImageW(hMod, common.StrPtr("APP"), wapi.IMAGE_ICON, 0, 0, wapi.LR_SHARED|wapi.LR_DEFAULTSIZE)
+hSmall := wapi.LoadImageW(hMod, common.StrPtr("APP"), wapi.IMAGE_ICON, 24, 24, wapi.LR_SHARED)
+w.SetBigIcon(hBig)     // 任务栏图标 + Alt+Tab
+w.SetSmallIcon(hSmall) // 任务栏预览窗口左上角, 也影响任务管理器
+~~~
+
+生成的 main.go 已用 setWindowIcons 设好这两处(换图标只需替换 winres/icon.ico 再重跑
+xc res make)。ui.AppWindow 内嵌 *window.Window, 需要时可直接调用 SetBigIcon/SetSmallIcon;
+只设托盘不会同步任务栏与预览窗。托盘组件不在默认安装里, 需要时先 xui add tray, 再把
+同一个 hBig 传给 ui.WithTrayIconHandle。
 
 ## 添加与更新组件
 
@@ -1765,6 +1810,32 @@ go run .
 - ui/ — 组件源码拷贝, 归你所有, 可随意修改
 - ui/theme.go — 主题令牌, 改这里全局换肤
 - ui/DESIGN.md — 组件自定义指南与 xcgui 踩坑全集
+- winres/ — exe 图标与版本信息(已生成 syso, 开箱即用)
+
+## 图标与版本信息
+
+winres/icon.ico 是程序图标, winres/winres.json 是资源完整配置(RT_GROUP_ICON /
+RT_MANIFEST / RT_VERSION)。改完重新生成:
+
+~~~bash
+xc res make --arch amd64,386
+~~~
+
+没装 xc 时先 go install github.com/twgh/xc@latest。只生成 386/amd64 —— xcgui 不支持 ARM。
+图标资源名是 APP; 窗口与托盘图标都从这里取(HICON 是 LR_SHARED, 不要 DestroyIcon):
+
+~~~go
+hMod := wapi.GetModuleHandleW("")
+hBig := wapi.LoadImageW(hMod, common.StrPtr("APP"), wapi.IMAGE_ICON, 0, 0, wapi.LR_SHARED|wapi.LR_DEFAULTSIZE)
+hSmall := wapi.LoadImageW(hMod, common.StrPtr("APP"), wapi.IMAGE_ICON, 24, 24, wapi.LR_SHARED)
+w.SetBigIcon(hBig)     // 任务栏图标 + Alt+Tab
+w.SetSmallIcon(hSmall) // 任务栏预览窗口左上角, 也影响任务管理器
+~~~
+
+生成的 main.go 已用 setWindowIcons 设好窗口图标, 换图标只需替换 winres/icon.ico 再重跑
+xc res make。ui.AppWindow 内嵌 *window.Window, 需要时可直接调用 SetBigIcon/SetSmallIcon;
+只设托盘不会同步任务栏与预览窗。需要托盘就先 xui add tray, 再把同一个 hBig 传给
+ui.WithTrayIconHandle。
 
 ## 添加组件
 

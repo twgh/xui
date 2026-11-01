@@ -204,10 +204,10 @@ type Toaster struct {
 	hWnd int
 	win  *window.Window
 
-	position   ToastPosition
-	width      int32
-	offset     int32
-	gap        int32
+	position    ToastPosition
+	width       int32
+	offset      int32
+	gap         int32
 	duration    time.Duration
 	maxVisible  int
 	richColors  bool // 整组按类型上色(sonner 的 richColors); 单条可用 ToastOptions.RichColors 覆盖开启
@@ -215,6 +215,16 @@ type Toaster struct {
 
 	paused bool // 鼠标停在本组任一条通知上: 全部倒计时暂停
 	items  []*Toast
+
+	// animOwner 是驱动进出场过渡的窗口: 0 = 用 hWnd 自己。屏幕通知的窗口是
+	// 异型置顶小窗, 它自己的 XWnd 定时器只有约 10fps(见 DESIGN 47/57), 必须把
+	// Presence 挂到宿主(主)窗口上, 每帧重绘小窗由 toastAnimRedraw 补上。
+	animOwner int
+}
+
+// withToastAnimOwner 让进出场过渡挂到 hOwner 上(屏幕通知内部用)。
+func withToastAnimOwner(hOwner int) ToasterOption {
+	return func(t *Toaster) { t.animOwner = hOwner }
 }
 
 // Toast 是一条已显示的通知(句柄用于 Update / Close)。
@@ -233,7 +243,15 @@ type Toast struct {
 	closed     bool // 已开始退场(或已销毁)
 	entered    bool // 进场动画已完成
 	destroyed  bool
-	autoClosed bool // 关闭原因是倒计时到点(区分 OnAutoClose / OnDismiss)
+	autoClosed bool   // 关闭原因是倒计时到点(区分 OnAutoClose / OnDismiss)
+	onClosed   func() // 内部回收钩子(销毁时一定调用一次, 与用户的 OnClose 无关)
+	onClosing  func() // 开始退场时调用(屏幕通知用它先把条目从堆叠里摘掉)
+	// spinOwner 非 0 时把转圈的驱动定时器挂到该窗口(屏幕通知用: 元素在异型小窗里,
+	// 小窗自己的定时器太慢, 见 xui.SpinDetached)。
+	spinOwner int
+	// immediateHover 让动作/关闭按钮的悬停直接换色, 不走 hover 过渡: 屏幕通知的
+	// 元素在异型小窗里, Hover 的定时器也会落在小窗上(同 spinOwner 的原因)。
+	immediateHover bool
 
 	paused   bool // 鼠标悬停中: 暂停倒计时
 	remain   time.Duration
@@ -526,7 +544,7 @@ func (it *Toast) Update(o ToastOptions) *Toast {
 	// 从转圈态切到结果态时必须显式关掉旋转: xui.Spin 的登记是"一次登记持续运行",
 	// 只在绘制时不再调用它并不会停表 —— 定时器会一直空转重绘这张卡片。
 	if !it.loading() {
-		xui.Spin(it.ele.Handle, false)
+		it.stopSpin()
 	}
 	it.t.layout()
 	it.ele.Redraw(false)
@@ -546,12 +564,19 @@ func (it *Toast) close(auto bool) {
 	it.closed = true
 	it.stopTick()
 	it.t.removeItem(it)
+	if it.onClosing != nil {
+		it.onClosing()
+	}
 	// 先把其余卡片归位(它们立即上移/下移), 再让本条滑出去。
 	it.t.layout()
 
 	baseX, baseY := it.baseX, it.baseY
 	hEle := it.ele.Handle
 	hWnd := it.t.hWnd
+	hOwner := it.t.hWnd
+	if it.t.animOwner != 0 {
+		hOwner = it.t.animOwner
+	}
 	dx := int32(toastSlideOut)
 	dy := int32(0)
 	switch it.t.position {
@@ -563,15 +588,16 @@ func (it *Toast) close(auto bool) {
 		dx, dy = 0, toastSlideOut // 底部居中: 向下滑出
 	}
 	key := it.key
-	xui.Presence(hWnd, key, false, toastExitDuration, func(v float64) {
-		if !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
+	xui.Presence(hOwner, key, false, toastExitDuration, func(v float64) {
+		if it.destroyed || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
 			return
 		}
 		xui.SetElementsAlpha(v, hEle)
 		toastSetRect(hEle, baseX+int32(float64(dx)*(1-v)+0.5), baseY+int32(float64(dy)*(1-v)+0.5), it.w, it.h)
+		toastAnimRedraw(hWnd, hOwner)
 	}, func(float64) {
 		it.destroy()
-		xc.XWnd_Redraw(hWnd, true)
+		toastRedrawWindow(hWnd)
 	})
 }
 
@@ -595,10 +621,13 @@ func (it *Toast) destroy() {
 		hEle = it.ele.Handle
 	}
 	if hEle != 0 && xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
-		xui.Spin(hEle, false) // 转圈态可能正被销毁(见 Update 里的说明)
+		it.stopSpin() // 转圈态可能正被销毁(见 Update 里的说明)
 		xc.XEle_Destroy(hEle)
 	}
 	it.t.removeItem(it)
+	if it.onClosed != nil {
+		defer it.onClosed() // 用户回调可能 panic, 内部窗口仍要回收
+	}
 	if it.autoClosed {
 		if it.opts.OnAutoClose != nil {
 			it.opts.OnAutoClose()
@@ -615,6 +644,10 @@ func (it *Toast) destroy() {
 func (it *Toast) enter() {
 	hEle := it.ele.Handle
 	hWnd := it.t.hWnd
+	hOwner := it.t.hWnd
+	if it.t.animOwner != 0 {
+		hOwner = it.t.animOwner
+	}
 	it.entered = false
 	// 起始帧: 全透明 + 偏移(先设好属性再让整窗画一遍, 避免首帧闪出全亮的卡片)。
 	xui.SetElementsAlpha(0, hEle)
@@ -624,14 +657,15 @@ func (it *Toast) enter() {
 		offset = -offset // 底部堆叠(含底部居中): 从更下方滑上来
 	}
 	toastSetRect(hEle, it.baseX, it.baseY-offset, it.w, it.h)
-	xc.XWnd_Redraw(hWnd, true)
+	toastRedrawWindow(hWnd)
 
-	xui.Presence(hWnd, it.key, true, toastEnterDuration, func(v float64) {
+	xui.Presence(hOwner, it.key, true, toastEnterDuration, func(v float64) {
 		if it.closed || it.destroyed || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
 			return
 		}
 		xui.SetElementsAlpha(v, hEle)
 		toastSetRect(hEle, it.baseX, it.baseY-int32(float64(offset)*(1-v)), it.w, it.h)
+		toastAnimRedraw(hWnd, hOwner)
 	}, func(float64) {
 		it.entered = true
 	})
@@ -883,6 +917,23 @@ func (it *Toast) loading() bool {
 	return it.opts.Variant == ToastLoading && it.opts.Icon == ""
 }
 
+// stopSpin 关掉转圈登记: 屏幕通知的转动定时器挂在宿主窗口上, 普通通知挂在元素
+// 所在窗口上, 两条路径都要停(见 xui.SpinDetached)。
+func (it *Toast) stopSpin() {
+	if it == nil || it.ele == nil {
+		return
+	}
+	hEle := it.ele.Handle
+	if hEle == 0 || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
+		return
+	}
+	if it.spinOwner != 0 {
+		xui.SpinDetached(hEle, it.spinOwner, false)
+		return
+	}
+	xui.Spin(hEle, false)
+}
+
 // iconColor 返回图标颜色: 未显式指定时用类型的语义色(sonner 的 --success-text 等)。
 // 这两套色值是 sonner 亮/暗主题下的状态色, 不属于 shadcn 令牌。
 func (it *Toast) iconColor(th *xui.Theme) xui.Color {
@@ -1011,7 +1062,11 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if data := it.iconData(); data != "" {
 		rc := off(it.geom.icon)
 		if it.loading() {
-			p.IconRotated(data, &rc, it.iconColor(th), 2, xui.Spin(hEle, true)*2*math.Pi)
+			phase := xui.Spin(hEle, true)
+			if it.spinOwner != 0 {
+				phase = xui.SpinDetached(hEle, it.spinOwner, true)
+			}
+			p.IconRotated(data, &rc, it.iconColor(th), 2, phase*2*math.Pi)
 		} else {
 			p.Icon(data, &rc, it.iconColor(th), 2)
 		}
@@ -1043,6 +1098,9 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 动作按钮: 悬停 bg-accent, 静止 bg-muted
 	if it.opts.Action != "" {
 		hv := xui.HoverItem(hEle, 0, it.hAction)
+		if it.immediateHover {
+			hv = toastHoverValue(it.hAction)
+		}
 		rc := off(it.geom.action)
 		bg := th.Muted
 		if hv > 0 {
@@ -1059,6 +1117,9 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 关闭按钮: 悬停底色 + X 图标
 	if it.opts.CloseButton {
 		hv := xui.HoverItem(hEle, 1, it.hClose)
+		if it.immediateHover {
+			hv = toastHoverValue(it.hClose)
+		}
 		rc := off(it.geom.close)
 		if hv > 0 {
 			p.FillRound(&rc, th.Accent.ScaleAlpha(hv), th.RadiusSm())
@@ -1145,6 +1206,13 @@ func toastPointIn(rc xc.RECT, x, y int32) bool {
 		x >= rc.Left && x < rc.Right && y >= rc.Top && y < rc.Bottom
 }
 
+func toastHoverValue(active bool) float64 {
+	if active {
+		return 1
+	}
+	return 0
+}
+
 // toastSetRect 按**卡片**矩形设置元素矩形: 元素四周各外扩 toastShadow 画投影。
 // 对外(布局/baseX/baseY)一律用卡片坐标, 别把投影留白算进排版 —— 否则卡片实际
 // 可见高度比预留的少 2*toastShadow, 内边距上下各被吃掉 6px(文字顶到卡片底)。
@@ -1156,4 +1224,20 @@ func toastSetRect(hEle int, x, y, cx, cy int32) {
 	cy += 2 * toastShadow
 	xc.XEle_SetRect(hEle, &xc.RECT{Left: x, Top: y, Right: x + cx, Bottom: y + cy},
 		false, xcc.AdjustLayout_No)
+}
+
+// toastRedrawWindow 是带存在性守卫的立即重绘: 退场完成与小窗销毁可能交错,
+// 对已销毁的窗口句柄重绘会弹 xcgui 的模态错误框。
+func toastRedrawWindow(hWnd int) {
+	if hWnd != 0 && xc.XC_IsHXCGUI(hWnd, xcc.XC_WINDOW) {
+		xc.XWnd_Redraw(hWnd, true)
+	}
+}
+
+// toastAnimRedraw 在过渡挂到别的窗口(animOwner)时补重绘通知小窗:
+// Presence 的每帧重绘落在 owner 上, 画不到元素所在的窗口。
+func toastAnimRedraw(hWnd, hOwner int) {
+	if hOwner != hWnd {
+		toastRedrawWindow(hWnd)
+	}
 }

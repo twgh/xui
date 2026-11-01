@@ -59,14 +59,24 @@ func SetTheme(t *Theme) {
 
 	// 快照后不加锁执行: 回调里可能再订阅/反注册或调 SetTheme。
 	for _, h := range bg {
-		applyWindowBackground(h, t)
+		if validWindow(h) {
+			applyWindowBackground(h, t)
+		}
 	}
 	for _, fn := range cbs {
 		fn(t)
 	}
 	for _, h := range hw {
-		xc.XWnd_Redraw(h)
+		if validWindow(h) {
+			xc.XWnd_Redraw(h)
+		}
 	}
+}
+
+// validWindow 过滤已销毁的窗口句柄。订阅表在窗口销毁时反注册, 但漏网句柄
+// 若喂给 XWnd_* 会弹 xcgui 模态错误框中断程序, 代价远大于这里一次类型检查。
+func validWindow(hWindow int) bool {
+	return hWindow != 0 && xc.XC_IsHXCGUI(hWindow, xcc.XC_WINDOW)
 }
 
 // Current 返回当前主题。组件在绘制回调中调用, 无需加锁:
