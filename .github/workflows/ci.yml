@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: go build (amd64)
+        run: go build ./...
+
+      # xcgui 只支持 386/amd64, 顺带守住 32 位编译。
+      - name: go build (386)
+        run: go build ./...
+        env:
+          GOARCH: "386"
+
+  # copy-not-install 的核心回归: 每个组件单独装进空项目后都必须能编译。
+  # 只看全量 add --all 会漏掉跨文件助手没登记进 registry 的问题。
+  registry-closure:
+    name: Registry closure
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build local CLI
+        shell: pwsh
+        run: go build -o "$env:RUNNER_TEMP\xui-cli.exe" ./cmd/xui
+
+      - name: Install and compile every component
+        shell: pwsh
+        env:
+          XUI_REGISTRY: ${{ github.workspace }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $cli = Join-Path $env:RUNNER_TEMP 'xui-cli.exe'
+          $work = Join-Path $env:RUNNER_TEMP 'xui-check'
+          if (Test-Path $work) { Remove-Item $work -Recurse -Force }
+          New-Item -ItemType Directory $work | Out-Null
+          Set-Location $work
+
+          go mod init check
+          go mod edit -require=github.com/twgh/xui@v0.0.0
+          $repo = $env:GITHUB_WORKSPACE -replace '\\', '/'
+          go mod edit "-replace=github.com/twgh/xui=$repo"
+          if ($LASTEXITCODE -ne 0) { throw 'go mod edit failed' }
+
+          # 先装一个组件把 go.sum 打底; 后面的组件用 -mod=mod 自动补条目。
+          & $cli add alert -p ui
+          if ($LASTEXITCODE -ne 0) { throw 'xui add alert failed' }
+          go mod tidy
+          if ($LASTEXITCODE -ne 0) { throw 'go mod tidy failed' }
+          go build ./ui
+          if ($LASTEXITCODE -ne 0) { throw 'go build ./ui (alert) failed' }
+
+          $names = (Get-Content -Raw (Join-Path $env:GITHUB_WORKSPACE 'registry.json') |
+            ConvertFrom-Json).components.PSObject.Properties.Name | Sort-Object
+          foreach ($name in $names) {
+            Write-Host "::group::$name"
+            if (Test-Path ui) { Remove-Item ui -Recurse -Force }
+            & $cli add $name -p ui
+            if ($LASTEXITCODE -ne 0) { throw "xui add $name failed" }
+            go build -mod=mod ./ui
+            if ($LASTEXITCODE -ne 0) { throw "go build ./ui failed: $name" }
+            Write-Host '::endgroup::'
+          }
+
+          Write-Host '::group::add --all'
+          if (Test-Path ui) { Remove-Item ui -Recurse -Force }
+          & $cli add --all -p ui
+          if ($LASTEXITCODE -ne 0) { throw 'xui add --all failed' }
+          go build -mod=mod ./ui
+          if ($LASTEXITCODE -ne 0) { throw 'go build ./ui (all) failed' }
+          Write-Host '::endgroup::'

@@ -859,6 +859,8 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── demo\                         演示应用(也是全组件编译测试目标)
 │                                 winres\ = 图标资源(winres.json + icon.ico) + xc res 生成的 rsrc_windows_*.syso
 ├── registry.json                 组件清单(files + deps)
+├── registry.schema.json          registry.json 的 JSON Schema(编辑器补全/校验)
+├── .github\workflows\ci.yml      CI: vet/test/build(amd64+386) + 逐组件安装编译(Windows)
 ├── docs\DESIGN.md                知识库: 架构设计 + xcgui 踩坑全集(第八节必读)
 ├── docs\HANDOFF.md               本文
 ├── README.md                     用法
@@ -900,6 +902,9 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
 go test ./...
+
+# CI(.github/workflows/ci.yml): windows-latest 跑 vet/test/build(amd64+386)
+# 与逐组件安装编译; 视觉/DPI/交互验收仍需本地人工
 ```
 
 ### 依赖回归(逐组件安装 + 编译)
@@ -932,6 +937,7 @@ go build ./ui
 - **默认源顺序与单文件换源由 `cmd/xui/main_test.go` 固化**:直连 → Gitee → GitCode(v5 API, JSON+base64) → ghfast → gh-proxy;改选路先改测试。
 - 显式 `XUI_REGISTRY` **一律原样使用**(不套镜像、失败直接报错);只有未设置且全部候选不通时才降级 `moduleRoot()` 内嵌源 —— 别动 `moduleRoot`,它是离线回退的根。
 - `registry.json` 的 `files` 是 `components/` 下的**扁平文件名**;`theme.go` 永不进清单;用户的 ui 目录名是 `init`/`-p` 参数,不要硬编码 `ui`。
+- `registry.json` 的 `$schema` 指向仓库根的 `registry.schema.json`(编辑器补全/校验用, CLI 不读);改条目格式时两者同步, 否则 raw 链接会 404。
 - CLI 本体按 Go 模块版本锁(`go run ...@vX.Y.Z`),组件跟 `main`;`@latest` 可能被模块代理缓存拖旧,组件更新不受影响。
 
 ## 关键设计决策(一句话版, 详见 DESIGN.md)
