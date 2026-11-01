@@ -1083,15 +1083,15 @@ func (c *Combobox) paintRow(r *comboboxRow, hEle int, hDraw int) {
 	if f := xui.FontHandle(t.FontDefault); f != 0 {
 		p.Draw.SetFont(f)
 	}
-	x := p.Rc.Left + 6 // pl-1.5
+	x := p.Rc.Left + 8 // px-2(与 Command 条目一致)
 	if c.multiple {
-		// 多选: 左侧勾(选中才画), 占位固定 18
+		// 多选: 左侧勾(选中才画), 占位 16 + gap 8(上游 Check 的 mr-2), 未选中也占位。
 		if c.picked[r.item.Value] {
 			rc := xc.RECT{Left: x, Top: (p.Rc.Top + p.Rc.Bottom - 16) / 2,
 				Right: x + 16, Bottom: (p.Rc.Top + p.Rc.Bottom + 16) / 2}
 			p.Icon(icons.IconCheck, &rc, fore, 2)
 		}
-		x += 18
+		x += 24
 	}
 	if r.item.Icon != "" {
 		rc := xc.RECT{Left: x, Top: (p.Rc.Top + p.Rc.Bottom - 16) / 2,
@@ -1099,7 +1099,7 @@ func (c *Combobox) paintRow(r *comboboxRow, hEle int, hDraw int) {
 		p.Icon(r.item.Icon, &rc, fore, 2)
 		x += 16
 		if r.item.Text != "" {
-			x += 6
+			x += 8 // gap-2
 		}
 	}
 	if r.item.Text != "" {
