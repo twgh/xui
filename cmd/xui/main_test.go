@@ -1036,3 +1036,210 @@ func TestOverwriteWordingTellsUpgradeFromLostEdit(t *testing.T) {
 		t.Errorf("-o 仍应覆盖, 实为 %q", data)
 	}
 }
+
+// TestMain 默认把 go get 换成桩: 单测绝不联网改依赖。
+func TestMain(m *testing.M) {
+	goGetModule = func(string, string) error { return nil }
+	os.Exit(m.Run())
+}
+
+// goGetCall 记录一次被桩掉的 go get 调用。
+type goGetCall struct{ dir, spec string }
+
+// stubGoGet 换成记录用的桩, 返回调用清单。
+func stubGoGet(t *testing.T) *[]goGetCall {
+	t.Helper()
+	orig := goGetModule
+	var calls []goGetCall
+	goGetModule = func(dir, spec string) error {
+		calls = append(calls, goGetCall{dir, spec})
+		return nil
+	}
+	t.Cleanup(func() { goGetModule = orig })
+	return &calls
+}
+
+// chdirProject 进临时目录, 铺一个"项目": go.mod + ui/ 组件目录。
+func chdirProject(t *testing.T, goMod string) string {
+	t.Helper()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// 组件从 main 现拉、运行时只能按 tag 取: 装完组件必须把项目的 xui 依赖抬到 registry
+// 声明的下限, 否则组件用了新运行时助手而项目钉着旧 tag, 装成功却编不过。
+func TestAddRaisesRuntimeDependencyToRegistryFloor(t *testing.T) {
+	calls := stubGoGet(t)
+	const goMod = "module myapp\n\ngo 1.18\n\nrequire (\n\tgithub.com/twgh/xcgui v1.4.3\n\tgithub.com/twgh/xui v0.7.0\n)\n"
+	remote := "package ui\n// button v1\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/registry.json":
+			w.Write([]byte(`{"runtime":"v0.8.0","components":{"button":{"files":["button.go"],"deps":[]}}}`))
+		case "/components/button.go":
+			w.Write([]byte(remote))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("XUI_REGISTRY", srv.URL)
+	dir := chdirProject(t, goMod)
+
+	add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	if len(*calls) != 1 || (*calls)[0].spec != "github.com/twgh/xui@v0.8.0" {
+		t.Fatalf("应恰好调用一次 go get 把运行时抬到 registry 下限, 实为 %+v", *calls)
+	}
+	if (*calls)[0].dir != dir {
+		t.Errorf("go get 的工作目录应为项目根 %q, 实为 %q", dir, (*calls)[0].dir)
+	}
+
+	// 只预览的路径不许动依赖
+	*calls = nil
+	add(componentOptions{names: []string{"button"}, uiDir: "ui", dryRun: true})
+	if len(*calls) != 0 {
+		t.Errorf("--dry-run 不该动依赖, 实为 %+v", *calls)
+	}
+}
+
+// 下限不该被滥动: 够新 / 更高 / replace 到本地 / --no-install / 找到 xui 自己的
+// go.mod, 一律不起 go get。
+func TestEnsureRuntimeLeavesAloneWhenItShould(t *testing.T) {
+	cases := []struct {
+		name, body       string
+		dryRun, autoInst bool
+		wantCall         bool
+		wantOut          string
+	}{
+		{"已经够新", "module myapp\nrequire github.com/twgh/xui v0.8.0\n", false, true, false, ""},
+		{"比下限更高", "module myapp\nrequire github.com/twgh/xui v0.9.0\n", false, true, false, ""},
+		{"块式且够新", "module myapp\nrequire (\n\tgithub.com/twgh/xui v0.8.0\n)\n", false, true, false, ""},
+		{"replace 到工作副本", "module myapp\nrequire github.com/twgh/xui v0.0.0\nreplace github.com/twgh/xui => ../xui\n", false, true, false, "被 replace"},
+		{"xui 仓库自己的 go.mod", "module github.com/twgh/xui\n", false, true, false, ""},
+		{"需要抬(dry-run)", "module myapp\nrequire github.com/twgh/xui v0.7.0\n", true, true, false, "将升级运行时"},
+		{"需要抬(--no-install)", "module myapp\nrequire github.com/twgh/xui v0.7.0\n", false, false, false, "go get github.com/twgh/xui@v0.8.0"},
+		{"需要抬(没写 require)", "module myapp\n\ngo 1.18\n", false, true, true, "升级运行时"},
+		{"需要抬(旧版)", "module myapp\nrequire github.com/twgh/xui v0.7.0\n", false, true, true, "运行时已升到 v0.8.0"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			calls := stubGoGet(t)
+			dir := chdirProject(t, c.body)
+			out := captureOutput(t, func() {
+				ensureRuntime("ui", "v0.8.0", c.dryRun, c.autoInst)
+			})
+			if got := len(*calls) != 0; got != c.wantCall {
+				t.Errorf("go get 调用 = %v, 期望 %v (输出 %q)", got, c.wantCall, out)
+			}
+			if len(*calls) > 0 && (*calls)[0].spec != "github.com/twgh/xui@v0.8.0" {
+				t.Errorf("spec = %q", (*calls)[0].spec)
+			}
+			if len(*calls) > 0 && (*calls)[0].dir != dir {
+				t.Errorf("工作目录 = %q, 期望项目根 %q", (*calls)[0].dir, dir)
+			}
+			switch {
+			case c.wantOut != "" && !strings.Contains(out, c.wantOut):
+				t.Errorf("输出缺少 %q, 实为 %q", c.wantOut, out)
+			case c.wantOut == "" && strings.Contains(out, "升级"):
+				t.Errorf("不该有升级动作/文案, 实为 %q", out)
+			}
+		})
+	}
+}
+
+// go.mod 的 require/replace 解析要认常见写法(块式、单行式、// indirect、伪版本)。
+func TestGoModRuntimePin(t *testing.T) {
+	cases := []struct {
+		name, body, wantVer string
+		wantReplace         bool
+	}{
+		{"块式 require", "module myapp\n\ngo 1.18\n\nrequire (\n\tgithub.com/twgh/xcgui v1.4.3\n\tgithub.com/twgh/xui v0.7.0\n)\n", "v0.7.0", false},
+		{"单行 require", "module myapp\nrequire github.com/twgh/xui v0.8.0\n", "v0.8.0", false},
+		{"带 indirect 注释", "module myapp\nrequire github.com/twgh/xui v0.7.1 // indirect\n", "v0.7.1", false},
+		{"伪版本", "module myapp\nrequire github.com/twgh/xui v0.7.1-0.20261102040404-f7072ad01234\n", "v0.7.1-0.20261102040404-f7072ad01234", false},
+		{"块式 replace", "module myapp\nrequire (\n\tgithub.com/twgh/xui v0.0.0\n)\nreplace (\n\tgithub.com/twgh/xui => ../xui\n)\n", "v0.0.0", true},
+		{"单行 replace 带版本", "module myapp\nrequire github.com/twgh/xui v0.7.0\nreplace github.com/twgh/xui v0.7.0 => ./local\n", "v0.7.0", true},
+		{"没要求该模块", "module myapp\n\ngo 1.18\n", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "go.mod")
+			if err := os.WriteFile(path, []byte(c.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, ver, replaced, err := goModRuntimePin(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ver != c.wantVer || replaced != c.wantReplace {
+				t.Errorf("ver=%q replaced=%v, 期望 ver=%q replaced=%v", ver, replaced, c.wantVer, c.wantReplace)
+			}
+		})
+	}
+}
+
+func TestVersionBeforeAndReleaseTag(t *testing.T) {
+	for _, c := range [][2]string{
+		{"v0.7.0", "v0.8.0"}, {"v0.8.0", "v0.10.0"}, {"v1.2.3", "v2.0.0"},
+		{"v0.0.0", "v0.8.0"}, {"", "v0.8.0"}, {"latest", "v0.8.0"},
+		{"v0.7.1-0.20261102040404-f7072ad01234", "v0.8.0"},
+	} {
+		if !versionBefore(c[0], c[1]) {
+			t.Errorf("%q 应低于 %q", c[0], c[1])
+		}
+	}
+	for _, c := range [][2]string{
+		{"v0.8.0", "v0.8.0"}, {"v0.8.1", "v0.8.0"}, {"v0.9.0", "v0.8.0"},
+		{"v0.9.0-0.20261102040404-f7072ad01234", "v0.8.0"}, {"v1.0.0", "v0.8.0"},
+	} {
+		if versionBefore(c[0], c[1]) {
+			t.Errorf("%q 不应低于 %q", c[0], c[1])
+		}
+	}
+	for _, v := range []string{"v0.8.0", "v10.20.30"} {
+		if !isReleaseTag(v) {
+			t.Errorf("%q 应是发布 tag", v)
+		}
+	}
+	for _, v := range []string{"", "0.8.0", "v0.8", "v0.8.0-dirty", "v0.8.0-0.20261102-f7072ad", "main"} {
+		if isReleaseTag(v) {
+			t.Errorf("%q 不该被当成发布 tag", v)
+		}
+	}
+}
+
+// registry.json 的 runtime 字段: 缺失(老镜像)要容忍, 格式不对要忽略并警告。
+func TestParseRegistryRuntime(t *testing.T) {
+	cases := []struct{ name, body, want string }{
+		{"正常", `{"runtime":"v0.8.0","components":{"button":{"files":["button.go"],"deps":[]}}}`, "v0.8.0"},
+		{"缺字段", `{"components":{"button":{"files":["button.go"],"deps":[]}}}`, ""},
+		{"格式不对", `{"runtime":"main","components":{"button":{"files":["button.go"],"deps":[]}}}`, ""},
+		{"伪版本不算", `{"runtime":"v0.8.1-0.20261102","components":{"button":{"files":["button.go"],"deps":[]}}}`, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			reg, err := parseRegistry("test", []byte(c.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if reg.Runtime != c.want {
+				t.Errorf("runtime=%q 期望 %q", reg.Runtime, c.want)
+			}
+		})
+	}
+}
+

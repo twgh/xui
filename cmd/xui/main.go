@@ -66,7 +66,7 @@ var proxyPrefixes = []struct{ name, prefix string }{
 // 生成新项目 go.mod 的回退依赖版本。正式发布版(go run/install ...@vX)从 build info
 // 读到自身版本; 只有本地 devel 构建会用到这里的值, 取最近一个已发布版本保证可拉取。
 const (
-	fallbackXuiVersion   = "v0.2.0"
+	fallbackXuiVersion   = "v0.8.0"
 	fallbackXcguiVersion = "v1.4.3"
 )
 
@@ -76,6 +76,9 @@ type entry struct {
 }
 
 type registry struct {
+	// Runtime 是这批组件源码要求的最低运行时版本(github.com/twgh/xui 的已发布 tag)。
+	// 老数据源没这个字段, 所以是可选的。
+	Runtime    string           `json:"runtime,omitempty"`
 	Components map[string]entry `json:"components"`
 }
 
@@ -275,6 +278,11 @@ func parseRegistry(desc string, data []byte) (*registry, error) {
 	}
 	if len(r.Components) == 0 {
 		return nil, fmt.Errorf("registry.json 没有组件条目 (%s)", desc)
+	}
+	if r.Runtime != "" && !isReleaseTag(r.Runtime) {
+		// 认不出的下限就当没有: 宁可不动用户依赖, 也不要 go get @一个不存在的版本。
+		warn("registry.json 的 runtime %q 不是 vX.Y.Z, 忽略 (%s)", r.Runtime, desc)
+		r.Runtime = ""
 	}
 	return &r, nil
 }
@@ -512,6 +520,9 @@ type componentOptions struct {
 	viewFile  string
 	diff      bool
 	diffFile  string
+	// noInstall 由 init --no-install 传进来: 不联网动 go.mod, 只打印要跑的命令。
+	// 不是 CLI 参数, 所以解析器不会填它。
+	noInstall bool
 }
 
 func parseComponentArgs(args []string) (componentOptions, error) {
@@ -700,6 +711,11 @@ func usage() {
 
 短选项也接受 -x=值 的写法(与 --long=值 一致), 例如 -p=src -l=5。
 
+运行时版本: 组件源码跟 main 分支, 而运行时 github.com/twgh/xui 只能按 tag 取 ——
+                        registry.json 的 runtime 字段声明这批组件要求的最低运行时版本,
+                        add/update/init 装完组件会把项目 go.mod 的该依赖一起抬上去
+                        (--dry-run 或 --no-install 时只打印命令, 不联网改依赖)
+
 数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
   不设                  自动选路: 直连 → Gitee 镜像 → GitCode 镜像 →
                         加速代理(ghfast / gh-proxy); 全不通则用 CLI 内嵌源码
@@ -735,7 +751,7 @@ func moduleRoot() string {
 // ---------------------------------------------------------------- 各命令实现
 
 func initProject(dir string, force bool) {
-	if err := scaffoldUI(dir, force); err != nil {
+	if err := scaffoldUI(dir, force, false); err != nil {
 		fatal("%v", err)
 	}
 	// 组件目录的 AGENTS.md: README 不在 init 的写入范围(用户项目已有自己的),
@@ -757,7 +773,8 @@ func initProject(dir string, force bool) {
 }
 
 // scaffoldUI 写 ui 目录: theme.go + DESIGN.md + 基础组件。普通 init 与 init -n 共用。
-func scaffoldUI(dir string, force bool) error {
+// noInstall = 不联网动 go.mod(运行时下限只打印命令)。
+func scaffoldUI(dir string, force, noInstall bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("创建目录失败: %v", err)
 	}
@@ -784,7 +801,7 @@ func scaffoldUI(dir string, force bool) error {
 	}
 
 	// 拷入全部基础组件, 开箱即用(window 是快速开始示例用的主窗口封装)
-	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: force})
+	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: force, noInstall: noInstall})
 	return nil
 }
 
@@ -843,7 +860,7 @@ func initNewProject(name string, force, noInstall bool) error {
 		}
 		info("%s %s", action, path)
 	}
-	if err := scaffoldUI(filepath.Join(dir, "ui"), force); err != nil {
+	if err := scaffoldUI(filepath.Join(dir, "ui"), force, noInstall); err != nil {
 		return err
 	}
 	// 图标/版本资源: winres/ 写好即生效, .syso 由 xc 生成; --no-install 不联网装 xc。
@@ -893,11 +910,16 @@ func cwdIsEmptyDirNamed(name string) bool {
 }
 
 // installGoModules 在项目目录执行 go mod tidy, 生成 go.sum 并拉取依赖。
-// GOWORK=off: 避免新项目被父目录的 go.work 接管, 依赖解析只按它自己的 go.mod。
 func installGoModules(dir string) error {
+	return runGo(dir, "mod", "tidy")
+}
+
+// runGo 在 dir 里跑 go 子命令。GOWORK=off: 避免项目被父目录的 go.work 接管,
+// 依赖解析只按它自己的 go.mod(否则拿到的版本是工作区里的那份, 结果不可信)。
+func runGo(dir string, args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "mod", "tidy")
+	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	out, err := cmd.CombinedOutput()
@@ -908,6 +930,176 @@ func installGoModules(dir string) error {
 		return fmt.Errorf("%v\n%s", err, msg)
 	}
 	return err
+}
+
+// ---------------------------------------------------------------- 运行时版本下限
+
+// runtimeModule 是组件源码 import 的运行时模块。组件从 main 现拉、运行时只能按 tag 取:
+// main 上的组件用了新加的运行时助手而项目还钉着旧 tag 时, 装完直接 undefined 编译不过。
+// 下限写在 registry.json 的 runtime 字段 —— 它和组件是同一次下发的, 所以一定对得上。
+const runtimeModule = "github.com/twgh/xui"
+
+// goGetModule 是测试缝: 单测换成桩, 不依赖网络。
+var goGetModule = func(dir, spec string) error { return runGo(dir, "get", spec) }
+
+// findGoMod 从 dir 向上找最近的 go.mod(组件目录一般就在项目里); 找不到返回 ""。
+func findGoMod(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		abs = dir
+	}
+	for {
+		p := filepath.Join(abs, "go.mod")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+		parent := filepath.Dir(abs)
+		if parent == abs {
+			return ""
+		}
+		abs = parent
+	}
+}
+
+// goModRuntimePin 读 go.mod 的模块路径、runtimeModule 的 require 版本与是否被 replace。
+// 只认常见写法: require/replace 的单行式与括号块式(块里一行一个模块路径)。
+// ver 为空 = 这个项目还没要求该模块。
+func goModRuntimePin(path string) (module, ver string, replaced bool, err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", false, err
+	}
+	block := ""
+	for _, raw := range strings.Split(string(data), "\n") {
+		s := strings.TrimSpace(raw)
+		if i := strings.Index(s, "//"); i >= 0 {
+			s = strings.TrimSpace(s[:i])
+		}
+		if s == "" {
+			continue
+		}
+		if s == ")" {
+			block = ""
+			continue
+		}
+		fields := strings.Fields(s)
+		if len(fields) == 2 && (fields[0] == "require" || fields[0] == "replace") && fields[1] == "(" {
+			block = fields[0]
+			continue
+		}
+		if block != "" {
+			switch {
+			case block == "require" && fields[0] == runtimeModule && len(fields) >= 2:
+				ver = fields[1]
+			case block == "replace" && fields[0] == runtimeModule:
+				replaced = true
+			}
+			continue
+		}
+		switch {
+		case fields[0] == "module" && len(fields) >= 2:
+			module = fields[1]
+		case fields[0] == "require" && len(fields) >= 3 && fields[1] == runtimeModule:
+			ver = fields[2]
+		case fields[0] == "replace" && len(fields) >= 2 && fields[1] == runtimeModule:
+			replaced = true
+		}
+	}
+	return module, ver, replaced, nil
+}
+
+// semverParts 取 vX.Y.Z 的三段数字, 剥掉 -伪版本 与 +dirty 后缀; 认不出来返回 ok=false。
+func semverParts(v string) (maj, min, patch int, ok bool) {
+	body := strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if i := strings.IndexAny(body, "-+"); i >= 0 {
+		body = body[:i]
+	}
+	fields := strings.Split(body, ".")
+	if len(fields) != 3 {
+		return 0, 0, 0, false
+	}
+	nums := []int{0, 0, 0}
+	for i, f := range fields {
+		n, err := strconv.Atoi(f)
+		if err != nil || f == "" {
+			return 0, 0, 0, false
+		}
+		nums[i] = n
+	}
+	return nums[0], nums[1], nums[2], true
+}
+
+// isReleaseTag 认严格的 vX.Y.Z —— go get @vX.Y.Z 要的形态, 伪版本与 +dirty 都不收。
+func isReleaseTag(v string) bool {
+	maj, min, patch, ok := semverParts(v)
+	return ok && v == fmt.Sprintf("v%d.%d.%d", maj, min, patch)
+}
+
+// versionBefore 报告 a 是否低于 b。a 认不出数字时当作"低于" —— 宁可多抬一次,
+// 也不要放着一个大概率编不过的旧运行时不管(b 由 registry 给出, 格式是校验过的)。
+func versionBefore(a, b string) bool {
+	am, amin, aparse, aok := semverParts(a)
+	bm, bmin, bpatch, bok := semverParts(b)
+	if !aok || !bok {
+		return true
+	}
+	switch {
+	case am != bm:
+		return am < bm
+	case amin != bmin:
+		return amin < bmin
+	default:
+		return aparse < bpatch
+	}
+}
+
+// ensureRuntime 把项目 go.mod 的运行时依赖抬到 registry 声明的下限。
+// 只在真正写文件的路径上调用(add/update/init 的写入分支); dryRun 只预览,
+// autoInstall=false(init --no-install)时只打印要跑的那条命令。
+func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
+	if floor == "" {
+		return // 数据源没这个字段(老 tag / 镜像还没同步), 不动用户依赖
+	}
+	gm := findGoMod(uiDir)
+	if gm == "" {
+		info("没找到 go.mod, 跳过运行时版本检查 (这批组件要求 %s %s)", runtimeModule, floor)
+		return
+	}
+	module, ver, replaced, err := goModRuntimePin(gm)
+	if err != nil {
+		warn("读取 %s 失败, 跳过运行时版本检查: %v", gm, err)
+		return
+	}
+	switch {
+	case module == runtimeModule:
+		// 向上找到了 xui 仓库自己的 go.mod(在仓库里跑 CLI), 不改仓库的依赖。
+		return
+	case replaced:
+		// 本地联调(replace 到工作副本)时版本由开发者自己管, 抬 require 只会误导。
+		info("%s 在 go.mod 里被 replace, 运行时版本由你自己管 (这批组件要求 %s)", runtimeModule, floor)
+		return
+	case !versionBefore(ver, floor):
+		return
+	}
+	from := "未声明"
+	if ver != "" {
+		from = ver
+	}
+	if dryRun {
+		info("将升级运行时 %s %s → %s (go get %s@%s)", runtimeModule, from, floor, runtimeModule, floor)
+		return
+	}
+	if !autoInstall {
+		info("这批组件要求 %s %s (当前 %s); 本次不联网改依赖, 自己跑: go get %s@%s",
+			runtimeModule, floor, from, runtimeModule, floor)
+		return
+	}
+	info("升级运行时 %s %s → %s ...", runtimeModule, from, floor)
+	if err := goGetModule(filepath.Dir(gm), runtimeModule+"@"+floor); err != nil {
+		warn("自动升级运行时失败: %v (手动跑: 在 %s 执行 go get %s@%s)", err, filepath.Dir(gm), runtimeModule, floor)
+		return
+	}
+	info("运行时已升到 %s (go.mod 与 go.sum 一起更新)", floor)
 }
 
 // validateProjectName 只接受单级目录名(项目在当前目录下创建); 想换模块路径改 go.mod。
@@ -998,6 +1190,8 @@ func add(opts componentOptions) {
 		diffFiles(src, reg, order, opts.uiDir, opts.diffFile)
 	default:
 		install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
+		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到这批组件的下限。
+		ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
 	}
 }
 
@@ -1022,6 +1216,8 @@ func update(opts componentOptions) {
 		diffFiles(src, reg, order, opts.uiDir, opts.diffFile)
 	default:
 		install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
+		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到这批组件的下限。
+		ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
 	}
 }
 
@@ -1781,6 +1977,8 @@ xui list             # 列出可用组件
 
 CLI 逐个比对内容: 本地没有则创建、一致则跳过、被改过则警告跳过; 确认丢弃本地改动时加
 -o/--overwrite。组件目录不是 ui/ 时, 用 -p <目录> 指定(相对项目根)。
+装完组件, CLI 会把 go.mod 里的 github.com/twgh/xui 抬到这批组件要求的最低运行时版本
+(组件源码跟仓库最新, 运行时按 tag 取); 离线或 --no-install 时只打印那条命令, 不动你的 go.mod。
 
 ## 最小用法
 
@@ -1838,6 +2036,8 @@ xui list
 ~~~
 
 CLI 不会覆盖被改过的文件; 确认丢弃本地改动时加 -o/--overwrite。
+装完组件, CLI 会把项目 go.mod 里的 github.com/twgh/xui 抬到这批组件要求的最低运行时版本
+(组件源码跟仓库最新、运行时按 tag 取); 离线时只打印那条命令, 不动 go.mod。
 
 ## 组件速用
 

@@ -66,14 +66,20 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $cli = Join-Path $env:RUNNER_TEMP 'xui-cli.exe'
           $work = Join-Path $env:RUNNER_TEMP 'xui-check'
+          $registry = Get-Content -Raw (Join-Path $env:GITHUB_WORKSPACE 'registry.json') | ConvertFrom-Json
+
+          # 运行时下限用 registry.json 的 runtime 字段(已发布的 tag)。刻意不把模块
+          # replace 到工作区: 组件从 main 现拉, 运行时只能按 tag 取, 所以组件里出现
+          # "未发布 tag 的运行时符号"时必须编译失败 —— 这就是逼着先打 tag 再上 main。
+          $runtime = $registry.runtime
+          if (-not $runtime) { throw 'registry.json 缺少 runtime 字段(组件要求的最低运行时 tag)' }
+
           if (Test-Path $work) { Remove-Item $work -Recurse -Force }
           New-Item -ItemType Directory $work | Out-Null
           Set-Location $work
 
           go mod init check
-          go mod edit -require=github.com/twgh/xui@v0.0.0
-          $repo = $env:GITHUB_WORKSPACE -replace '\\', '/'
-          go mod edit "-replace=github.com/twgh/xui=$repo"
+          go mod edit "-require=github.com/twgh/xui@$runtime"
           if ($LASTEXITCODE -ne 0) { throw 'go mod edit failed' }
 
           # 先装一个组件把 go.sum 打底; 后面的组件用 -mod=mod 自动补条目。
@@ -84,8 +90,7 @@ jobs:
           go build ./ui
           if ($LASTEXITCODE -ne 0) { throw 'go build ./ui (alert) failed' }
 
-          $names = (Get-Content -Raw (Join-Path $env:GITHUB_WORKSPACE 'registry.json') |
-            ConvertFrom-Json).components.PSObject.Properties.Name | Sort-Object
+          $names = $registry.components.PSObject.Properties.Name | Sort-Object
           foreach ($name in $names) {
             Write-Host "::group::$name"
             if (Test-Path ui) { Remove-Item ui -Recurse -Force }

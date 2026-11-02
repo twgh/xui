@@ -323,6 +323,15 @@ sha256。之后升级时逐文件比对:
 `--diff` 的每个文件头也标的是这个来源判定。清单缺失时(老项目、或手动删了它)行为退回保守模式 ——
 一律“无法判断来源”并跳过, 加 `-o` 一次性解决后清单会重新生成。
 
+**运行时版本**: 组件源码跟 `main`(永远最新), 而运行时 `github.com/twgh/xui` 是 Go 模块依赖、
+**只能按 tag 取** —— 两者对不上就是编译错误: 组件用了本批新增的运行时助手(如 `xui.PresenceOnce`)
+而项目还钉着旧 tag, 报 `undefined: xui.PresenceOnce`。所以 `registry.json` 顶层声明 `runtime`
+(这批组件要求的最低运行时版本), `add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖
+抬到它(等价于 `go get github.com/twgh/xui@<tag>`, `go.sum` 一起更新), 升级完直接 `go build` 就行。
+四种情况不动你的依赖: `--dry-run` 与 `init --no-install` 只打印命令; `go.mod` 里把这个模块
+`replace` 到本地工作副本时一切以你的 replace 为准; 项目里找不到 `go.mod` 时只提示。
+想自己锁版本: 先 `go get github.com/twgh/xui@<你选的 tag>` 再跑 `xui update` 即可。
+
 **数据源**: 默认从仓库 `main` 分支现拉组件, 组件永远最新。CLI 本体的版本由 `go install` / `go run`
 时的 `@latest` 或 tag 决定; 组件版本用下面的 `XUI_REGISTRY` 锁。默认源**自动选路**:
 
