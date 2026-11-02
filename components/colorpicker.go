@@ -777,8 +777,10 @@ func (c *ColorPicker) onPaintPresets(hEle int, hDraw int, pbHandled *bool) int {
 		cx := p.Rc.Left + int32(float64(col)*cellWF+cellWF/2+0.5)
 		cy := p.Rc.Top + colorPickerPresetPad + row*(colorPickerPresetD+colorPickerPresetG) + r
 		if hex == c.value {
-			// 选中环: 外圆 ring 色 + 内圆面板底色 = 2px 环, 与圆点之间只留 1px 缝隙。
-			// 缝隙再宽(2px 以上)时, 环看起来"套在圆点外面一圈", 视觉上会觉得圆点没在环心。
+			// 选中环: 外圆 ring 色 + 内圆面板底色挖洞, 与圆点之间留 1px 缝。
+			//
+			// 缝不能去掉: 环色和选中的色块经常同色(比如选中蓝、主色也是蓝), 无缝时环和圆
+			// 粘成一坨, 只剩圆点那圈 border 淡边, 看着像"双圈甜甜圈"。
 			rr := r + 3
 			p.Draw.SetBrushColor(uint32(t.Ring))
 			p.Draw.FillEllipse(&xc.RECT{Left: cx - rr, Top: cy - rr, Right: cx + rr, Bottom: cy + rr})

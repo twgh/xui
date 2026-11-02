@@ -161,6 +161,12 @@ func NewAppWindow(title string, cx, cy int32, opts ...AppWindowOption) *AppWindo
 		// 点在标题栏的按钮上不触发。注意不能写成"StayEle != 0 就跳过": 标题/图标是
 		// MouseThrough 的, 鼠标停在它们上面时 StayEle 也非 0(实测双击会整段失效) ——
 		// 只有停在真正的按钮上才该拦。
+		//
+		// 这里再按矩形命中判一次: 双击序列里 GetStayEle 可能已经归零(实测在主题按钮上
+		// 连点两下会把窗口顶成最大化), 光靠它拦不住。
+		if w.pointOnCaptionButton(*pPt) {
+			return 0
+		}
 		if h := w.GetStayEle(); h != 0 && xc.XC_GetObjectType(h) == xcc.XC_BUTTON {
 			return 0
 		}
@@ -324,9 +330,53 @@ func (w *AppWindow) AddCaptionButton(icon string, onClick func()) *Button {
 			return 0
 		})
 	}
+	// 标题栏按钮上双击不能最大化窗口。窗口级的 DBClick 靠 GetStayEle 判断"点在按钮上",
+	// 但双击序列里它并不可靠(实测在按钮上双击照样把窗口最大化了), 所以元素这一层先把
+	// 双击吞掉。连点两下按钮(比如连开两个弹窗)不该把窗口顶大。
+	b.AddEvent_LButtonDBClick(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		*pbHandled = true
+		return 0
+	})
 	w.customBox.AdjustLayout()
 	w.caption.AdjustLayout()
 	return b
+}
+
+// pointOnCaptionButton 报告客户区坐标 pt 是否落在标题栏的某个按钮上。
+//
+// 双击标题栏最大化时用它兜底: 那一刻 GetStayEle 可能已经归零, 光看它拦不住"在按钮上
+// 连点两下把窗口顶成最大化"。
+func (w *AppWindow) pointOnCaptionButton(pt xc.POINT) bool {
+	hit := func(h int) bool {
+		if h == 0 {
+			return false
+		}
+		var rc xc.RECT
+		xc.XEle_GetWndClientRect(h, &rc)
+		return pt.X >= rc.Left && pt.X < rc.Right && pt.Y >= rc.Top && pt.Y < rc.Bottom
+	}
+	if w.customBox != nil {
+		n := xc.XEle_GetChildCount(w.customBox.Handle)
+		for i := int32(0); i < n; i++ {
+			if hit(xc.XEle_GetChildByIndex(w.customBox.Handle, i)) {
+				return true
+			}
+		}
+	}
+	// 三个系统按钮是标题栏行的直接子项; 只认 Button(标题/图标是 MouseThrough 的 Element)
+	if w.caption != nil {
+		n := xc.XEle_GetChildCount(w.caption.Handle)
+		for i := int32(0); i < n; i++ {
+			h := xc.XEle_GetChildByIndex(w.caption.Handle, i)
+			if h == 0 || xc.XC_GetObjectType(h) != xcc.XC_BUTTON {
+				continue
+			}
+			if hit(h) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // SetTitle 同时更新自绘标题栏与窗口标题(任务栏/Alt+Tab 用)。

@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
@@ -70,6 +72,14 @@ func WithPopoverOnOpenChange(fn func(open bool)) PopoverOption {
 	return func(p *Popover) { p.changes = append(p.changes, fn) }
 }
 
+// WithPopoverKeepOnBlur 让弹层不因失焦关闭(只由再次点触发区或 ESC 关闭)。
+//
+// 内容里嵌了"自己会弹窗"的控件时必须开: 以 ColorPicker 为例, 点它的触发区会先让本弹层
+// 因失焦关掉, 取色面板却还开着 —— 用户看到的是"弹窗闪一下就没了, 屏幕上剩一个孤零零的取色面板"。
+func WithPopoverKeepOnBlur(keep bool) PopoverOption {
+	return func(p *Popover) { p.keepOnBlur = keep }
+}
+
 // Popover 点击触发的通用弹出卡片, 对应 shadcn popover.tsx。
 //
 // 与 shadcn 对齐:
@@ -99,10 +109,11 @@ type Popover struct {
 	side    PopoverSide
 	align   PopoverAlign
 
-	panel    *popoverPanel
-	content  *widget.LayoutEle
-	built    bool
-	measured bool
+	panel      *popoverPanel
+	content    *widget.LayoutEle
+	built      bool
+	measured   bool
+	keepOnBlur bool
 
 	changes []func(open bool)
 }
@@ -269,6 +280,25 @@ func (p *Popover) ensureBuilt() bool {
 		return false
 	}
 	p.panel, p.content = panel, content
+	panel.keepOnBlur = p.keepOnBlur
+	// 点宿主窗口其它地方要能关掉卡片。
+	//
+	// 弹层自带的"失焦关闭"在 keepOnBlur 下被关掉了(内容里有 ColorPicker 时不能一失焦就消失),
+	// 于是这条得自己接: 宿主窗口的 LButtonDown 只在点窗口本体时来, 点弹层面板是另一个窗口,
+	// 不会误关。点触发区时这里会先关一次, 紧接着 BnClick 的 toggle 被 RecentlyClosed 挡下,
+	// 结果正好是"再点一下关掉", 不会闪成"关了又开"。
+	if hWnd := hostWindowOf(p.trigger); hWnd != 0 {
+		if host := window.NewByHandle(hWnd); host != nil {
+			// 用窗口消息而不是 xcgui 的 LButtonDown 事件: 点在元素上时那个事件被元素
+			// 消费掉, 窗口收不到, 只有空白区的点击能关。
+			host.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+				if message == wapi.WM_LBUTTONDOWN && p.IsOpen() {
+					p.Close()
+				}
+				return 0
+			})
+		}
+	}
 	panel.OnEsc = func() {
 		if t := widget.NewElementByHandle(p.trigger); t != nil {
 			t.SetFocus()
@@ -320,4 +350,24 @@ func PopoverDescription(hParent int, text string) *Label {
 	l := NewLabel(0, 0, 0, 20, text, hParent).SetMuted().SetFontSize(14)
 	xui.ItemFill(l)
 	return l
+}
+
+// hostWindowOf 找到元素所在窗口的 xcgui 句柄(能挂 AddEvent_WindProc 的那个)。
+//
+// 别用 XWidget_GetHWND: 它给的是 Win32 HWND, 拿它当 xcgui 句柄用会弹"句柄可能无效"。
+// 这里要的是 XWidget_GetHWINDOW 的结果, 父链遍历只做兜底。
+func hostWindowOf(hEle int) int {
+	if hEle == 0 {
+		return 0
+	}
+	if hWnd := xc.XWidget_GetHWINDOW(hEle); hWnd > 0 {
+		return hWnd
+	}
+	for i := 0; i < 32 && hEle != 0; i++ {
+		if xc.XC_GetObjectType(hEle) == xcc.XC_WINDOW {
+			return hEle
+		}
+		hEle = xc.XWidget_GetParent(hEle)
+	}
+	return 0
 }

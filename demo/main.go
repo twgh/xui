@@ -83,8 +83,12 @@ var (
 	demoPopupLines  int
 
 	demoDark            bool // 当前亮/暗
-	demoThemeColor      int  // demoThemePresets 下标
+	demoThemeColor      int  // demoThemePresets 下标; -1 = 用 demoCustomPrimary
 	demoThemeColorLabel *ui.Label
+	demoCustomPrimary   xui.Color           // 颜色选择器挑的自定义主色(0 = 未用)
+	demoSwatches        []*widget.Element  // 主题弹窗里的色块, 切主题后要逐个重绘
+	demoThemePop        *ui.Popover         // 标题栏"主题"按钮弹的卡片
+	demoCustomPicker    *ui.ColorPicker     // 卡片里的取色器(切换预设色后同步显示)
 )
 
 // 主题色预设: 默认(内置主题原样) + 5 个彩色主色。亮/暗各一套, 前景色跟随对比度。
@@ -111,6 +115,23 @@ func applyDemoTheme() {
 	if demoDark {
 		base = xui.Dark()
 	}
+	// 自定义主色: 前景色按亮度自动取黑/白, 免得挑个浅色后按钮文字看不见
+	if demoThemeColor < 0 && demoCustomPrimary != 0 {
+		t := *base
+		fg := demoContrastFg(demoCustomPrimary)
+		t.Name = base.Name + "-custom"
+		t.Primary = demoCustomPrimary
+		t.PrimaryForeground = fg
+		t.Ring = demoCustomPrimary
+		t.SidebarPrimary = demoCustomPrimary
+		t.SidebarPrimaryForeground = fg
+		xui.SetTheme(&t)
+		if demoThemeColorLabel != nil {
+			demoThemeColorLabel.SetText("当前主题色: 自定义 " + demoCustomPrimary.String()).Redraw(false)
+		}
+		demoRedrawSwatches()
+		return
+	}
 	p := demoThemePresets[demoThemeColor]
 	if demoThemeColor == 0 {
 		xui.SetTheme(base)
@@ -132,6 +153,118 @@ func applyDemoTheme() {
 	}
 	if demoThemeColorLabel != nil {
 		demoThemeColorLabel.SetText("当前主题色: " + p.name).Redraw(false)
+	}
+	demoRedrawSwatches()
+}
+
+// demoContrastFg 按 sRGB 亮度挑前景色: 亮的底用深色字, 暗的底用浅色字。
+func demoContrastFg(c xui.Color) xui.Color {
+	r, g, b, _ := c.RGBA()
+	if 0.299*float64(r)+0.587*float64(g)+0.114*float64(b) > 153 {
+		return xui.Hex("#0b1220")
+	}
+	return xui.Hex("#fafafa")
+}
+
+// demoSwatchColor 返回第 i 个预设色在当前亮暗下的实际颜色(默认项 = 内置主题的主色)。
+func demoSwatchColor(i int) xui.Color {
+	if i == 0 {
+		if demoDark {
+			return xui.Dark().Primary
+		}
+		return xui.Light().Primary
+	}
+	if demoDark {
+		return demoThemePresets[i].dark
+	}
+	return demoThemePresets[i].light
+}
+
+func demoRedrawSwatches() {
+	for _, s := range demoSwatches {
+		if s != nil {
+			s.Redraw(false)
+		}
+	}
+}
+
+// buildThemePopover 是标题栏"主题设置"卡片的内容: 一排能看见颜色的主色块 + 取色器。
+//
+// 色块是自绘 Element(圆点 + 选中环): 原生菜单项画不出颜色, 所以这里改弹 Popover 卡片。
+func buildThemePopover(content int) {
+	demoSwatches = demoSwatches[:0]
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "主题色", content).SetFontSize(14))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20,
+		"点色块换预设, 或用取色器挑任意颜色", content).SetFontSize(12).SetMuted())
+
+	swRow := xui.HStack(content, 30, 8)
+	for i := range demoThemePresets {
+		i := i
+		dot := widget.NewElement(0, 0, 26, 26, swRow.Handle)
+		if dot == nil {
+			continue
+		}
+		xui.ItemSize(dot, 26, 26)
+		dot.EnableBkTransparent(true)
+		dot.EnableDrawBorder(false)
+		dot.EnableFocus(false)
+		dot.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+			p := xui.BeginPaint(hEle, hDraw)
+			if p == nil {
+				return 0
+			}
+			*pbHandled = true
+			t := xui.Current()
+			cx := (p.Rc.Left + p.Rc.Right) / 2
+			cy := (p.Rc.Top + p.Rc.Bottom) / 2
+			const r = int32(9)
+			swatch := demoSwatchColor(i)
+			// 未选中: 外圈 border 色当 1px 描边(白色色块没边就"消失")
+			if demoThemeColor != i {
+				p.Draw.SetBrushColor(uint32(t.Border))
+				p.Draw.FillEllipse(&xc.RECT{Left: cx - r, Top: cy - r, Right: cx + r, Bottom: cy + r})
+			}
+			p.Draw.SetBrushColor(uint32(swatch))
+			p.Draw.FillEllipse(&xc.RECT{Left: cx - r + 1, Top: cy - r + 1, Right: cx + r - 1, Bottom: cy + r - 1})
+			// 选中: 色块中央打对勾(按色块亮度取黑/白)。
+			// 不用外圈环: 环色(Ring)与被选中的色块常常同色, 糊成"甜甜圈"; 靠 1px 的缝分开时,
+			// 缝在 150% 缩放下是 1 或 2 个物理像素, 左右不等就成了"圆点没在环心"。
+			if demoThemeColor == i {
+				mark := int32(11)
+				ic := xc.RECT{Left: cx - mark/2, Top: cy - mark/2, Right: cx + mark/2, Bottom: cy + mark/2}
+				p.Icon(icons.IconCheck, &ic, demoContrastFg(swatch), 2)
+			}
+			return 0
+		})
+		dot.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+			*pbHandled = true
+			demoThemeColor = i
+			demoCustomPrimary = 0
+			applyDemoTheme()
+			if demoCustomPicker != nil {
+				// 只同步显示, 不走 OnChange(SetValue 不触发回调, 否则会绕回来再改一次主题)
+				demoCustomPicker.SetValue(demoSwatchColor(i).String())
+			}
+			return 0
+		})
+		demoSwatches = append(demoSwatches, dot)
+	}
+
+	xui.ItemFill(ui.NewSeparator(0, 0, 0, content))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "自定义颜色", content).SetFontSize(12).SetMuted())
+	val := "#3b82f6"
+	if demoCustomPrimary != 0 {
+		val = demoCustomPrimary.String()
+	}
+	cp := ui.NewColorPicker(0, 0, 0, 0, content, ui.WithColorPickerValue(val),
+		ui.WithColorPickerOnChange(func(hex string) {
+			demoThemeColor = -1
+			demoCustomPrimary = xui.Hex(hex)
+			applyDemoTheme()
+		}))
+	if cp != nil {
+		xui.ItemFill(cp)
+		demoCustomPicker = cp
 	}
 }
 
@@ -191,39 +324,28 @@ func main() {
 	})
 	tip.Bind(btnFrame.Handle, "显示/隐藏布局对象边界")
 
-	// 主题设置: 点击标题栏按钮弹出菜单, 亮色/暗色 + 主题色单选。
-	// 用菜单而不是无提示的切换, 便于对照当前状态并验证切主题后的全窗口重绘。
-	var btnTheme *ui.Button
-	btnTheme = w.AddCaptionButton(icons.IconPalette, func() {
-		m := ui.NewMenu()
-		m.Label("外观")
-		m.Radio("亮色", !demoDark, ui.MenuGroup(1), ui.MenuOnCheck(func(on bool) {
-			if on {
-				demoDark = false
-				applyDemoTheme()
-			}
-		}))
-		m.Radio("暗色", demoDark, ui.MenuGroup(1), ui.MenuOnCheck(func(on bool) {
-			if on {
-				demoDark = true
-				applyDemoTheme()
-			}
-		}))
-		m.Separator()
-		m.Label("主题色")
-		for i := range demoThemePresets {
-			i := i
-			m.Radio(demoThemePresets[i].name, demoThemeColor == i, ui.MenuGroup(2),
-				ui.MenuOnCheck(func(on bool) {
-					if on {
-						demoThemeColor = i
-						applyDemoTheme()
-					}
-				}))
-		}
-		m.PopupAtElement(btnTheme.Handle)
+	// 外观(亮/暗)独立成一个按钮: 图标显示"点了会变成什么" —— 当前是亮色就画月亮。
+	var btnDark *ui.Button
+	btnDark = w.AddCaptionButton(common.Choose(demoDark, icons.IconSun, icons.IconMoon), func() {
+		demoDark = !demoDark
+		applyDemoTheme()
+		btnDark.SetIcon(common.Choose(demoDark, icons.IconSun, icons.IconMoon))
+		w.Redraw(false)
 	})
-	tip.Bind(btnTheme.Handle, "主题设置")
+	tip.Bind(btnDark.Handle, "切换亮色/暗色")
+
+	// 主题设置: 弹卡片(Popover)而不是原生菜单 —— 菜单项画不出颜色块, 也塞不进取色器。
+	// 卡片里点 ColorPicker 会再弹一层取色面板, 所以本卡片要 keepOnBlur(否则先因失焦关掉)。
+	var btnTheme *ui.Button
+	btnTheme = w.AddCaptionButton(icons.IconPalette, nil)
+	if btnTheme != nil {
+		demoThemePop = ui.NewPopover(btnTheme.Handle,
+			ui.WithPopoverWidth(264),
+			ui.WithPopoverKeepOnBlur(true),
+			ui.WithPopoverContent(buildThemePopover))
+		tip.Bind(btnTheme.Handle, "主题设置")
+	}
+	_ = demoThemePop
 
 	// 内容区: AppWindow 的纵向流式容器(宽铺满、高占满标题栏以下); 页面自己管留白
 	content := w.Content()
@@ -777,7 +899,7 @@ func buildBase1Page(body *widget.LayoutEle) {
 	_, vtc := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "主题色", vtc.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"克隆当前主题并替换主色组(Primary / Ring / SidebarPrimary), 亮/暗各有一套; 标题栏调色板菜单也能切换", vtc.Handle))
+		"克隆当前主题并替换主色组(Primary / Ring / SidebarPrimary), 亮/暗各有一套; 标题栏的调色板按钮也能切换(带取色器)", vtc.Handle))
 	xui.ItemFill(hint(vtc.Handle, "点击切换(全窗口实时生效)"))
 	for rowStart := 0; rowStart < len(demoThemePresets); rowStart += 3 {
 		rowEnd := rowStart + 3
