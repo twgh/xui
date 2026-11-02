@@ -13,6 +13,10 @@
       "files": ["checkbox.go"],
       "deps": []
     },
+    "color-picker": {
+      "files": ["colorpicker.go", "popup.go", "input.go", "scrollbar.go", "group.go", "textopt.go"],
+      "deps": []
+    },
     "radio": {
       "files": ["radio.go"],
       "deps": []

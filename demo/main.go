@@ -124,6 +124,8 @@ func applyDemoTheme() {
 		t.Primary = primary
 		t.PrimaryForeground = fg
 		t.Ring = primary
+		// SidebarPrimary* 当前没有组件消费(本库侧栏没有上游那个"logo 方块"区块, 只认
+		// SidebarAccent*), 这里照样设上是为了演示"转译社区主题时整组令牌都填"的做法。
 		t.SidebarPrimary = primary
 		t.SidebarPrimaryForeground = fg
 		xui.SetTheme(&t)
@@ -2046,6 +2048,25 @@ func buildForm5Page(body *widget.LayoutEle) {
 		invCB.SetInvalid(!invCB.Invalid())
 		return 0
 	})
+
+	// ---- 右列: 颜色选择器 ----
+	_, vCP := autoCard(colR.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "颜色选择器(ColorPicker)", vCP.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"SV 方块调饱和度/亮度(可拖出方块继续调), 色相条, 预设色, Hex 输入满 6 位才应用", vCP.Handle))
+
+	cp := ui.NewColorPicker(0, 0, 0, 0, vCP.Handle, ui.WithColorPickerValue("#3b82f6"))
+	xui.ItemFill(cp)
+	cpState := ui.NewLabel(0, 0, 0, 0, "当前颜色: #3b82f6", vCP.Handle).SetMuted()
+	xui.ItemFill(cpState)
+	cp.OnChange(func(hex string) {
+		cpState.SetText("当前颜色: " + hex).Redraw()
+	})
+
+	xui.ItemFill(hint(vCP.Handle, "禁用态与自定义预设"))
+	cpDis := ui.NewColorPicker(0, 0, 0, 0, vCP.Handle, ui.WithColorPickerValue("#22c55e"))
+	xui.ItemFill(cpDis)
+	cpDis.Enable(false)
 }
 
 // ===== 页 10: 导航1(命令面板 / 下拉菜单 / 右键菜单) =====

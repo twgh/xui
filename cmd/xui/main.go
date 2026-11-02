@@ -319,6 +319,15 @@ func main() {
 	}
 	cmd := rest[0]
 	args := rest[1:]
+	// 版本: -v / --version / version 三种写法等价。放在命令分派之前, 且不碰数据源
+	// (离线可用) —— 排查问题时第一句话就是"你装的哪个版本"。
+	if cmd == "-v" || cmd == "--version" || cmd == "version" {
+		if len(args) > 0 {
+			fatal("用法: xui version")
+		}
+		fmt.Println("xui " + displayVersion())
+		return
+	}
 	switch cmd {
 	case "init":
 		opts, err := parseInitArgs(args)
@@ -672,6 +681,7 @@ func usage() {
   xui list | xui search      列出/搜索组件
   xui view <组件...>         打印组件源码
   xui info                   显示 CLI / 项目环境信息
+  xui version                只打印版本(同 -v / --version; 离线可用, 不拉数据源)
 
 选项:
   -n, --name <项目名>   init: 新建项目目录
@@ -685,6 +695,7 @@ func usage() {
   -o, --offset <n>      list/search: 跳过前 n 个
   -c, --cwd <目录>      先切换到该目录, 后续相对路径都以它为准
   -s, --silent          只打印警告与错误
+  -v, --version         显示版本(本地构建显示 (devel) + 短 commit)
   -h, --help            显示本帮助(任何位置都能用)
 
 短选项也接受 -x=值 的写法(与 --long=值 一致), 例如 -p=src -l=5。
@@ -1238,6 +1249,36 @@ func cliVersion() string {
 	return bi.Main.Version
 }
 
+// displayVersion 给用户看的版本串: 发布版 = vX.Y.Z; 本地/源码构建 = (devel),
+// 有 VCS 信息时带短 commit, 便于确认"装的是不是刚提交的那版"。
+func displayVersion() string {
+	if v := cliVersion(); v != "" {
+		return v
+	}
+	bi, ok := rdebug.ReadBuildInfo()
+	if !ok {
+		return "(devel)"
+	}
+	rev, dirty := "", false
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			if len(s.Value) >= 7 {
+				rev = s.Value[:7]
+			}
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if rev == "" {
+		return "(devel)"
+	}
+	if dirty {
+		rev += "+dirty"
+	}
+	return "(devel) " + rev
+}
+
 func writeFileOrFatal(path string, data []byte) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		fatal("写入失败: %v", err)
@@ -1364,10 +1405,7 @@ func view(names []string) {
 
 // infoCommand 打印本机环境与项目状态(不拉 registry, 离线可用)。
 func infoCommand() {
-	ver := "(devel)"
-	if bi, ok := rdebug.ReadBuildInfo(); ok && bi.Main.Version != "" {
-		ver = bi.Main.Version
-	}
+	ver := displayVersion()
 	wd, _ := os.Getwd()
 	info("xui: %s", ver)
 	info("工作目录: %s", wd)
