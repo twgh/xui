@@ -282,7 +282,7 @@ func parseRegistry(desc string, data []byte) (*registry, error) {
 		return nil, fmt.Errorf("registry.json 没有组件条目 (%s)", desc)
 	}
 	if r.Runtime != "" && !isReleaseTag(r.Runtime) {
-		// 认不出的下限就当没有: 宁可不动用户依赖, 也不要 go get @一个不存在的版本。
+		// 认不出的配套版本就当没有: 宁可不动用户依赖, 也不要 go get @一个不存在的版本。
 		warn("registry.json 的 runtime %q 不是 vX.Y.Z, 忽略 (%s)", r.Runtime, desc)
 		r.Runtime = ""
 	}
@@ -739,7 +739,7 @@ func usage() {
 短选项也接受 -x=值 的写法(与 --long=值 一致), 例如 -p=src -l=5。
 
 运行时版本: 组件源码跟 main 分支, 而运行时 github.com/twgh/xui 只能按 tag 取 ——
-                        registry.json 的 runtime 字段声明这批组件要求的最低运行时版本,
+                        registry.json 的 runtime 字段是与这批组件配套的运行时版本,
                         add/update/init 装完组件会把项目 go.mod 的该依赖一起抬上去
                         (--dry-run 或 --no-install 时只打印命令, 不联网改依赖)
 
@@ -803,7 +803,7 @@ func initProject(dir string, force bool) {
 }
 
 // scaffoldUI 写 ui 目录: theme.go + DESIGN.md + 基础组件。普通 init 与 init -n 共用。
-// noInstall = 不联网动 go.mod(运行时下限只打印命令)。
+// noInstall = 不联网动 go.mod(配套运行时版本只打印命令)。
 func scaffoldUI(dir string, force, noInstall bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("创建目录失败: %v", err)
@@ -972,11 +972,11 @@ func runGo(dir string, args ...string) error {
 	return err
 }
 
-// ---------------------------------------------------------------- 运行时版本下限
+// ---------------------------------------------------------------- 配套运行时版本
 
 // runtimeModule 是组件源码 import 的运行时模块。组件从 main 现拉、运行时只能按 tag 取:
 // main 上的组件用了新加的运行时助手而项目还钉着旧 tag 时, 装完直接 undefined 编译不过。
-// 下限写在 registry.json 的 runtime 字段 —— 它和组件是同一次下发的, 所以一定对得上。
+// 配套版本写在 registry.json 的 runtime 字段 —— 它和组件是同一次下发的, 所以一定对得上。
 const runtimeModule = "github.com/twgh/xui"
 
 // goGetModule 是测试缝: 单测换成桩, 不依赖网络。
@@ -1093,7 +1093,7 @@ func versionBefore(a, b string) bool {
 	}
 }
 
-// ensureRuntime 把项目 go.mod 的运行时依赖抬到 registry 声明的下限。
+// ensureRuntime 把项目 go.mod 的运行时依赖抬到 registry 声明的配套版本。
 // 只在真正写文件的路径上调用(add/update/init 的写入分支); dryRun 只预览,
 // autoInstall=false(init --no-install)时只打印要跑的那条命令。
 func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
@@ -1102,7 +1102,7 @@ func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 	}
 	gm := findGoMod(uiDir)
 	if gm == "" {
-		info("没找到 go.mod, 跳过运行时版本检查 (这批组件要求 %s %s)", runtimeModule, floor)
+		info("没找到 go.mod, 跳过运行时版本检查 (配套运行时是 %s %s)", runtimeModule, floor)
 		return
 	}
 	module, ver, replaced, err := goModRuntimePin(gm)
@@ -1116,7 +1116,7 @@ func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 		return
 	case replaced:
 		// 本地联调(replace 到工作副本)时版本由开发者自己管, 抬 require 只会误导。
-		info("%s 在 go.mod 里被 replace, 运行时版本由你自己管 (这批组件要求 %s)", runtimeModule, floor)
+		info("%s 在 go.mod 里被 replace, 运行时版本由你自己管 (配套运行时是 %s)", runtimeModule, floor)
 		return
 	case !versionBefore(ver, floor):
 		return
@@ -1130,7 +1130,7 @@ func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 		return
 	}
 	if !autoInstall {
-		info("这批组件要求 %s %s (当前 %s); 本次不联网改依赖, 自己跑: go get %s@%s",
+		info("与这批组件配套的运行时是 %s %s (当前 %s); 本次不联网改依赖, 自己跑: go get %s@%s",
 			runtimeModule, floor, from, runtimeModule, floor)
 		return
 	}
@@ -1577,7 +1577,7 @@ func add(opts componentOptions) {
 		diffFiles(src, reg, order, opts.uiDir, opts.diffFile)
 	default:
 		install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
-		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到这批组件的下限。
+		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
 		ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
 	}
 }
@@ -1603,7 +1603,7 @@ func update(opts componentOptions) {
 		diffFiles(src, reg, order, opts.uiDir, opts.diffFile)
 	default:
 		install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
-		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到这批组件的下限。
+		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
 		ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
 	}
 }
@@ -2377,7 +2377,7 @@ xui list             # 列出可用组件
 
 CLI 逐个比对内容: 本地没有则创建、一致则跳过、被改过则警告跳过; 确认丢弃本地改动时加
 -o/--overwrite。组件目录不是 ui/ 时, 用 -p <目录> 指定(相对项目根)。
-装完组件, CLI 会把 go.mod 里的 github.com/twgh/xui 抬到这批组件要求的最低运行时版本
+装完组件, CLI 会把 go.mod 里的 github.com/twgh/xui 抬到与这批组件配套的运行时版本
 (组件源码跟仓库最新, 运行时按 tag 取); 离线或 --no-install 时只打印那条命令, 不动你的 go.mod。
 
 ## 最小用法
@@ -2436,7 +2436,7 @@ xui list
 ~~~
 
 CLI 不会覆盖被改过的文件; 确认丢弃本地改动时加 -o/--overwrite。
-装完组件, CLI 会把项目 go.mod 里的 github.com/twgh/xui 抬到这批组件要求的最低运行时版本
+装完组件, CLI 会把项目 go.mod 里的 github.com/twgh/xui 抬到与这批组件配套的运行时版本
 (组件源码跟仓库最新、运行时按 tag 取); 离线时只打印那条命令, 不动 go.mod。
 
 ## 组件速用

@@ -14,8 +14,8 @@
     "runtime": {
       "type": "string",
       "pattern": "^v\\d+\\.\\d+\\.\\d+$",
-      "description": "本清单里的组件源码能编译通过的最低运行时版本(github.com/twgh/xui 的已发布 tag)。组件从 main 现拉、运行时只能按 tag 取, 组件用了 main 新增的运行时助手时这里必须抬到已存在的 tag —— CLI 的 add/update/init 据此把项目 go.mod 的依赖一起抬上去。",
-      "$comment": "运行时新增导出符号时: 先打 tag, 再把本字段改成那个 tag(同一批)。CI 用这个 tag 的运行时逐组件编译, 没抬就会红。"
+      "description": "与本清单里的组件源码配套的运行时版本(github.com/twgh/xui 的已发布 tag), 同时是组件能编译通过的最低版本。组件从 main 现拉、运行时只能按 tag 取, 所以每次发布都要把它抬成刚发的那个 tag —— CLI 的 add/update/init 据此把项目 go.mod 的依赖一起抬上去。",
+      "$comment": "发布流程: 打完 tag 后同一批把本字段改成那个 tag(哪怕这次只改了 CLI, 没有新运行时符号)。CI 用这个 tag 的运行时逐组件编译, 落后于最新 tag 就等于让用户少拿运行时的修复。"
     },
     "components": {
       "type": "object",

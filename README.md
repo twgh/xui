@@ -336,8 +336,10 @@ sha256。之后升级时逐文件比对:
 **运行时版本**: 组件源码跟 `main`(永远最新), 而运行时 `github.com/twgh/xui` 是 Go 模块依赖、
 **只能按 tag 取** —— 两者对不上就是编译错误: 组件用了本批新增的运行时助手(如 `xui.PresenceOnce`)
 而项目还钉着旧 tag, 报 `undefined: xui.PresenceOnce`。所以 `registry.json` 顶层声明 `runtime`
-(这批组件要求的最低运行时版本), `add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖
-抬到它(等价于 `go get github.com/twgh/xui@<tag>`, `go.sum` 一起更新), 升级完直接 `go build` 就行。
+= **与 main 上这批组件配套的运行时版本**(每次发布都会抬成刚发的 tag, 只改 CLI 也抬),
+`add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖抬到它(等价于
+`go get github.com/twgh/xui@<tag>`, `go.sum` 一起更新), 升级完直接 `go build` 就行 ——
+运行时的修复(比如过渡表泄漏)也随之一路带上, 不用你再 `go get -u`。
 四种情况不动你的依赖: `--dry-run` 与 `init --no-install` 只打印命令; `go.mod` 里把这个模块
 `replace` 到本地工作副本时一切以你的 replace 为准; 项目里找不到 `go.mod` 时只提示。
 想自己锁版本: 先 `go get github.com/twgh/xui@<你选的 tag>` 再跑 `xui update` 即可。

@@ -26,9 +26,15 @@
   - **查最新 tag 用 `go list -m github.com/twgh/xui@latest`** —— 查**包路径** `.../cmd/xui` 会一无所获(cmd/xui 不是独立模块), 这条是实测踩出来的; 走 go 命令而不是抓 tag 接口, 用的就是用户机器上的 GOPROXY, 与他 `@latest` 的结果(包括缓存滞后)一致。
   - **测试**: `cliInstallSpec` / `isTempBuildPath` 表驱动; `selfUpdateAt(exe, current, target, checkOnly) error` 是可测内核(seams: `goInstall` / `goListLatest` / `goBinDir` / `readBinaryVersion` 都是 var), 覆盖 默认目标/幂等/版本没变要说代理滞后/改名让路重试/网络失败给手动命令/临时构建拒绝/无 GOBIN 不谎报。实跑三条: `--check` 报 (devel) vs v0.8.0、`go run ./cmd/xui self-update` 被拒、`xui self-update v0.8.0` 升 GOBIN 副本并核对新二进制版本。
   - **文档**: README 安装/升级与命令表、DESIGN 第五节命令表、CLI 帮助、包注释。
+- ✅ **`registry.runtime` 语义改成「配套版本」, 每次发布都抬(2026-11-02, v0.8.1)**:
+  - **报障**: 用户 `xui update -o` 后 CLI 自己升到 v0.8.1, 但项目 `go.mod` 的运行时只升到 v0.8.0(= 当时 `runtime` 的值), 只能再手动 `go get -u github.com/twgh/xui`。
+  - **根因**: 字段按"组件**要求的最低**运行时版本"来定 —— v0.8.1 只改 CLI、没新增运行时符号, 组件确实不需要它, 于是"够用就不抬"。但组件跟 `main` 走, 用户拿的是最新组件, 运行时停在旧 tag 就等于**少拿运行时的修复**(过渡表泄漏这类只改运行时的改动不会触发下限抬升)。
+  - **改法**: 语义定为「与 main 上这批组件**配套的**运行时版本」= 刚发布的那个 tag,**每次发布都抬, 只改 CLI 也抬**;CLI 代码逻辑一行没动(目标本来就读 `runtime`), 改的是数据 + 措辞 + 发布流程。顺序仍是"先打 tag 再改 runtime"(写早了 `go get` 拉不到, CI 红)。
+  - **同步**: `registry.json` → `v0.8.1`、schema 的 description/$comment、CLI 帮助与 `ensureRuntime` 三条提示语("配套运行时是 …")、README「运行时版本」段、DESIGN 第五节、AGENTS 硬规则、`init` 下发的 README/AGENTS 模板。
+  - **验收**: `go vet/test ./cmd/xui` 绿;下限回归 —— `require=github.com/twgh/xui@v0.8.1`(goproxy.cn 还没收录, 用 `GOPROXY=direct`)后 `add --all` + `go build ./ui` 通过, 证明"配套 v0.8.1"编得过。
 - ✅ **运行时版本下限: registry.runtime + CLI 自动抬 go.mod(2026-11-02)**:
   - **背景**: 组件跟 `main`, 运行时 `github.com/twgh/xui` 只能按 tag 取 —— 组件用了 main 新增的运行时助手(如 `xui.PresenceOnce`)而用户项目还钉着旧 tag 时, `add` 装得成功、`go build` 直接 `undefined`。v0.8.0 批次就踩过(this: toast/drawer/navigationmenu/screentoast 都要 PresenceOnce, 而 v0.7.1 tag 里没有)。
-  - **做法**: `registry.json` 顶层加 `runtime`(= 这批组件要求的最低运行时 tag, schema 同步 + `parseRegistry` 校验格式, 认不出就忽略并警告); CLI 新增 `ensureRuntime(uiDir, floor, dryRun, autoInstall)` —— 从组件目录向上找 `go.mod`, 解析 `github.com/twgh/xui` 的 require/replace, 低于下限就 `go get github.com/twgh/xui@<tag>`(go.sum 一起更新)。挂在 `add`/`update` 的写入分支与 `scaffoldUI`(经 `add`)上。
+  - **做法**: `registry.json` 顶层加 `runtime`(起初定成"这批组件要求的最低运行时 tag",**同日改成"与 main 组件配套的版本 = 最新 tag",见上面那条**;schema 同步 + `parseRegistry` 校验格式, 认不出就忽略并警告); CLI 新增 `ensureRuntime(uiDir, floor, dryRun, autoInstall)` —— 从组件目录向上找 `go.mod`, 解析 `github.com/twgh/xui` 的 require/replace, 低于目标就 `go get github.com/twgh/xui@<tag>`(go.sum 一起更新)。挂在 `add`/`update` 的写入分支与 `scaffoldUI`(经 `add`)上。
   - **不动用户依赖的四种情况**: `--dry-run` 只预览、`init --no-install` 只打印命令、`go.mod` 把该模块 `replace` 到本地工作副本(开发者自己管版本)、找到的 `go.mod` 就是 xui 仓库自己(在仓库里跑 CLI)。
   - **CI 才算得住**: `registry-closure` 逐组件编译**不再 replace 到工作区**, 改成 `go mod edit -require=github.com/twgh/xui@<registry.runtime>` —— 组件引用未发布 tag 的运行时符号时直接编不过, 把"先打 tag 再上 main"变成机器保证(以前 replace 写法等于用本地最新运行时, 永远测不出这个洞)。
   - **测试**: `TestMain` 默认把 `goGetModule` 换成桩(单测绝不联网), `stubGoGet` 记录 dir+spec; 覆盖 add 抬版本/dry-run 不动/够新不动/更高不动/replace 不动/xui 自身 go.mod 不动/缺 require 也抬, 外加 `goModRuntimePin` 与 `versionBefore`/`isReleaseTag`/`parseRegistry(runtime)` 表驱动。端到端实测: 钉 v0.7.0 的临时项目 `xui add checkbox` 后 go.mod 变 v0.8.0 且 `go build ./ui` 通过。
@@ -987,11 +993,14 @@ XUI_REGISTRY=D:/GOProject/src/ui/xui "$TEMP/xui-cli.exe" add --all -p ui
 go mod tidy && go build -mod=mod ./ui
 ```
 
-### 发布流程(打 tag 之前)
+### 发布流程(打 tag 之后同一批)
 
-- **运行时新增导出符号(`presence.go` / `anim.go` / `theme.go` / `helpers.go` 等)时, `registry.json` 的 `runtime` 必须改成"包含该符号的那个已发布 tag"** —— 顺序是: 先发布 tag, 再在同一批把 `runtime` 抬上去。写早了 CI 会红(`go get` 拉不到不存在的 tag / 组件用了未发布符号), 这是刻意的。
-- 只改组件源码不动运行时 → 不用打 tag(组件跟 `main` 下发); 改 CLI 行为才需要 tag(`go install ...@latest` 只认 tag)。
-- 版本示例(`README` 里的 `@vX.Y.Z` 与 `XUI_REGISTRY=.../vX.Y.Z`)随 tag 一起更新; notes 草稿写进 `.verify/` 给用户过目后才推送。
+- **`registry.json` 的 `runtime` 抬成刚发的 tag** —— 它的语义是「与 main 上这批组件**配套**的运行时版本」, 不只是"组件编得过"的最低要求:落后就等于让用户少拿运行时的修复(过渡表泄漏这类只改运行时的修复, 组件不引用新符号就不会触发下限抬升, 但用户照样该拿到)。**只改 CLI、没动组件也照样抬**(v0.8.1 起)。
+  - 顺序: 先打 tag 再改 `runtime`(写早了 `go get` 拉不到不存在的 tag, CI 直接红, 是刻意的)。
+  - CI 的 `registry-closure` 用这个 tag 的运行时逐组件编译(不 replace 到工作区), 所以 `runtime` 落后 / 组件引用未发布符号都会红。
+  - 抬完跑一次下限回归: `go mod edit -require=github.com/twgh/xui@<新 tag>` + `add --all` + `go build ./ui`(代理可能还没收录新 tag, 必要时 `GOPROXY=direct`)。
+- 只改组件源码不动运行时 → 不用打 tag(组件跟 `main` 下发); 改 CLI 行为才需要 tag(`go install ...@latest` 只认 tag)。版本号: **组件/运行时/API 变更走 minor, 只有 CLI 与文档变更走 patch**(v0.8.1 就是这么定的)。
+- 版本示例(`README` 里的 `@vX.Y.Z` 与 `XUI_REGISTRY=.../vX.Y.Z`)与 `fallbackXuiVersion` 随 tag 一起更新; notes 草稿写进 `.verify/` 给用户过目后才推送。
 
 ### CLI registry 维护注意
 
