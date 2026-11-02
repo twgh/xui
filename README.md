@@ -263,8 +263,10 @@ go install github.com/twgh/xui/cmd/xui@latest
 ```
 
 装一次后直接敲 `xui ...`。二进制在 `$(go env GOPATH)/bin`(Windows 默认
-`%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。升级重跑同一条命令;
-`@latest` 偶尔会被模块代理缓存拖旧, 想立刻用某个版本就直接写 tag(如 `@v0.8.0`)。
+`%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。升级重跑同一条命令,
+或者直接用 CLI 自己: `xui self-update`(核对靠跑新二进制拿版本, 不只看命令是否报错);
+`xui self-update --check` 只比较当前版本与 `@latest`。`@latest` 偶尔会被模块代理缓存拖旧,
+想立刻用某个版本就直接写 tag(`xui self-update v0.8.0`, 也支持 `main` / commit 短哈希)。
 
 ### 命令
 
@@ -285,6 +287,9 @@ xui search -q table     # 按组件名搜索(等价于 list -q table)
 xui view button         # 打印组件源码
 xui info                # 显示 CLI / 项目环境信息
 xui version             # 只打印版本(同 -v / --version; 离线可用, 不拉数据源)
+xui self-update         # 升级 CLI 自己(go install ...@latest)
+xui self-update v0.8.0  # 升到指定 tag(也可给 main / HEAD / commit 短哈希)
+xui self-update --check # 只比较当前与 @latest, 不安装
 ```
 
 组件名统一是 shadcn 文档的 kebab-case(`navigation-menu` / `date-picker` / `scroll-area`), 但不区分大小写、也可省略连字符与下划线: `xui add navigationmenu`、`xui add datepicker` 与 `xui add navigation-menu`、`xui add date-picker` 等价(只有唯一的归一化结果才接受, 不会按前缀猜; 输错时会提示最接近的组件名)。

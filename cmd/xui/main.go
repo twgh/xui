@@ -15,6 +15,8 @@
 //	go run github.com/twgh/xui/cmd/xui@latest view button
 //	go run github.com/twgh/xui/cmd/xui@latest info
 //
+// 装好以后升级 CLI 自己: xui self-update(或 xui self-update --check 只看)。
+//
 // 通用选项: -c/--cwd <目录> 先切目录, -s/--silent 只打印警告与错误。
 //
 // 数据源默认是仓库 main 分支(组件永远最新), 并按"直连 → Gitee 镜像 → GitCode 镜像 →
@@ -376,6 +378,23 @@ func main() {
 			fatal("用法: xui info (不接受参数)")
 		}
 		infoCommand()
+	case "self-update":
+		// 只认一个可选版本参数与 --check; 别在这里发明新语法。
+		var target string
+		checkOnly := false
+		for _, a := range args {
+			switch {
+			case a == "--check":
+				checkOnly = true
+			case strings.HasPrefix(a, "-"):
+				fatal("未知选项 %s (用法: xui self-update [版本|--check])", a)
+			case target != "":
+				fatal("用法: xui self-update [版本|--check] (只能给一个版本)")
+			default:
+				target = a
+			}
+		}
+		selfUpdate(target, checkOnly)
 	default:
 		fatal("未知命令 %q (见 xui --help)", cmd)
 	}
@@ -693,6 +712,8 @@ func usage() {
   xui view <组件...>         打印组件源码
   xui info                   显示 CLI / 项目环境信息
   xui version                只打印版本(同 -v / --version; 离线可用, 不拉数据源)
+  xui self-update [版本]     升级 CLI 自己(默认 @latest; 也可给 tag / main / commit)
+                             --check 只比较当前与最新 tag, 不安装
 
 选项:
   -n, --name <项目名>   init: 新建项目目录
@@ -914,6 +935,16 @@ func installGoModules(dir string) error {
 	return runGo(dir, "mod", "tidy")
 }
 
+// runGoOutput 跑 go 子命令并取标准输出(给 `go env` / `go list` 这类查询用)。
+func runGoOutput(args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", args...)
+	cmd.Env = append(os.Environ(), "GOWORK=off")
+	out, err := cmd.Output()
+	return string(out), err
+}
+
 // runGo 在 dir 里跑 go 子命令。GOWORK=off: 避免项目被父目录的 go.work 接管,
 // 依赖解析只按它自己的 go.mod(否则拿到的版本是工作区里的那份, 结果不可信)。
 func runGo(dir string, args ...string) error {
@@ -1100,6 +1131,240 @@ func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 		return
 	}
 	info("运行时已升到 %s (go.mod 与 go.sum 一起更新)", floor)
+}
+
+// ---------------------------------------------------------------- CLI 自我升级
+
+// cliModule 是 CLI 自己的包路径(go install 的目标)。
+const cliModule = runtimeModule + "/cmd/xui"
+
+// goInstall / goListLatest / goBinDir / readBinaryVersion 是测试缝: 单测换成桩,
+// 既不碰网络也不动本机 GOBIN。
+var (
+	goInstall         = func(spec string) error { return runGo(".", "install", spec) }
+	goListLatest      = newestTagViaGoList
+	goBinDir          = queryGoBinDir
+	readBinaryVersion = binaryVersion
+)
+
+// semverOK 只问"能不能解析出三段数字"(伪版本/裸版本号都算)。
+func semverOK(v string) bool { _, _, _, ok := semverParts(v); return ok }
+
+// isHexCommit 认 7~40 位十六进制的 commit 哈希。
+func isHexCommit(s string) bool {
+	if len(s) < 7 || len(s) > 40 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f', r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// cliInstallSpec 把用户给的版本规范成 `go install <pkg>@<版本>` 的目标:
+// 空/latest 走 @latest, main/HEAD 走分支或引用, vX.Y.Z 与伪版本原样, 裸的 0.8.0 补 v,
+// 7~40 位十六进制当 commit; 其余直接报错 —— 别跑一条注定失败的命令。
+func cliInstallSpec(target string) (string, error) {
+	t := strings.TrimPrefix(strings.TrimSpace(target), "@")
+	switch {
+	case t == "" || strings.EqualFold(t, "latest"):
+		t = "latest"
+	case strings.ContainsAny(t, " \t/\\"):
+		return "", fmt.Errorf("版本 %q 里有空格或路径分隔符", target)
+	case strings.EqualFold(t, "main") || strings.EqualFold(t, "master") || strings.EqualFold(t, "HEAD"):
+	case isReleaseTag(t):
+	case strings.HasPrefix(t, "v") && semverOK(t): // 伪版本 vX.Y.Z-0.<日期>-<hash>
+	case semverOK(t): // 0.8.0 -> v0.8.0
+		t = "v" + t
+	case isHexCommit(t):
+	default:
+		return "", fmt.Errorf("认不出版本 %q (支持 latest / main / HEAD / vX.Y.Z / commit 短哈希)", target)
+	}
+	return cliModule + "@" + t, nil
+}
+
+// isTempBuildPath 认出 go run / go test 的一次性构建产物(路径里有 go-buildXXXX 段)。
+// 那种二进制本来就没"安装"过, 自我升级没有意义(升级完 GOBIN 里那份, 下次还是 go run)。
+// 只认这个标记, 不认"在临时目录下": 有人把 xui 装在自定义的 Temp 里, 不能把他挡掉。
+func isTempBuildPath(exe string) bool {
+	return strings.Contains(filepath.ToSlash(exe), "/go-build")
+}
+
+// samePath 判断两个路径是不是同一个文件(Windows 不区分大小写)。
+func samePath(a, b string) bool {
+	normalize := func(p string) string {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			abs = filepath.Clean(p)
+		}
+		if runtime.GOOS == "windows" {
+			return strings.ToLower(abs)
+		}
+		return abs
+	}
+	return normalize(a) == normalize(b)
+}
+
+// goBinDir 返回 go install 的落地目录: GOBIN, 没有就 GOPATH 第一条 + /bin。
+func queryGoBinDir() (string, error) {
+	if out, err := runGoOutput("env", "GOBIN"); err == nil {
+		if v := strings.TrimSpace(out); v != "" {
+			return v, nil
+		}
+	}
+	out, err := runGoOutput("env", "GOPATH")
+	if err != nil {
+		return "", err
+	}
+	list := filepath.SplitList(strings.TrimSpace(out))
+	if len(list) == 0 || list[0] == "" {
+		return "", fmt.Errorf("`go env` 没给出 GOBIN 或 GOPATH")
+	}
+	return filepath.Join(list[0], "bin"), nil
+}
+
+// newestTagViaGoList 问模块代理 "@latest 现在解析到哪个版本"。查的是**模块路径**
+// (github.com/twgh/xui)而不是 CLI 的包路径 —— cmd/xui 不是独立模块, 查它会一无所获。
+// 用 go list 而不是抓 tag 接口: 走的就是用户机器上的 GOPROXY, 结果与他 go install @latest 一致
+// (包括代理缓存滞后这一点)。
+func newestTagViaGoList() (string, error) {
+	out, err := runGoOutput("list", "-m", runtimeModule+"@latest")
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(out)
+	if len(fields) < 2 {
+		return "", fmt.Errorf("没查到 %s 的 @latest 版本", runtimeModule)
+	}
+	return fields[len(fields)-1], nil
+}
+
+// retireForReplace 把目标 exe 改名成 .old, 腾出路径让 go install 写新文件。
+// Windows 允许改名正在运行的映像但不允许覆写它, Linux 能改名不能覆写(ETXTBSY),
+// 所以"改名让路"是两边通用的办法; 改名失败就回 false 让调用方报错。
+func retireForReplace(path string) bool {
+	old := path + ".old"
+	if err := os.Remove(old); err != nil && !os.IsNotExist(err) {
+		return false
+	}
+	return os.Rename(path, old) == nil
+}
+
+// binaryVersion 跑一次指定二进制取版本串(升级后核对新文件是否真到位)。
+func binaryVersion(path string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, "version").Output()
+	if err != nil {
+		return "", err
+	}
+	line := strings.TrimSpace(string(out))
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = strings.TrimSpace(line[:i])
+	}
+	if line == "" {
+		return "", fmt.Errorf("%s version 没有输出", path)
+	}
+	return strings.TrimPrefix(line, "xui "), nil
+}
+
+// selfUpdate 升级 CLI 本体: 先弄清"我是谁"(可执行文件路径、当前版本),
+// 再把流程交给可测内核 selfUpdateAt。
+func selfUpdate(target string, checkOnly bool) {
+	exe, err := os.Executable()
+	if err != nil {
+		fatal("取不到当前可执行文件, 没法自我升级: %v (手动跑: go install %s@latest)", err, cliModule)
+	}
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	if err := selfUpdateAt(exe, displayVersion(), target, checkOnly); err != nil {
+		fatal("%v", err)
+	}
+}
+
+// selfUpdateAt 是自我升级的流程。默认目标 latest, 也可以指定 tag / main / commit。
+// 两个坑: ① 正在运行的 exe 不许就地覆写(Windows 拒绝、Linux 是 ETXTBSY) —— go install
+// 失败时把旧文件改名让路再试一次; ② 成没成以"跑新二进制拿到的版本"为准,
+// 不拿"命令没报错"当证据(go install 失败也可能只留下半截状态)。
+func selfUpdateAt(exe, current, target string, checkOnly bool) error {
+	if isTempBuildPath(exe) {
+		return fmt.Errorf("现在跑的是临时构建(%s), 它不是安装出来的文件, 不能自我升级; 装一次以后就能直接敲 xui: go install %s@latest", exe, cliModule)
+	}
+	dir, err := goBinDir()
+	if err != nil {
+		warn("取不到 GOBIN/GOPATH: %v", err)
+	}
+	installed := ""
+	if dir != "" {
+		installed = filepath.Join(dir, "xui"+exeExt())
+	}
+	if checkOnly {
+		newest, err := goListLatest()
+		if err != nil {
+			return fmt.Errorf("查询最新版本失败: %w", err)
+		}
+		info("当前 CLI: %s", current)
+		info("最新 tag: %s", newest)
+		switch {
+		case !isReleaseTag(current):
+			info("本地构建(%s)不算发布版; 想装正式版: xui self-update", current)
+		case current == newest:
+			info("已是最新")
+		case versionBefore(current, newest):
+			info("可以升级: xui self-update %s", newest)
+		}
+		return nil
+	}
+	spec, err := cliInstallSpec(target)
+	if err != nil {
+		return err
+	}
+	info("升级 CLI: go install %s ...", spec)
+	if err := goInstall(spec); err != nil {
+		if installed == "" || !samePath(exe, installed) || !retireForReplace(installed) {
+			return fmt.Errorf("升级失败: %w (手动跑: go install %s)", err, spec)
+		}
+		info("旧文件正被占用, 已改名让路, 重试 ...")
+		if err := goInstall(spec); err != nil {
+			return fmt.Errorf("升级失败: %w (手动跑: go install %s)", err, spec)
+		}
+	}
+	if installed == "" {
+		info("go install 已执行, 但取不到 GOBIN, 没法核对新版本")
+		return nil
+	}
+	if _, err := os.Stat(installed); err != nil {
+		return fmt.Errorf("go install 跑完了, 但 %s 不存在(检查 PATH / GOBIN): %w", installed, err)
+	}
+	next, err := readBinaryVersion(installed)
+	if err != nil {
+		warn("升级命令跑完了, 但核对新版本失败: %v", err)
+		return nil
+	}
+	switch {
+	case next == current:
+		info("版本没变(%s): 模块代理的 @latest 可能滞后, 稍后再试或直接指定 tag (xui self-update v0.8.0)", current)
+	default:
+		info("CLI 已升级 %s → %s (%s)", current, next, installed)
+		info("本次运行用的还是旧进程, 下次调用生效")
+	}
+	if !samePath(exe, installed) {
+		warn("当前运行的是 %s, 不在 GOBIN(%s): 刚升级的是 GOBIN 那份, 确认 shell 里敲的 xui 指向它(where xui / echo $PATH)", exe, dir)
+	}
+	return nil
+}
+
+// exeExt 返回当前平台的可执行文件后缀。
+func exeExt() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
 }
 
 // validateProjectName 只接受单级目录名(项目在当前目录下创建); 想换模块路径改 go.mod。

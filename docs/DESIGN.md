@@ -454,6 +454,8 @@ xui search -q table      # 按名称搜索(等价于 list -q table)
 xui view button          # 打印组件源码
 xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
 xui version              # 只打印版本(同 -v / --version; 离线可用, 不拉数据源)
+xui self-update [版本]   # 升级 CLI 自己(默认 @latest; 也可 tag / main / commit)
+xui self-update --check  # 只比较当前与 @latest 的版本, 不安装
 ```
 
 - **默认不覆盖你改过的文件**:逐个比对内容 —— 本地没有则创建、内容一致则跳过、被改过则警告跳过;确认要丢掉本地改动时加 `-o/--overwrite`。这是 copy-not-install 的前提:代码归你。

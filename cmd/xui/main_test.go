@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"go/parser"
 	"go/token"
 	"io"
@@ -760,13 +761,6 @@ func TestHelpFlagAnywhere(t *testing.T) {
 	}
 }
 
-// samePath 规避 Windows 下大小写/8.3 短路径差异, 只用于测试断言。
-func samePath(a, b string) bool {
-	aa, err1 := filepath.Abs(a)
-	bb, err2 := filepath.Abs(b)
-	return err1 == nil && err2 == nil && strings.EqualFold(filepath.Clean(aa), filepath.Clean(bb))
-}
-
 func TestUnifiedDiff(t *testing.T) {
 	d := unifiedDiff("ui/a.go", "components/a.go", "a\nb\n", "a\nc\n")
 	for _, want := range []string{"--- ui/a.go", "+++ components/a.go", "-b\n", "+c\n", " a\n"} {
@@ -1243,3 +1237,239 @@ func TestParseRegistryRuntime(t *testing.T) {
 	}
 }
 
+// self-update 的目标串: 空/latest 归一成 @latest, 分支与 commit 原样,
+// 裸版本号补 v, 认不出的直接报错(别跑一条注定失败的 go install)。
+func TestCliInstallSpec(t *testing.T) {
+	cases := []struct {
+		target  string
+		want    string
+		wantErr bool
+	}{
+		{"", cliModule + "@latest", false},
+		{"latest", cliModule + "@latest", false},
+		{"@latest", cliModule + "@latest", false},
+		{"LATEST", cliModule + "@latest", false},
+		{"main", cliModule + "@main", false},
+		{"HEAD", cliModule + "@HEAD", false},
+		{"v0.8.1", cliModule + "@v0.8.1", false},
+		{"0.8.1", cliModule + "@v0.8.1", false},
+		{"v0.8.1-0.20261102101010-f7072ad01234", cliModule + "@v0.8.1-0.20261102101010-f7072ad01234", false},
+		{"f7072ad", cliModule + "@f7072ad", false},
+		{"v0.8", "", true},
+		{"v1.2.3.4", "", true},
+		{"not a version", "", true},
+		{"../elsewhere", "", true},
+		{"zzzzzzz", "", true},
+	}
+	for _, c := range cases {
+		got, err := cliInstallSpec(c.target)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("目标 %q 应报错, 实为 %q", c.target, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("目标 %q 不该报错: %v", c.target, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("目标 %q => %q, 期望 %q", c.target, got, c.want)
+		}
+	}
+}
+
+// 临时构建(go run / go test 的产物)认得出来, 装在自定义目录里的正常二进制不误判。
+func TestIsTempBuildPath(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/tmp/go-build123456/b001/exe/xui", true},
+		{"C:/Users/u/AppData/Local/Temp/go-build7/b001/exe/xui.exe", true},
+		{"/home/u/go/bin/xui", false},
+		{"C:/Users/u/go/bin/xui.exe", false},
+		// 单纯"在临时目录下"不足以判定是临时构建: 有人就把二进制放 Temp 里试。
+		{filepath.ToSlash(filepath.Join(os.TempDir(), "xui-check", "xui.exe")), false},
+	}
+	for _, c := range cases {
+		if got := isTempBuildPath(c.path); got != c.want {
+			t.Errorf("isTempBuildPath(%q) = %v, 期望 %v", c.path, got, c.want)
+		}
+	}
+}
+
+// stubSelfUpdate 把自我升级依赖的外部世界(go install / 查最新 tag / GOBIN / 读新版本)
+// 全换成桩; installErrs 依次决定前几次 go install 的成败。
+func stubSelfUpdate(t *testing.T, binDir, newest, nextVer string, installErrs ...error) *[]string {
+	t.Helper()
+	origInstall, origList, origBin, origVer := goInstall, goListLatest, goBinDir, readBinaryVersion
+	t.Cleanup(func() {
+		goInstall, goListLatest, goBinDir, readBinaryVersion = origInstall, origList, origBin, origVer
+	})
+	var specs []string
+	step := 0
+	goInstall = func(spec string) error {
+		specs = append(specs, spec)
+		if step < len(installErrs) {
+			err := installErrs[step]
+			step++
+			if err != nil {
+				return err
+			}
+		}
+		if binDir == "" {
+			return nil
+		}
+		return os.WriteFile(filepath.Join(binDir, "xui"+exeExt()), []byte("binary"), 0o755)
+	}
+	goListLatest = func() (string, error) { return newest, nil }
+	if binDir == "" {
+		goBinDir = func() (string, error) { return "", errors.New("没有 GOBIN") }
+	} else {
+		goBinDir = func() (string, error) { return binDir, nil }
+	}
+	readBinaryVersion = func(string) (string, error) { return nextVer, nil }
+	return &specs
+}
+
+// --check 只比较版本, 一次 go install 都不跑。
+func TestSelfUpdateCheckOnly(t *testing.T) {
+	cases := []struct {
+		name, current, newest, wantOut string
+	}{
+		{"可以升级", "v0.8.0", "v0.9.9", "可以升级: xui self-update v0.9.9"},
+		{"已是最新", "v0.9.9", "v0.9.9", "已是最新"},
+		{"本地构建", "(devel)", "v0.9.9", "不算发布版"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			specs := stubSelfUpdate(t, filepath.Join(t.TempDir(), "bin"), c.newest, c.newest)
+			out := captureOutput(t, func() {
+				if err := selfUpdateAt("/home/u/go/bin/xui", c.current, "", true); err != nil {
+					t.Errorf("不该失败: %v", err)
+				}
+			})
+			if len(*specs) != 0 {
+				t.Errorf("--check 不该跑 go install, 实为 %v", *specs)
+			}
+			if !strings.Contains(out, c.wantOut) {
+				t.Errorf("输出缺少 %q, 实为 %q", c.wantOut, out)
+			}
+		})
+	}
+}
+
+// 升级成功: 跑 go install@目标, 然后以"新二进制的版本"为证据报结果;
+// 运行副本不在 GOBIN 时要额外提醒 PATH。
+func TestSelfUpdateUpgradesAndReportsNewVersion(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	specs := stubSelfUpdate(t, bin, "v0.9.9", "v0.9.9")
+	running := filepath.Join(t.TempDir(), "elsewhere", "xui"+exeExt())
+	out := captureOutput(t, func() {
+		if err := selfUpdateAt(running, "v0.8.0", "v0.9.9", false); err != nil {
+			t.Errorf("不该失败: %v", err)
+		}
+	})
+	if len(*specs) != 1 || (*specs)[0] != cliModule+"@v0.9.9" {
+		t.Fatalf("go install 目标不对: %v", *specs)
+	}
+	for _, want := range []string{"CLI 已升级 v0.8.0 → v0.9.9", "下次调用生效", "不在 GOBIN"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("输出缺少 %q, 实为 %q", want, out)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(bin, "xui"+exeExt())); err != nil {
+		t.Errorf("GOBIN 里应有新二进制: %v", err)
+	}
+}
+
+// @latest 常被模块代理拖旧: 装完版本没变要说清原因, 不能报"已升级"。
+func TestSelfUpdateReportsUnchangedVersion(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stubSelfUpdate(t, bin, "v0.8.0", "v0.8.0")
+	out := captureOutput(t, func() {
+		if err := selfUpdateAt(filepath.Join(bin, "xui"+exeExt()), "v0.8.0", "", false); err != nil {
+			t.Errorf("不该失败: %v", err)
+		}
+	})
+	if !strings.Contains(out, "版本没变(v0.8.0)") || !strings.Contains(out, "代理") {
+		t.Errorf("应说明 @latest 滞后, 实为 %q", out)
+	}
+	if strings.Contains(out, "已升级") {
+		t.Errorf("版本没变不许说已升级: %q", out)
+	}
+}
+
+// 正在运行的 exe 不许就地覆写: 第一次 go install 失败时改名让路重试一次。
+func TestSelfUpdateRetiresLockedBinaryAndRetries(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	installed := filepath.Join(bin, "xui"+exeExt())
+	if err := os.WriteFile(installed, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	specs := stubSelfUpdate(t, bin, "v0.9.9", "v0.9.9", errors.New("access denied"))
+	out := captureOutput(t, func() {
+		if err := selfUpdateAt(installed, "v0.8.0", "", false); err != nil {
+			t.Errorf("改名让路后应重试成功: %v", err)
+		}
+	})
+	if len(*specs) != 2 {
+		t.Fatalf("应重试一次 go install, 实为 %v", *specs)
+	}
+	if !strings.Contains(out, "改名让路") || !strings.Contains(out, "CLI 已升级") {
+		t.Errorf("输出不对: %q", out)
+	}
+	if _, err := os.Stat(installed + ".old"); err != nil {
+		t.Errorf("旧文件应被改名成 .old: %v", err)
+	}
+}
+
+// 失败路径: 报清楚的手动命令; 临时构建直接拒绝。
+func TestSelfUpdateFailures(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stubSelfUpdate(t, bin, "v0.9.9", "v0.9.9", errors.New("no network"), errors.New("no network"))
+	running := filepath.Join(t.TempDir(), "elsewhere", "xui"+exeExt())
+	err := selfUpdateAt(running, "v0.8.0", "v0.9.9", false)
+	if err == nil || !strings.Contains(err.Error(), "手动跑: go install "+cliModule+"@v0.9.9") {
+		t.Errorf("应给出手动升级命令, 实为 %v", err)
+	}
+
+	err = selfUpdateAt("/tmp/go-build7/b001/exe/xui", "v0.8.0", "", false)
+	if err == nil || !strings.Contains(err.Error(), "临时构建") {
+		t.Errorf("go run 的临时二进制应被拒绝, 实为 %v", err)
+	}
+
+	err = selfUpdateAt(running, "v0.8.0", "not-a-version", false)
+	if err == nil || !strings.Contains(err.Error(), "认不出版本") {
+		t.Errorf("非法目标应报错, 实为 %v", err)
+	}
+}
+
+// 取不到 GOBIN 时: go install 照跑, 但不谎报"已升级"。
+func TestSelfUpdateWithoutGoBin(t *testing.T) {
+	specs := stubSelfUpdate(t, "", "v0.9.9", "v0.9.9")
+	out := captureOutput(t, func() {
+		if err := selfUpdateAt("/home/u/go/bin/xui", "v0.8.0", "", false); err != nil {
+			t.Errorf("不该失败: %v", err)
+		}
+	})
+	if len(*specs) != 1 {
+		t.Fatalf("仍应跑一次 go install, 实为 %v", *specs)
+	}
+	if !strings.Contains(out, "取不到 GOBIN") || strings.Contains(out, "已升级") {
+		t.Errorf("输出不对: %q", out)
+	}
+}
