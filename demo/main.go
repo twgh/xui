@@ -85,10 +85,10 @@ var (
 	demoDark            bool // 当前亮/暗
 	demoThemeColor      int  // demoThemePresets 下标; -1 = 用 demoCustomPrimary
 	demoThemeColorLabel *ui.Label
-	demoCustomPrimary   xui.Color           // 颜色选择器挑的自定义主色(0 = 未用)
-	demoSwatches        []*widget.Element  // 主题弹窗里的色块, 切主题后要逐个重绘
-	demoThemePop        *ui.Popover         // 标题栏"主题"按钮弹的卡片
-	demoCustomPicker    *ui.ColorPicker     // 卡片里的取色器(切换预设色后同步显示)
+	demoCustomPrimary   xui.Color         // 颜色选择器挑的自定义主色(0 = 未用)
+	demoSwatches        []*widget.Element // 主题弹窗里的色块, 切主题后要逐个重绘
+	demoThemePop        *ui.Popover       // 标题栏"主题"按钮弹的卡片
+	demoCustomPicker    *ui.ColorPicker   // 卡片里的取色器(切换预设色后同步显示)
 )
 
 // 主题色预设: 默认(内置主题原样) + 5 个彩色主色。亮/暗各一套, 前景色跟随对比度。
@@ -2137,6 +2137,13 @@ func buildForm5Page(body *widget.LayoutEle) {
 		return 0
 	})
 
+	// ---- 左列: 选择卡片(整卡可点的单选) ----
+	_, vChoice := autoCard(colL.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "选择卡片(RadioGroup)", vChoice.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"点卡片任意位置与点指示器等价; 选中 = border-primary + bg-accent", vChoice.Handle))
+	buildRadioChoiceCards(vChoice.Handle)
+
 	// ---- 右列: Checkbox 三态 / 校验 ----
 	_, vCB := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "Checkbox 三态与校验", vCB.Handle))
@@ -2171,6 +2178,9 @@ func buildForm5Page(body *widget.LayoutEle) {
 		return 0
 	})
 
+	xui.ItemFill(hint(vCB.Handle, "带说明的字段(整卡可点)"))
+	buildCheckboxChoiceCard(vCB.Handle)
+
 	// ---- 右列: 颜色选择器 ----
 	_, vCP := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "颜色选择器(ColorPicker)", vCP.Handle))
@@ -2189,6 +2199,234 @@ func buildForm5Page(body *widget.LayoutEle) {
 	cpDis := ui.NewColorPicker(0, 0, 0, 0, vCP.Handle, ui.WithColorPickerValue("#22c55e"))
 	xui.ItemFill(cpDis)
 	cpDis.Enable(false)
+}
+
+// buildRadioChoiceCards 是 shadcn radio-group「选择卡片」示例: 三张套餐卡片, 整卡可点。
+// 单选指示器放在卡片右端, 卡片本体(标题/说明)点击走 radio.Select(), 与点指示器同一条路径。
+func buildRadioChoiceCards(parent int) {
+	plans := []struct{ value, title, desc string }{
+		{"plus", "Plus", "面向个人与小团队。"},
+		{"pro", "Pro", "面向成长中的团队。"},
+		{"enterprise", "Enterprise", "面向大型团队与企业。"},
+	}
+	grp := ui.NewRadioGroup(parent, ui.WithRadioGroupValue("pro"), ui.WithRadioGroupSpacing(12))
+	xui.ItemFill(grp)
+	cards := make([]*choiceCard, 0, len(plans))
+	for _, plan := range plans {
+		card := newChoiceCard(grp.Handle, 6)
+		if card == nil {
+			continue
+		}
+		cards = append(cards, card)
+		title := ui.NewLabel(0, 0, 0, 20, plan.title, card.Content().Handle).SetFontSize(14).SetMedium()
+		title.EnableMouseThrough(true) // 文本不接鼠标, 点击落到卡片
+		xui.ItemFill(title)
+		desc := ui.NewLabel(0, 0, 0, 20, plan.desc, card.Content().Handle).SetMuted().SetFontSize(14)
+		desc.EnableMouseThrough(true)
+		xui.ItemFill(desc)
+
+		radio := ui.NewRadio(0, 0, 0, 0, "", card.Handle())
+		xui.ItemSize(radio, 24, 24)
+		// 点击统一交给卡片: 指示器本身不参与命中, 避免父子各处理一次
+		radio.EnableMouseThrough(true)
+		// 卡片选中态底色是 Accent, 指示器的宿主底色要跟着走(否则元素矩形留下 Card 色方块)
+		radio.SetBackdrop(func(t *xui.Theme) xui.Color {
+			if radio.Selected() {
+				return t.Accent
+			}
+			return t.Card
+		})
+		radio.OnChange(func(on bool) { card.setActive(on) })
+		xui.ItemMarginTop(radio, 12)
+		card.onClick(func() {
+			radio.Select()
+			focusElement(radio.Handle)
+		})
+		grp.Attach(radio, plan.value)
+	}
+	// 选中变化时同步所有卡片: 条目分属不同父级(各自卡片), 原生互斥管不到别的卡片,
+	// 被取消选中的卡片不会收到 OnChange(false), 只能在这里统一刷。
+	grp.OnChange(func(v string) {
+		for i, plan := range plans {
+			if i < len(cards) {
+				cards[i].setActive(plan.value == v)
+			}
+		}
+	})
+	for i, plan := range plans {
+		if i < len(cards) && plan.value == grp.Value() {
+			cards[i].setActive(true)
+		}
+	}
+}
+
+// buildCheckboxChoiceCard 是 shadcn checkbox「描述」示例: 指示器在左, 标题 + 说明在右,
+// 点卡片任意位置切换勾选(整卡一个命中区, 与 shadcn 的 Field label 包裹一致)。
+func buildCheckboxChoiceCard(parent int) {
+	card := newChoiceCard(parent, 6)
+	if card == nil {
+		return
+	}
+	cb := ui.NewCheckbox(0, 0, 24, 24, "", card.Handle())
+	xui.ItemSize(cb, 24, 24)
+	cb.SetChecked(true)
+	cb.EnableMouseThrough(true) // 同单选卡片: 命中区只留卡片一层
+	cb.SetBackdrop(func(t *xui.Theme) xui.Color {
+		if cb.Checked() {
+			return t.Accent
+		}
+		return t.Card
+	})
+	cb.OnChange(func(checked bool) { card.setActive(checked) })
+	card.setActive(cb.Checked())
+	xui.ItemMarginTop(cb, 12)
+
+	title := ui.NewLabel(0, 0, 0, 20, "启用通知", card.Content().Handle).SetFontSize(14).SetMedium()
+	title.EnableMouseThrough(true) // 文本不接鼠标, 点击落到卡片
+	xui.ItemFill(title)
+	desc := ui.NewLabel(0, 0, 0, 20, "你可以随时开启或关闭通知。",
+		card.Content().Handle).SetMuted().SetFontSize(14)
+	desc.EnableMouseThrough(true)
+	xui.ItemFill(desc)
+	card.onClick(func() {
+		cb.Toggle()
+		focusElement(cb.Handle)
+	})
+}
+
+// choiceCard 是一张"整卡可选"的卡片(shadcn 选择卡片): rounded-lg border p-3,
+// 选中态 border-primary + bg-accent; 内部横向排 —— 内容列吃剩余宽度, 指示器放另一侧。
+//
+// 卡片自绘是因为选中态要同时改底色和边框; 点击区域是整张卡片(子项一律鼠标穿透),
+// 指示器本身不接鼠标, 由卡片统一调 Radio.Select / Checkbox.Toggle。
+type choiceCard struct {
+	card    *widget.LayoutEle
+	content *widget.LayoutEle
+	gap     int32
+	active  bool
+}
+
+// Handle 返回卡片元素句柄(子项都挂在卡片下)。
+func (c *choiceCard) Handle() int {
+	if c == nil || c.card == nil {
+		return 0
+	}
+	return c.card.Handle
+}
+
+// newChoiceCard 创建卡片骨架。左右内边距用元素 padding(Fill 子项才会按内容宽解析,
+// 见 DESIGN 129), 上下内边距用子项外边距(计入卡片的 Auto 高)。
+func newChoiceCard(parent int, gap int32) *choiceCard {
+	ele := widget.NewLayoutEle(0, 0, 0, 0, parent)
+	if ele == nil {
+		return nil
+	}
+	c := &choiceCard{card: ele, gap: gap}
+	// 布局元素默认是"纯排版壳"(鼠标穿透), 要自己当命中区必须显式关掉穿透
+	ele.EnableMouseThrough(false)
+	ele.EnableHorizon(true)
+	ele.EnableLayout(true)
+	ele.EnableBkTransparent(true)
+	ele.EnableAutoWrap(false)
+	ele.SetSpace(12)
+	ele.SetAlignV(xcc.Layout_Align_Top)
+	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	ele.SetPadding(12, 0, 8, 0)
+	ele.AddEvent_Paint(c.onPaint)
+	xui.AttachWindow(ele.Handle)
+	return c
+}
+
+// Content 返回卡片内的内容列(Weight 1, Auto 高)。首次调用时创建, 所以调用顺序决定
+// 指示器在左还是在右: 先建指示器 → 内容列在其右侧; 先取 Content() → 指示器在右端。
+func (c *choiceCard) Content() *widget.LayoutEle {
+	if c == nil {
+		return nil
+	}
+	if c.content == nil {
+		// col 会在列宽变化时把 Fill 子项锁 Fixed(横排 Weight 列的必要处理, 见 DESIGN 101/130)
+		c.content = col(c.card.Handle, 1, c.gap)
+		xui.ItemMarginTop(c.content, 12)
+		xui.ItemMarginBottom(c.content, 12)
+		c.content.EnableMouseThrough(true)
+	}
+	return c.content
+}
+
+// onClick 让整张卡片成为点击区域。子项都设了鼠标穿透, 事件在这里统一处理。
+func (c *choiceCard) onClick(fn func()) {
+	if c == nil {
+		return
+	}
+	c.card.SetCursor(choiceCardCursor())
+	c.card.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		xui.NotePointerPress() // 鼠标点出来的焦点不画键盘焦点环
+		return 0
+	})
+	c.card.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		if fn != nil {
+			fn()
+		}
+		return 0
+	})
+}
+
+func (c *choiceCard) setActive(v bool) {
+	if c == nil || c.active == v {
+		return
+	}
+	c.active = v
+	c.card.Redraw(false)
+}
+
+func (c *choiceCard) onPaint(hEle int, hDraw int, pbHandled *bool) int {
+	p := xui.BeginPaint(hEle, hDraw)
+	if p == nil {
+		return 0
+	}
+	*pbHandled = true
+	t := xui.Current()
+	bg, border := t.Card, t.Border
+	if c.active {
+		bg, border = t.Accent, t.Primary
+	}
+	// 卡片是透明的自绘元素, 整块铺底既擦上一帧也给出选中底色; 描边内缩 1px 免得被裁
+	radius := t.RadiusLg()
+	p.FillRound(&p.Rc, bg, radius)
+	rc := p.Rc
+	rc.Left++
+	rc.Top++
+	rc.Right--
+	rc.Bottom--
+	p.StrokeRound(&rc, border, radius-1, 1)
+	return 0
+}
+
+var choiceCardHand uintptr
+
+// choiceCardCursor 懒加载系统手型光标(shadcn 卡片是 cursor-pointer)。
+func choiceCardCursor() uintptr {
+	if choiceCardHand == 0 {
+		choiceCardHand = wapi.LoadImageW(0, wapi.IDC_HAND, wapi.IMAGE_CURSOR, 0, 0,
+			wapi.LR_DEFAULTSIZE|wapi.LR_SHARED)
+	}
+	return choiceCardHand
+}
+
+// focusElement 把键盘焦点搬到元素上: 卡片接走鼠标点击后, 指示器要靠这里拿到焦点,
+// 才能继续用空格/方向键操作。
+func focusElement(hEle int) {
+	if hEle == 0 {
+		return
+	}
+	hwnd := xc.XWidget_GetHWND(hEle)
+	if hwnd == 0 {
+		return
+	}
+	if hw := xc.XC_hWindowFromHWnd(hwnd); hw != 0 {
+		xc.XWnd_SetFocusEle(hw, hEle)
+	}
 }
 
 // ===== 页 10: 导航1(命令面板 / 下拉菜单 / 右键菜单) =====
@@ -3554,7 +3792,8 @@ func buildDataPage(body *widget.LayoutEle) {
 	// ---- 数据表格(整行占满剩余高度, 表格跟随窗口长高) ----
 	_, v := stretchCard(colStretch(r.Handle, 3, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v.Handle))
-	xui.ItemFill(desc(v.Handle, "DataTable(tasks): 勾选 / 分面 / 列头菜单 / 视图; Shift 多列排序与跨页全选, 拖拽表头换列。"))
+	xui.ItemFill(desc(v.Handle, "DataTable(tasks): 勾选 / 分面 / 列头菜单 / 视图; Shift 多列排序与跨页全选, 拖拽表头换列; "+
+		"双击单元格编辑(Enter / 失焦提交, Esc 取消, 状态与优先级只认枚举值)。"))
 	xui.ItemFillHeight(v) // 内容区占满卡片剩余高度
 	dt := ui.NewDataTable(0, 0, 0, 0, v.Handle, []ui.DataColumn{
 		{Title: "任务", Width: 92, Sortable: true, Render: taskIDCell},
@@ -3572,10 +3811,11 @@ func buildDataPage(body *widget.LayoutEle) {
 				{Label: "中", Icon: icons.IconArrowRight},
 				{Label: "低", Icon: icons.IconArrowDown},
 			}},
-		{Title: "操作", Width: 52, NoHide: true, Render: taskActionCell}, // 行操作列不进"隐藏"
+		{Title: "操作", Width: 52, NoHide: true, Render: taskActionCell, ReadOnly: true}, // 行操作列不进"隐藏", 也不可编辑
 	},
 		ui.WithDataTableSelection(),
 		ui.WithDataTableColumnToggle(),
+		ui.WithDataTableEditing(), // 双击单元格原地编辑(Enter / 失焦提交, Esc 取消)
 		ui.WithDataTablePageSize(10),
 		ui.WithDataTablePageSizes(10, 20, 30),
 		// 关键字筛选只匹配"任务 / 标题 / 状态 / 优先级"这四列(操作列没有文字)
@@ -3603,6 +3843,41 @@ func buildDataPage(body *widget.LayoutEle) {
 		if col == taskColAction { // 行操作: 在光标处弹官方 tasks 菜单
 			showTaskMenu(xc.XWidget_GetHWINDOW(v.Handle), demoTasks[row])
 		}
+	})
+	// 编辑回调返回 false = 拒绝本次修改(单元格保持旧值)。自绘列读的是 demoTasks,
+	// 所以这里同步结构体, 徽章 / 状态图标才会跟着新值重画。
+	dt.OnCellEdit(func(row, col int, old, next string) bool {
+		next = strings.TrimSpace(next)
+		switch col {
+		case taskColID:
+			if next == "" {
+				return false
+			}
+			demoTasks[row].ID = next
+		case taskColTitle:
+			if next == "" { // 标题不允许清空
+				return false
+			}
+			demoTasks[row].Title = next
+		case taskColStatus:
+			switch next { // 状态只认四个枚举值, 其它输入直接拒绝
+			case "待办", "进行中", "已完成", "已取消":
+				demoTasks[row].Status = next
+			default:
+				return false
+			}
+		case taskColPriority:
+			switch next {
+			case "高", "中", "低":
+				demoTasks[row].Priority = next
+			default:
+				return false
+			}
+		default:
+			return false
+		}
+		fmt.Printf("编辑: %s 列 %d: %q → %q\n", demoTasks[row].ID, col, old, next)
+		return true
 	})
 
 	// ---- 树 ----

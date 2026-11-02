@@ -20,6 +20,7 @@ type Checkbox struct {
 	BoxSize       int32 // 指示器边长(逻辑像素), shadcn 为 size-4
 	invalid       bool
 	indeterminate bool
+	backdrop      func(t *xui.Theme) xui.Color
 	changes       []func(checked bool)
 }
 
@@ -134,6 +135,35 @@ func (c *Checkbox) OnChange(fn func(checked bool)) *Checkbox {
 	return c
 }
 
+// Toggle 切换选中状态并触发 OnChange(与鼠标点击/空格等价), 供"整块区域可点"的
+// 字段卡片使用; 禁用时为空操作。不确定态点击后落到选中(同鼠标路径)。
+func (c *Checkbox) Toggle() *Checkbox {
+	if c == nil || !c.IsEnable() {
+		return c
+	}
+	c.toggleNotify()
+	return c
+}
+
+// SetBackdrop 指定绘制开头铺的宿主底色(默认按"放在 Card 上"用 t.Card)。
+// 组件是自绘的局部形状, 重绘不擦底, 必须先铺宿主底色; 放进有底色的容器
+// (例如选中态 bg-accent 的卡片)时必须跟随, 否则元素矩形会留下一个异色块。
+func (c *Checkbox) SetBackdrop(fn func(t *xui.Theme) xui.Color) *Checkbox {
+	if c == nil {
+		return c
+	}
+	c.backdrop = fn
+	c.Redraw(false)
+	return c
+}
+
+func (c *Checkbox) backdropColor(t *xui.Theme) xui.Color {
+	if c.backdrop != nil {
+		return c.backdrop(t)
+	}
+	return t.Card
+}
+
 func (c *Checkbox) notifyChange(checked bool) {
 	for _, fn := range c.changes {
 		fn(checked)
@@ -165,8 +195,10 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 先铺宿主底色(整元素): 透明元素重绘**不擦底**(见 DESIGN 第八节 28), 不铺的话
 	// ①键盘焦点环消失后灰环留在画布上;②未选态在暗色下是半透明令牌(dark:bg-input/30),
-	// 会透出上一个状态/比卡片更深的一块底色。组件按"放在 Card 上"设计(同 Table/ComboBox)。
-	p.FillRound(&p.Rc, t.Card, 0)
+	// 会透出上一个状态/比卡片更深的一块底色。组件按"放在 Card 上"设计(同 Table/ComboBox),
+	// 放在异色容器上时用 SetBackdrop 跟随。
+	host := c.backdropColor(t)
+	p.FillRound(&p.Rc, host, 0)
 
 	// 指示器(逻辑像素, 框架按 DPI 变换渲染)
 	size := c.BoxSize
@@ -199,9 +231,9 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 
 	// 环带是实心填充, 未选中亮色没有自己的底色(fill=None), 不先盖一层宿主色的话
-	// 红色/灰色环会从指示器内部透出来(看起来像整块被染色)。整元素已铺过 Card,
+	// 红色/灰色环会从指示器内部透出来(看起来像整块被染色)。整元素已铺过宿主底色,
 	// 这里只需盖住指示器矩形。
-	p.FillRound(&box, t.Card, 4)
+	p.FillRound(&box, host, 4)
 
 	// 状态配色逐条对齐 checkbox.tsx:
 	//   未选 = 无底色(亮色) / dark:bg-input/30(暗色) + border-input;

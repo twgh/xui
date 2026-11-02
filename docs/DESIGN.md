@@ -2008,6 +2008,11 @@ xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
     - **根因②**: 弹层底座对激活窗的默认语义是"失焦即关", 取色面板一弹出来宿主卡片就失焦。
     - **修法②**: 打开时 `WithPopoverKeepOnBlur(true)`, 并给宿主窗口挂 **`WM_LBUTTONDOWN`**(窗口消息, 不是元素的 `LButtonDown` 事件 —— 点在元素上时那个事件被元素消费, 窗口收不到, 只有空白区能关)来关闭卡片。点触发区时这一下会先关、紧接着 `BnClick` 的 toggle 被 `RecentlyClosed` 挡下, 结果正好是"再点一下关掉", 不会闪成关了又开。宿主窗口句柄要用 `XWidget_GetHWINDOW` 取 —— `XWidget_GetHWND` 给的是 Win32 HWND, 拿它当 xcgui 句柄会弹"句柄可能无效"。
 
+185. **布局元素是"纯排版壳": 默认鼠标穿透, 要当命中区必须显式关掉**(`widget.LayoutEle`):
+    - **现象**: 给 `widget.NewLayoutEle` 建的自绘卡片挂 `AddEvent_LButtonDown / LButtonUp`, 点击毫无反应; 同一张卡片上的 `AddEvent_MouseMove` 也一条都不触发, 而卡片里的 Button / Checkbox 照常响应。
+    - **根因**: `XLayout` 创建的元素默认 `EnableMouseThrough(true)` —— 它是给纯排版用的壳, 不参与命中测试, 鼠标消息直接落到底下的元素。`AddEvent_*` 挂得上去、回调永远不会执行。
+    - **修法**: 要当命中区就 `ele.EnableMouseThrough(false)`; 卡片内部纯展示的子项(Label、内容列)反过来保持穿透, 让点击统一落到卡片这一层, 避免子项各自处理后事件不再上抛。自绘卡片做"整卡可点"(选择卡片 / 字段卡片)时, 指示器(Radio / Checkbox)也设穿透, 由卡片统一调 `Radio.Select()` / `Checkbox.Toggle()`, 免得点指示器时父子各切一次。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)

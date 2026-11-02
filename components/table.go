@@ -113,6 +113,9 @@ func (t *Table) HeaderCellRect(col int32) (rc xc.RECT, ok bool) {
 	return r, true
 }
 
+// RowHeight 返回数据行高(逻辑像素)。DataTable 的内联编辑用它算单元格矩形。
+func (t *Table) RowHeight() int32 { return t.rowH }
+
 // TableOption 组件配置项。
 type TableOption func(*Table)
 

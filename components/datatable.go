@@ -81,6 +81,9 @@ type DataColumn struct {
 	// FilterOptions 该列的分面筛选项: 非空时工具栏多出一个按钮(tasks 的
 	// DataTableFacetedFilter)。列内多选是 OR、列间是 AND, 并与关键字同时生效。
 	FilterOptions []DataFilterOption
+	// ReadOnly 禁止双击编辑该列(见 WithDataTableEditing)。自绘列也能编辑 —— 编辑期间
+	// 该格的自绘内容会让位给输入框; 行操作列这类"画按钮"的列应该设成只读。
+	ReadOnly bool
 }
 
 // DataFilterOption 是一个分面筛选项: 与单元格**原始文本**相等即命中。
@@ -170,6 +173,15 @@ func WithDataTableColumnToggle() DataTableOption {
 	return func(d *DataTable) { d.toggleOn = true }
 }
 
+// WithDataTableEditing 开启单元格编辑: **双击**单元格在原地弹出输入框, Enter / 失焦提交,
+// Esc 取消; 值没变不写回, 排序与筛选会按新值重算。
+//
+// 不可编辑的格子: 勾选列与 DataColumn.ReadOnly 列(自绘列可以编辑, 编辑期间该格
+// 暂停自绘)。写入前回调 OnCellEdit, 返回 false 即拒绝(单元格保持旧值)。
+func WithDataTableEditing() DataTableOption {
+	return func(d *DataTable) { d.editEnabled = true }
+}
+
 // DataTable 数据表格: 在 Table 之上提供 **列排序 / 分面筛选 / 关键字筛选 / 分页**。
 //
 // 对齐 shadcn 的 Data Table 模式(TanStack Table 的 tasks 示例):
@@ -251,6 +263,17 @@ type DataTable struct {
 	onCell     func(row, col int)
 	onSel      func(rows []int)
 	onFacet    func(col int, values []string)
+
+	// 单元格编辑(见 WithDataTableEditing): 输入框在第一次双击时惰性创建,
+	// 父是表格所在窗口 —— 绝对定位, 不参与页面/表格的流式布局。
+	editEnabled bool
+	editing     bool
+	editor      *Input
+	editRaw     int   // 正在编辑的原始数据行
+	editCol     int   // 正在编辑的列(DataColumn 下标)
+	editRowT    int32 // 原生页内行号(编辑期间清空/恢复该格文本用)
+	editSub     int32 // 原生列号(含勾选列偏移)
+	onEdit      func(row, col int, old, next string) bool
 }
 
 // NewDataTable 创建数据表格。cols 末列 Width<=0 时占满剩余宽度。
@@ -579,6 +602,26 @@ func (d *DataTable) buildTable() {
 			d.onRow(d.view[idx])
 		}
 	})
+
+	if d.editEnabled {
+		// 双击才进编辑: 单击仍走 OnRowClick / OnCellClick(与 shadcn 的"点行选行"不冲突)。
+		d.table.AddEvent_LButtonDBClick(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+			if d.beginCellEdit(pPt) {
+				*pbHandled = true
+			}
+			return 0
+		})
+		// 滚轮会把行带走, 而编辑框是绝对定位的窗口子元素(不跟滚动): 先落盘再滚。
+		d.table.AddEvent_MouseWheel(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+			d.commitCellEdit(true)
+			return 0
+		})
+		// 编辑器挂在窗口上, 只销毁表格不会带走它: 表格先销毁时要自己收尾。
+		d.AddEvent_Destroy(func(hEle int, pbHandled *bool) int {
+			d.releaseEditor()
+			return 0
+		})
+	}
 }
 
 func (d *DataTable) buildFooter() {
@@ -1388,6 +1431,190 @@ func (d *DataTable) cellText(raw, col int) string {
 	return row[col]
 }
 
+// ===== 单元格编辑 =====
+
+// OnCellEdit 注册单元格编辑回调(需要 WithDataTableEditing)。回调在写回数据**之前**触发:
+// 返回 false 表示拒绝本次修改, 单元格保持旧值。row 是原始数据行下标, col 是列下标
+// (DataColumn 序列, 含隐藏列)。
+func (d *DataTable) OnCellEdit(fn func(row, col int, old, next string) bool) *DataTable {
+	d.onEdit = fn
+	return d
+}
+
+// Editing 返回当前正在编辑的单元格(原始数据行 + 列下标); ok=false 表示当前没有编辑。
+func (d *DataTable) Editing() (row, col int, ok bool) {
+	if !d.editing {
+		return 0, 0, false
+	}
+	return d.editRaw, d.editCol, true
+}
+
+// beginCellEdit 在 pt 命中的单元格上弹出编辑框。pt 是表格元素客户区坐标(逻辑像素)。
+func (d *DataTable) beginCellEdit(pt *xc.POINT) bool {
+	if !d.editEnabled || d.table == nil || pt == nil {
+		return false
+	}
+	var row, sub int32
+	if !d.table.HitTestOffset(pt, &row, &sub) {
+		return false
+	}
+	if d.selectOn && sub == 0 { // 勾选列
+		return false
+	}
+	ci := d.colAt(sub)
+	if ci < 0 || d.cols[ci].ReadOnly {
+		return false
+	}
+	raw := d.rawRow(row)
+	if raw < 0 {
+		return false
+	}
+	hdr, ok := d.table.HeaderCellRect(sub)
+	if !ok {
+		return false
+	}
+
+	// 单元格几何: 表头缓存与数据单元格同一坐标系, 但原生数据单元格比表头右移 tableInset。
+	// 行顶由点击位置对行高取模反推 —— 列表滚动后没有可靠的偏移 API, 取模不需要它。
+	top := xc.XList_GetHeaderHeight(d.table.Handle) + tableInset
+	if pt.Y < top {
+		return false
+	}
+	rh := d.table.RowHeight()
+	if rh <= 0 {
+		return false
+	}
+	cellTop := pt.Y - (pt.Y-top)%rh
+	cell := xc.RECT{
+		Left:   hdr.Left + tableInset,
+		Top:    cellTop + 1,
+		Right:  hdr.Right - tableInset,
+		Bottom: cellTop + rh - 1,
+	}
+	if cell.Right-cell.Left < 24 || cell.Bottom-cell.Top < 16 {
+		return false
+	}
+
+	// 双击另一格: 先把上一处落盘再开新的。
+	d.commitCellEdit(true)
+
+	ed := d.ensureEditor()
+	if ed == nil {
+		return false
+	}
+	var or xc.RECT
+	xc.XEle_GetWndClientRect(d.table.Handle, &or)
+	cell.Left += or.Left
+	cell.Right += or.Left
+	cell.Top += or.Top
+	cell.Bottom += or.Top
+	ed.SetRect(&cell, true, xcc.AdjustLayout_No)
+
+	d.editing = true
+	d.editRaw, d.editCol = raw, ci
+	d.editRowT, d.editSub = row, sub
+	old := d.cellText(raw, ci)
+	// 原生文本会从编辑框四周/下层透出来: 编辑期间先清掉这一格(提交时按原值恢复,
+	// 值真变了的话随后 render 会整页重建)。
+	d.table.SetCell(row, sub, "")
+	d.table.Redraw(false) // 让该格的自绘内容立刻消失
+	ed.SetValue(old)
+	ed.SelectAll()
+	ed.Show(true)
+	ed.SetFocus()
+	return true
+}
+
+// commitCellEdit 结束当前编辑。accept=false 或值未变化时不写回数据。
+func (d *DataTable) commitCellEdit(accept bool) {
+	if !d.editing || d.editor == nil {
+		return
+	}
+	d.editing = false
+	next := d.editor.Value()
+	raw, ci := d.editRaw, d.editCol
+	old := d.cellText(raw, ci)
+
+	d.editor.Show(false)
+	// 被清空的那格交给 render 重建 —— 自绘列平时原生文本就是空的(render 时写 ""),
+	// 手工把数据值塞回去会跟自绘内容叠在一起。
+	d.render()
+
+	if !accept || next == old {
+		return
+	}
+	if d.onEdit != nil && !d.onEdit(raw, ci, old, next) {
+		return
+	}
+	d.setCellValue(raw, ci, next)
+}
+
+// setCellValue 写回一个单元格并重算视图(排序 / 筛选 / 当前页都会跟着更新)。
+func (d *DataTable) setCellValue(raw, col int, v string) {
+	if raw < 0 || raw >= len(d.rows) || col < 0 {
+		return
+	}
+	row := d.rows[raw]
+	for len(row) <= col {
+		row = append(row, "")
+	}
+	row[col] = v
+	d.rows[raw] = row
+	d.apply(false)
+}
+
+// ensureEditor 惰性创建内联编辑框(父是表格所在窗口: 绝对定位, 不参与任何布局)。
+func (d *DataTable) ensureEditor() *Input {
+	if d.editor != nil {
+		return d.editor
+	}
+	hwnd := xc.XWidget_GetHWINDOW(d.Handle)
+	if hwnd <= 0 {
+		return nil
+	}
+	ed := NewInput(0, 0, 120, 30, hwnd)
+	if ed == nil {
+		return nil
+	}
+	ed.Show(false)
+	ed.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
+		const (
+			vkReturn = 0x0D
+			vkEscape = 0x1B
+		)
+		switch wParam {
+		case vkReturn:
+			d.commitCellEdit(true)
+			*pbHandled = true
+		case vkEscape:
+			d.commitCellEdit(false)
+			*pbHandled = true
+		}
+		return 0
+	})
+	ed.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int {
+		d.commitCellEdit(true) // 点到别处(表格 / 工具栏 / 窗口外)即落盘
+		return 0
+	})
+	d.editor = ed
+	return ed
+}
+
+// releaseEditor 销毁编辑框(表格自己先销毁时调用)。
+func (d *DataTable) releaseEditor() {
+	d.editing = false
+	ed := d.editor
+	d.editor = nil
+	if ed == nil {
+		return
+	}
+	// 编辑器挂在窗口上: 窗口退出销毁时会把它先行销毁, 此时表格的 Destroy 事件
+	// 里再 Destroy 就是"句柄可能无效"。只有表格先走、窗口还在的场景才需要手动销毁。
+	if xc.XC_IsHELE(ed.Handle) {
+		ed.Destroy()
+	}
+}
+
 func (d *DataTable) render() {
 	if d.table == nil {
 		return
@@ -1580,6 +1807,10 @@ func (d *DataTable) paintCell(p *xui.Painter, rc xc.RECT, row, tcol int32, hover
 	}
 	if d.selectOn && tcol == 0 {
 		d.paintCheckBox(p, rc, selected, false)
+		return
+	}
+	// 正在这一格上编辑: 自绘内容让位给输入框(否则徽章/图标会从输入框底下透出来)。
+	if d.editing && row == d.editRowT && tcol == d.editSub {
 		return
 	}
 	ci := d.colAt(tcol)

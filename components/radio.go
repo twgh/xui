@@ -14,10 +14,11 @@ import (
 // 同组互斥: 独立使用时由 xcgui 按父容器管理, 组容器 RadioGroup 另做跨层互斥。
 type Radio struct {
 	*widget.Button
-	BoxSize int32 // 圆形指示器直径(逻辑像素)
-	invalid bool
-	value   string // 所属 RadioGroup 的值(Attach 写入; 独立使用时为空)
-	changes []func(selected bool)
+	BoxSize  int32 // 圆形指示器直径(逻辑像素)
+	invalid  bool
+	value    string // 所属 RadioGroup 的值(Attach 写入; 独立使用时为空)
+	backdrop func(t *xui.Theme) xui.Color
+	changes  []func(selected bool)
 }
 
 // RadioOption 单选按钮配置项。
@@ -71,6 +72,36 @@ func NewRadio(x, y, cx, cy int32, text string, hParent int, opts ...RadioOption)
 
 // Selected 返回选中状态。
 func (r *Radio) Selected() bool { return r.IsCheck() }
+
+// Select 选中该项并触发 OnChange(与鼠标点击/空格等价), 已选中时为空操作。
+// 用于"整块区域可点"的场景(如选择卡片的卡片本体), 让外部点击走与点击指示器相同的路径。
+func (r *Radio) Select() *Radio {
+	if r == nil || r.IsCheck() {
+		return r
+	}
+	r.setSelectedNotify(true)
+	return r
+}
+
+// SetBackdrop 指定绘制开头铺的宿主底色(默认按"放在 Card 上"用 t.Card)。
+// 组件是自绘的局部形状, 重绘不擦底, 必须先铺宿主底色; 放进有底色的容器
+// (例如选中态 bg-accent 的选择卡片)时必须跟随, 否则元素矩形会留下一个异色块。
+func (r *Radio) SetBackdrop(fn func(t *xui.Theme) xui.Color) *Radio {
+	if r == nil {
+		return r
+	}
+	r.backdrop = fn
+	r.Redraw(false)
+	return r
+}
+
+// backdropColor 返回当前宿主底色。
+func (r *Radio) backdropColor(t *xui.Theme) xui.Color {
+	if r.backdrop != nil {
+		return r.backdrop(t)
+	}
+	return t.Card
+}
 
 // SetSelected 设置选中状态(立即重绘), 不触发 OnChange。
 func (r *Radio) SetSelected(v bool) *Radio {
@@ -133,8 +164,9 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 先铺宿主底色(整元素): 透明元素重绘**不擦底**(见 DESIGN 第八节 28) —— 未选态在暗色
 	// 下是半透明令牌(dark:bg-input/30), 不铺底会透出上一帧的实心圆盘; 单调焦点环也会残留。
-	// 组件按"放在 Card 上"设计(同 Table/Checkbox/Switch)。
-	p.FillRound(&p.Rc, t.Card, 0)
+	// 组件按"放在 Card 上"设计(同 Table/Checkbox/Switch), 放在异色容器上时用 SetBackdrop 跟随。
+	host := r.backdropColor(t)
+	p.FillRound(&p.Rc, host, 0)
 
 	// 圆形指示器(逻辑像素, 框架按 DPI 变换渲染)
 	size := r.BoxSize
@@ -168,8 +200,8 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 
 	// 环带是实心填充, 未选中亮色没有自己的底色(fill=None), 不先盖一层宿主色的话
-	// 红色/灰色环会从指示器内部透出来。整元素已铺过 Card, 这里只需盖住圆盘。
-	p.Draw.SetBrushColor(uint32(t.Card))
+	// 红色/灰色环会从指示器内部透出来。整元素已铺过宿主底色, 这里只需盖住圆盘。
+	p.Draw.SetBrushColor(uint32(host))
 	p.Draw.FillEllipse(&circle)
 
 	// shadcn 源码(data-checked): 选中 = bg-primary 圆 + border-primary,
