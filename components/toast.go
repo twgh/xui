@@ -616,6 +616,16 @@ func (it *Toast) destroy() {
 	}
 	it.destroyed = true
 	it.stopTick()
+	// 直接销毁(超量挤出 / Clear / 宿主销毁)不会播退场, 那条 presence 条目会一直
+	// 挂在宿主窗口上(闭包捕获本条通知): 屏幕通知的宿主是长命的主窗口, 每漏一次
+	// 就多一份。正常关闭走退场, 条目由 tick 回收, 这里删是幂等的。
+	if it.t != nil {
+		hOwner := it.t.hWnd
+		if it.t.animOwner != 0 {
+			hOwner = it.t.animOwner
+		}
+		xui.DropPresence(hOwner, it.key)
+	}
 	hEle := 0
 	if it.ele != nil {
 		hEle = it.ele.Handle

@@ -588,6 +588,15 @@ func (st *ScreenToast) onWindowDestroy() {
 	}
 	st.destroyed = true
 	st.closed = true
+	// 走的是"小窗被外部销毁"而不是 Toast.destroy: 那条 presence 条目还挂在宿主
+	// 窗口上(闭包捕获本条通知), 宿主长命就只增不减, 这里补一次清场。
+	if st.it != nil && st.t != nil {
+		hOwner := st.t.hWnd
+		if st.t.animOwner != 0 {
+			hOwner = st.t.animOwner
+		}
+		xui.DropPresence(hOwner, st.it.key)
+	}
 	if st.s != nil {
 		delete(st.s.live, st)
 	}

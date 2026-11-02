@@ -728,7 +728,8 @@ func (n *NavigationMenu) animateContentIn(it *navItem, dir int32) {
 		rc.Left += int32(dx)
 		rc.Right += int32(dx)
 		xc.XEle_SetRect(c, &rc, false, xcc.AdjustLayout_No)
-		xui.Presence(n.panel.win.Handle, xui.NextPresenceKey(), true, navContentDur, func(v float64) {
+		// 每次换页都起一段新过渡, 必须新键; 用一次性键, 免得条目随悬停换页常驻表里
+		xui.PresenceOnce(n.panel.win.Handle, true, navContentDur, func(v float64) {
 			if !xc.XC_IsHXCGUI(c, xcc.XC_ELE) {
 				return
 			}

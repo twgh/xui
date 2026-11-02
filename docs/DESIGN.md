@@ -1992,6 +1992,13 @@ xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
     - **退场淡出**: `Hide`/X/超时走 `HideWithFade` 播放 100ms 元素 alpha 淡出, 同时把**窗口阴影浓度**按同一进度降下去(`fadeShadow` + `SetShadowInfo` 的 depth=50×v)。阴影是窗口级绘制, 不随元素 alpha 变; 只淡内容会在结尾留下"卡片已经透明、外圈阴影还在"的尾巴。⚠️ 不能改用整窗 alpha 一起淡 —— 复用的透明窗整窗 alpha 只认第一次调用(见 73 根因 B); `SetShadowInfo` 的 depth 逐帧改是有效的(实测阴影带亮度随 v 升到背景值)。阴影浓度进场同样从 0 跟着 v 升, 下一次 Show 自动恢复。逻辑状态(`open`/`IsOpen`/`OnOpenChange`)立即变关闭, 窗口留到淡出结束才 `SW_HIDE`。进场与退场共用面板自己的 `presenceKey`(创建时 `NextPresenceKey`), 淡出中途再 `Show` 时同一条过渡目标反向, 从当前透明度接着淡入; 退场完成的旧回调靠 `open` 状态丢弃, 不能把刚重新显示的窗口藏掉。屏幕弹窗打开 `alwaysAnimate`, 禁用"300ms 内快速重开跳过淡入"的 fast 路径 —— 否则那次进场没有过渡条目, 退场无值可反向、淡出播不出来。`Destroy` 仍是立即销毁, 不播退场。
     - **焦点配置**: 默认 `activate=false`(DESIGN 181 的非激活底座, 点击也不激活); `WithScreenPopupFocusable(true)` 改成正常窗口 —— 去掉 `WS_EX_NOACTIVATE`、不拦 `WM_MOUSEACTIVATE`, 但**显示仍全程不激活**(`showWithoutActivate`: 量高与 Show 都用 `SW_SHOWNOACTIVATE`, 不调 `SetForegroundWindow`)。这样 Show 不打断用户当前输入, 只有用户自己点弹窗时, 系统才按普通窗口规则激活它, 之后输入框与 ESC 才可用。配套 `keepOnBlur=true`: 弹层底座对激活窗的默认语义是"点外面就关", 屏幕弹窗是常驻面板, 关不关只由 X / Duration / 调用方决定。别图省事在 Show 里 `SetForegroundWindow`: 那会把"显示"变成"抢焦点", 与可配置的语义相反。
 
+183. **过渡表按"每次交互一个新键"登记会只增不减: 内存与每帧遍历成本随交互次数线性增长**(`anim.go` / `presence.go`):
+    - **现象**: 反复悬停导航菜单换页、拖拽抽屉回弹、反复弹出弹层, 进程内存只涨不降; 交互几千次后 Go 堆里就多出同样数量的过渡条目(实测 2 万次新键 = 2 万个对象 / 约 2.4MB), 每帧 tick 还要把这些早已到位的条目再遍历一遍。
+    - **根因**: 过渡条目以"宿主 + 键"为主键, `Presence` 的键是调用方用 `NextPresenceKey()` 现取的; 已到位(目标 1)的条目按设计留在表里供同键复用(反向过渡要从当前值接着跑, 删了会重播), 于是"每次交互都取新键"的过渡永远只增不减。而这类过渡又不能用固定键 —— 固定键会命中已到位条目, `Presence` 直接返回 1, 动画只跑第一次。
+    - **修法**: 交互型过渡改用 `xui.PresenceOnce(hOwner, visible, dur, apply, done)`: 键由它自己分配, 到位后条目立即回收。导航菜单换页、抽屉拖拽回弹、轮播滑动都已改; hover 这类"元素/索引稳定键"不受影响, 仍用 `Hover` / `Presence`。
+    - **附带(窗口销毁不摘表)**: 条目里捏着 `apply`/`done` 闭包, 常常捕获了整个弹层对象树。元素靠 `Destroy_End` 摘, 窗口没有等价事件, 于是"每次交互新建一个小窗"的组件(弹层、通知)会连条目一起留下。`newHoverOwner` 现在对窗口挂 `WM_DESTROY` 摘表, 只删表、不再对正在销毁的句柄调 `KillXCTimer`; 通知被直接销毁(超量挤出 / `Clear`)时用 `xui.DropPresence(hOwner, key)` 清掉自己那条。图表宿主窗口的悬停监听登记也按同样方式在 `WM_DESTROY` 里摘掉 —— 留着失效句柄不只是泄漏, 句柄被复用后新窗口会被误判成"已挂过回调", 图表悬停提示就再也不弹。
+    - **验收口径**: 同一交互重复 20 轮后, 进程私有内存不随轮次线性上涨; 探针里 2 万次 `PresenceOnce` 只多几十个对象(同参数改用 `Presence` 则多 2 万个)。
+
 ---
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)

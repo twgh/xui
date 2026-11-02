@@ -86,11 +86,46 @@ func Presence(hOwner int, key int32, visible bool, dur time.Duration,
 	if visible {
 		target = 1.0
 	}
-	v := transValue(hOwner, presenceKeyBase-key, target, dur, easePopup, apply, done)
+	v := transValue(hOwner, presenceKeyBase-key, target, dur, easePopup, apply, done, false)
 	if apply != nil {
 		apply(v)
 	}
 	return v
+}
+
+// PresenceOnce 是 Presence 的一次性版本: 键由本函数自己分配, 过渡到位后条目立即回收。
+//
+// 适用于"每次交互都开始一段新过渡"的场景(轮播滑动 / 导航菜单换页 / 抽屉拖拽回弹):
+// 这类过渡每次都必须用新键 —— 复用键会命中已到位的条目, Presence 不再重启过渡,
+// 动画只跑第一次。而常规 Presence 的已到位条目按设计常驻表里(供同键复用), 键一多
+// 就只增不减: 内存随交互次数线性增长, 每帧还要遍历这些早已到位的条目。
+func PresenceOnce(hOwner int, visible bool, dur time.Duration, apply, done func(v float64)) float64 {
+	if dur <= 0 {
+		dur = PopupDuration
+	}
+	target := 0.0
+	if visible {
+		target = 1.0
+	}
+	v := transValue(hOwner, presenceKeyBase-NextPresenceKey(), target, dur, easePopup, apply, done, true)
+	if apply != nil {
+		apply(v)
+	}
+	return v
+}
+
+// DropPresence 丢弃 (hOwner, key) 上的进出场过渡条目。
+// 供通知/弹层在"没播完退场就被直接销毁"时清场: 条目里捏着 apply/done 闭包,
+// 宿主窗口长命(主窗口)时漏一次就多一份, 只增不减。
+func DropPresence(hOwner int, key int32) {
+	if hOwner == 0 {
+		return
+	}
+	hovers.mu.Lock()
+	if o := hovers.owners[hOwner]; o != nil {
+		delete(o.items, presenceKeyBase-key)
+	}
+	hovers.mu.Unlock()
 }
 
 // SetElementsAlpha 按进度 v(0..1)设置一组元素的透明度, 供对话框 / 弹层做整组淡入淡出。

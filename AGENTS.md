@@ -24,6 +24,7 @@ shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。**本文件只
 ## 运行时基建(踩过坑, 照做)
 
 - **hover 过渡**一律用运行时 `xui.Hover(hEle, 悬停中)` / `xui.HoverItem(hOwner, 索引, 悬停中)` 取值 + `xui.Fade(静止色, 悬停色, hv)` 取色(叠加层用 `ScaleAlpha(hv)`);**不要在组件里自己起定时器或缓存过渡值**(见 DESIGN 45)
+- **过渡键分两种**: 元素/索引这类**稳定键**用 `xui.Hover` / `Presence`(同键复用, 反向过渡要接着跑); **每次交互都要开始一段新过渡**的(导航菜单换页 / 抽屉拖拽回弹 / 轮播滑动)必须用 `xui.PresenceOnce` —— 常规 `Presence` 的到位条目永驻表里, 新键一多内存与每帧遍历成本就随交互次数线性上涨, 且窗口销毁不会自己摘(见 DESIGN 183)。弹层/通知被直接销毁(没走退场)时用 `xui.DropPresence(hOwner, key)` 清掉自己那条
 - **应用初始化 `a.SetPaintFrequency(10)`**:xcgui 默认有 30ms 重绘节流(hover 过渡只有约 5 帧的根因),设 10 后实测 30.9 → 59.0 fps。`XC_SetTextRenderingHint` 在 D2D 下是空操作,不要用(见 DESIGN 46)
 - **非激活窗口光设 `WS_EX_NOACTIVATE` 不够**:显示时不抢焦点, 但用户点里面的元素时 xcgui 会自己把窗口顶到前台(正在输入的窗口丢焦点)。非激活弹层/自建窗要在 `AddEvent_WindProc` 里接 `WM_MOUSEACTIVATE` 返回 `MA_NOACTIVATE`(点击照常到元素, 见 DESIGN 181)
 - **弹层/对话框进出场**用 `xui.Presence(...)` + `SetElementsAlpha / FadeWindowAlpha / SlideWindowAlpha`,**不要自己起定时器**;键一律 `xui.NextPresenceKey()` 取(**禁止各组件自起计数器**: 都从 1 开始会在同一宿主窗上撞车, 新弹层停在 alpha 下限 = 全透明但仍吞点击, 见 DESIGN 70);过渡挂**宿主窗口**、别挂弹层小窗;**异型透明窗(`Window_Transparent_Shaped`)上不要用整窗 alpha 做动画** —— 它只认第一次调用、之后永远冻结, 淡入淡出改成元素 alpha(见 DESIGN 8.57);**组件自建的弹层小窗不在主题管理器的重绘清单里, 要自己 `OnThemeChangeFor` 订阅并重绘**(否则切主题时挂在屏幕上的弹层还是旧配色, 见 DESIGN 8.58);窗口 alpha 永远不精确 = 0(0 会让 xcgui 停止合成);要 Win32 HWND 用窗口 wrapper 的 `GetHWND()`,别拿 xcgui 窗口句柄喂 `XWidget_GetHWND`(弹模态错误框,表现为"点了没反应")(见 DESIGN 47)

@@ -74,6 +74,10 @@ type hoverItem struct {
 	// 可选回调(都在定时器回调里、解锁之后执行)
 	apply func(v float64) // 每帧
 	done  func(v float64) // 到位一次
+	// once 表示一次性条目: 到位后立刻从 owner 的表里删掉。用于"每次交互都分配
+	// 新键"的过渡(见 PresenceOnce) —— 这类键不会被再次访问, 留在表里只会让内存
+	// 与每帧遍历成本随交互次数线性增长。
+	once bool
 }
 
 // spinItem 是一个持续动画的起始时间(相位由绘制时的墙钟时间算)。
@@ -371,13 +375,14 @@ func hoverValue(hOwner int, key int32, active bool) float64 {
 	if active {
 		target = 1.0
 	}
-	return transValue(hOwner, key, target, 0, nil, nil, nil)
+	return transValue(hOwner, key, target, 0, nil, nil, nil, false)
 }
 
 // transValue 是过渡内核: 把 (hOwner,key) 上的目标设为 target(0..1) 并返回当前值。
-// dur>0 / ease!=nil 覆盖该条目的时长与缓动; apply/done 是可选回调(语义见 hoverTick)。
+// dur>0 / ease!=nil 覆盖该条目的时长与缓动; apply/done 是可选回调(语义见 hoverTick);
+// once = 到位后回收条目(见 hoverItem.once)。
 func transValue(hOwner int, key int32, target float64, dur time.Duration,
-	ease func(float64) float64, apply, done func(float64)) float64 {
+	ease func(float64) float64, apply, done func(float64), once bool) float64 {
 	now := time.Now()
 	hovers.mu.Lock()
 	defer hovers.mu.Unlock()
@@ -400,6 +405,7 @@ func transValue(hOwner int, key int32, target float64, dur time.Duration,
 		o.items[key] = it
 	}
 	it.dur, it.ease, it.apply, it.done = dur, ease, apply, done
+	it.once = once
 	if it.target != target {
 		// 从当前位置续跑(不是从 0/1 重来), 与 CSS 中断过渡的语义一致
 		it.from = it.value(now, hovers.duration)
@@ -408,7 +414,12 @@ func transValue(hOwner int, key int32, target float64, dur time.Duration,
 		it.settled = false
 		o.ensureRunning()
 	}
-	return it.value(now, hovers.duration)
+	v := it.value(now, hovers.duration)
+	if once && it.settled {
+		// 键是一次性的: 已到位就顺手回收, 不必等一帧 tick
+		delete(o.items, key)
+	}
+	return v
 }
 
 // value 返回当前值。注意: 它会把已算出的值缓存进 cur(纯优化, 不影响结果)。
@@ -471,8 +482,27 @@ func newHoverOwner(hOwner int) *hoverOwner {
 			}
 			return 0
 		})
+		// 窗口销毁后不会再有 tick, 但 owners/items 里还捏着 apply/done 闭包
+		// (捕获了弹层、内容元素等整棵对象树): 弹层 / 通知这类"每次交互新建一个
+		// 小窗"的组件会随交互次数线性增长。元素分支靠 Destroy_End 清理, 窗口没有
+		// 等价的 Element 事件, 只能在销毁消息里摘表 —— 此时不要再对句柄调
+		// KillXCTimer(窗口已在销毁过程中), 所以用只删表的 forgetHoverOwner。
+		w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+			if message == wapi.WM_DESTROY {
+				forgetHoverOwner(hWindow)
+			}
+			return 0
+		})
 	}
 	return o
+}
+
+// forgetHoverOwner 只把登记从表里摘掉, 不碰任何窗口/元素 API。
+// 用于窗口销毁通知(见 newHoverOwner)。
+func forgetHoverOwner(hOwner int) {
+	hovers.mu.Lock()
+	delete(hovers.owners, hOwner)
+	hovers.mu.Unlock()
 }
 
 // dropHoverOwner 忘掉某个句柄上的过渡状态。
@@ -531,7 +561,8 @@ func hoverTick(hOwner int) {
 	for k, it := range o.items {
 		v := it.value(now, dur)
 		// 到位条目(target=1 且已 settled)不再调 apply —— 它们虽然留在表里不回收
-		// (presence 的键空间设计, 见 presence.go), 但每帧继续执行旧 apply 会和新
+		// (presence 的键空间设计, 见 presence.go; 一次性条目见 once, 到位即删),
+		// 但每帧继续执行旧 apply 会和新
 		// 过渡打架: 同一宿主窗口上第二次弹出弹层时, 旧条目的 apply(v=1.0) 把窗口
 		// alpha 拉回全亮, 新条目的 apply(v) 又拉低, 交替 = 弹层闪烁(日期框第一次
 		// 弹出不闪, 第二次起闪)。"到位后条目静默"本就是
@@ -549,8 +580,9 @@ func hoverTick(hOwner int) {
 				dones = append(dones, callback{it.done, v})
 			}
 		}
-		if it.target == 0 {
-			// 淡出到位: 回收条目(大列表不会随滚动累积索引)
+		if it.target == 0 || it.once {
+			// 淡出到位 / 一次性条目到位: 回收条目
+			// (淡出: 大列表不会随滚动累积索引; once: 交互型过渡不会随交互次数累积)
 			delete(o.items, k)
 		}
 	}

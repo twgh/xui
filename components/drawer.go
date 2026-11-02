@@ -274,13 +274,13 @@ func (d *Dialog) onGrabberUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *boo
 		return 0
 	}
 	// 回弹: 用一个临时键做"当前偏移 → 0"的短过渡, 不打扰主 presence 键的终态。
+	// 用一次性键: 每次拖拽回弹都是一段新过渡, 常规键会让条目常驻表里。
 	start := d.slideY
-	key := xui.NextPresenceKey()
 	dur := d.durClose
 	if dur <= 0 {
 		dur = sheetCloseDuration
 	}
-	xui.Presence(d.hWnd, key, true, dur, func(v float64) {
+	xui.PresenceOnce(d.hWnd, true, dur, func(v float64) {
 		if !d.open || d.dragging {
 			return
 		}

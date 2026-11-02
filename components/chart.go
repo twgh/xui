@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/wapi/d2d"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
@@ -279,6 +280,14 @@ func (c *Chart) watchHost() {
 	chartWatchers[hWnd] = true
 	w.AddEvent_MouseMove(func(hWin int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
 		chartWindowMouseMove(hWnd, pPt)
+		return 0
+	})
+	// 窗口销毁后摘掉登记: 表里留着失效句柄不仅是泄漏, 句柄被复用后新窗口还会被误判成
+	// "已挂过窗口级回调", 于是不再挂回调 —— 图表悬停提示就永远不弹了。
+	w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
+		if message == wapi.WM_DESTROY {
+			delete(chartWatchers, hWindow)
+		}
 		return 0
 	})
 }
