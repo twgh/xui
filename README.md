@@ -266,7 +266,7 @@ go install github.com/twgh/xui/cmd/xui@latest
 `%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。升级重跑同一条命令,
 或者直接用 CLI 自己: `xui self-update`(核对靠跑新二进制拿版本, 不只看命令是否报错);
 `xui self-update --check` 只比较当前版本与 `@latest`。`@latest` 偶尔会被模块代理缓存拖旧,
-想立刻用某个版本就直接写 tag(`xui self-update v0.8.0`, 也支持 `main` / commit 短哈希)。
+想立刻用某个版本就直接写 tag(`xui self-update v0.8.1`, 也支持 `main` / commit 短哈希)。
 
 CLI 会**每天最多后台查一次**新版(结果写用户缓存目录 `xui/update-check.json`, 前台命令不等网络),
 下次跑命令时在末尾提示一句"有新版"。只认正式发布版: `go run` / 本地构建不提示。
@@ -293,7 +293,7 @@ xui view button         # 打印组件源码
 xui info                # 显示 CLI / 项目环境信息
 xui version             # 只打印版本(同 -v / --version; 离线可用, 不拉数据源)
 xui self-update         # 升级 CLI 自己(go install ...@latest)
-xui self-update v0.8.0  # 升到指定 tag(也可给 main / HEAD / commit 短哈希)
+xui self-update v0.8.1  # 升到指定 tag(也可给 main / HEAD / commit 短哈希)
 xui self-update --check # 只比较当前与 @latest, 不安装
 ```
 
@@ -362,7 +362,7 @@ CLI 内嵌源码。选路过程逐行打在 stderr 上, 想看清卡在哪一环
 
 ```bash
 XUI_REGISTRY=D:\path\to\xui xui add dialog                    # 本地目录(离线)
-XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.8.0 xui add dialog   # 锁组件版本(换成实际 tag)
+XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.8.1 xui add dialog   # 锁组件版本(换成实际 tag)
 XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/main xui add dialog     # 只走直连(跳过镜像与代理)
 XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                # 只走 Gitee 镜像
 XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dialog  # 只走 GitCode 镜像

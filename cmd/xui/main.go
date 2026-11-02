@@ -1357,7 +1357,7 @@ func selfUpdateAt(exe, current, target string, checkOnly bool) error {
 	}
 	switch {
 	case next == current:
-		info("版本没变(%s): 模块代理的 @latest 可能滞后, 稍后再试或直接指定 tag (xui self-update v0.8.0)", current)
+		info("版本没变(%s): 模块代理的 @latest 可能滞后, 稍后再试或直接指定 tag (xui self-update <tag>)", current)
 	default:
 		info("CLI 已升级 %s → %s (%s)", current, next, installed)
 		info("本次运行用的还是旧进程, 下次调用生效")
