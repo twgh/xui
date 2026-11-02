@@ -1285,11 +1285,13 @@ func writeFileOrFatal(path string, data []byte) {
 	}
 }
 
-// install 逐文件写入, 四种情况:
+// install 逐文件写入, 按"安装基线"(清单里的哈希)判定差异来源, 四种情况:
 //   - 本地没有 → 创建;
 //   - 内容一致 → 跳过("已一致");
-//   - 内容不同, 但本地哈希等于清单里的哈希(安装后没人动过) → 版本升级, 直接替换;
-//   - 内容不同, 没有清单或哈希对不上 → 用户改过, 警告跳过(-o 覆盖)。
+//   - 内容不同, 但本地哈希等于基线(安装后没人动过) → 版本升级, 直接替换(-o 也是这句);
+//   - 内容不同, 基线对不上 → 本地改过, 警告跳过(-o 覆盖并报"本地修改已丢弃");
+//     该文件没有基线(老项目 / 清单里没登记)时同样跳过, 但只说"无法判断来源",
+//     不能断言用户改过。
 //
 // dryRun 只打印将要发生的动作, 不创建任何文件/目录、不写清单。
 // 多个组件共享同一文件(separator/badge)时只处理一次。
@@ -1315,6 +1317,11 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 			if err != nil && !missing {
 				fatal("读取 %s 失败: %v", dst, err)
 			}
+			// 差异来源只看"安装基线"(清单里记的上次安装哈希): 只有基线对不上才叫本地改过。
+			// 判定必须在 overwrite 之前 —— 否则 -o 会把纯版本升级也说成"本地修改已丢弃",
+			// 让人以为自己在干净项目上丢了改动。
+			baseline, hasBaseline := inst.Files[f]
+			untouched := hasBaseline && baseline == sha256Hex(old)
 			switch {
 			case missing:
 				if dryRun {
@@ -1329,16 +1336,8 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 					inst.Files[f] = sha256Hex(data)
 				}
 				info("已一致 %s", dst)
-			case overwrite:
-				if dryRun {
-					info("将覆盖 %s (本地修改已丢弃)", dst)
-					continue
-				}
-				writeFileOrFatal(dst, data)
-				inst.Files[f] = sha256Hex(data)
-				info("覆盖 %s (本地修改已丢弃)", dst)
-			case inst.Files[f] == sha256Hex(old):
-				// 本地文件与"上次安装"逐字节一致 ⇒ 差异只可能来自版本升级, 安全替换。
+			case untouched:
+				// 本地与"上次安装"逐字节一致 ⇒ 差异只可能来自版本升级, 安全替换。
 				if dryRun {
 					info("将更新 %s (版本升级)", dst)
 					continue
@@ -1346,14 +1345,27 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 				writeFileOrFatal(dst, data)
 				inst.Files[f] = sha256Hex(data)
 				info("更新 %s (版本升级)", dst)
+			case overwrite:
+				lost := " (本地修改已丢弃)"
+				if !hasBaseline {
+					// 老项目 / 该文件从没进过清单: 没有基线, 不能断言用户改过。
+					lost = " (无安装清单基线, 无法判断是否改过)"
+				}
+				if dryRun {
+					info("将覆盖 %s%s", dst, lost)
+					continue
+				}
+				writeFileOrFatal(dst, data)
+				inst.Files[f] = sha256Hex(data)
+				info("覆盖 %s%s", dst, lost)
 			default:
 				// dry-run 只是预览, 文案统一用"将…", 别让用户以为已经动过文件。
 				verb := "跳过"
 				if dryRun {
 					verb = "将跳过"
 				}
-				if len(inst.Files) == 0 {
-					warn("%s 内容与远端不同, 且没有安装清单可判断来源, %s (确认本地无改动后加 -o/--overwrite 覆盖)", dst, verb)
+				if !hasBaseline {
+					warn("%s 内容与远端不同, 且没有该文件的安装清单基线, 无法判断来源, %s (确认本地无改动后加 -o/--overwrite 覆盖)", dst, verb)
 					continue
 				}
 				warn("%s 本地已修改, %s (确认后加 -o/--overwrite 覆盖)", dst, verb)
@@ -1453,13 +1465,16 @@ func diffFiles(src *source, reg *registry, order []string, uiDir, filter string)
 			}
 			found = true
 			// 给差异标出来源, 否则光看 diff 分不清"是我改的"还是"版本升级" ——
-			// 这正是 update 要不要 -o 的分界。
+			// 这正是 update 要不要 -o 的分界。没有基线时只能说"判断不了", 别断言用户改过。
+			baseline, hasBaseline := inst.Files[f]
 			note := ""
 			switch {
 			case os.IsNotExist(err):
 				note = " (本地没有, update 会创建)"
-			case inst.Files[f] == sha256Hex(local):
+			case hasBaseline && baseline == sha256Hex(local):
 				note = " (本地未改动, 纯版本差异 —— update 会直接替换)"
+			case !hasBaseline:
+				note = " (没有该文件的安装清单基线, 无法判断来源 —— update 默认跳过, 需 -o 覆盖)"
 			default:
 				note = " (本地已修改 —— update 会跳过, 需 -o 覆盖)"
 			}

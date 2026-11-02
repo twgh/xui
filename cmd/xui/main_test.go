@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"go/parser"
 	"go/token"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -919,5 +921,118 @@ func TestUpdateUsesManifestToTellUpgradeFromLocalEdit(t *testing.T) {
 	update(componentOptions{names: []string{"button"}, uiDir: "ui"})
 	if data, _ := os.ReadFile(dst); string(data) != v2 {
 		t.Errorf("无清单时应保守跳过, 实为 %q", data)
+	}
+}
+
+// captureOutput 抓 fn 期间的标准输出与警告(info → stdout, warn → stderr)。
+// 动作文案本身就是行为约定, 只断言文件内容抓不到"说的是什么话"。
+func captureOutput(t *testing.T, fn func()) string {
+	t.Helper()
+	oldOut, oldErr := os.Stdout, os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout, os.Stderr = w, w
+	reads := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		reads <- buf.String()
+	}()
+	fn()
+	_ = w.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+	out := <-reads
+	_ = r.Close()
+	return out
+}
+
+// -o 的文案要分清"版本升级"与"真的丢了本地改动": 干净项目加 -o 也报"本地修改已丢弃",
+// 会让人以为自己有改动没备份; 没有安装基线时同样不能断言用户改过。
+func TestOverwriteWordingTellsUpgradeFromLostEdit(t *testing.T) {
+	const v1 = "package ui\n// button v1\n"
+	const v2 = "package ui\n// button v2\n"
+	const v3 = "package ui\n// button v3\n"
+	const mine = "package ui\n// mine\n"
+
+	remote := v1
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/registry.json":
+			w.Write([]byte(`{"components":{"button":{"files":["button.go"],"deps":[]}}}`))
+		case "/components/button.go":
+			w.Write([]byte(remote))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("XUI_REGISTRY", srv.URL)
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	dst := filepath.Join("ui", "button.go")
+
+	// 装完没动过 + -o → 纯版本差异, 说"版本升级"
+	remote = v2
+	out := captureOutput(t, func() {
+		update(componentOptions{names: []string{"button"}, uiDir: "ui", overwrite: true})
+	})
+	if data, _ := os.ReadFile(dst); string(data) != v2 {
+		t.Errorf("-o 应替换未改动的文件, 实为 %q", data)
+	}
+	if !strings.Contains(out, "版本升级") || strings.Contains(out, "本地修改已丢弃") {
+		t.Errorf("未改动的文件在 -o 下应报版本升级, 实为 %q", out)
+	}
+
+	// 真改过 + -o → 这才叫"本地修改已丢弃"
+	if err := os.WriteFile(dst, []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	remote = v3
+	out = captureOutput(t, func() {
+		update(componentOptions{names: []string{"button"}, uiDir: "ui", overwrite: true})
+	})
+	if data, _ := os.ReadFile(dst); string(data) != v3 {
+		t.Errorf("-o 应覆盖改过的文件, 实为 %q", data)
+	}
+	if !strings.Contains(out, "本地修改已丢弃") {
+		t.Errorf("改过的文件在 -o 下应报本地修改已丢弃, 实为 %q", out)
+	}
+
+	// 没有基线(老项目): 默认跳过与 -o 都只说"判断不了", 不断言用户改过
+	if err := os.Remove(filepath.Join("ui", manifestName)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, []byte(v2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() {
+		update(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	})
+	if strings.Contains(out, "本地已修改") || !strings.Contains(out, "无法判断来源") {
+		t.Errorf("无基线时默认路径只该说判断不了, 实为 %q", out)
+	}
+	if data, _ := os.ReadFile(dst); string(data) != v2 {
+		t.Errorf("无基线时不应覆盖, 实为 %q", data)
+	}
+	out = captureOutput(t, func() {
+		update(componentOptions{names: []string{"button"}, uiDir: "ui", overwrite: true})
+	})
+	if strings.Contains(out, "本地修改已丢弃") || !strings.Contains(out, "无安装清单基线") {
+		t.Errorf("无基线时 -o 不该断言丢了本地改动, 实为 %q", out)
+	}
+	if data, _ := os.ReadFile(dst); string(data) != v3 {
+		t.Errorf("-o 仍应覆盖, 实为 %q", data)
 	}
 }
