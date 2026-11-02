@@ -298,19 +298,27 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	return 0
 }
 
-// drawCheck 在指示器内绘制勾号, 采用 shadcn 勾号的经典比例。
+// drawCheck 在指示器内绘制勾号。几何取 lucide Check 的 24 网格点
+// (20,6)-(9,17)-(4,12): shadcn 的指示器是 16px 边框盒, 1px 边框内 14px 内容区
+// 放 size-3.5(14px) 图标, 所以 24 网格映射到内缩 1px 的区域。
+//
+// 必须走 DrawLineF: DrawLine(int32) 会把 20/24*14 这类点位截断到左/上,
+// 三条折线各丢 0~1 逻辑像素, 勾号整体偏左, 右臂也短一截。
 func drawCheck(d *drawx.Draw, box xc.RECT, color xui.Color, stroke int32) {
-	w, h := box.Right-box.Left, box.Bottom-box.Top
+	w, h := float32(box.Right-box.Left-2), float32(box.Bottom-box.Top-2)
+	x, y := float32(box.Left+1), float32(box.Top+1)
 	d.SetLineWidth(stroke)
 	d.SetBrushColor(uint32(color))
-	d.DrawLine(box.Left+w*22/100, box.Top+h*52/100, box.Left+w*42/100, box.Top+h*74/100)
-	d.DrawLine(box.Left+w*42/100, box.Top+h*74/100, box.Left+w*80/100, box.Top+h*28/100)
+	d.DrawLineF(x+w*20/24, y+h*6/24, x+w*9/24, y+h*17/24)
+	d.DrawLineF(x+w*9/24, y+h*17/24, x+w*4/24, y+h*12/24)
 }
 
 // drawMinus 在指示器内绘制减号(不确定态), 线宽与勾号一致。
+// 两端对称于指示器中心, 同样用 F 版, 否则截断会让减号偏左。
 func drawMinus(d *drawx.Draw, box xc.RECT, color xui.Color, stroke int32) {
-	w, h := box.Right-box.Left, box.Bottom-box.Top
+	w := float32(box.Right - box.Left)
+	y := float32(box.Top+box.Bottom) / 2
 	d.SetLineWidth(stroke)
 	d.SetBrushColor(uint32(color))
-	d.DrawLine(box.Left+w*20/100, box.Top+h*50/100, box.Left+w*80/100, box.Top+h*50/100)
+	d.DrawLineF(float32(box.Left)+w*20/100, y, float32(box.Left)+w*80/100, y)
 }
