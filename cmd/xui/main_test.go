@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 候选顺序是行为约定: 直连 → Gitee 镜像 → GitCode 镜像 → 加速代理。
@@ -1471,5 +1472,99 @@ func TestSelfUpdateWithoutGoBin(t *testing.T) {
 	}
 	if !strings.Contains(out, "取不到 GOBIN") || strings.Contains(out, "已升级") {
 		t.Errorf("输出不对: %q", out)
+	}
+}
+
+// 升级提示只看缓存: 有新版才提示, devel/损坏/已是最新/查不到都不唠叨。
+func TestUpdateNotice(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name    string
+		current string
+		cache   updateCheck
+		want    string // "" = 不该提示
+	}{
+		{"有新版", "v0.8.0", updateCheck{CheckedAt: now, Latest: "v0.8.1"}, "xui 有新版 v0.8.0 → v0.8.1"},
+		{"已是最新", "v0.8.1", updateCheck{CheckedAt: now, Latest: "v0.8.1"}, ""},
+		{"本地比缓存新", "v0.9.0", updateCheck{CheckedAt: now, Latest: "v0.8.1"}, ""},
+		{"devel 不提示", "(devel) f7072ad+dirty", updateCheck{CheckedAt: now, Latest: "v0.8.1"}, ""},
+		{"没查到版本", "v0.8.0", updateCheck{CheckedAt: now}, ""},
+		{"缓存里是垃圾", "v0.8.0", updateCheck{CheckedAt: now, Latest: "latest"}, ""},
+	}
+	for _, c := range cases {
+		got := updateNotice(c.current, c.cache, now)
+		if c.want == "" {
+			if got != "" {
+				t.Errorf("%s: 不该提示, 实为 %q", c.name, got)
+			}
+			continue
+		}
+		if !strings.HasPrefix(got, c.want) {
+			t.Errorf("%s: %q, 期望以 %q 开头", c.name, got, c.want)
+		}
+		// 提示里要带上自查、升级与关闭的入口
+		for _, want := range []string{"self-update --check", "xui self-update", "XUI_NO_UPDATE_CHECK"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: 提示缺少 %q: %q", c.name, want, got)
+			}
+		}
+	}
+}
+
+func TestShouldProbeUpdate(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name  string
+		cache updateCheck
+		want  bool
+	}{
+		{"从没查过", updateCheck{}, true},
+		{"23 小时前", updateCheck{CheckedAt: now.Add(-23 * time.Hour)}, false},
+		{"25 小时前", updateCheck{CheckedAt: now.Add(-25 * time.Hour)}, true},
+		{"时间戳在未来(时钟回跳)", updateCheck{CheckedAt: now.Add(time.Hour)}, true},
+	}
+	for _, c := range cases {
+		if got := shouldProbeUpdate(c.cache, now); got != c.want {
+			t.Errorf("%s: %v, 期望 %v", c.name, got, c.want)
+		}
+	}
+}
+
+// 缓存坏了要能退回"没查过", 而不是让每条命令崩在半路上。
+func TestUpdateCheckCacheRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "update-check.json")
+	saveUpdateCheck(path, updateCheck{CheckedAt: time.Now(), Latest: "v0.8.1"})
+	got := loadUpdateCheck(path)
+	if !strings.Contains(string(mustJSON(t, path)), `"latest":"v0.8.1"`) {
+		t.Errorf("缓存内容不对: %s", mustJSON(t, path))
+	}
+	if !strings.HasPrefix(got.Latest, "v0.8.1") || got.CheckedAt.IsZero() {
+		t.Errorf("读回不对: %+v", got)
+	}
+	if err := os.WriteFile(path, []byte("{ broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if c := loadUpdateCheck(path); !c.CheckedAt.IsZero() || c.Latest != "" {
+		t.Errorf("坏缓存应退回空, 实为 %+v", c)
+	}
+	if c := loadUpdateCheck(filepath.Join(t.TempDir(), "missing.json")); !c.CheckedAt.IsZero() {
+		t.Errorf("缺失缓存应退回空, 实为 %+v", c)
+	}
+}
+
+func mustJSON(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// 缓存路径落在用户缓存目录下的 xui/ 里(拿不到就退 Temp), 不能污染项目目录。
+func TestUpdateCheckPath(t *testing.T) {
+	p := updateCheckPath()
+	if filepath.Base(p) != "update-check.json" || filepath.Base(filepath.Dir(p)) != "xui" {
+		t.Errorf("路径不对: %s", p)
 	}
 }

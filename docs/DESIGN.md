@@ -462,6 +462,8 @@ xui self-update --check  # 只比较当前与 @latest 的版本, 不安装
 - **组件目录**默认 `ui`, 可用 `add/update -p/--path <目录>` 指定;全局 `-c/--cwd` 先切换工作目录, `-s/--silent` 只打印警告与错误。
 - **新建项目**:目标目录已存在且非空时需 `-f/--force`(只覆盖模板文件, 不动无关文件)。
 - **依赖安装**:`xui init -n` 生成后默认在项目目录执行 `go mod tidy`(生成 `go.sum`);离线或想手动控制时加 `--no-install`, 之后自己跑一次。
+- **升级自己**:`xui self-update [版本]` 跑 `go install github.com/twgh/xui/cmd/xui@<目标>`(默认 `@latest`, 也可 `vX.Y.Z` / `main` / `HEAD` / commit 短哈希)。成没成以"跑新二进制拿到的版本"为准;正在运行的 exe 不许就地覆写, 失败时会把它改名成 `.old` 让路重试一次。`--check` 只比较当前与 `@latest`。
+- **升级提示**:每天最多后台查一次 `@latest`(派生一个内部子进程, 前台不等网络), 结果写用户缓存目录的 `xui/update-check.json`, 之后的命令在末尾提示一句;`-s/--silent` 与 `XUI_NO_UPDATE_CHECK=1` 关闭, `xui info` 能看到上次检查的时间与结果。本地/`go run` 构建不提示。
 - **运行时版本下限**:组件源码跟 `main`(永远最新), 运行时 `github.com/twgh/xui` 只能按 tag 取, 两者的差值就是编译错误(`undefined: xui.Xxx`,因为组件用了新加的运行时助手而项目钉着旧 tag)。`registry.json` 的 `runtime` 字段声明这批组件要求的最低运行时版本, `add` / `update` / `init` 会把它写进项目的 `go.mod`(等价 `go get github.com/twgh/xui@<tag>`);`--dry-run` 与 `--no-install` 只打印命令, `go.mod` 里 `replace` 了该模块时完全不动你的依赖。
 - **数据源**:默认从仓库 `main` 分支拉组件(永远最新),自动在直连 / Gitee 镜像 / GitCode 镜像 / 加速代理之间选路;拷到一半某个文件拉不到(镜像限速、临时挂起)会自动换下一个源继续,不会留下半套组件源码。`XUI_REGISTRY` 可指向本地目录或任意 `http(s)://` 基址(离线开发 / 锁定组件版本),显式设置时只走你写的地址、失败直接报错(不静默降级)。
 - **registry.json** 是组件清单:每个组件登记 `files`(要拷的文件,含跨文件助手)与 `deps`(依赖的其它组件)。CLI 只拷这些 `.go` 文件;运行时(`github.com/twgh/xui`)与图标子包(`github.com/twgh/xui/icons`)是 Go 模块依赖,不进组件目录。

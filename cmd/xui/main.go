@@ -329,6 +329,9 @@ func main() {
 	}
 	cmd := rest[0]
 	args := rest[1:]
+	// 命令正常跑完后提示"有新版"(只看缓存, 不等网络); fatal 走 os.Exit 不会触发这里,
+	// 所以失败的命令不唠叨。
+	defer notifyAvailableUpdate(cmd)
 	// 版本: -v / --version / version 三种写法等价。放在命令分派之前, 且不碰数据源
 	// (离线可用) —— 排查问题时第一句话就是"你装的哪个版本"。
 	if cmd == "-v" || cmd == "--version" || cmd == "version" {
@@ -339,6 +342,9 @@ func main() {
 		return
 	}
 	switch cmd {
+	case updateCheckCmd:
+		// 内部命令(不在帮助里): 被后台派生出来查一次 @latest, 只写缓存, 什么都不打印。
+		runUpdateCheck()
 	case "init":
 		opts, err := parseInitArgs(args)
 		if err != nil {
@@ -736,6 +742,9 @@ func usage() {
                         registry.json 的 runtime 字段声明这批组件要求的最低运行时版本,
                         add/update/init 装完组件会把项目 go.mod 的该依赖一起抬上去
                         (--dry-run 或 --no-install 时只打印命令, 不联网改依赖)
+
+升级提示: 每天最多后台查一次 @latest(结果写用户缓存目录, 前台不等网络), 命令正常跑完
+                        顺带提示一句"有新版"; -s/--silent 或 XUI_NO_UPDATE_CHECK=1 关闭。
 
 数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
   不设                  自动选路: 直连 → Gitee 镜像 → GitCode 镜像 →
@@ -1367,6 +1376,119 @@ func exeExt() string {
 	return ""
 }
 
+// ---------------------------------------------------------------- 升级提示
+
+const (
+	// updateCheckTTL: 缓存的有效期。一天一次, 平时只读文件不联网。
+	updateCheckTTL = 24 * time.Hour
+	// updateCheckCmd 是内部命令名(不出现在帮助里): 被派生出来时只查版本、写缓存。
+	updateCheckCmd = "__update-check"
+	// updateCheckDisableEnv 非空就彻底关掉检查与提示(CI、离线机、隐私偏好)。
+	updateCheckDisableEnv = "XUI_NO_UPDATE_CHECK"
+)
+
+// updateCheck 是缓存文件的内容。CheckedAt 在"派生子进程"时就先写一次占位:
+// 子进程起不来或查失败时, 不至于让后面每一条命令都再派一个。
+type updateCheck struct {
+	CheckedAt time.Time `json:"checked_at"`
+	Latest    string    `json:"latest,omitempty"`
+}
+
+// updateCheckPath 是缓存位置(UserCacheDir/xui/update-check.json, 拿不到用户缓存目录就退 Temp)。
+func updateCheckPath() string {
+	base, err := os.UserCacheDir()
+	if err != nil || base == "" {
+		base = os.TempDir()
+	}
+	return filepath.Join(base, "xui", "update-check.json")
+}
+
+// loadUpdateCheck 读缓存; 文件缺失或损坏都当"从没查过"(下次命令会去查一次)。
+func loadUpdateCheck(path string) updateCheck {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return updateCheck{}
+	}
+	var got updateCheck
+	if json.Unmarshal(data, &got) != nil {
+		return updateCheck{}
+	}
+	return got
+}
+
+// saveUpdateCheck 写缓存; 写不了就算了(提示是锦上添花, 不该因此影响命令)。
+func saveUpdateCheck(path string, c updateCheck) {
+	if data, err := json.Marshal(c); err == nil {
+		_ = os.MkdirAll(filepath.Dir(path), 0o755)
+		_ = os.WriteFile(path, data, 0o644)
+	}
+}
+
+// updateNotice 只靠缓存决定提示语, 空串表示不提示。
+// 本地/devel 构建不提示: 那是开发者在仓库里跑的, 比 tag 落后是常态, nag 也没法 self-update。
+func updateNotice(current string, c updateCheck, now time.Time) string {
+	if !isReleaseTag(current) || !isReleaseTag(c.Latest) {
+		return ""
+	}
+	if !versionBefore(current, c.Latest) {
+		return ""
+	}
+	return fmt.Sprintf("xui 有新版 %s → %s (先看: xui self-update --check; 升级: xui self-update; 关掉提示: 设 %s=1)",
+		current, c.Latest, updateCheckDisableEnv)
+}
+
+// shouldProbeUpdate 判断要不要派后台查询: 没缓存/过期/时钟往回跳过。
+func shouldProbeUpdate(c updateCheck, now time.Time) bool {
+	if c.CheckedAt.IsZero() || now.Before(c.CheckedAt) {
+		return true
+	}
+	return now.Sub(c.CheckedAt) > updateCheckTTL
+}
+
+// notifyAvailableUpdate 在命令正常结束后按缓存提示可升级; 缓存过期时派一个后台子进程去查。
+// self-update 刚跑完不再提示(否则升级完立刻被唠叨一遍), -s 与禁用变量都闭嘴。
+func notifyAvailableUpdate(cmd string) {
+	if quiet || cmd == updateCheckCmd || cmd == "self-update" {
+		return
+	}
+	if os.Getenv(updateCheckDisableEnv) != "" {
+		return
+	}
+	path := updateCheckPath()
+	c := loadUpdateCheck(path)
+	if msg := updateNotice(displayVersion(), c, time.Now()); msg != "" {
+		info("%s", msg)
+	}
+	if shouldProbeUpdate(c, time.Now()) {
+		saveUpdateCheck(path, updateCheck{CheckedAt: time.Now(), Latest: c.Latest})
+		probeUpdateAsync()
+	}
+}
+
+// probeUpdateAsync 派生 `xui __update-check` 在后台查版本写缓存。
+// 不 Start+Wait: 前台一条命令都不为网络买单, 提示用的永远是上一次的结果。
+func probeUpdateAsync() {
+	exe, err := os.Executable()
+	if err != nil || isTempBuildPath(exe) {
+		return // go run 的临时产物随时会被清掉, 派生它没意义
+	}
+	child := exec.Command(exe, updateCheckCmd)
+	child.Stdout, child.Stderr = nil, nil // 丢掉输出(也避免占着管道)
+	_ = child.Start()
+}
+
+// runUpdateCheck 查一次 @latest 解析到的版本并写缓存。查不到也记时间戳,
+// 断网时不至于每条命令都重试一轮。
+func runUpdateCheck() {
+	path := updateCheckPath()
+	latest, err := goListLatest()
+	if err != nil {
+		saveUpdateCheck(path, updateCheck{CheckedAt: time.Now()})
+		return
+	}
+	saveUpdateCheck(path, updateCheck{CheckedAt: time.Now(), Latest: latest})
+}
+
 // validateProjectName 只接受单级目录名(项目在当前目录下创建); 想换模块路径改 go.mod。
 func validateProjectName(name string) error {
 	if name == "" {
@@ -1899,6 +2021,19 @@ func infoCommand() {
 		src = "默认(远程 main 分支)"
 	}
 	info("数据源: %s", src)
+	// 版本提示靠这个排查: 缓存里存着"上次查到的 @latest"与查的时间(一天一次)。
+	if c := loadUpdateCheck(updateCheckPath()); !c.CheckedAt.IsZero() {
+		info("上次版本检查: %s, 当时 @latest = %s (关掉: 设 %s=1)",
+			c.CheckedAt.Format("2006-01-02 15:04"), orNone(c.Latest), updateCheckDisableEnv)
+	}
+}
+
+// orNone 给 info 用的空值占位。
+func orNone(s string) string {
+	if s == "" {
+		return "没查到(可能断网)"
+	}
+	return s
 }
 
 // diffFiles 把本地文件与 registry 内容做逐行 diff(不写本地); filter 非空时按文件名过滤。

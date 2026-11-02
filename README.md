@@ -268,6 +268,11 @@ go install github.com/twgh/xui/cmd/xui@latest
 `xui self-update --check` 只比较当前版本与 `@latest`。`@latest` 偶尔会被模块代理缓存拖旧,
 想立刻用某个版本就直接写 tag(`xui self-update v0.8.0`, 也支持 `main` / commit 短哈希)。
 
+CLI 会**每天最多后台查一次**新版(结果写用户缓存目录 `xui/update-check.json`, 前台命令不等网络),
+下次跑命令时在末尾提示一句"有新版"。只认正式发布版: `go run` / 本地构建不提示。
+不想被打扰: 加 `-s/--silent`, 或设环境变量 `XUI_NO_UPDATE_CHECK=1`(查到的时间与结果都能用
+`xui info` 看到)。
+
 ### 命令
 
 ```bash
