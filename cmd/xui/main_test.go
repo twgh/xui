@@ -1746,10 +1746,32 @@ func TestEnsureRuntimeDoesNotTouchForeignGoMod(t *testing.T) {
 // 正常项目里(go.mod 就是当前目录)必须照旧抬起来 —— 上面那条守卫不能过头。
 func TestEnsureRuntimeStillBumpsProjectRoot(t *testing.T) {
 	calls := stubGoGet(t)
-	chdirProject(t, "module myapp\n\ngo 1.18\n\nrequire github.com/twgh/xui v0.7.0\n")
+	tidied := stubTidy(t, nil)
+	dir := chdirProject(t, "module myapp\n\ngo 1.18\n\nrequire github.com/twgh/xui v0.7.0\n")
 	ensureRuntime("ui", "v0.8.0", false, true)
 	if len(*calls) != 1 || (*calls)[0].spec != "github.com/twgh/xui@v0.8.0" {
 		t.Fatalf("项目根的依赖该抬上去, calls=%+v", *calls)
+	}
+	// go get 只追加新版本到 go.sum, 旧版本的条目要靠 tidy 清掉 —— 升级后必须补这一步
+	if len(*tidied) != 1 || (*tidied)[0] != dir {
+		t.Errorf("go get 之后该在项目根跑一次 go mod tidy, 实为 %v (期望 %q)", *tidied, dir)
+	}
+}
+
+// tidy 失败不该把升级判失败(go.mod 已经抬上去了), 但必须说清 go.sum 里可能还有旧条目。
+func TestEnsureRuntimeTidyFailureOnlyWarns(t *testing.T) {
+	calls := stubGoGet(t)
+	stubTidy(t, errors.New("tidy 挂了"))
+	chdirProject(t, "module myapp\n\ngo 1.18\n\nrequire github.com/twgh/xui v0.7.0\n")
+	out := captureOutput(t, func() { ensureRuntime("ui", "v0.8.0", false, true) })
+	if len(*calls) != 1 {
+		t.Fatalf("go get 该照跑, calls=%+v", *calls)
+	}
+	if !strings.Contains(out, "go mod tidy 失败") || !strings.Contains(out, "go.sum 里可能还留着 v0.7.0 的条目") {
+		t.Errorf("tidy 失败要说清残留与手动命令: %s", out)
+	}
+	if !strings.Contains(out, "运行时已升到 v0.8.0 (go.mod 已更新)") {
+		t.Errorf("go.mod 确实升级了, 这句不能少: %s", out)
 	}
 }
 
@@ -2070,9 +2092,10 @@ func TestInitNewProjectBaselinesMatchDeliveredState(t *testing.T) {
 	}
 }
 
-// TestMain 默认把 go get 换成桩: 单测绝不联网改依赖。
+// TestMain 默认把 go get / go mod tidy 换成桩: 单测绝不联网改依赖。
 func TestMain(m *testing.M) {
 	goGetModule = func(string, string) error { return nil }
+	tidyModules = func(string) error { return nil }
 	os.Exit(m.Run())
 }
 
@@ -2090,6 +2113,19 @@ func stubGoGet(t *testing.T) *[]goGetCall {
 	}
 	t.Cleanup(func() { goGetModule = orig })
 	return &calls
+}
+
+// stubTidy 换成记录用的桩, 返回被 tidy 的目录清单。
+func stubTidy(t *testing.T, err error) *[]string {
+	t.Helper()
+	orig := tidyModules
+	var dirs []string
+	tidyModules = func(dir string) error {
+		dirs = append(dirs, dir)
+		return err
+	}
+	t.Cleanup(func() { tidyModules = orig })
+	return &dirs
 }
 
 // chdirProject 进临时目录, 铺一个"项目": go.mod + ui/ 组件目录。

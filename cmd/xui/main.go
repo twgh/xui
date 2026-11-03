@@ -1148,8 +1148,9 @@ func usage() {
 
 运行时版本: 组件源码跟 main 分支, 而运行时 github.com/twgh/xui 只能按 tag 取 ——
                         registry.json 的 runtime 字段是与这批组件配套的运行时版本,
-                        add/update/init 装完组件会把项目 go.mod 的该依赖一起抬上去
-                        (--dry-run 或 --no-install 时只打印命令, 不联网改依赖)
+                        add/update/init 装完组件会把项目 go.mod 的该依赖一起抬上去,
+                        再跑 go mod tidy 清掉 go.sum 里的旧版本条目
+                        (--dry-run 或 --no-install 时只打印这两条命令, 不联网改依赖)
 
 升级提示: 每天最多后台查一次 @latest(结果写用户缓存目录, 前台不等网络), 命令正常跑完
                         在 stderr 提示一句"有新版"(不污染被重定向的结果);
@@ -1625,8 +1626,11 @@ func runGo(dir string, args ...string) error {
 // 配套版本写在 registry.json 的 runtime 字段 —— 它和组件是同一次下发的, 所以一定对得上。
 const runtimeModule = "github.com/twgh/xui"
 
-// goGetModule 是测试缝: 单测换成桩, 不依赖网络。
-var goGetModule = func(dir, spec string) error { return runGo(dir, "get", spec) }
+// goGetModule / tidyModules 是测试缝: 单测换成桩, 不依赖网络也不动用户的 go.sum。
+var (
+	goGetModule = func(dir, spec string) error { return runGo(dir, "get", spec) }
+	tidyModules = func(dir string) error { return runGo(dir, "mod", "tidy") }
+)
 
 // findGoMod 从 dir 向上找最近的 go.mod(组件目录一般就在项目里); 找不到返回 ""。
 func findGoMod(dir string) string {
@@ -1802,20 +1806,32 @@ func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 		from = ver
 	}
 	if dryRun {
-		info("将升级运行时 %s %s → %s (go get %s@%s)", runtimeModule, from, floor, runtimeModule, floor)
+		info("将升级运行时 %s %s → %s (go get %s@%s, 再 go mod tidy 清掉 go.sum 里的旧条目)",
+			runtimeModule, from, floor, runtimeModule, floor)
 		return
 	}
 	if !autoInstall {
-		info("与这批组件配套的运行时是 %s %s (当前 %s); 本次不联网改依赖, 自己跑: go get %s@%s",
+		info("与这批组件配套的运行时是 %s %s (当前 %s); 本次不联网改依赖, 自己跑: go get %s@%s, 再 go mod tidy 清掉 go.sum 里的旧条目",
 			runtimeModule, floor, from, runtimeModule, floor)
 		return
 	}
 	info("升级运行时 %s %s → %s ...", runtimeModule, from, floor)
-	if err := goGetModule(filepath.Dir(gm), runtimeModule+"@"+floor); err != nil {
-		warn("自动升级运行时失败: %v (手动跑: 在 %s 执行 go get %s@%s)", err, filepath.Dir(gm), runtimeModule, floor)
+	if err := goGetModule(gmDir, runtimeModule+"@"+floor); err != nil {
+		warn("自动升级运行时失败: %v (手动跑: 在 %s 执行 go get %s@%s)", err, gmDir, runtimeModule, floor)
 		return
 	}
-	info("运行时已升到 %s (go.mod 与 go.sum 一起更新)", floor)
+	// go get 只往 go.sum 里**追加**新版本的 h1/go.mod, 上个版本的条目会原样留着 ——
+	// 用户看到"go.sum 里还印着旧版本", 会以为这次升级没升干净。go.sum 的过期条目
+	// 只有 go mod tidy 会清, 所以升级后补一步。tidy 失败不算升级失败(go.mod 已经抬上去了),
+	// 只提示手动跑: 大项目 tidy 可能超过命令超时, 不该因此把整次安装判失败。
+	info("整理依赖 (go mod tidy) ...")
+	if err := tidyModules(gmDir); err != nil {
+		warn("go mod tidy 失败: %v (运行时已升到 %s; go.sum 里可能还留着 %s 的条目, 手动在 %s 跑一次 go mod tidy)",
+			err, floor, from, gmDir)
+		info("运行时已升到 %s (go.mod 已更新)", floor)
+		return
+	}
+	info("运行时已升到 %s (go.mod 与 go.sum 一起更新, 旧版本条目已清)", floor)
 }
 
 // ---------------------------------------------------------------- CLI 自我升级
@@ -3440,7 +3456,8 @@ CLI 逐个比对内容: 本地没有则创建、一致则跳过、被改过则�
 -o/--overwrite。本项目的组件目录是 {{UIDIR}}/(相对项目根), 下面所有命令都按它写; 目录名在
 xui init -n <项目名> -p <目录> 这一步就定下来了, 装好以后每条命令用 -p 指过去。
 装完组件, CLI 会把 go.mod 里的 github.com/twgh/xui 抬到与这批组件配套的运行时版本
-(组件源码跟仓库最新, 运行时按 tag 取); 离线或 --no-install 时只打印那条命令, 不动你的 go.mod。
+(组件源码跟仓库最新, 运行时按 tag 取), 并跑一次 go mod tidy 清掉 go.sum 里的旧版本条目;
+离线或 --no-install 时只打印那两条命令, 不动你的 go.mod。
 
 ## 最小用法
 
@@ -3499,7 +3516,8 @@ xui list
 
 CLI 不会覆盖被改过的文件; 确认丢弃本地改动时加 -o/--overwrite。
 装完组件, CLI 会把项目 go.mod 里的 github.com/twgh/xui 抬到与这批组件配套的运行时版本
-(组件源码跟仓库最新、运行时按 tag 取); 离线时只打印那条命令, 不动 go.mod。
+(组件源码跟仓库最新、运行时按 tag 取), 并跑一次 go mod tidy 清掉 go.sum 里的旧版本条目;
+离线时只打印那两条命令, 不动 go.mod。
 
 ## 组件速用
 

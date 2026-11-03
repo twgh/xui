@@ -14,6 +14,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **运行时升级后补 `go mod tidy`(2026-11-03, 用户报)**:
+  - **现象**: `xui update` / `add` 打完"运行时已升到 v0.8.2 (go.mod 与 go.sum 一起更新)", 项目 `go.sum` 里 v0.8.1 的 h1 / go.mod 两行却原样留着 —— 看着像没升干净。
+  - **根因**: `ensureRuntime` 只跑 `go get module@tag`。`go get` 只往 `go.sum` **追加**新版本条目, 旧版本的条目不会删(Go 的既定行为); `go.sum` 的过期条目只有 `go mod tidy` 会清。
+  - **修法**: `go get` 成功后补一次 `go mod tidy`(新测试缝 `tidyModules`, `TestMain` 默认 stub 掉)。tidy 失败不算升级失败(`go.mod` 已抬上去), 只 warn 并给手动命令与残留说明 —— 大项目 tidy 可能撞上 `runGo` 的 2 分钟超时, 不该把整次安装判失败。
+  - **实测**: 钉 v0.8.1 的项目(go.sum 只有 v0.8.1 两行)跑 `xui add checkbox` → 输出"整理依赖 (go mod tidy) ..." → `go.sum` 只剩 v0.8.2 两行; 旧版本条目消失。
+  - **文案同步**: CLI 帮助的"运行时版本"段、`--dry-run` / `--no-install` 的预览命令、README「运行时版本」、DESIGN 第五节、两份下发的 AGENTS 模板都改成"go get + go mod tidy 两条"。
+  - **注意**: v0.8.2 已发布, 不含这个修复 —— 用户要拿到它需要下一个 patch tag。
 - ✅ **v0.8.2 发布(2026-11-03)**: 只有 CLI 与文档变更, 走 patch。
   - **顺序**: 先把 `fallbackXuiVersion` 与 README 的版本示例抬到 v0.8.2 并提交(`805b857`) → 打轻量 tag `v0.8.2`(指向该提交, devel 构建回退的版本与 tag 一致) → 同一批把 `registry.json` 的 `runtime` 抬到 v0.8.2(`6d9e9f9`, 写早了 `go get` 拉不到 tag)。
   - **推送**: `git push origin main v0.8.2` 一条命令三远端都成功(Gitee / GitHub / GitCode), 无需逐远端重复。
