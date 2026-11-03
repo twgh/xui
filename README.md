@@ -62,10 +62,17 @@ go run github.com/twgh/xui/cmd/xui@latest init -n myapp
 ### 已有项目
 
 ```bash
-# 先在你的项目根目录执行(项目要先有 go.mod, 没有就先 go mod init)
-# 此时 `init` 只创建 `ui/` 目录, 外加一份 `AGENTS.md`。
+# 在你的项目根目录执行。组件目录默认 ui/, 想换名字: xui init components(或 -p components)
 xui init
 ```
+
+它会创建组件目录, 里面是: 主题文件 `theme.go`、自定义指南 `DESIGN.md`、9 个开箱即用的基础组件
+(含它们共用的助手文件)、给 AI 助手的 `AGENTS.md`, 以及安装清单 `.xui-manifest.json`(记下每个文件
+安装那一刻的哈希, 之后升级才分得清"版本升级"与"你改过")。重复执行不会动无关文件: 你改过的组件
+一律保留(要丢弃才加 `-o`), 没改过的跟着版本更新(见下方 CLI 的"更新时的判定")。
+
+项目里已有 `go.mod` 时, `init` 会顺手把 `github.com/twgh/xui` 抬到与这批组件配套的 tag(`go.sum` 一起
+更新);没有 `go.mod` 也能装, 只是跳过这一步, 你随后自己跑 `go get github.com/twgh/xui github.com/twgh/xcgui`。
 
 ### 示例源码
 
