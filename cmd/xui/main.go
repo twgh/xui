@@ -1073,7 +1073,8 @@ func usage() {
                              打印组件源码, 不写本地
   xui add <组件...> --diff[=组件或文件]
                              与本地文件做逐行 diff, 不写本地
-  xui update [组件...]       升级已装组件(省略组件名 = ui 目录里已装的全部);
+  xui update [组件...]       升级已装组件(省略组件名 = ui 目录里已装的全部, 外加已在的
+                             DESIGN.md / AGENTS.md);
                              安装后没改过的文件直接替换, 改过的跳过(见 -o);
                              连没装过的组件一起装是 xui add --all 的事, update 不接 --all
   xui add DESIGN.md          只要 CLI 下发的文档(DESIGN.md / AGENTS.md 不是组件, 不在
@@ -2267,6 +2268,19 @@ func placeDocs(docs []string, uiDir string, w writeOpts, create bool) int {
 	return skipped
 }
 
+// existingDocs 返回组件目录里**已有**的那两份文档 —— 裸 `xui update` 连它们一起刷新。
+// 它们不是"新增": 是 init 交付过、也记在清单里的东西, 更新本来就该管。
+// 缺的一份都不补也不吭声(补齐是 add/init 的活), 否则只用 add 装组件的项目每次 update 都被提醒。
+func existingDocs(uiDir string) []string {
+	var out []string
+	for _, d := range cliDocs {
+		if fileExists(filepath.Join(uiDir, d)) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // add 拷贝组件(含依赖闭包); --view/--diff 只展示不写文件; 点名 DESIGN.md/AGENTS.md 时只给文档。
 func add(opts componentOptions) {
 	docs, comps := splitForWrite(opts)
@@ -2295,15 +2309,19 @@ func add(opts componentOptions) {
 	}
 }
 
-// update 更新已装组件: 省略组件名时 = uiDir 里已装的全部(按 registry 依赖闭包)。
+// update 更新已装组件: 省略组件名时 = uiDir 里已装的全部(按 registry 依赖闭包)
+// **加上目录里已有的 DESIGN.md / AGENTS.md**。
 // --all 在这里会被解析器拒掉(update 不该顺手装新组件, 那是 add 的事);
-// 点名 DESIGN.md / AGENTS.md 则只刷文档(已存在的才刷)。
+// 点名 DESIGN.md / AGENTS.md 则只刷指定的那几份(已存在的才刷)。
 func update(opts componentOptions) {
 	docs, comps := splitForWrite(opts)
 	src, reg := loadRegistry()
 	names := comps
 	if len(names) == 0 && len(docs) == 0 {
-		if names = installedComponents(reg, opts.uiDir); len(names) == 0 {
+		// 裸 update = "把这个目录里 CLI 给过的东西都刷新": 已装组件 + 已交付的两份文档。
+		names = installedComponents(reg, opts.uiDir)
+		docs = existingDocs(opts.uiDir)
+		if len(names) == 0 && len(docs) == 0 {
 			info("%s 下没有已安装的组件 (先用 xui add 装)", opts.uiDir)
 			return
 		}

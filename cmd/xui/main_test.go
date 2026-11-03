@@ -1911,6 +1911,27 @@ func TestNamedDocTargets(t *testing.T) {
 	if got, _ := os.ReadFile(p); !strings.Contains(string(got), "我加的段") {
 		t.Error("改过的 DESIGN.md 被覆写了")
 	}
+	// 裸 update = 把这个目录里 CLI 给过的都刷新: 已装组件 + 已在的两份文档
+	out = captureOutput(t, func() { update(componentOptions{uiDir: "ui"}) })
+	for _, want := range []string{"DESIGN.md", "AGENTS.md"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("裸 update 该连已交付的 %s 一起刷新: %s", want, out)
+		}
+	}
+	// 但缺的那份不补(那是 add/init 的活), 也不吭声
+	os.Remove(filepath.Join("ui", "AGENTS.md"))
+	out = captureOutput(t, func() { update(componentOptions{uiDir: "ui"}) })
+	if fileExists(filepath.Join("ui", "AGENTS.md")) {
+		t.Error("裸 update 补写了它没交付过的文件")
+	}
+	if strings.Contains(out, "AGENTS.md") {
+		t.Errorf("缺的文档该静默跳过(只用 add 装组件的项目不该每次被提醒): %s", out)
+	}
+	// 点名时才给指路提示
+	out = captureOutput(t, func() { update(componentOptions{names: []string{"AGENTS.md"}, uiDir: "ui"}) })
+	if !strings.Contains(out, "xui add AGENTS.md") {
+		t.Errorf("点名一份不存在的文档时该指明补齐的写法: %s", out)
+	}
 	// 路径写法也认(基名比对), 且拆分结果用规范名 —— 小写输入不能把基线记成两个键
 	for _, in := range []string{"ui/DESIGN.md", "design.md", "DESIGN.md"} {
 		d, c := splitForWrite(componentOptions{names: []string{in, "button"}})
