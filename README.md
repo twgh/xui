@@ -66,14 +66,6 @@ go run github.com/twgh/xui/cmd/xui@latest init -n myapp
 xui init
 ```
 
-它会创建组件目录, 里面是: 主题文件 `theme.go`、自定义指南 `DESIGN.md`、9 个开箱即用的基础组件
-(含它们共用的助手文件)、给 AI 助手的 `AGENTS.md`, 以及安装清单 `.xui-manifest.json`(记下每个文件
-安装那一刻的哈希, 之后升级才分得清"版本升级"与"你改过")。重复执行不会动无关文件: 你改过的组件
-一律保留(要丢弃才加 `-o`), 没改过的跟着版本更新(见下方 CLI 的"更新时的判定")。
-
-项目里已有 `go.mod` 时, `init` 会顺手把 `github.com/twgh/xui` 抬到与这批组件配套的 tag(`go.sum` 一起
-更新);没有 `go.mod` 也能装, 只是跳过这一步, 你随后自己跑 `go get github.com/twgh/xui github.com/twgh/xcgui`。
-
 ### 示例源码
 
 ```go
@@ -251,14 +243,10 @@ paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存归�
 go install github.com/twgh/xui/cmd/xui@latest
 ```
 
-装一次后直接敲 `xui ...`。二进制在 `$(go env GOPATH)/bin`(Windows 默认
-`%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。升级重跑同一条命令,
-或者用 CLI 自己: `xui self-update`(`--check` 只比较当前版本与 `@latest`)。`@latest` 偶尔被
-模块代理缓存拖旧, 想立刻用某个版本就直接写 tag(`xui self-update v0.8.1`, 也支持 `main` / commit 短哈希)。
+二进制在 `$(go env GOPATH)/bin` (Windows 默认 `%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。
 
-CLI 每天最多后台查一次新版(前台不等网络), 命令跑完后向 stderr 提示一句"有新版" —— 走 stderr
-所以不会混进被 `>` 重定向的源码。`go run` / 本地构建不提示; 不想被打扰就加 `-s/--silent`
-或设 `XUI_NO_UPDATE_CHECK=1`(上次查到的时间与结果都能用 `xui info` 看到)。
+升级重跑同一条命令, 或者用 CLI 自己: `xui self-update` (加 `--check` 只比较当前版本与 `@latest`)。`@latest` 偶尔被
+模块代理缓存拖旧, 想立刻用某个版本就直接写 tag (`xui self-update v0.8.1`, 也支持 `main` / commit 短哈希)。
 
 ### 命令
 
@@ -274,7 +262,7 @@ xui add --all           # 拷贝全部组件
 xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地
 xui add card --view     # 打印组件源码(可加 =card.go 或 =card 只看某个文件/某个组件), 不写本地
 xui add card --diff     # 与本地文件做逐行 diff(过滤值同上), 不写本地
-xui update              # 升级已装组件(省略组件名 = 组件目录里已装的全部; 不接 --all)
+xui update              # 升级已装组件(省略组件名 = 组件目录里已装的全部, 外加已在的两份文档; 不接 --all)
 xui update button       # 只升级指定组件(含依赖)
 xui update -o           # 连本地改过的文件一起覆盖(改动会丢, 先备份)
 xui list                # 列出可用组件
@@ -293,27 +281,27 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 | 选项 | 用于 | 作用 |
 |---|---|---|
 | `-n, --name <项目名>` | init | 新建完整项目(`-n .` = 铺在当前空目录) |
-| `-f, --force` | init -n | 放开"目标目录已存在且非空"这道闸门;**不**隐含丢弃你的改动 |
-| `-o, --overwrite` | init / add / update | 丢弃本地改动(默认保留, 见下方判定);管模板文件与组件文件 |
-| `-p, --path <目录>` | init / add / update / info | 组件目录, 默认 `ui`。`init -n` 用它在新项目里定名字(import 路径与下发文档跟着走);只许项目内的相对目录(绝对路径或 `..` 跳出会被拒) |
+| `-f, --force` | init -n | 放开"目标目录已存在且非空"这道闸门; **不**隐含丢弃你的改动 |
+| `-o, --overwrite` | init / add / update | 丢弃本地改动(默认保留, 见下方判定); 管模板文件与组件文件 |
+| `-p, --path <目录>` | init / add / update / info | 组件目录, 默认 `ui`。`init -n` 用它在新项目里定名字(import 路径与下发文档跟着走); 只许项目内的相对目录(绝对路径或 `..` 跳出会被拒) |
 | `--no-install` | init / add / update | 组件文件照写, 但不联网动依赖(`init -n` 还跳过 `go mod tidy` 与 `xc` 安装) |
-| `--dry-run` | init / add / update | 只预览, **没有任何副作用**:不建目录、不写文件、不写清单、不联网、不生成 `.syso` |
-| `-a, --all` | add | 全部组件(`update` 不接:省略组件名就已经是"已装的全部", 要连没装的一起装用 `add --all`) |
-| `--view[=组件或文件]` / `--diff[=组件或文件]` | add / update | 打印源码 / 与本地对比, 不写本地;过滤值给组件名(`card`)或文件基名(`card.go`)都行 |
+| `--dry-run` | init / add / update | 只预览, **没有任何副作用**: 不建目录、不写文件、不写清单、不联网、不生成 `.syso` |
+| `-a, --all` | add | 全部组件(`update` 不接: 省略组件名就已经是"已装的全部", 要连没装的一起装用 `add --all`) |
+| `--view[=组件或文件]` / `--diff[=组件或文件]` | add / update | 打印源码 / 与本地对比, 不写本地; 过滤值给组件名(`card`)或文件基名(`card.go`)都行 |
 | `[词]` / `-q, --query` / `-l, --limit` / `-o, --offset` | list / search | 搜索词(位置参数与 `-q` 等价)、限制数量、跳过前 n 个 |
 | `-j, --json` | list / search / info / view / `--view` / `--diff` / `self-update --check` | 结果出结构化 JSON(字段表见下) |
 | `--strict` | add / update | 有文件被跳过时用退出码 2 失败(默认只汇总一句就正常退出) |
 | `-c, --cwd <目录>` | 全部 | 先切到该目录, 后续相对路径都以它为准 |
-| `-s, --silent` | 全部 | **只压进度输出**:命令结果(`list` 的表、`view`/`--diff` 的正文、`info`、`version`、`--check` 的对比)照常, 警告与错误照常;`xui list -s` 就是一份没有表头、可直接接管道的清单 |
+| `-s, --silent` | 全部 | **只压进度输出**: 命令结果(`list` 的表、`view`/`--diff` 的正文、`info`、`version`、`--check` 的对比)照常, 警告与错误照常;`xui list -s` 就是一份没有表头、可直接接管道的清单 |
 | `-v, --version` / `-h, --help` | 全部 | 版本 / 帮助(`-h` 任何位置都生效) |
 
 三条约束:
 
 - **带值的选项不给空值** —— `-p ""` 与 `-p=` 一样当场报错(空目录会把组件拷进当前目录根, 空的 `--view=` 会从"只看一个文件"变成"全部打印")。
-- **`--view` / `--diff` 不与 `--dry-run` / `-o` / `--no-install` / `--strict` 同用** —— 它们本来就不写文件, 一起给会直接报错;`-v` 是版本号, 看源码写 `--view`;`self-update --check` 不接受版本参数。
+- **`--view` / `--diff` 不与 `--dry-run` / `-o` / `--no-install` / `--strict` 同用** —— 它们本来就不写文件, 一起给会直接报错; `-v` 是版本号, 看源码写 `--view`; `self-update --check` 不接受版本参数。
 - 短选项也接受 `-x=值`, 与长选项一致: `-p=src`、`-l=5`、`-o=2`。
 
-**退出码**: `0` = 跑通(有跳过时 stderr 给一句"共 N 个文件被跳过"的汇总);`1` = 命令失败(源拉不到、权限、参数错);`2` = 加了 `--strict` 且有文件被跳过。CI 想"没更新干净就失败"就跑 `xui update --strict`(配 `--dry-run` 可先空跑一遍)。
+**退出码**: `0` = 跑通(有跳过时 stderr 给一句"共 N 个文件被跳过"的汇总); `1` = 命令失败(源拉不到、权限、参数错); `2` = 加了 `--strict` 且有文件被跳过。CI 想"没更新干净就失败"就跑 `xui update --strict`(配 `--dry-run` 可先空跑一遍)。
 
 **结构化输出(`-j`)的字段**:
 
@@ -325,7 +313,7 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 | `--diff` | `dir` `filter` `matched` `files[]{path file state diff}`, `state` = `missing` / `upgrade` / `edited` / `unknown` |
 | `self-update --check` | `current` `latest` `localBuild` `upgradable` `command`(下一步该跑什么, 已最新时为空串) |
 
-空的 `files` / `components` / `deps` 一律是 `[]` 而不是 `null`;过滤值没命中时靠 `matched=false` 区分(这时 `files` 也是空, 但不是"没有差异")。
+空的 `files` / `components` / `deps` 一律是 `[]` 而不是 `null`; 过滤值没命中时靠 `matched=false` 区分(这时 `files` 也是空, 但不是"没有差异")。
 
 组件源码拷进项目后归你所有; `add` / `update` / `init` 都不会覆盖你本地改过的文件, 确认要丢弃本地改动时加 `-o/--overwrite`。
 
@@ -339,13 +327,13 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 | 内容不同,且清单哈希对不上(你改过) | 警告并跳过,要 `-o` 才覆盖(“本地修改已丢弃”) |
 | 内容不同,但清单里没有这个文件(老项目 / 手动删了清单) | 警告并跳过,要 `-o` 才覆盖(只说“无安装清单基线, 无法判断是否改过”, 不断言你改过) |
 
-也就是说: 自己没动过的文件会跟着版本正常升级, 只有你手改过的那些才需要 `-o`;`--diff` 的每个文件头也标的是同一个来源判定。清单缺失(老项目 / 手动删了它)时退回保守模式 —— 一律"无法判断来源"并跳过, 加 `-o` 之后清单会重新生成。
+也就是说: 自己没动过的文件会跟着版本正常升级, 只有你手改过的那些才需要 `-o`; `--diff` 的每个文件头也标的是同一个来源判定。清单缺失(老项目 / 手动删了它)时退回保守模式 —— 一律"无法判断来源"并跳过, 加 `-o` 之后清单会重新生成。
 
-**运行时版本**: 组件源码跟 `main`(永远最新), 而运行时 `github.com/twgh/xui` 是 Go 模块依赖、**只能按 tag 取**;`registry.json` 的 `runtime` 字段声明与这批组件**配套**的运行时版本(每次发布都抬成刚发的 tag)。`add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖抬到它(等价 `go get github.com/twgh/xui@<tag>`, `go.sum` 一起更新), 升级完直接 `go build` 就行, 不用你再 `go get -u`。
+**运行时版本**: 组件源码跟 `main`(永远最新), 而运行时 `github.com/twgh/xui` 是 Go 模块依赖、**只能按 tag 取**; `registry.json` 的 `runtime` 字段声明与这批组件**配套**的运行时版本(每次发布都抬成刚发的 tag)。`add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖抬到它(等价 `go get github.com/twgh/xui@<tag>`, `go.sum` 一起更新), 升级完直接 `go build` 就行, 不用你再 `go get -u`。
 
-这五种情况不动你的依赖: `--dry-run` 与 `--no-install` 只打印命令;`go.mod` 里把该模块 `replace` 到本地工作副本时以你的 `replace` 为准;项目里找不到 `go.mod` 时只提示;找到的那份 `go.mod` 既在当前目录之外、又没要求 `github.com/twgh/xui` 时也只提示。想自己锁版本: 先 `go get github.com/twgh/xui@<你选的 tag>` 再跑 `xui update`。
+这五种情况不动你的依赖: `--dry-run` 与 `--no-install` 只打印命令; `go.mod` 里把该模块 `replace` 到本地工作副本时以你的 `replace` 为准; 项目里找不到 `go.mod` 时只提示; 找到的那份 `go.mod` 既在当前目录之外、又没要求 `github.com/twgh/xui` 时也只提示。想自己锁版本: 先 `go get github.com/twgh/xui@<你选的 tag>` 再跑 `xui update`。
 
-**数据源**: 默认从仓库 `main` 分支现拉组件(组件永远最新); CLI 本体的版本由 `go install` / `go run` 时的 `@latest` 或 tag 决定, 组件版本用下面的 `XUI_REGISTRY` 锁。默认源**自动选路**, 第一个通的用它跑完本次命令, 全都不通才降级到 CLI 内嵌源码;拷到一半某个文件拉不到(镜像限速、临时挂起)会自动换下一个源接着拷, 不会留下半套组件目录。选路过程逐行打在 stderr 上。
+**数据源**: 默认从仓库 `main` 分支现拉组件(组件永远最新); CLI 本体的版本由 `go install` / `go run` 时的 `@latest` 或 tag 决定, 组件版本用下面的 `XUI_REGISTRY` 锁。默认源**自动选路**, 第一个通的用它跑完本次命令, 全都不通才降级到 CLI 内嵌源码; 拷到一半某个文件拉不到(镜像限速、临时挂起)会自动换下一个源接着拷, 不会留下半套组件目录。选路过程逐行打在 stderr 上。
 
 ```
 直连 https://raw.githubusercontent.com/twgh/xui/main
@@ -364,7 +352,7 @@ XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                #
 XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dialog  # 只走 GitCode 镜像
 ```
 
-显式指定 `XUI_REGISTRY` 时拉取失败会直接报错(便于排查),不静默降级。
+显式指定 `XUI_REGISTRY` 时拉取失败会直接报错(便于排查), 不静默降级。
 
 ## 已知约束
 
