@@ -61,8 +61,9 @@ go run github.com/twgh/xui/cmd/xui@latest init -n myapp
 
 ### 已有项目
 
+在项目根目录执行。组件目录默认 ui/, 想换名字: xui init components (或 -p components)
+
 ```bash
-# 在你的项目根目录执行。组件目录默认 ui/, 想换名字: xui init components(或 -p components)
 xui init
 ```
 
