@@ -366,6 +366,12 @@ func TestParseInitArgs(t *testing.T) {
 		{"-n 加 --path=", []string{"-n", "myapp", "--path=internal/ui"}, initOptions{uiDir: "internal/ui", project: "myapp"}, false},
 		{"-n 的 -p 不许绝对路径", []string{"-n", "myapp", "-p", "D:/other/ui"}, initOptions{}, true},
 		{"-n 的 -p 不许跳出项目", []string{"-n", "myapp", "-p", "../ui"}, initOptions{}, true},
+		// 归一化: 脏写法会原样进 main.go 的 import(Go 不认点段与尾斜杠)
+		{"-n 的 -p 归一化点段", []string{"-n", "myapp", "-p", "./components"}, initOptions{uiDir: "components", project: "myapp"}, false},
+		{"-n 的 -p 归一化尾斜杠", []string{"-n", "myapp", "-p", "components/"}, initOptions{uiDir: "components", project: "myapp"}, false},
+		{"-n 的 -p 不许项目根", []string{"-n", "myapp", "-p", "."}, initOptions{}, true},
+		{"普通 init 位置参数归一化", []string{"./widgets/"}, initOptions{uiDir: "widgets"}, false},
+		{"普通 init 空目录名", []string{""}, initOptions{}, true},
 		{"普通 init 不需要 -f", []string{"-f"}, initOptions{}, true},
 		{"普通 init 的 -o", []string{"-o"}, initOptions{uiDir: "ui", overwrite: true}, false},
 		// 普通 init 的位置参数与 -p 是同一个东西: 同词不矛盾, 不同词不猜
@@ -968,8 +974,13 @@ func TestUnifiedDiff(t *testing.T) {
 			t.Errorf("diff 缺少 %q:\n%s", want, d)
 		}
 	}
-	if d := unifiedDiff("a", "b", "", "x\n"); !strings.Contains(d, "+x\n") {
+	d = unifiedDiff("a", "b", "", "x\n")
+	if !strings.Contains(d, "+x\n") {
 		t.Errorf("新增文件 diff 不对:\n%s", d)
+	}
+	// 空文件那一侧从第 0 行起(patch 工具按这个判"文件本来不存在")
+	if !strings.Contains(d, "@@ -0,0 +1,1 @@") {
+		t.Errorf("新增文件的 hunk 头应为 @@ -0,0 +1,1 @@:\n%s", d)
 	}
 }
 
@@ -1286,15 +1297,25 @@ func TestDiffAndViewFilterTakeComponentName(t *testing.T) {
 	}); !strings.Contains(got, "没有差异") {
 		t.Errorf("--diff=button 应按组件名命中并报告没有差异: %q", got)
 	}
+	// 没命中任何文件: 不能说"没有差异", 而且返回值必须是 false(CLI 侧由 requireMatched
+	// 用退出码 1 失败 —— fatal 路径要用子进程才能测, 这里验内核)
+	src, reg := loadRegistry()
+	var hit bool
 	if got := captureOutput(t, func() {
-		add(componentOptions{names: []string{"button"}, uiDir: "ui", diff: true, diffFile: "card.go"})
-	}); strings.Contains(got, "没有差异") || !strings.Contains(got, "没有匹配的文件") {
+		hit = diffFiles(src, reg, resolveNames(reg, []string{"button"}), "ui", "card.go", false)
+	}); hit || strings.Contains(got, "没有差异") {
 		t.Errorf("--diff 没命中任何文件, 不该说没有差异: %q", got)
 	}
 	if got := captureOutput(t, func() {
 		add(componentOptions{names: []string{"button"}, uiDir: "ui", view: true, viewFile: "button"})
 	}); !strings.Contains(got, "package ui") || strings.Contains(got, "没有匹配的文件") {
 		t.Errorf("--view=button 应打出源码: %q", got)
+	}
+	// 本地没有的组件: 得说清"谁来装" —— update 不会替没装过的组件创建文件
+	if got := captureOutput(t, func() {
+		add(componentOptions{names: []string{"card"}, uiDir: "ui", diff: true, diffFile: "card.go"})
+	}); !strings.Contains(got, "要装它请用 xui add card") {
+		t.Errorf("未装组件的缺失文件该指路 xui add: %q", got)
 	}
 }
 
@@ -1341,18 +1362,21 @@ func TestJSONOutputShapes(t *testing.T) {
 	}
 
 	add(componentOptions{names: []string{"button"}, uiDir: "ui"})
-	diffJSONAt := func(filter string) diffJSON {
+	// 直接调 diffFiles(而不是经 add): 没命中时 CLI 会以退出码 1 结束, 走 add 会把测试进程杀掉
+	diffJSONAt := func(filter string) (diffJSON, bool) {
 		var got diffJSON
+		src, reg := loadRegistry()
+		var hit bool
 		out := captureOutput(t, func() {
-			add(componentOptions{names: []string{"button"}, uiDir: "ui", diff: true, diffFile: filter, json: true})
+			hit = diffFiles(src, reg, resolveNames(reg, []string{"button"}), "ui", filter, true)
 		})
 		if err := json.Unmarshal([]byte(out), &got); err != nil {
 			t.Fatalf("--diff=%s -j 不是合法 JSON: %v\n%s", filter, err, out)
 		}
-		return got
+		return got, hit
 	}
 	// 装完之后内容与远端一致 → 没有差异, 但 matched 必须是 true(命中了文件)
-	if got := diffJSONAt("button"); !got.Matched || len(got.Files) != 0 {
+	if got, _ := diffJSONAt("button"); !got.Matched || len(got.Files) != 0 {
 		t.Errorf("一致时该 matched=true 且 files 为空: %+v", got)
 	}
 	// 本地改过 → state=edited, 带 diff 正文
@@ -1363,7 +1387,7 @@ func TestJSONOutputShapes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join("ui", "button.go"), append(data, []byte("\n// mine\n")...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := diffJSONAt("button")
+	got, _ := diffJSONAt("button")
 	if !got.Matched || len(got.Files) != 1 || got.Files[0].State != "edited" || got.Files[0].Diff == "" {
 		t.Fatalf("改过的文件该报 edited 并带 diff: %+v", got)
 	}
@@ -1371,12 +1395,12 @@ func TestJSONOutputShapes(t *testing.T) {
 	if err := os.Remove(filepath.Join("ui", manifestName)); err != nil {
 		t.Fatal(err)
 	}
-	if got := diffJSONAt("button"); len(got.Files) != 1 || got.Files[0].State != "unknown" {
+	if got, _ := diffJSONAt("button"); len(got.Files) != 1 || got.Files[0].State != "unknown" {
 		t.Errorf("无基线时 state 该是 unknown: %+v", got)
 	}
-	// 过滤值谁都没挨着 → matched=false
-	if got := diffJSONAt("nomatch.go"); got.Matched || len(got.Files) != 0 {
-		t.Errorf("没命中该报 matched=false: %+v", got)
+	// 过滤值谁都没挨着 → matched=false, 且 diffFiles 返回 false(CLI 据此以退出码 1 结束)
+	if got, hit := diffJSONAt("nomatch.go"); got.Matched || len(got.Files) != 0 || hit {
+		t.Errorf("没命中该报 matched=false 且返回 false: %+v (hit=%v)", got, hit)
 	}
 
 	// view 同理
@@ -1495,6 +1519,10 @@ func TestSkippedSummaryAndStrictExitCode(t *testing.T) {
 	}
 	if !strings.Contains(out, "共 1 个文件被跳过") || !strings.Contains(out, "-o/--overwrite") {
 		t.Errorf("默认该给一句可操作的汇总: %s", out)
+	}
+	// 汇总句不能断言"本地有改动": 没有基线的那类只是"判断不了来源"(逐行才说清原因)。
+	if strings.Contains(out, "本地有改动,") {
+		t.Errorf("汇总句不该断言用户改过(无基线的文件判断不了来源): %s", out)
 	}
 	// 逐文件原因要说"本地已修改"(而不是断言用户改错了), 且内容真的没被覆写
 	if !strings.Contains(out, "button.go 本地已修改, 跳过") {
@@ -2352,6 +2380,8 @@ func TestSelfUpdateCheckOnly(t *testing.T) {
 		{"可以升级", "v0.8.0", "v0.9.9", "可以升级: xui self-update v0.9.9"},
 		{"已是最新", "v0.9.9", "v0.9.9", "已是最新"},
 		{"本地构建", "(devel)", "v0.9.9", "不算发布版"},
+		// 本地比 @latest 高(还没发布 / 代理滞后): 既不是最新也没什么可升的, 但必须有结论行
+		{"本地更高", "v1.0.0", "v0.9.9", "不低于 @latest(v0.9.9)"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -2576,5 +2606,166 @@ func TestUpdateCheckPath(t *testing.T) {
 	p := updateCheckPath()
 	if filepath.Base(p) != "update-check.json" || filepath.Base(filepath.Dir(p)) != "xui" {
 		t.Errorf("路径不对: %s", p)
+	}
+}
+
+// update 点名一个从没装过的组件时, 只能指路 `xui add`, 不能把它创建出来 ——
+// 否则名字叫 update、行为是 add(与 `update --all` 被拒掉的那条纪律是同一件事)。
+func TestUpdateDoesNotInstallUninstalledComponents(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	t.Setenv("XUI_NO_UPDATE_CHECK", "1")
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+
+	out := captureOutput(t, func() {
+		update(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	})
+	if !strings.Contains(out, "button 没装过") || !strings.Contains(out, "xui add button") {
+		t.Errorf("该指路 xui add, 实为: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "ui")); !os.IsNotExist(err) {
+		t.Errorf("update 不该创建组件目录, err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "ui", "button.go")); !os.IsNotExist(err) {
+		t.Error("update 不该安装没装过的组件")
+	}
+}
+
+// 只挡"一个文件都不在本地"的: 跨版本升级会在组件里新增共享文件,
+// 那些文件本地本来就不存在, update 必须补齐(否则升级完编译不过)。
+func TestUpdateFillsMissingFileOfInstalledComponent(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	t.Setenv("XUI_NO_UPDATE_CHECK", "1")
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+
+	uiDir := filepath.Join(dir, "ui")
+	if err := os.MkdirAll(uiDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 模拟"装过 button, 但缺一个共享文件"
+	src, reg := loadRegistry()
+	for _, f := range reg.Components["button"].Files {
+		if f == "press.go" {
+			continue
+		}
+		data := readComponent(src, f)
+		if err := os.WriteFile(filepath.Join(uiDir, f), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	update(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	if _, err := os.Stat(filepath.Join(uiDir, "press.go")); err != nil {
+		t.Errorf("已装组件缺的文件该补齐: %v", err)
+	}
+}
+
+// 重跑 init -n 时换了/忘了 -p, 会在项目里另起一套组件与清单。只提醒, 不阻断。
+func TestInitNewProjectWarnsAboutSecondComponentsDir(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	stubWinresMake(t)
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	first := captureOutput(t, func() { err = initNewProject("myapp", "ui", false, writeOpts{noInstall: true}) })
+	if err != nil {
+		t.Fatalf("首次 init -n 失败: %v", err)
+	}
+	if strings.Contains(first, "已经有组件目录") {
+		t.Errorf("首次 init 不该提醒第二套: %s", first)
+	}
+	second := captureOutput(t, func() { err = initNewProject("myapp", "components", true, writeOpts{noInstall: true}) })
+	if err != nil {
+		t.Fatalf("第二次 init -n 失败: %v", err)
+	}
+	if !strings.Contains(second, "项目根已经有组件目录 ui") || !strings.Contains(second, "这次的组件目录是 components") {
+		t.Errorf("换 -p 重跑该提醒两套目录各存一份清单: %s", second)
+	}
+	// 只是提醒: 两套都真的写出来了
+	for _, p := range []string{"myapp/ui/button.go", "myapp/components/button.go"} {
+		if _, err := os.Stat(filepath.Join(dir, p)); err != nil {
+			t.Errorf("缺少 %s: %v", p, err)
+		}
+	}
+}
+
+// 过滤值谁都没挨着 = 命令没给出你要的东西, 退出码 1(与未知组件同类)。
+// fatal 走 os.Exit, 只能子进程测 —— 直接调会把测试进程杀掉。
+func TestDiffFilterMissExitsNonZero(t *testing.T) {
+	if dir := os.Getenv("XUI_TEST_NOMATCH_DIR"); dir != "" {
+		if err := os.Chdir(dir); err != nil {
+			os.Exit(99)
+		}
+		os.Setenv("XUI_REGISTRY", moduleRoot())
+		os.Setenv("XUI_NO_UPDATE_CHECK", "1")
+		add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+		add(componentOptions{names: []string{"button"}, uiDir: "ui", diff: true, diffFile: "nope.go"})
+		os.Exit(0) // 不该走到这里
+	}
+	dir := t.TempDir()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=TestDiffFilterMissExitsNonZero")
+	cmd.Env = append(os.Environ(), "XUI_TEST_NOMATCH_DIR="+dir)
+	out, err := cmd.CombinedOutput()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("子进程没跑起来: %v\n%s", err, out)
+	}
+	if code != 1 {
+		t.Fatalf("过滤没命中该用退出码 1, 实为 %d\n%s", code, out)
+	}
+	if !strings.Contains(string(out), "没有匹配的文件: nope.go") {
+		t.Errorf("错误信息该指出没命中的过滤值: %s", out)
+	}
+}
+
+// AGENTS.md 里的组件目录必须只有一种写法: 否则 `-p .\ui` / `-p D:\proj\ui` 会渲染出
+// 不同内容, 同一份文件下次 update 被判成"版本升级"重写, 用户改过的则误报"本地已修改"。
+func TestDocUIDirIsStable(t *testing.T) {
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+
+	for _, in := range []string{"ui", ".\\ui", "./ui", filepath.Join(dir, "ui"), ""} {
+		if got := docUIDir(in); got != "ui" {
+			t.Errorf("docUIDir(%q) = %q, 期望 \"ui\"", in, got)
+		}
+	}
+	// 跳出当前目录的绝对路径保留原样(要能照抄), 只把反斜杠转成斜杠
+	outside := filepath.Join(filepath.Dir(dir), "elsewhere", "ui")
+	if got := docUIDir(outside); got != filepath.ToSlash(outside) {
+		t.Errorf("docUIDir(%q) = %q, 应保留绝对路径", outside, got)
 	}
 }

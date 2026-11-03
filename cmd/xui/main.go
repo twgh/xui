@@ -247,15 +247,22 @@ func loadRegistry() (*source, *registry) {
 			if perr == nil {
 				src.sel = c
 				src.rest = src.cands[i+1:] // 后续单文件失败时按序换源
-				if !c.direct {
-					fmt.Fprintf(os.Stderr, "xui: 数据源 %s (%s)\n", c.base, c.label)
+				// 选路是进度信息(不是警告), 走 stderr 以免污染 `xui view > x.go` 的正文,
+				// 但要受 -s/--silent 约束 —— 它与"创建了哪个文件"同属过程日志。
+				if !c.direct && !quiet {
+					// XUI_REGISTRY 显式指定时这个候选没有 label(不打镜像名), 别印出空的 ()
+					if c.label == "" {
+						fmt.Fprintf(os.Stderr, "xui: 数据源 %s\n", c.base)
+					} else {
+						fmt.Fprintf(os.Stderr, "xui: 数据源 %s (%s)\n", c.base, c.label)
+					}
 				}
 				return src, reg
 			}
 			err = perr
 		}
 		lastErr = err
-		if len(src.cands) > 1 { // 显式源只有一个候选, 不必打"换下一个"
+		if len(src.cands) > 1 && !quiet { // 显式源只有一个候选, 不必打"换下一个"
 			fmt.Fprintf(os.Stderr, "xui: %s不可用(%v), 换下一个\n", c.label, err)
 		}
 	}
@@ -514,7 +521,7 @@ type checkJSON struct {
 }
 
 // checkCommand 把 --check 的三种结论压成一条可直接执行的命令(给脚本用)。
-func checkCommand(current, newest string, localBuild, upgradable bool) string {
+func checkCommand(newest string, localBuild, upgradable bool) string {
 	switch {
 	case localBuild:
 		return "xui self-update"
@@ -698,6 +705,12 @@ func parseInitArgs(args []string) (initOptions, error) {
 		if err := checkUIWithinProject(o.uiDir); err != nil {
 			return o, err
 		}
+		// 归一化后再落盘: `-p .\components` / `-p components/` 会原样进 main.go 的 import
+		// 与下发文档的路径, 而 Go 的 import 路径不认点段与尾斜杠(`app/./components` 直接编译不过)。
+		o.uiDir = filepath.ToSlash(filepath.Clean(o.uiDir))
+		if o.uiDir == "." {
+			return o, fmt.Errorf("xui init -n 的 -p 不能是项目根: 组件是 package ui, 与 main 放同一目录编译不过")
+		}
 		return o, nil
 	}
 	// 普通 init: 位置参数与 -p 是同一个东西(组件目录), 两个都给且不同不猜。
@@ -714,6 +727,13 @@ func parseInitArgs(args []string) (initOptions, error) {
 	} else if len(pos) == 1 && pos[0] != o.uiDir {
 		return o, fmt.Errorf("组件目录给了两个: -p %q 与 %q", o.uiDir, pos[0])
 	}
+	if o.uiDir == "" {
+		// `xui init ""`: 位置参数是空串。不挡的话 Clean 会把它变成 "."(组件直接铺进当前目录),
+		// 与"空值一律拒"的其他参数不是一套规矩。
+		return o, fmt.Errorf("组件目录不能为空")
+	}
+	// 同 init -n: `.\ui` 与 `ui/` 是同一个目录, 统一成干净写法给后续的路径拼接与文档渲染。
+	o.uiDir = filepath.ToSlash(filepath.Clean(o.uiDir))
 	return o, nil
 }
 
@@ -1073,10 +1093,12 @@ func usage() {
                              打印组件源码, 不写本地
   xui add <组件...> --diff[=组件或文件]
                              与本地文件做逐行 diff, 不写本地
+                             (过滤值谁都没命中 = 命令失败, 退出码 1; 不是"没有差异")
   xui update [组件...]       升级已装组件(省略组件名 = ui 目录里已装的全部, 外加已在的
                              DESIGN.md / AGENTS.md);
                              安装后没改过的文件直接替换, 改过的跳过(见 -o);
-                             连没装过的组件一起装是 xui add --all 的事, update 不接 --all
+                             连没装过的组件一起装是 xui add 的事: 点名没装过的组件只提示,
+                             update 不接 --all
   xui add DESIGN.md          只要 CLI 下发的文档(DESIGN.md / AGENTS.md 不是组件, 不在
   xui update DESIGN.md       registry 里): add 可以单独拿/update 只刷已在目录里的那份)
   xui list | xui search [词] 列出/搜索组件(位置参数就是搜索词, 等价于 -q 词)
@@ -1120,7 +1142,8 @@ func usage() {
                         默认保留, 要 -o 才覆盖; 该文件没有基线 → 只说"无法判断来源"。
 
 退出码: 0 = 跑通了(该装的都装了, 跳过的已在 stderr 汇总一句说明);1 = 命令本身失败
-                        (源拉不到/权限/参数错);2 = 只在看 --strict 且有文件被跳过时出现。
+                        (源拉不到/权限/参数错/过滤值没命中);2 = 只在看 --strict 且有
+                        文件被跳过时出现。
                         CI 里想"有文件没更新干净就失败"就跑 --strict。
 
 运行时版本: 组件源码跟 main 分支, 而运行时 github.com/twgh/xui 只能按 tag 取 ——
@@ -1350,6 +1373,14 @@ func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 	}
 	// 清单读得到就读(预览时目录还不存在也不影响: 拿空基线, 全部走"将创建")。
 	inst := loadManifest(uiDir)
+	// 重跑 init -n 时忘了带 -p(或换了目录名), 会在项目里另起一套组件与清单, 而旧的
+	// main.go / README 基线在新清单里找不到 —— 之后每条命令都报"无法判断来源"。
+	// 这里只提醒, 不阻断: 一个仓库里放两套组件是罕见但合法的。
+	if len(inst.Project) == 0 {
+		if other := otherProjectComponentDir(dir, uiSub); other != "" {
+			warn("项目根已经有组件目录 %s (它的安装清单里存着本项目的骨架基线), 这次的组件目录是 %s —— 两个目录各存一份清单, 之后每条命令的 -p 别混用", other, uiSub)
+		}
+	}
 
 	module := moduleNameFromProject(name)
 	xuiVer, xcguiVer := templateVersions()
@@ -1490,6 +1521,49 @@ func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 	next = strings.Replace(next, "  go mod tidy\n", "", 1)
 	info("\n已创建项目 %s (module %s)\n\n%s", name, module, next)
 	return nil
+}
+
+// otherProjectComponentDir 找 root 下另一个"CLI 交付过项目骨架"的组件目录(清单里有
+// project_files), 相对 root 返回; 没有返回 ""。只扫三层: 组件目录通常是根下一层
+// (ui / components), 深了既慢又容易误报。
+func otherProjectComponentDir(root, uiSub string) string {
+	return findComponentDir(root, root, uiSub, 0)
+}
+
+func findComponentDir(root, dir, uiSub string, depth int) string {
+	if depth > 2 {
+		return ""
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		switch e.Name() {
+		case ".git", "node_modules", "vendor", "winres":
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			continue
+		}
+		relSlash := filepath.ToSlash(rel)
+		// 目标目录自己(及其子树)不参与比较 —— 它就是这次要写的那套。
+		if relSlash == uiSub || strings.HasPrefix(relSlash, uiSub+"/") {
+			continue
+		}
+		if len(loadManifest(p).Project) > 0 {
+			return relSlash
+		}
+		if got := findComponentDir(root, p, uiSub, depth+1); got != "" {
+			return got
+		}
+	}
+	return ""
 }
 
 // projectNameFromDir 取目录名做项目名(根目录无名字时返回空)。
@@ -1928,7 +2002,7 @@ func selfUpdateAt(exe, current, target string, checkOnly, jsonMode bool) error {
 				Latest:     newest,
 				LocalBuild: localBuild,
 				Upgradable: upgradable,
-				Command:    checkCommand(current, newest, localBuild, upgradable),
+				Command:    checkCommand(newest, localBuild, upgradable),
 			})
 			return nil
 		}
@@ -1941,6 +2015,10 @@ func selfUpdateAt(exe, current, target string, checkOnly, jsonMode bool) error {
 			out("已是最新")
 		case upgradable:
 			out("可以升级: xui self-update %s", newest)
+		default:
+			// 本地版本比 @latest 高(还没发布 / 代理滞后): 既不是最新, 也没什么可升的,
+			// 不能什么都不说 —— 用户看到的只是两行版本号, 得自己比。
+			out("本地版本 %s 不低于 @latest(%s), 无需升级", current, newest)
 		}
 		return nil
 	}
@@ -2227,9 +2305,34 @@ func docContent(name, uiDir string) ([]byte, error) {
 		}
 		return data, nil
 	case "AGENTS.md":
-		return []byte(renderUI(agentsDirTemplate, uiDir)), nil
+		return []byte(renderUI(agentsDirTemplate, docUIDir(uiDir))), nil
 	}
 	return nil, fmt.Errorf("不是可指名的文档: %s", name)
+}
+
+// docUIDir 把 -p 传来的组件目录规范成 AGENTS.md 里该写的那个路径。
+// AGENTS.md 会把目录名写进正文("本目录叫 X" 与 "-p X"), 所以同一个目录必须只有一种写法:
+// 不归一化时 `-p ui` / `-p .\ui` / `-p D:\proj\ui` 会生成三份不同内容 —— 同一份文件下次
+// update 时被当成版本升级静默重写, 用户改过的那份则被误报"本地已修改"。
+// 绝对路径优先折成相对当前目录(能照抄进命令); 落在当前目录之外就保留绝对路径。
+func docUIDir(uiDir string) string {
+	dir := strings.TrimSpace(uiDir)
+	if dir == "" {
+		return "ui"
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return filepath.ToSlash(dir)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return filepath.ToSlash(dir)
+	}
+	rel, err := filepath.Rel(wd, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(abs)
+	}
+	return filepath.ToSlash(rel)
 }
 
 // placeDocs 把点名的文档写进组件目录(create=false 时只刷已存在的, 不新增)。返回被跳过的条数。
@@ -2295,9 +2398,9 @@ func add(opts componentOptions) {
 	order := resolveNames(reg, names)
 	switch {
 	case opts.view:
-		viewFiles(src, reg, order, opts.viewFile, opts.json)
+		requireMatched(viewFiles(src, reg, order, opts.viewFile, opts.json), opts.viewFile)
 	case opts.diff:
-		diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json)
+		requireMatched(diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json), opts.diffFile)
 	default:
 		skipped := placeDocs(docs, opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, true)
 		if len(order) > 0 {
@@ -2329,12 +2432,16 @@ func update(opts componentOptions) {
 	order := resolveNames(reg, names)
 	switch {
 	case opts.view:
-		viewFiles(src, reg, order, opts.viewFile, opts.json)
+		requireMatched(viewFiles(src, reg, order, opts.viewFile, opts.json), opts.viewFile)
 	case opts.diff:
-		diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json)
+		requireMatched(diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json), opts.diffFile)
 	default:
 		// create=false: update 只刷已经在目录里的东西, 不新增。
 		skipped := placeDocs(docs, opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, false)
+		// 裸 update 已按 installedComponents 筛过, 但显式点名绕过了它 —— 名字叫 update、
+		// 行为是 add(在空目录里 `xui update button` 会把 button 全套创建出来)。这里统一挡掉:
+		// 一个文件都不在本地的组件算"没装过", 只指路不给装。
+		order = dropUninstalled(reg, order, opts.uiDir)
 		if len(order) > 0 {
 			skipped += install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
 			// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
@@ -2342,6 +2449,33 @@ func update(opts componentOptions) {
 		}
 		reportSkipped(skipped, opts.dryRun, opts.strict)
 	}
+}
+
+// dropUninstalled 去掉"组件目录里一个文件都没有"的组件: update 不装新组件(那是 add 的事)。
+// 只挡全空的: 部分文件缺失仍交给 install 补齐 —— 跨版本升级常在组件里新增共享文件,
+// 那些文件本地本来就不存在, 不补会直接编译不过(与 installedComponents 的"全都有才算已装"互补)。
+func dropUninstalled(reg *registry, order []string, uiDir string) []string {
+	kept := make([]string, 0, len(order))
+	for _, name := range order {
+		files := reg.Components[name].Files
+		if len(files) > 0 && !anyFileLocal(uiDir, files) {
+			warn("%s 没装过, update 只更新已装组件 —— 要装它: xui add %s", name, name)
+			continue
+		}
+		kept = append(kept, name)
+	}
+	return kept
+}
+
+// anyFileLocal 报告这组文件里有没有一个已经在本地 —— "这个组件装过"的最低证据。
+// 组件之间共享助手文件, 所以只能逐文件 Stat; 不要求全都在(缺的那部分正是 update 要补的)。
+func anyFileLocal(uiDir string, files []string) bool {
+	for _, f := range files {
+		if _, err := os.Stat(filepath.Join(uiDir, f)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // allComponents 返回全部组件名(排序保证输出稳定)。
@@ -2765,7 +2899,8 @@ func reportSkipped(skipped int, dryRun, strict bool) {
 	if dryRun {
 		verb = "会被跳过"
 	}
-	warn("共 %d 个文件%s (本地有改动, 确认后加 -o/--overwrite; 逐文件原因见上面各行)", skipped, verb)
+	// 不写"本地有改动": 无基线的那类是"判断不了来源", 断言用户改过是错的(逐行已分开说)。
+	warn("共 %d 个文件%s (原因见上面各行; 本地改动确认后加 -o/--overwrite 覆盖)", skipped, verb)
 	if strict {
 		os.Exit(exitPartial)
 	}
@@ -2785,10 +2920,20 @@ func filterHit(name, file, filter string) bool {
 	return normalizeName(filter) == normalizeName(name)
 }
 
+// requireMatched 把"过滤值谁都没挨着"变成失败: 用户请求的那份源码/差异不存在, 与"未知组件"
+// 同类, 不能以 0 退出(脚本会以为拿到了东西)。JSON 模式也照打结果再失败 —— 结构里
+// matched=false 已经写清了原因, 退出码只是给 shell 判断。
+func requireMatched(matched bool, filter string) {
+	if !matched {
+		fatal("没有匹配的文件: %s (给组件名或文件基名, 组件见 xui list)", filter)
+	}
+}
+
 // viewFiles 打印组件的文件内容(不写本地); filter 非空时只打匹配的文件, json 出结构化。
-// 正文走 out/outRaw(命令结果, 不受 -s 影响); "一个都没匹配上"走 warn ——
-// 它不是结果, 更不该被 `>` 重定向当成内容收进文件。
-func viewFiles(src *source, reg *registry, order []string, filter string, jsonMode bool) {
+// 正文走 out/outRaw(命令结果, 不受 -s 影响)。
+// 返回是否命中过滤值 —— "一个都没匹配上"由调用方按失败处理(退出码 1), 与"未知组件"同类:
+// 用户请求的那份源码不存在, 不能静悄悄地退出 0(脚本会以为拿到了东西)。
+func viewFiles(src *source, reg *registry, order []string, filter string, jsonMode bool) bool {
 	done := map[string]bool{}
 	matched := false
 	var files []sourceFileJSON
@@ -2816,17 +2961,17 @@ func viewFiles(src *source, reg *registry, order []string, filter string, jsonMo
 			files = []sourceFileJSON{}
 		}
 		printJSON(viewJSON{Source: src.desc(), Filter: filter, Matched: matched, Files: files})
-		return
+		return matched
 	}
-	if !matched {
-		warn("没有匹配的文件: %s (给组件名或文件基名, 组件见 xui list)", filter)
-	}
+	return matched
 }
 
 // view 打印指定组件的全部源码(依赖闭包内的共享文件去重)。
 func view(names []string, jsonMode bool) {
 	src, reg := loadRegistry()
-	viewFiles(src, reg, resolveNames(reg, names), "", jsonMode)
+	if !viewFiles(src, reg, resolveNames(reg, names), "", jsonMode) {
+		fatal("没有匹配的文件: %s", strings.Join(names, ", "))
+	}
 }
 
 // infoCommand 打印本机环境与项目状态(不拉 registry, 离线可用)。整段都是命令结果。
@@ -2889,8 +3034,8 @@ func orNone(s string) string {
 // diffFiles 把本地文件与 registry 内容做逐行 diff(不写本地); filter 非空时只比匹配的
 // 文件(组件名或文件基名, 见 filterHit); json 出结构化。
 // "一个都没匹配上"与"匹配上了但确实没差异"是两件事, 必须分开说: 都答"没有差异"会让用户
-// 以为已装的组件是最新的。
-func diffFiles(src *source, reg *registry, order []string, uiDir, filter string, jsonMode bool) {
+// 以为已装的组件是最新的。前者返回 false, 由调用方按失败处理(过滤值写错 = 命令没达成目标)。
+func diffFiles(src *source, reg *registry, order []string, uiDir, filter string, jsonMode bool) bool {
 	inst := loadManifest(uiDir)
 	done := map[string]bool{}
 	matched := false
@@ -2922,7 +3067,13 @@ func diffFiles(src *source, reg *registry, order []string, uiDir, filter string,
 			note, state := "", ""
 			switch {
 			case os.IsNotExist(err):
-				note, state = " (本地没有, update 会创建)", "missing"
+				// 说清"谁来创建": 整个组件没装过时 update 只提示, 不会替你装(见 dropUninstalled)。
+				if anyFileLocal(uiDir, reg.Components[name].Files) {
+					note = " (本地没有, update 会补上)"
+				} else {
+					note = " (本地没有, 要装它请用 xui add " + name + ")"
+				}
+				state = "missing"
 			case hasBaseline && baseline == sha256Hex(local):
 				note, state = " (本地未改动, 纯版本差异 —— update 会直接替换)", "upgrade"
 			case !hasBaseline:
@@ -2944,14 +3095,12 @@ func diffFiles(src *source, reg *registry, order []string, uiDir, filter string,
 			files = []diffFileJSON{}
 		}
 		printJSON(diffJSON{Dir: uiDir, Filter: filter, Matched: matched, Files: files})
-		return
+		return matched
 	}
-	switch {
-	case !matched:
-		warn("没有匹配的文件: %s (给组件名或文件基名, 组件见 xui list)", filter)
-	case !differs:
+	if matched && !differs {
 		out("没有差异")
 	}
+	return matched
 }
 
 // unifiedDiff 生成整文件级的 unified diff(一个 hunk), 用于 add/update --diff。
@@ -2979,7 +3128,16 @@ func unifiedDiff(localName, remoteName, local, remote string) string {
 		}
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "--- %s\n+++ %s\n@@ -1,%d +1,%d @@\n", localName, remoteName, len(a), len(b))
+	// 空文件的 hunk 从第 0 行起(标准写法): 本地没有这个文件时是 `@@ -0,0 +1,N @@`,
+	// 写 `-1,0` 虽然多数工具能读, 但 patch 会把它当成"删了第 1 行"那种边界情况。
+	startA, startB := 1, 1
+	if len(a) == 0 {
+		startA = 0
+	}
+	if len(b) == 0 {
+		startB = 0
+	}
+	fmt.Fprintf(&out, "--- %s\n+++ %s\n@@ -%d,%d +%d,%d @@\n", localName, remoteName, startA, len(a), startB, len(b))
 	for i, j := 0, 0; i < n || j < m; {
 		switch {
 		case i < n && j < m && a[i] == b[j]:

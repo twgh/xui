@@ -263,7 +263,7 @@ xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本�
 xui add card --view     # 打印组件源码(可加 =card.go 或 =card 只看某个文件/某个组件), 不写本地
 xui add card --diff     # 与本地文件做逐行 diff(过滤值同上), 不写本地
 xui update              # 升级已装组件(省略组件名 = 组件目录里已装的全部, 外加已在的两份文档; 不接 --all)
-xui update button       # 只升级指定组件(含依赖)
+xui update button       # 只升级指定组件(含依赖; 没装过的只提示, 不会替你装 —— 那是 add)
 xui update -o           # 连本地改过的文件一起覆盖(改动会丢, 先备份)
 xui list                # 列出可用组件
 xui search button       # 搜索: 位置参数就是搜索词(等价于 -q button)
@@ -287,7 +287,7 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 | `--no-install` | init / add / update | 组件文件照写, 但不联网动依赖(`init -n` 还跳过 `go mod tidy` 与 `xc` 安装) |
 | `--dry-run` | init / add / update | 只预览, **没有任何副作用**: 不建目录、不写文件、不写清单、不联网、不生成 `.syso` |
 | `-a, --all` | add | 全部组件(`update` 不接: 省略组件名就已经是"已装的全部", 要连没装的一起装用 `add --all`) |
-| `--view[=组件或文件]` / `--diff[=组件或文件]` | add / update | 打印源码 / 与本地对比, 不写本地; 过滤值给组件名(`card`)或文件基名(`card.go`)都行 |
+| `--view[=组件或文件]` / `--diff[=组件或文件]` | add / update | 打印源码 / 与本地对比, 不写本地; 过滤值给组件名(`card`)或文件基名(`card.go`)都行, **谁都没命中就按失败退出(码 1)** —— 别把它当成"没有差异" |
 | `[词]` / `-q, --query` / `-l, --limit` / `-o, --offset` | list / search | 搜索词(位置参数与 `-q` 等价)、限制数量、跳过前 n 个 |
 | `-j, --json` | list / search / info / view / `--view` / `--diff` / `self-update --check` | 结果出结构化 JSON(字段表见下) |
 | `--strict` | add / update | 有文件被跳过时用退出码 2 失败(默认只汇总一句就正常退出) |
@@ -301,7 +301,7 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 - **`--view` / `--diff` 不与 `--dry-run` / `-o` / `--no-install` / `--strict` 同用** —— 它们本来就不写文件, 一起给会直接报错; `-v` 是版本号, 看源码写 `--view`; `self-update --check` 不接受版本参数。
 - 短选项也接受 `-x=值`, 与长选项一致: `-p=src`、`-l=5`、`-o=2`。
 
-**退出码**: `0` = 跑通(有跳过时 stderr 给一句"共 N 个文件被跳过"的汇总); `1` = 命令失败(源拉不到、权限、参数错); `2` = 加了 `--strict` 且有文件被跳过。CI 想"没更新干净就失败"就跑 `xui update --strict`(配 `--dry-run` 可先空跑一遍)。
+**退出码**: `0` = 跑通(有跳过时 stderr 给一句"共 N 个文件被跳过"的汇总); `1` = 命令失败(源拉不到、权限、参数错、`--view`/`--diff` 的过滤值没命中); `2` = 加了 `--strict` 且有文件被跳过。CI 想"没更新干净就失败"就跑 `xui update --strict`(配 `--dry-run` 可先空跑一遍)。
 
 **结构化输出(`-j`)的字段**:
 

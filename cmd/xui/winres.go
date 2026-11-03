@@ -208,8 +208,12 @@ func goBinDirs() []string {
 		}
 	}
 	if out, err := exec.Command("go", "env", "GOPATH").Output(); err == nil {
-		if d := strings.TrimSpace(string(out)); d != "" {
-			dirs = append(dirs, filepath.Join(d, "bin"))
+		// GOPATH 可以是多目录(Windows 用 ; 分隔): 必须逐条 Join, 整串拼 "/bin"
+		// 会得到一个不存在的路径, go install 之后照样找不到 xc。
+		for _, p := range filepath.SplitList(strings.TrimSpace(string(out))) {
+			if p != "" {
+				dirs = append(dirs, filepath.Join(p, "bin"))
+			}
 		}
 	}
 	return dirs
