@@ -3003,7 +3003,8 @@ func setWindowIcons(w *ui.AppWindow) {
 // 用 ~~~ 而不是 ``` 围栏: Go 原始字符串不能包含反引号。
 const agentsRules = `## 修改/自定义组件
 
-- 先读 DESIGN.md: 交互语义看第四节末的汇总表, xcgui 的坑看第八节(按编号), API 看第九节。
+- 先读 DESIGN.md: 交互语义看第四节末的汇总表, xcgui 的坑看第八节(按编号);第九节是**本库依赖的
+  xcgui API 清单**, 不是组件选项表 —— 每个组件的选项与方法看本目录的源码注释(或 pkg.go.dev)。
 - 颜色、圆角、字体一律从主题令牌取(xui.Current()), 禁止硬编码颜色; 不要缓存颜色,
   切换主题用 xui.OnThemeChangeFor(元素句柄, fn) 订阅重绘。
 - 事件一律用 AddEvent* 系列(有 2000 回调上限); hover 过渡用 xui.Hover / xui.Fade,
@@ -3036,7 +3037,7 @@ go run .
 - main.go — 应用入口与示例
 - {{UIDIR}}/ — 组件源码(package ui, 扁平单包; 跨文件助手也在这里)
 - {{UIDIR}}/theme.go — 主题令牌, 改这里全局换肤
-- {{UIDIR}}/DESIGN.md — 完整说明书: 组件解剖、xcgui 踩坑全集(第八节, 按编号)、API 清单(第九节)
+- {{UIDIR}}/DESIGN.md — 完整说明书: 组件解剖、xcgui 踩坑全集(第八节, 按编号)、依赖的 xcgui API 清单(第九节)
 - winres/ — exe 图标与版本信息(icon.ico + winres.json), 由 xc 生成 .syso
 
 ## 图标与版本信息
@@ -3122,7 +3123,7 @@ const agentsDirTemplate = `# AGENTS.md — 给 AI 助手的目录说明
 本目录是 xui(shadcn 风格的 xcgui 自绘组件库)的组件源码拷贝(package ui), 归项目所有,
 可以随意修改。README.md 由项目作者维护、可能被改写; 组件用法与修改规则以本文件为准。
 
-- DESIGN.md — 配套说明书: 架构、主题系统、组件解剖、xcgui 踩坑全集(第八节, 按编号)、API 清单(第九节)
+- DESIGN.md — 配套说明书: 架构、主题系统、组件解剖、xcgui 踩坑全集(第八节, 按编号)、依赖的 xcgui API 清单(第九节)
 - theme.go — 主题令牌, 改这里全局换肤
 - 其余 *.go — 组件源码(扁平单包, 互相直接调用)
 
