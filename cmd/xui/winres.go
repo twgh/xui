@@ -97,13 +97,28 @@ func jsonString(s string) string {
 // scaffoldProjectWinres 为新建项目准备 winres/(icon.ico + winres.json)并生成 .syso。
 // 已存在的文件跳过(重复 init 不覆盖用户改过的图标/版本信息)。
 // allowInstall=false(--no-install)时只用 PATH 里现成的 xc, 不联网安装。
-func scaffoldProjectWinres(dir, name string, allowInstall bool) {
+func scaffoldProjectWinres(dir, name string, allowInstall, dryRun bool) {
 	winresDir := filepath.Join(dir, "winres")
+	iconPath := filepath.Join(winresDir, "icon.ico")
+	jsonPath := filepath.Join(winresDir, "winres.json")
+	if dryRun {
+		// 预览: 连目录都不建, 也不叫 xc 生成 syso(它会联网 go install)。
+		for _, p := range []string{iconPath, jsonPath} {
+			if fileExists(p) {
+				info("跳过 %s (已存在)", p)
+			} else {
+				info("将创建 %s", p)
+			}
+		}
+		if !fileExists(iconPath) || !fileExists(jsonPath) {
+			info("将生成 %s", filepath.Join(dir, "rsrc_windows_{386,amd64}.syso"))
+		}
+		return
+	}
 	if err := os.MkdirAll(winresDir, 0o755); err != nil {
 		warn("创建 winres 目录失败: %v", err)
 		return
 	}
-	iconPath := filepath.Join(winresDir, "icon.ico")
 	if _, err := os.Stat(iconPath); err == nil {
 		info("跳过 %s (已存在)", iconPath)
 	} else if err := os.WriteFile(iconPath, projectIconICO, 0o644); err != nil {
@@ -112,7 +127,6 @@ func scaffoldProjectWinres(dir, name string, allowInstall bool) {
 	} else {
 		info("创建 %s", iconPath)
 	}
-	jsonPath := filepath.Join(winresDir, "winres.json")
 	if _, err := os.Stat(jsonPath); err == nil {
 		info("跳过 %s (已存在)", jsonPath)
 	} else if err := os.WriteFile(jsonPath, []byte(projectWinresJSON(name)), 0o644); err != nil {

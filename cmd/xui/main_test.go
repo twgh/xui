@@ -230,7 +230,7 @@ func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
 	if err := os.Chdir(named); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject("sitless", false, false, true); err != nil {
+	if err := initNewProject("sitless", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("initNewProject 失败: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(named, "go.mod")); err != nil {
@@ -248,7 +248,7 @@ func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
 	if err := os.Chdir(dot); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject(".", false, false, true); err != nil {
+	if err := initNewProject(".", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("initNewProject(.) 失败: %v", err)
 	}
 	gomod, err := os.ReadFile(filepath.Join(dot, "go.mod"))
@@ -414,7 +414,7 @@ func TestInitNewProject(t *testing.T) {
 	}
 	defer os.Chdir(old)
 
-	if err := initNewProject("myapp", false, false, true); err != nil {
+	if err := initNewProject("myapp", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("initNewProject 失败: %v", err)
 	}
 
@@ -529,14 +529,14 @@ func TestInitNewProject(t *testing.T) {
 	}
 
 	// 非空目录默认拒绝, --force 放行且不删除无关文件
-	if err := initNewProject("myapp", false, false, true); err == nil {
+	if err := initNewProject("myapp", false, writeOpts{noInstall: true}); err == nil {
 		t.Error("非空目录未加 --force 应报错")
 	}
 	keep := filepath.Join(dir, "myapp", "notes.txt")
 	if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject("myapp", true, false, true); err != nil {
+	if err := initNewProject("myapp", true, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("--force 应允许写入非空目录: %v", err)
 	}
 	if _, err := os.Stat(keep); err != nil {
@@ -560,7 +560,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 	}
 	defer os.Chdir(old)
 
-	if err := initNewProject("app", false, false, true); err != nil {
+	if err := initNewProject("app", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("首次 init 失败: %v", err)
 	}
 	mainGo := filepath.Join("app", "main.go")
@@ -573,7 +573,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 	}
 
 	// 只加 --force: 闸门开了, 但你的文件一个都不动
-	if err := initNewProject("app", true, false, true); err != nil {
+	if err := initNewProject("app", true, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("--force 应允许写入非空目录: %v", err)
 	}
 	if data, _ := os.ReadFile(mainGo); string(data) != "package main\n// 我的入口\n" {
@@ -581,7 +581,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 	}
 
 	// --force + -o: 这才是"确认丢弃改动"
-	if err := initNewProject("app", true, true, true); err != nil {
+	if err := initNewProject("app", true, writeOpts{overwrite: true, noInstall: true}); err != nil {
 		t.Fatalf("--force -o 应覆盖: %v", err)
 	}
 	if data, _ := os.ReadFile(mainGo); string(data) == "package main\n// 我的入口\n" {
@@ -589,7 +589,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 	}
 	// 覆盖之后基线重建: 再跑一次是"模板没变", 不该继续说本地修改已丢弃
 	out := captureOutput(t, func() {
-		if err := initNewProject("app", true, true, true); err != nil {
+		if err := initNewProject("app", true, writeOpts{overwrite: true, noInstall: true}); err != nil {
 			t.Errorf("重复 init 失败: %v", err)
 		}
 	})
@@ -602,7 +602,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = captureOutput(t, func() {
-		if err := initNewProject("app", true, false, true); err != nil {
+		if err := initNewProject("app", true, writeOpts{noInstall: true}); err != nil {
 			t.Errorf("--force 失败: %v", err)
 		}
 	})
@@ -650,7 +650,7 @@ func TestFindXcNoInstall(t *testing.T) {
 func TestInitProjectDocsAreDirAgnostic(t *testing.T) {
 	t.Setenv("XUI_REGISTRY", moduleRoot())
 	dir := filepath.Join(t.TempDir(), "widgets")
-	initProject(dir, false, false)
+	initProject(dir, writeOpts{})
 
 	doc, err := os.ReadFile(filepath.Join(dir, "DESIGN.md"))
 	if err != nil {
@@ -676,7 +676,7 @@ func TestInitProjectDocsAreDirAgnostic(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("custom"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	initProject(dir, false, false)
+	initProject(dir, writeOpts{})
 	if got, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md")); string(got) != "custom" {
 		t.Error("重复 init 覆盖了已有的 AGENTS.md")
 	}
@@ -784,39 +784,39 @@ func TestParseListArgsPositionalQuery(t *testing.T) {
 
 func TestParseInfoArgs(t *testing.T) {
 	// info 报的是"我的项目里 xui 装成什么样", 组件目录不是 ui 时得能指过去
-	if dir, err := parseInfoArgs(nil); err != nil || dir != "ui" {
+	if dir, j, err := parseInfoArgs(nil); err != nil || dir != "ui" || j {
 		t.Errorf("默认组件目录 = ui: %q, %v", dir, err)
 	}
 	for _, args := range [][]string{{"-p", "components"}, {"-p=components"}, {"--path=components"}} {
-		if dir, err := parseInfoArgs(args); err != nil || dir != "components" {
+		if dir, j, err := parseInfoArgs(args); err != nil || dir != "components" || j {
 			t.Errorf("%v 解析失败: %q, %v", args, dir, err)
 		}
 	}
 	for _, args := range [][]string{{"--wat"}, {"button"}, {"-p"}, {"-p="}, {"-p", ""}} {
-		if _, err := parseInfoArgs(args); err == nil {
+		if _, _, err := parseInfoArgs(args); err == nil {
 			t.Errorf("%v 应报错", args)
 		}
 	}
 }
 
 func TestParseSelfUpdateArgs(t *testing.T) {
-	if target, check, err := parseSelfUpdateArgs(nil); err != nil || target != "" || check {
+	if target, check, j, err := parseSelfUpdateArgs(nil); err != nil || target != "" || check || j {
 		t.Errorf("无参数 = 升到 latest: %q %v %v", target, check, err)
 	}
-	if target, check, err := parseSelfUpdateArgs([]string{"v0.8.1"}); err != nil || target != "v0.8.1" || check {
+	if target, check, j, err := parseSelfUpdateArgs([]string{"v0.8.1"}); err != nil || target != "v0.8.1" || check || j {
 		t.Errorf("版本参数解析失败: %q %v %v", target, check, err)
 	}
-	if target, check, err := parseSelfUpdateArgs([]string{"--check"}); err != nil || target != "" || !check {
+	if target, check, j, err := parseSelfUpdateArgs([]string{"--check"}); err != nil || target != "" || !check || j {
 		t.Errorf("--check 解析失败: %q %v %v", target, check, err)
 	}
 	// --check 只回答"我相对 @latest 新不新"; 收下版本又丢掉会让人以为它查的是那个版本
-	if _, _, err := parseSelfUpdateArgs([]string{"v9.9.9", "--check"}); err == nil {
+	if _, _, _, err := parseSelfUpdateArgs([]string{"v9.9.9", "--check"}); err == nil {
 		t.Error("--check 与版本同时给应报错")
 	}
-	if _, _, err := parseSelfUpdateArgs([]string{"--wat"}); err == nil {
+	if _, _, _, err := parseSelfUpdateArgs([]string{"--wat"}); err == nil {
 		t.Error("未知选项应报错")
 	}
-	if _, _, err := parseSelfUpdateArgs([]string{"v0.8.0", "v0.8.1"}); err == nil {
+	if _, _, _, err := parseSelfUpdateArgs([]string{"v0.8.0", "v0.8.1"}); err == nil {
 		t.Error("给两个版本应报错")
 	}
 }
@@ -851,14 +851,21 @@ func TestParseListArgs(t *testing.T) {
 }
 
 func TestParseViewArgs(t *testing.T) {
-	names, err := parseViewArgs([]string{"button", "card"})
-	if err != nil || len(names) != 2 {
-		t.Errorf("view 参数解析失败: %v, %v", names, err)
+	names, j, err := parseViewArgs([]string{"button", "card"})
+	if err != nil || len(names) != 2 || j {
+		t.Errorf("view 参数解析失败: %v json=%v, %v", names, j, err)
 	}
-	if _, err := parseViewArgs(nil); err == nil {
+	// -j 是"结果改结构化", 与组件名并列接受(两种写法)
+	if names, j, err := parseViewArgs([]string{"button", "-j"}); err != nil || len(names) != 1 || !j {
+		t.Errorf("-j 解析失败: %v json=%v, %v", names, j, err)
+	}
+	if _, j, err := parseViewArgs([]string{"button", "--json"}); err != nil || !j {
+		t.Errorf("--json 解析失败: json=%v, %v", j, err)
+	}
+	if _, _, err := parseViewArgs(nil); err == nil {
 		t.Error("view 缺少组件名应报错")
 	}
-	if _, err := parseViewArgs([]string{"--wat"}); err == nil {
+	if _, _, err := parseViewArgs([]string{"--wat"}); err == nil {
 		t.Error("未知选项应报错")
 	}
 }
@@ -1232,14 +1239,14 @@ func TestSilentKeepsCommandResults(t *testing.T) {
 	if got := captureOutput(t, func() { list(listOptions{limit: 5}) }); !strings.Contains(got, "button") {
 		t.Errorf("-s 下 list 的组件表被吞了: %q", got)
 	}
-	if got := captureOutput(t, func() { infoCommand("ui") }); !strings.Contains(got, "工作目录") {
+	if got := captureOutput(t, func() { infoCommand("ui", false) }); !strings.Contains(got, "工作目录") {
 		t.Errorf("-s 下 info 的报告被吞了: %q", got)
 	}
-	if got := captureOutput(t, func() { view([]string{"button"}) }); !strings.Contains(got, "package ui") {
+	if got := captureOutput(t, func() { view([]string{"button"}, false) }); !strings.Contains(got, "package ui") {
 		t.Errorf("-s 下 view 的源码被吞了: %q", got)
 	}
 	stubSelfUpdate(t, filepath.Join(t.TempDir(), "bin"), "v0.9.9", "v0.9.9")
-	if got := captureOutput(t, func() { _ = selfUpdateAt("/home/u/go/bin/xui", "v0.8.0", "", true) }); !strings.Contains(got, "最新 tag") {
+	if got := captureOutput(t, func() { _ = selfUpdateAt("/home/u/go/bin/xui", "v0.8.0", "", true, false) }); !strings.Contains(got, "最新 tag") {
 		t.Errorf("-s 下 --check 的结果被吞了: %q", got)
 	}
 	// 进度输出仍然闭嘴
@@ -1278,6 +1285,294 @@ func TestDiffAndViewFilterTakeComponentName(t *testing.T) {
 		add(componentOptions{names: []string{"button"}, uiDir: "ui", view: true, viewFile: "button"})
 	}); !strings.Contains(got, "package ui") || strings.Contains(got, "没有匹配的文件") {
 		t.Errorf("--view=button 应打出源码: %q", got)
+	}
+}
+
+// -j/--json 是给脚本与 AI 助手读的结果: 字段稳定、空的是 [] 不是 null、
+// "过滤没命中"用 matched=false 表达(不能拿空 files 冒充"这个组件没有文件/没有差异")。
+func TestJSONOutputShapes(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	out := captureOutput(t, func() { list(listOptions{json: true, query: "button", limit: 2}) })
+	var lj listJSON
+	if err := json.Unmarshal([]byte(out), &lj); err != nil {
+		t.Fatalf("list -j 不是合法 JSON: %v\n%s", err, out)
+	}
+	// 只认 limit 的语义(命中够 2 条就必须恰好显示 2 条), 不写死注册表里有几个 button
+	if lj.Total < 2 || lj.Shown != 2 || len(lj.Components) != lj.Shown || lj.Query != "button" {
+		t.Errorf("list -j 切片字段不对: total=%d shown=%d 条目=%d", lj.Total, lj.Shown, len(lj.Components))
+	}
+	for _, c := range lj.Components {
+		if c.Files == nil || c.Deps == nil {
+			t.Errorf("%s 的 files/deps 不该是 null", c.Name)
+		}
+	}
+	if lj.Runtime == "" {
+		t.Error("list -j 该带上数据源声明的配套运行时版本")
+	}
+
+	// info -j: 组件目录跟着 -p 走, 没 init 时是 false 而不是报错
+	out = captureOutput(t, func() { infoCommand("components", true) })
+	var ij infoJSON
+	if err := json.Unmarshal([]byte(out), &ij); err != nil {
+		t.Fatalf("info -j 不是合法 JSON: %v\n%s", err, out)
+	}
+	if ij.ComponentsDir != "components" || ij.ComponentsInitialized || ij.GoFiles != 0 {
+		t.Errorf("info -j 的目录字段不对: %+v", ij)
+	}
+
+	add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+	diffJSONAt := func(filter string) diffJSON {
+		var got diffJSON
+		out := captureOutput(t, func() {
+			add(componentOptions{names: []string{"button"}, uiDir: "ui", diff: true, diffFile: filter, json: true})
+		})
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatalf("--diff=%s -j 不是合法 JSON: %v\n%s", filter, err, out)
+		}
+		return got
+	}
+	// 装完之后内容与远端一致 → 没有差异, 但 matched 必须是 true(命中了文件)
+	if got := diffJSONAt("button"); !got.Matched || len(got.Files) != 0 {
+		t.Errorf("一致时该 matched=true 且 files 为空: %+v", got)
+	}
+	// 本地改过 → state=edited, 带 diff 正文
+	data, err := os.ReadFile(filepath.Join("ui", "button.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("ui", "button.go"), append(data, []byte("\n// mine\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := diffJSONAt("button")
+	if !got.Matched || len(got.Files) != 1 || got.Files[0].State != "edited" || got.Files[0].Diff == "" {
+		t.Fatalf("改过的文件该报 edited 并带 diff: %+v", got)
+	}
+	// 删掉清单 → 没有基线, 只能说判断不了(与人类可读输出同一套判定)
+	if err := os.Remove(filepath.Join("ui", manifestName)); err != nil {
+		t.Fatal(err)
+	}
+	if got := diffJSONAt("button"); len(got.Files) != 1 || got.Files[0].State != "unknown" {
+		t.Errorf("无基线时 state 该是 unknown: %+v", got)
+	}
+	// 过滤值谁都没挨着 → matched=false
+	if got := diffJSONAt("nomatch.go"); got.Matched || len(got.Files) != 0 {
+		t.Errorf("没命中该报 matched=false: %+v", got)
+	}
+
+	// view 同理
+	var vj viewJSON
+	out = captureOutput(t, func() {
+		add(componentOptions{names: []string{"button"}, uiDir: "ui", view: true, viewFile: "button.go", json: true})
+	})
+	if err := json.Unmarshal([]byte(out), &vj); err != nil {
+		t.Fatalf("view -j 不是合法 JSON: %v\n%s", err, out)
+	}
+	if !vj.Matched || len(vj.Files) != 1 || !strings.Contains(vj.Files[0].Content, "package ui") || vj.Files[0].Component != "button" {
+		t.Errorf("view -j 内容不对: matched=%v files=%d", vj.Matched, len(vj.Files))
+	}
+}
+
+// --json 只在"结果本身有结构化意义"的命令上接受; 收下又不生效就是骗人。
+func TestJSONFlagOnlyWhereItDoesSomething(t *testing.T) {
+	if got, err := parseListArgs([]string{"-j"}); err != nil || !got.json {
+		t.Errorf("list -j 应可用: %+v, %v", got, err)
+	}
+	if _, j, err := parseInfoArgs([]string{"--json"}); err != nil || !j {
+		t.Errorf("info --json 应可用: %v", err)
+	}
+	if got, err := parseComponentArgs("add", []string{"--view", "-j", "button"}); err != nil || !got.json {
+		t.Errorf("--view -j 应可用: %+v, %v", got, err)
+	}
+	if _, err := parseComponentArgs("add", []string{"--json", "button"}); err == nil {
+		t.Error("add 不带 --view/--diff 时 --json 应报错(写文件那条路径没有结构化输出)")
+	}
+	if _, _, j, err := parseSelfUpdateArgs([]string{"--check", "--json"}); err != nil || !j {
+		t.Errorf("--check --json 应可用: %v", err)
+	}
+	if _, _, _, err := parseSelfUpdateArgs([]string{"--json"}); err == nil {
+		t.Error("self-update --json 不带 --check 应报错")
+	}
+}
+
+// --check 的 JSON 报告: command 是"下一步该跑什么", 已最新时为空串。
+func TestSelfUpdateCheckJSON(t *testing.T) {
+	cases := []struct {
+		current, newest  string
+		localBuild, upgr bool
+		command          string
+	}{
+		{"v0.8.0", "v0.9.9", false, true, "xui self-update v0.9.9"},
+		{"v0.9.9", "v0.9.9", false, false, ""},
+		{"v0.9.9", "v0.8.0", false, false, ""}, // 本地比 tag 新(开发者常态)
+		{"(devel) abc123", "v0.9.9", true, false, "xui self-update"},
+	}
+	for _, c := range cases {
+		stubSelfUpdate(t, filepath.Join(t.TempDir(), "bin"), c.newest, c.newest)
+		var got checkJSON
+		out := captureOutput(t, func() {
+			if err := selfUpdateAt("/home/u/go/bin/xui", c.current, "", true, true); err != nil {
+				t.Errorf("不该失败: %v", err)
+			}
+		})
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatalf("current=%s 时不是合法 JSON: %v\n%s", c.current, err, out)
+		}
+		if got.Current != c.current || got.Latest != c.newest || got.LocalBuild != c.localBuild ||
+			got.Upgradable != c.upgr || got.Command != c.command {
+			t.Errorf("%s vs %s: %+v", c.current, c.newest, got)
+		}
+	}
+}
+
+// 有文件因本地改动被跳过时的输出契约: 默认只向 stderr 汇总一句就正常退出(保守跳过不是
+// 故障), --strict 才以退出码 2 失败 —— 与 fatal 的 1 分开, CI 才能区分"跑挂了"和
+// "跑通了但没更新干净"。汇总与退出码都走 os.Exit, 只能起子进程测。
+func TestSkippedSummaryAndStrictExitCode(t *testing.T) {
+	if dir := os.Getenv("XUI_TEST_SKIP_DIR"); dir != "" {
+		if err := os.Chdir(dir); err != nil {
+			os.Exit(99)
+		}
+		os.Setenv("XUI_REGISTRY", moduleRoot())
+		os.Setenv("XUI_NO_UPDATE_CHECK", "1")
+		add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+		p := filepath.Join(dir, "ui", "button.go")
+		data, err := os.ReadFile(p)
+		if err != nil {
+			os.Exit(99)
+		}
+		if err := os.WriteFile(p, append(data, []byte("\n// mine\n")...), 0o644); err != nil {
+			os.Exit(99)
+		}
+		add(componentOptions{names: []string{"button"}, uiDir: "ui", strict: os.Getenv("XUI_TEST_STRICT") == "1"})
+		os.Exit(0) // 非 strict: 汇总完就该正常结束
+	}
+
+	dir := t.TempDir() // 由父进程建目录, 好让断言读到子进程留下的文件
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(strict bool) (string, int) {
+		cmd := exec.Command(exe, "-test.run=TestSkippedSummaryAndStrictExitCode")
+		env := append(os.Environ(), "XUI_TEST_SKIP_DIR="+dir)
+		if strict {
+			env = append(env, "XUI_TEST_STRICT=1")
+		}
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		code := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		} else if err != nil {
+			t.Fatalf("子进程没跑起来: %v\n%s", err, out)
+		}
+		return string(out), code
+	}
+
+	out, code := run(false)
+	if code != 0 {
+		t.Fatalf("默认不该失败, 退出码 = %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "共 1 个文件被跳过") || !strings.Contains(out, "-o/--overwrite") {
+		t.Errorf("默认该给一句可操作的汇总: %s", out)
+	}
+	// 逐文件原因要说"本地已修改"(而不是断言用户改错了), 且内容真的没被覆写
+	if !strings.Contains(out, "button.go 本地已修改, 跳过") {
+		t.Errorf("缺少逐文件的跳过原因: %s", out)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "ui", "button.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "// mine") {
+		t.Error("跳过就该保住本地改动, 但文件被覆写了")
+	}
+
+	out, code = run(true)
+	if code != exitPartial {
+		t.Fatalf("--strict 该用退出码 %d, 实为 %d\n%s", exitPartial, code, out)
+	}
+	if !strings.Contains(out, "共 1 个文件被跳过") {
+		t.Errorf("--strict 也要先给汇总: %s", out)
+	}
+}
+
+// init --dry-run 必须真的没有副作用: 不建目录、不写文件、不调 xc、不动依赖 ——
+// 预览如果有副作用, 就没人敢在别人的项目里跑它。
+func TestInitDryRunWritesNothing(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	calls := stubWinresMake(t)
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	out := captureOutput(t, func() {
+		if err := initNewProject("app", false, writeOpts{dryRun: true}); err != nil {
+			t.Errorf("预览失败: %v", err)
+		}
+	})
+	if _, err := os.Stat(filepath.Join(dir, "app")); !os.IsNotExist(err) {
+		t.Error("--dry-run 不该创建项目目录")
+	}
+	for _, want := range []string{"将创建", "go mod tidy", "预览"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("预览缺少 %q:\n%s", want, out)
+		}
+	}
+	// 预览里不许出现"已经动过文件"的措辞(已一致 是描述当前状态, 两种模式都成立, 允许)
+	if regexp.MustCompile(`(?m)^(创建|覆盖|更新) `).MatchString(out) {
+		t.Errorf("预览不该用完成时态:\n%s", out)
+	}
+	if len(*calls) != 0 {
+		t.Error("--dry-run 不该调 xc 生成 syso")
+	}
+
+	// 已建好的项目里预览: 改过的模板要说"将跳过", 而且内容不许被动
+	// (setup 用 noInstall, 单测绝不联网跑 go mod tidy)
+	if err := initNewProject("app", false, writeOpts{noInstall: true}); err != nil {
+		t.Fatal(err)
+	}
+	mainGo := filepath.Join("app", "main.go")
+	if err := os.WriteFile(mainGo, []byte("package main\n// 我的入口\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() {
+		if err := initNewProject("app", true, writeOpts{dryRun: true}); err != nil {
+			t.Errorf("预览失败: %v", err)
+		}
+	})
+	if !strings.Contains(out, "main.go 本地已修改, 将跳过") {
+		t.Errorf("预览该把跳过说成将跳过:\n%s", out)
+	}
+	if data, _ := os.ReadFile(mainGo); string(data) != "package main\n// 我的入口\n" {
+		t.Errorf("--dry-run 覆写了本地改动: %q", data)
+	}
+
+	// 普通 init 同样要能预览(它以前完全没有 dry-run)
+	out = captureOutput(t, func() {
+		initProject("widgets", writeOpts{dryRun: true})
+	})
+	if _, err := os.Stat(filepath.Join(dir, "widgets")); !os.IsNotExist(err) {
+		t.Error("普通 init 的 --dry-run 也不该建目录")
+	}
+	if !strings.Contains(out, "将创建") {
+		t.Errorf("普通 init 预览缺少将创建:\n%s", out)
 	}
 }
 
@@ -1596,7 +1891,7 @@ func TestSelfUpdateCheckOnly(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			specs := stubSelfUpdate(t, filepath.Join(t.TempDir(), "bin"), c.newest, c.newest)
 			out := captureOutput(t, func() {
-				if err := selfUpdateAt("/home/u/go/bin/xui", c.current, "", true); err != nil {
+				if err := selfUpdateAt("/home/u/go/bin/xui", c.current, "", true, false); err != nil {
 					t.Errorf("不该失败: %v", err)
 				}
 			})
@@ -1620,7 +1915,7 @@ func TestSelfUpdateUpgradesAndReportsNewVersion(t *testing.T) {
 	specs := stubSelfUpdate(t, bin, "v0.9.9", "v0.9.9")
 	running := filepath.Join(t.TempDir(), "elsewhere", "xui"+exeExt())
 	out := captureOutput(t, func() {
-		if err := selfUpdateAt(running, "v0.8.0", "v0.9.9", false); err != nil {
+		if err := selfUpdateAt(running, "v0.8.0", "v0.9.9", false, false); err != nil {
 			t.Errorf("不该失败: %v", err)
 		}
 	})
@@ -1645,7 +1940,7 @@ func TestSelfUpdateReportsUnchangedVersion(t *testing.T) {
 	}
 	stubSelfUpdate(t, bin, "v0.8.0", "v0.8.0")
 	out := captureOutput(t, func() {
-		if err := selfUpdateAt(filepath.Join(bin, "xui"+exeExt()), "v0.8.0", "", false); err != nil {
+		if err := selfUpdateAt(filepath.Join(bin, "xui"+exeExt()), "v0.8.0", "", false, false); err != nil {
 			t.Errorf("不该失败: %v", err)
 		}
 	})
@@ -1669,7 +1964,7 @@ func TestSelfUpdateRetiresLockedBinaryAndRetries(t *testing.T) {
 	}
 	specs := stubSelfUpdate(t, bin, "v0.9.9", "v0.9.9", errors.New("access denied"))
 	out := captureOutput(t, func() {
-		if err := selfUpdateAt(installed, "v0.8.0", "", false); err != nil {
+		if err := selfUpdateAt(installed, "v0.8.0", "", false, false); err != nil {
 			t.Errorf("改名让路后应重试成功: %v", err)
 		}
 	})
@@ -1692,17 +1987,17 @@ func TestSelfUpdateFailures(t *testing.T) {
 	}
 	stubSelfUpdate(t, bin, "v0.9.9", "v0.9.9", errors.New("no network"), errors.New("no network"))
 	running := filepath.Join(t.TempDir(), "elsewhere", "xui"+exeExt())
-	err := selfUpdateAt(running, "v0.8.0", "v0.9.9", false)
+	err := selfUpdateAt(running, "v0.8.0", "v0.9.9", false, false)
 	if err == nil || !strings.Contains(err.Error(), "手动跑: go install "+cliModule+"@v0.9.9") {
 		t.Errorf("应给出手动升级命令, 实为 %v", err)
 	}
 
-	err = selfUpdateAt("/tmp/go-build7/b001/exe/xui", "v0.8.0", "", false)
+	err = selfUpdateAt("/tmp/go-build7/b001/exe/xui", "v0.8.0", "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "临时构建") {
 		t.Errorf("go run 的临时二进制应被拒绝, 实为 %v", err)
 	}
 
-	err = selfUpdateAt(running, "v0.8.0", "not-a-version", false)
+	err = selfUpdateAt(running, "v0.8.0", "not-a-version", false, false)
 	if err == nil || !strings.Contains(err.Error(), "认不出版本") {
 		t.Errorf("非法目标应报错, 实为 %v", err)
 	}
@@ -1712,7 +2007,7 @@ func TestSelfUpdateFailures(t *testing.T) {
 func TestSelfUpdateWithoutGoBin(t *testing.T) {
 	specs := stubSelfUpdate(t, "", "v0.9.9", "v0.9.9")
 	out := captureOutput(t, func() {
-		if err := selfUpdateAt("/home/u/go/bin/xui", "v0.8.0", "", false); err != nil {
+		if err := selfUpdateAt("/home/u/go/bin/xui", "v0.8.0", "", false, false); err != nil {
 			t.Errorf("不该失败: %v", err)
 		}
 	})

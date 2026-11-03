@@ -279,6 +279,7 @@ CLI 会**每天最多后台查一次**新版(结果写用户缓存目录 `xui/up
 ```bash
 xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + ui/ + winres/)
 xui init -n myapp --force # 目录已存在且非空时放开这道闸门(你的改动仍然保留; 要丢弃再加 -o)
+xui init -n myapp --dry-run # 预览整个生成过程: 不建目录、不写文件、不联网(init 也能预览了)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
 xui init [ui目录]       # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
 xui add button card     # 追加拷贝指定组件(自动带上依赖)
@@ -310,9 +311,11 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 - `-o, --overwrite`(init / add / update): 丢弃本地改动(默认保留, 见下方"更新时的判定")。对 `init -n` 来说它管的是模板文件(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore`)与基础组件;以前 `--force` 一个旗同时干这两件事, 于是一次 `init -n app --force` 能把你改过的 `main.go` 无声覆掉。
 - `add/update/info -p, --path <目录>`: 组件目录, 默认 `ui`(`info` 也认它 —— 组件装在 `components/` 时, `xui info` 才不会再报 "ui/: 未初始化");
 - `add -a, --all`: 全部组件(`update` 不接受它 —— 省略组件名就已经是"更新已装的全部", 想把没装的也一起拷进来请用 `xui add --all`);
-- `add --dry-run`: 预览动作, 不写文件;
+- `--dry-run`(init / add / update): 只预览会做什么, **没有任何副作用** —— 不建目录、不写文件、不写清单、不联网、不调 `xc` 生成 `.syso`。`init` 以前完全没有预览, 只能在别人的仓库里赌一把;现在 `xui init -n app --dry-run` 会一路打"将创建 …", 最后一行明确说没写任何东西;
 - `add --view[=组件或文件]` / `--diff[=组件或文件]`: 查看源码 / 与本地对比, 不写本地;过滤值给组件名(`card`)或文件基名(`card.go`)都行, 一个都没匹配上时会明说"没有匹配的文件", 不会拿"没有差异"糊弄你;
 - `list/search [词]` / `-q, --query <词>` / `-l, --limit <n>` / `-o, --offset <n>`: 搜索词(位置参数与 `-q` 等价, `xui search button` 直接可用)、限制数量、跳过前 n 个;搜索词给两个且不同会报错, 不猜;
+- `-j, --json`: 把命令结果改出结构化 JSON, 给脚本与 AI 助手读 —— 支持 `list` / `search` / `info` / `view`, `add` / `update` 的 `--view` / `--diff`, 以及 `self-update --check`。别的地方不给: 写文件那条路径的输出是一串过程日志, 收下 `-j` 又不生效是骗人(所以 `xui add card --json` 会直接报错, 预览写入动作用 `--dry-run`);
+- `--strict`(add / update): 有文件因本地改动被跳过时, 用退出码 2 失败(默认只汇总一句就正常退出);
 - 通用 `-c, --cwd <目录>` 先切工作目录(`xui -c dir list` 与 `xui list -c dir` 等价);
 - 通用 `-s, --silent` **只压进度输出**: "创建了哪个文件"这类过程信息不打印, 但命令本身的结果照常输出(`list` 的组件表、`view`/`--diff` 的源码与差异、`info`、`version`、`self-update --check` 的对比), 警告与错误也照常打到 stderr。`xui list -s` 因此是一份没有表头的干净清单, 可以直接接管道;
 - `-v, --version`(等价于 `xui version`): 只打印版本, 离线可用、不拉数据源;
@@ -325,6 +328,25 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 `xui self-update --check` 同理不接受版本参数(`--check` 只回答"我相对 @latest 新不新")。
 `-v` 归了全局的版本号(等价 `xui version`), 所以看源码是 `xui add card --view` —— 打 `-v`
 会报错并指你去 `--view`, 不让你以为这个短选项不存在。
+
+**退出码**: `0` = 跑通了(该装的都装了; 有跳过时 stderr 会给一句"共 N 个文件被跳过"的汇总);
+`1` = 命令本身失败(源拉不到、权限、参数错);`2` = 只在你加了 `--strict` 且有文件被跳过时出现。
+默认 `0` 是有意的: 保守跳过本地改动是这套设计的**正确行为**, 不该让人类手里的 `xui update` 报错;
+CI / agent 想"没更新干净就失败"就跑 `xui update --strict`(与 `--dry-run` 一起用可以在不写文件的
+前提下先检查一遍)。
+
+**结构化输出(`-j`)的字段**:
+
+| 命令 | JSON 形状(字段) |
+|---|---|
+| `list` / `search` | `source` `cli` `runtime`(数据源声明的配套运行时) `query` `offset` `limit` `total`(匹配数) `shown`(本次显示数) `components[]{name files[] deps[]}` |
+| `info` | `cli` `cwd` `go` `componentsDir` `componentsInitialized` `goFiles` `source` `updateCheckAt` `updateCheckLatest` |
+| `view` / `--view` | `source` `filter` `matched` `files[]{name component content}` |
+| `--diff` | `dir` `filter` `matched` `files[]{path file state diff}`, `state` = `missing` / `upgrade` / `edited` / `unknown`(与人类可读输出同一套判定) |
+| `self-update --check` | `current` `latest` `localBuild` `upgradable` `command`(下一步该跑什么, 已最新时为空串) |
+
+两条约定: 空的 `files` / `components` / `deps` 一律是 `[]` 而不是 `null`;
+过滤值谁都没挨着时 `matched=false`(这时 `files` 也是空, 但**不等于**"这个组件没有文件"或"没有差异")。
 
 组件源码拷进项目后归你所有; `add` / `update` / `init` 都不会覆盖你本地改过的文件, 确认要丢弃本地改动时加 `-o/--overwrite`。
 

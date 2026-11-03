@@ -445,7 +445,7 @@ xui init                 # 已有项目: 只创建组件目录(默认 ui/: theme
 
 xui add button dialog    # 追加组件(自动带上依赖的组件)
 xui add --all            # 拷贝全部组件
-xui add card --dry-run   # 预览将创建/覆盖/跳过的文件, 不写本地
+xui add card --dry-run   # 预览将创建/覆盖/跳过的文件, 不写本地(init 也支持 --dry-run)
 xui add card --view      # 打印 registry 源码(可加 =card.go 或 =card 只看某个文件/某个组件)
 xui add card --diff      # 与本地文件做逐行 diff(过滤值同上)
 xui update               # 更新已装组件(省略组件名 = 组件目录里已装的全部;不接 --all)
@@ -464,7 +464,10 @@ xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不�
 - **`list` / `search` 的搜索词可以写成位置参数**(`xui search table` 与 `-q table` 等价);给了两个不同的词会报错而不是猜, 同一个词重复给不算矛盾。
 - **`-v` 是全局的版本号**(等价 `xui version`), 与上游 shadcn 的 `add -v, --view` 撞名 —— 取舍是把 `-v` 留给版本, 看源码用 `--view`;打 `xui add -v card` 会报错并指你去 `--view`, 不会让你以为这个开关不存在。
 - **静默 `-s/--silent` 只压进度输出**:它压掉"创建了哪个文件"这类过程信息, **命令本身的结果照打**(`list` 的组件表、`view`/`--diff` 的源码与差异、`info` 的报告、`version`、`self-update --check` 的对比), 警告与错误也照打到 stderr。所以 `xui list -s` 给你一份没有表头的干净清单, 可以直接 `|` 给脚本; 升级提示走 stderr, 不会混进被 `>` 重定向的源码里。
-- **只展示的参数不吞写文件的参数**:`--view` / `--diff` 与 `--dry-run`、`-o/--overwrite`、`--no-install` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。
+- **只展示的参数不吞写文件的参数**:`--view` / `--diff` 与 `--dry-run`、`-o/--overwrite`、`--no-install`、`--strict` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。
+- **`--dry-run` 没有任何副作用**(init / add / update 都认): 不建目录、不写文件、不写安装清单、不联网动依赖、不调 `xc` 生成 `.syso`, 措辞一律用"将创建 / 将更新 / 将覆盖 / 将跳过"。以前 `init` 根本没有预览 —— 在别人仓库里生成项目只能赌一把。
+- **`-j/--json` 给脚本与 AI 助手读**: `list` / `search` / `info` / `view`、`add` / `update` 的 `--view` 与 `--diff`、`self-update --check` 都支持。字段形状见 README 的表(空的 `files` / `deps` 一律 `[]` 不是 `null`; 过滤值没命中时靠 `matched=false` 区分"没命中"与"没差异")。别的命令不给: 写文件那条路径的输出是过程日志, 收下 `-j` 又不生效是骗人。
+- **退出码**: `0` 跑通(有跳过时 stderr 汇总一句"共 N 个文件被跳过")、`1` 命令失败、`2` 只在 `--strict` 且有文件被跳过时出现。默认 `0` 是故意的 —— 保守跳过本地改动是正确行为, 不该让人类手里的 `xui update` 报错; CI/agent 要"没更新干净就失败"就跑 `xui update --strict`(可以配 `--dry-run` 先检查一遍)。
 - **`update` 不接 `--all`**:`xui update` 省略组件名就已经是"更新组件目录里已装的全部"; 把没装过的组件也一起拷进来是 `xui add --all` 的事, 两个命令不该混在一个开关里。
 - **新建项目的两个开关分开**:`-f/--force` 只放开"目标目录已存在且非空"这道闸门;`-o/--overwrite` 才决定能不能丢弃本地改动, 而且与组件文件共用上面那套基线判定(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore` 的基线记在同一份清单的 `project_files` 里)。以前一个 `-f` 两件事都干, 于是一次 `xui init -n app --force` 能把你改过的 `main.go` 无声覆掉。普通 `xui init [ui目录]` 不覆盖已有文件, 给它 `-f` 会直接报错(要说"丢弃改动"请用 `-o`)。
 - **依赖安装**:`xui init -n` 生成后默认在项目目录执行 `go mod tidy`(生成 `go.sum`);离线或想手动控制时加 `--no-install`, 之后自己跑一次。`--no-install` 对 `add` / `update` / `init` 三种都成立 —— 组件文件照写, 只是不动 `go.mod`。

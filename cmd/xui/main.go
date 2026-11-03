@@ -351,12 +351,12 @@ func main() {
 			fatal("%v", err)
 		}
 		if opts.project != "" {
-			if err := initNewProject(opts.project, opts.force, opts.overwrite, opts.noInstall); err != nil {
+			if err := initNewProject(opts.project, opts.force, opts.writes()); err != nil {
 				fatal("%v", err)
 			}
 			return
 		}
-		initProject(opts.uiDir, opts.overwrite, opts.noInstall)
+		initProject(opts.uiDir, opts.writes())
 	case "add", "update":
 		opts, err := parseComponentArgs(cmd, args)
 		if err != nil {
@@ -374,23 +374,23 @@ func main() {
 		}
 		list(opts)
 	case "view":
-		names, err := parseViewArgs(args)
+		names, jsonMode, err := parseViewArgs(args)
 		if err != nil {
 			fatal("%v", err)
 		}
-		view(names)
+		view(names, jsonMode)
 	case "info":
-		uiDir, err := parseInfoArgs(args)
+		uiDir, jsonMode, err := parseInfoArgs(args)
 		if err != nil {
 			fatal("%v", err)
 		}
-		infoCommand(uiDir)
+		infoCommand(uiDir, jsonMode)
 	case "self-update":
-		target, checkOnly, err := parseSelfUpdateArgs(args)
+		target, checkOnly, jsonMode, err := parseSelfUpdateArgs(args)
 		if err != nil {
 			fatal("%v", err)
 		}
-		selfUpdate(target, checkOnly)
+		selfUpdate(target, checkOnly, jsonMode)
 	default:
 		fatal("未知命令 %q (见 xui --help)", cmd)
 	}
@@ -422,6 +422,107 @@ func out(format string, a ...any) {
 
 func outRaw(s string) {
 	fmt.Print(s)
+}
+
+// ---------------------------------------------------------------- 结构化输出
+
+// printJSON 打印命令结果的机器可读形式(-j / --json)。它与 out 同属"结果", 所以也不受
+// -s 影响。中文表格给人看, 脚本与 AI 助手要稳定的字段 —— 项目会往用户项目下发 AGENTS.md,
+// 那些会话里读 CLI 输出的多半是助手, 不该让它去解析对齐空格。
+func printJSON(v any) {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		fatal("生成 JSON 失败: %v", err)
+	}
+	outRaw(string(data) + "\n")
+}
+
+// componentJSON 是 list 的一条组件(files/deps 一律给数组, 空就是 [] 而不是 null,
+// 省得调用方两种都要防)。
+type componentJSON struct {
+	Name  string   `json:"name"`
+	Files []string `json:"files"`
+	Deps  []string `json:"deps"`
+}
+
+// listJSON 是 list / search 的结果: 切片后的条目 + 让调用方知道自己看了多少。
+type listJSON struct {
+	Source     string          `json:"source"`
+	CLI        string          `json:"cli"`
+	Runtime    string          `json:"runtime,omitempty"`
+	Query      string          `json:"query,omitempty"`
+	Offset     int             `json:"offset"`
+	Limit      int             `json:"limit,omitempty"`
+	Total      int             `json:"total"`
+	Shown      int             `json:"shown"`
+	Components []componentJSON `json:"components"`
+}
+
+// infoJSON 是 xui info 的环境报告(componentsDir 就是 -p 指过去的目录)。
+type infoJSON struct {
+	CLI                   string `json:"cli"`
+	CWD                   string `json:"cwd"`
+	Go                    string `json:"go"`
+	ComponentsDir         string `json:"componentsDir"`
+	ComponentsInitialized bool   `json:"componentsInitialized"`
+	GoFiles               int    `json:"goFiles"`
+	Source                string `json:"source"`
+	CheckedAt             string `json:"updateCheckAt,omitempty"`
+	CheckLatest           string `json:"updateCheckLatest,omitempty"`
+}
+
+// sourceFileJSON 是一个组件文件(content 是全文)。
+type sourceFileJSON struct {
+	Name      string `json:"name"`
+	Component string `json:"component"`
+	Content   string `json:"content"`
+}
+
+// viewJSON 是 view / --view 的结果。matched=false 表示过滤值谁都没挨着 ——
+// 这时 files 为空, 调用方不该把它当成"这个组件没有文件"。
+type viewJSON struct {
+	Source  string           `json:"source"`
+	Filter  string           `json:"filter,omitempty"`
+	Matched bool             `json:"matched"`
+	Files   []sourceFileJSON `json:"files"`
+}
+
+// diffFileJSON 是一个有差异的文件;state 与人类可读输出用的是同一套判定:
+// missing(本地没有) / upgrade(未改动, 纯版本差异) / edited(本地改过) / unknown(没基线, 判断不了)。
+type diffFileJSON struct {
+	Path  string `json:"path"`
+	File  string `json:"file"`
+	State string `json:"state"`
+	Diff  string `json:"diff"`
+}
+
+// diffJSON 是 --diff 的结果。matched=false 同上(过滤器没命中, 不等于"没有差异")。
+type diffJSON struct {
+	Dir     string         `json:"dir"`
+	Filter  string         `json:"filter,omitempty"`
+	Matched bool           `json:"matched"`
+	Files   []diffFileJSON `json:"files"`
+}
+
+// checkJSON 是 self-update --check 的结果;command 是"下一步该跑什么", 已最新时为空串。
+type checkJSON struct {
+	Current    string `json:"current"`
+	Latest     string `json:"latest"`
+	LocalBuild bool   `json:"localBuild"`
+	Upgradable bool   `json:"upgradable"`
+	Command    string `json:"command,omitempty"`
+}
+
+// checkCommand 把 --check 的三种结论压成一条可直接执行的命令(给脚本用)。
+func checkCommand(current, newest string, localBuild, upgradable bool) string {
+	switch {
+	case localBuild:
+		return "xui self-update"
+	case upgradable:
+		return "xui self-update " + newest
+	default:
+		return ""
+	}
 }
 
 // nextValue 取选项后面的值。三种情况报错:
@@ -508,6 +609,20 @@ type initOptions struct {
 	force     bool
 	overwrite bool
 	noInstall bool
+	dryRun    bool
+}
+
+// writeOpts 是"往某个目录里写 xui 下发的文件"共用的三个开关(init 的两种形态与 add 都走它)。
+// 收成 struct 是因为散装布尔一路加到 5 个, 调用点 initNewProject("app", true, true, false)
+// 已经读不出第二个 true 是什么意思了。
+type writeOpts struct {
+	overwrite bool
+	noInstall bool
+	dryRun    bool
+}
+
+func (o initOptions) writes() writeOpts {
+	return writeOpts{overwrite: o.overwrite, noInstall: o.noInstall, dryRun: o.dryRun}
 }
 
 func parseInitArgs(args []string) (initOptions, error) {
@@ -541,6 +656,8 @@ func parseInitArgs(args []string) (initOptions, error) {
 			o.overwrite = true
 		case a == "--no-install":
 			o.noInstall = true
+		case a == "--dry-run":
+			o.dryRun = true
 		case strings.HasPrefix(a, "-"):
 			return o, fmt.Errorf("未知选项 %s", a)
 		default:
@@ -579,6 +696,10 @@ type componentOptions struct {
 	viewFile  string
 	diff      bool
 	diffFile  string
+	// json = --view/--diff 的结果改用结构化输出(-j / --json); 写文件那条路径没有结构化形式。
+	json bool
+	// strict = 有文件因本地改动被跳过时, 用退出码 2 结束(默认只汇总一句就正常退出)。
+	strict bool
 	// noInstall = 写组件文件但不联网动 go.mod 的配套运行时(与 init --no-install 同一个旗)。
 	noInstall bool
 }
@@ -618,6 +739,8 @@ func parseComponentArgs(cmd string, args []string) (componentOptions, error) {
 			o.dryRun = true
 		case a == "--no-install":
 			o.noInstall = true
+		case a == "--strict":
+			o.strict = true
 		case a == "--view":
 			o.view = true
 		case strings.HasPrefix(a, "--view="):
@@ -634,6 +757,8 @@ func parseComponentArgs(cmd string, args []string) (componentOptions, error) {
 				return o, err
 			}
 			o.diff, o.diffFile = true, v
+		case a == "-j" || a == "--json":
+			o.json = true
 		case a == "-v":
 			// 上游 shadcn 是 `add -v, --view`, 这里的 -v 归了全局版本号 —— 报错要说清去向,
 			// 否则照文档敲的人会以为 --view 不存在。
@@ -653,6 +778,10 @@ func parseComponentArgs(cmd string, args []string) (componentOptions, error) {
 	if cmd == "update" && o.all {
 		return o, fmt.Errorf("xui update 不带组件名就是更新 %s 里已装的全部; 想把没装的组件也一起装上请用 xui add --all", o.uiDir)
 	}
+	if o.json && !(o.view || o.diff) {
+		// 只有"展示"这两条有结构化输出; 写文件那条没有, 收下 -j 又不生效是骗人。
+		return o, fmt.Errorf("--json 只用于 --view / --diff (预览写入动作用 --dry-run)")
+	}
 	if o.view || o.diff {
 		// --view/--diff 只展示、不写文件: 这些"怎么写"的开关跟着给会被静默忽略, 直接拒。
 		if o.dryRun {
@@ -664,20 +793,25 @@ func parseComponentArgs(cmd string, args []string) (componentOptions, error) {
 		if o.noInstall {
 			return o, fmt.Errorf("--no-install 与 --view/--diff 不能同时使用 (--view/--diff 本来就不写文件)")
 		}
+		if o.strict {
+			return o, fmt.Errorf("--strict 与 --view/--diff 不能同时使用 (它管的是有文件被跳过, 而 --view/--diff 不写文件)")
+		}
 	}
 	return o, nil
 }
 
-// parseSelfUpdateArgs 只认一个可选版本参数与 --check; 别在这里发明新语法。
-func parseSelfUpdateArgs(args []string) (target string, checkOnly bool, err error) {
+// parseSelfUpdateArgs 只认一个可选版本参数、--check 与 --json; 别在这里发明新语法。
+func parseSelfUpdateArgs(args []string) (target string, checkOnly, jsonMode bool, err error) {
 	for _, a := range args {
 		switch {
 		case a == "--check":
 			checkOnly = true
+		case a == "-j" || a == "--json":
+			jsonMode = true
 		case strings.HasPrefix(a, "-"):
-			return "", false, fmt.Errorf("未知选项 %s (用法: xui self-update [版本|--check])", a)
+			return "", false, false, fmt.Errorf("未知选项 %s (用法: xui self-update [版本|--check])", a)
 		case target != "":
-			return "", false, fmt.Errorf("用法: xui self-update [版本|--check] (只能给一个版本)")
+			return "", false, false, fmt.Errorf("用法: xui self-update [版本|--check] (只能给一个版本)")
 		default:
 			target = a
 		}
@@ -685,9 +819,13 @@ func parseSelfUpdateArgs(args []string) (target string, checkOnly bool, err erro
 	if checkOnly && target != "" {
 		// --check 只回答"我相对 @latest 新不新"。把版本参数收下又丢掉, 会让人以为
 		// 它检查的是自己刚指定的那个版本。
-		return "", false, fmt.Errorf("xui self-update --check 不接受版本 (要升到指定版本就去掉 --check: xui self-update %s)", target)
+		return "", false, false, fmt.Errorf("xui self-update --check 不接受版本 (要升到指定版本就去掉 --check: xui self-update %s)", target)
 	}
-	return target, checkOnly, nil
+	if jsonMode && !checkOnly {
+		// 真正的升级动作没有结构化输出(它是一串过程日志), 收下 -j 又不生效是骗人。
+		return "", false, false, fmt.Errorf("--json 只用于 xui self-update --check")
+	}
+	return target, checkOnly, jsonMode, nil
 }
 
 // listOptions 是 list / search 的参数集(对齐 shadcn search: -q / -l / -o)。
@@ -695,6 +833,8 @@ type listOptions struct {
 	query  string
 	limit  int
 	offset int
+	// json = 结果改用结构化输出给脚本与 AI 助手读(-j / --json)。
+	json bool
 }
 
 // parseListArgs 解析 list / search。位置参数就是搜索词(`xui search button` 是最自然的
@@ -793,6 +933,8 @@ func parseListArgs(args []string) (listOptions, error) {
 				return o, fmt.Errorf("--offset 需要非负整数")
 			}
 			o.offset = n
+		case a == "-j" || a == "--json":
+			o.json = true
 		case strings.HasPrefix(a, "-"):
 			return o, fmt.Errorf("未知选项 %s", a)
 		default:
@@ -815,51 +957,57 @@ func parseListArgs(args []string) (listOptions, error) {
 // parseInfoArgs 给 info 解析组件目录: 它报的是"我的项目里 xui 装成什么样", 目录不是 ui
 // 时必须能指过去(以前 info 写死读 ui/, 组件装在 components/ 的项目里回答"ui/: 未初始化",
 // 是错的)。
-func parseInfoArgs(args []string) (string, error) {
-	uiDir := "ui"
+func parseInfoArgs(args []string) (uiDir string, jsonMode bool, err error) {
+	uiDir = "ui"
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "-p" || a == "--path":
 			v, err := nextValue(args, i, a)
 			if err != nil {
-				return "", err
+				return "", false, err
 			}
 			i++
 			uiDir = v
 		case strings.HasPrefix(a, "-p="):
 			v, err := inlineValue(a, "-p=")
 			if err != nil {
-				return "", err
+				return "", false, err
 			}
 			uiDir = v
 		case strings.HasPrefix(a, "--path="):
 			v, err := inlineValue(a, "--path=")
 			if err != nil {
-				return "", err
+				return "", false, err
 			}
 			uiDir = v
+		case a == "-j" || a == "--json":
+			jsonMode = true
 		case strings.HasPrefix(a, "-"):
-			return "", fmt.Errorf("未知选项 %s (用法: xui info [-p 组件目录])", a)
+			return "", false, fmt.Errorf("未知选项 %s (用法: xui info [-p 组件目录] [-j])", a)
 		default:
-			return "", fmt.Errorf("xui info 不接受参数 %s (组件目录用 -p <目录>)", a)
+			return "", false, fmt.Errorf("xui info 不接受参数 %s (组件目录用 -p <目录>)", a)
 		}
 	}
-	return uiDir, nil
+	return uiDir, jsonMode, nil
 }
 
-func parseViewArgs(args []string) ([]string, error) {
-	var names []string
+// parseViewArgs 解析 `xui view <组件...> [-j]`。
+func parseViewArgs(args []string) (names []string, jsonMode bool, err error) {
 	for _, a := range args {
-		if strings.HasPrefix(a, "-") {
-			return nil, fmt.Errorf("未知选项 %s", a)
+		switch {
+		case a == "-j" || a == "--json":
+			jsonMode = true
+		case strings.HasPrefix(a, "-"):
+			return nil, false, fmt.Errorf("未知选项 %s", a)
+		default:
+			names = append(names, a)
 		}
-		names = append(names, a)
 	}
 	if len(names) == 0 {
-		return nil, fmt.Errorf("用法: xui view <组件...>")
+		return nil, false, fmt.Errorf("用法: xui view <组件...>")
 	}
-	return names, nil
+	return names, jsonMode, nil
 }
 
 func usage() {
@@ -871,7 +1019,7 @@ func usage() {
   xui add <组件...>          拷贝组件(自动带上依赖组件)
   xui add --all              拷贝全部组件
   xui add <组件...> --dry-run
-                             只显示将创建/覆盖/跳过的文件
+                             只显示将创建/覆盖/跳过的文件(init 也支持)
   xui add <组件...> --view[=组件或文件]
                              打印组件源码, 不写本地
   xui add <组件...> --diff[=组件或文件]
@@ -892,12 +1040,16 @@ func usage() {
                         不隐含"你的改动可以丢"; 普通 init 用不上它)
   --no-install          init/add/update: 写文件但不联网动 go.mod 的依赖
                         (init -n 还跳过自动 go mod tidy 与 xc 安装, 仍写 winres/)
+  --dry-run             init/add/update: 只预览, 不建目录、不写文件、不联网
+  --strict              add/update: 有文件因本地改动被跳过时用退出码 2 失败(给 CI)
   -o, --overwrite       init/add/update: 丢弃本地改动(默认保留; 判定见下)
   -p, --path <目录>     add/update/info: 组件目录(默认 ui)
   -a, --all             add: 全部组件
   -q, --query <词>      list/search: 按组件名过滤(直接写位置参数等价)
   -l, --limit <n>       list/search: 最多显示 n 个
   -o, --offset <n>      list/search: 跳过前 n 个
+  -j, --json            list/search/info/view 与 add/update 的 --view/--diff、
+                        self-update --check: 结果改出结构化 JSON(给脚本与 AI 助手读)
   -c, --cwd <目录>      先切换到该目录, 后续相对路径都以它为准
   -s, --silent          只压进度输出; 命令结果(list/view/diff/info/version)、
                         警告与错误照常
@@ -912,6 +1064,10 @@ func usage() {
 改动判定(add/update 的组件文件与 init 的模板文件同一套): 装完之后没动过(本地哈希等于
                         安装清单里的基线)→ 随版本升级直接替换; 基线对不上 → 你改过,
                         默认保留, 要 -o 才覆盖; 该文件没有基线 → 只说"无法判断来源"。
+
+退出码: 0 = 跑通了(该装的都装了, 跳过的已在 stderr 汇总一句说明);1 = 命令本身失败
+                        (源拉不到/权限/参数错);2 = 只在看 --strict 且有文件被跳过时出现。
+                        CI 里想"有文件没更新干净就失败"就跑 --strict。
 
 运行时版本: 组件源码跟 main 分支, 而运行时 github.com/twgh/xui 只能按 tag 取 ——
                         registry.json 的 runtime 字段是与这批组件配套的运行时版本,
@@ -956,8 +1112,8 @@ func moduleRoot() string {
 
 // ---------------------------------------------------------------- 各命令实现
 
-func initProject(dir string, overwrite, noInstall bool) {
-	if err := scaffoldUI(dir, overwrite, noInstall); err != nil {
+func initProject(dir string, w writeOpts) {
+	if err := scaffoldUI(dir, w); err != nil {
 		fatal("%v", err)
 	}
 	// 组件目录的 AGENTS.md: README 不在 init 的写入范围(用户项目已有自己的),
@@ -965,10 +1121,16 @@ func initProject(dir string, overwrite, noInstall bool) {
 	agentsPath := filepath.Join(dir, "AGENTS.md")
 	if _, err := os.Stat(agentsPath); err == nil {
 		info("跳过 %s (已存在)", agentsPath)
+	} else if w.dryRun {
+		info("将创建 %s", agentsPath)
 	} else if err := os.WriteFile(agentsPath, []byte(agentsDirTemplate), 0o644); err != nil {
 		warn("写入 AGENTS.md 失败: %v", err)
 	} else {
 		info("创建 %s", agentsPath)
+	}
+	if w.dryRun {
+		info("\n以上是预览: 没有创建任何文件/目录, 也没有联网动依赖")
+		return
 	}
 	info("\n完成。接下来:")
 	info("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
@@ -981,35 +1143,54 @@ func initProject(dir string, overwrite, noInstall bool) {
 // scaffoldUI 写 ui 目录: theme.go + DESIGN.md + 基础组件。普通 init 与 init -n 共用。
 // overwrite = 允许丢弃本地改过的组件文件(add 的 -o); theme.go / DESIGN.md 已存在时永远保留。
 // noInstall = 不联网动 go.mod(配套运行时版本只打印命令)。
-func scaffoldUI(dir string, overwrite, noInstall bool) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("创建目录失败: %v", err)
+func scaffoldUI(dir string, w writeOpts) error {
+	// dry-run 与 install 同一条纪律: 不建目录、不写文件, 只说将做什么。
+	if !w.dryRun {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("创建目录失败: %v", err)
+		}
 	}
 	themePath := filepath.Join(dir, "theme.go")
-	if _, err := os.Stat(themePath); err == nil {
+	switch {
+	case fileExists(themePath):
 		info("跳过 %s (已存在)", themePath)
-	} else if err := os.WriteFile(themePath, []byte(themeTemplate), 0o644); err != nil {
-		return fmt.Errorf("写入 theme.go 失败: %v", err)
-	} else {
+	case w.dryRun:
+		info("将创建 %s", themePath)
+	default:
+		if err := os.WriteFile(themePath, []byte(themeTemplate), 0o644); err != nil {
+			return fmt.Errorf("写入 theme.go 失败: %v", err)
+		}
 		info("创建 %s", themePath)
 	}
 
 	// 配套文档: 组件源码的注释里大量 "见 DESIGN 第 N 节", 拷给用户才是活的。
 	// 从模块根读(go run pkg@version 时位于模块缓存, 源码文件同样在), 读不到不阻断 init。
 	docPath := filepath.Join(dir, "DESIGN.md")
-	if _, err := os.Stat(docPath); err == nil {
+	switch {
+	case fileExists(docPath):
 		info("跳过 %s (已存在)", docPath)
-	} else if data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md")); err != nil {
-		warn("读取 DESIGN.md 失败, 跳过: %v", err)
-	} else if err := os.WriteFile(docPath, data, 0o644); err != nil {
-		warn("写入 DESIGN.md 失败: %v", err)
-	} else {
-		info("创建 %s", docPath)
+	case w.dryRun:
+		info("将创建 %s", docPath)
+	default:
+		data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md"))
+		if err != nil {
+			warn("读取 DESIGN.md 失败, 跳过: %v", err)
+		} else if err := os.WriteFile(docPath, data, 0o644); err != nil {
+			warn("写入 DESIGN.md 失败: %v", err)
+		} else {
+			info("创建 %s", docPath)
+		}
 	}
 
 	// 拷入全部基础组件, 开箱即用(window 是快速开始示例用的主窗口封装)
-	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: overwrite, noInstall: noInstall})
+	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: w.overwrite, noInstall: w.noInstall, dryRun: w.dryRun})
 	return nil
+}
+
+// fileExists 只问"路径在不在"(读一次 Stat)。
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // initNewProject 创建完整项目目录: go.mod + main.go + README + .gitignore + ui/。
@@ -1021,13 +1202,14 @@ func scaffoldUI(dir string, overwrite, noInstall bool) error {
 //     只说"判断不了来源", 不断言你改过。go.mod / main.go / README.md 都是会被改的文件,
 //     光凭"存在"就覆写等于把用户代码抹了。
 //
-// noInstall = 跳过自动 go mod tidy(--no-install)。
+// noInstall = 跳过自动 go mod tidy(--no-install); dryRun = 只预览, 不建目录、不写文件、
+// 不联网(与 add --dry-run 同一套纪律: 预览不该有副作用)。
 //
 // 目录规则:
 //   - `-n .` 直接把骨架铺在当前目录(项目名取当前目录名);
 //   - 当前目录本身是空的、且目录名 == -n 的项目名时, 同样铺在当前目录 ——
 //     否则在 `D:\...\sitless` 里执行 `xui init -n sitless` 会生成 sitless/sitless。
-func initNewProject(name string, force, overwrite, noInstall bool) error {
+func initNewProject(name string, force bool, w writeOpts) error {
 	dir := name
 	if name == "." {
 		cwd, err := os.Getwd()
@@ -1049,15 +1231,20 @@ func initNewProject(name string, force, overwrite, noInstall bool) error {
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("读取目录 %s 失败: %v", dir, err)
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("创建项目目录失败: %v", err)
+	} else if w.dryRun {
+		info("将创建项目目录 %s", dir)
 	}
 	uiDir := filepath.Join(dir, "ui")
-	// 模板文件的基线记在同一份安装清单里(清单落在组件目录), 所以先确保目录存在并读回旧清单。
-	if err := os.MkdirAll(uiDir, 0o755); err != nil {
-		return fmt.Errorf("创建目录失败: %v", err)
+	if !w.dryRun {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("创建项目目录失败: %v", err)
+		}
+		// 模板文件的基线记在同一份安装清单里(清单落在组件目录), 所以先确保目录存在。
+		if err := os.MkdirAll(uiDir, 0o755); err != nil {
+			return fmt.Errorf("创建目录失败: %v", err)
+		}
 	}
+	// 清单读得到就读(预览时目录还不存在也不影响: 拿空基线, 全部走"将创建")。
 	inst := loadManifest(uiDir)
 
 	module := moduleNameFromProject(name)
@@ -1068,6 +1255,14 @@ func initNewProject(name string, force, overwrite, noInstall bool) error {
 		{"README.md", fmt.Sprintf(readmeTemplate, name)},
 		{"AGENTS.md", fmt.Sprintf(agentsProjectTemplate, module)},
 		{".gitignore", gitignoreTemplate},
+	}
+	skipped := 0
+	// 预览用的动词: 与实际写入同一套判定, 只是前面加"将"、不落盘。
+	verb := func(created string) string {
+		if w.dryRun {
+			return "将" + created
+		}
+		return created
 	}
 	for _, f := range files {
 		path := filepath.Join(dir, f.name)
@@ -1080,54 +1275,72 @@ func initNewProject(name string, force, overwrite, noInstall bool) error {
 		baseline, hasBaseline := inst.Project[f.name]
 		switch classifyPlace(!missing, local, data, baseline, hasBaseline) {
 		case placeCreate:
-			if err := os.WriteFile(path, data, 0o644); err != nil {
-				return fmt.Errorf("写入 %s 失败: %v", path, err)
+			if !w.dryRun {
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					return fmt.Errorf("写入 %s 失败: %v", path, err)
+				}
+				inst.Project[f.name] = sha256Hex(data)
 			}
-			inst.Project[f.name] = sha256Hex(data)
-			info("创建 %s", path)
+			info("%s %s", verb("创建"), path)
 		case placeSame:
-			inst.Project[f.name] = sha256Hex(data)
+			if !w.dryRun {
+				inst.Project[f.name] = sha256Hex(data)
+			}
 			info("已一致 %s", path)
 		case placeUpgrade:
 			// 与上次生成的一字不差 ⇒ 差异只可能来自 CLI 模板升级, 安全替换。
-			if err := os.WriteFile(path, data, 0o644); err != nil {
-				return fmt.Errorf("写入 %s 失败: %v", path, err)
+			if !w.dryRun {
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					return fmt.Errorf("写入 %s 失败: %v", path, err)
+				}
+				inst.Project[f.name] = sha256Hex(data)
 			}
-			inst.Project[f.name] = sha256Hex(data)
-			info("更新 %s (模板升级)", path)
+			info("%s %s (模板升级)", verb("更新"), path)
 		case placeEdited, placeUnknown:
-			if !overwrite {
+			if !w.overwrite {
 				// 闸门已经开了(--force), 但丢弃改动是另一个决定 —— 默认保留你的文件。
+				skipped++
 				if !hasBaseline {
-					warn("%s 与模板不同, 且没有生成时的基线, 无法判断来源, 跳过 (确认本地无改动后加 -o/--overwrite 覆盖)", path)
+					warn("%s 与模板不同, 且没有生成时的基线, 无法判断来源, %s (确认本地无改动后加 -o/--overwrite 覆盖)", path, verb("跳过"))
 					continue
 				}
-				warn("%s 本地已修改, 跳过 (确认后加 -o/--overwrite 覆盖)", path)
+				warn("%s 本地已修改, %s (确认后加 -o/--overwrite 覆盖)", path, verb("跳过"))
 				continue
 			}
 			lost := " (本地修改已丢弃)"
 			if !hasBaseline {
 				lost = " (无生成基线, 无法判断是否改过)"
 			}
-			if err := os.WriteFile(path, data, 0o644); err != nil {
-				return fmt.Errorf("写入 %s 失败: %v", path, err)
+			if !w.dryRun {
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					return fmt.Errorf("写入 %s 失败: %v", path, err)
+				}
+				inst.Project[f.name] = sha256Hex(data)
 			}
-			inst.Project[f.name] = sha256Hex(data)
-			info("覆盖 %s%s", path, lost)
+			info("%s %s%s", verb("覆盖"), path, lost)
 		}
 	}
-	// 先落清单, scaffoldUI 里的 add 会读回同一份并补齐组件哈希(Project 字段跟着走)。
-	if err := inst.save(uiDir); err != nil {
-		warn("写入安装清单失败: %v", err)
+	if !w.dryRun {
+		// 预览不落清单: 写清单本身就是副作用(还会覆盖旧条目)。
+		if err := inst.save(uiDir); err != nil {
+			warn("写入安装清单失败: %v", err)
+		}
 	}
-	if err := scaffoldUI(uiDir, overwrite, noInstall); err != nil {
+	// init 没有 --strict(它是建仓的一步, 跳过模板该由用户决定), 只要那一句汇总。
+	reportSkipped(skipped, w.dryRun, false)
+	if err := scaffoldUI(uiDir, w); err != nil {
 		return err
 	}
 	// 图标/版本资源: winres/ 写好即生效, .syso 由 xc 生成; --no-install 不联网装 xc。
-	scaffoldProjectWinres(dir, name, !noInstall)
+	scaffoldProjectWinres(dir, name, !w.noInstall, w.dryRun)
 
 	depsReady := false
-	if !noInstall {
+	if w.dryRun {
+		info("\n(预览) 将执行: 在 %s 跑 go mod tidy", dir)
+		info("以上是预览: 没有创建任何文件/目录, 也没动依赖; 去掉 --dry-run 才会真的生成。")
+		return nil
+	}
+	if !w.noInstall {
 		info("\n正在安装依赖 (go mod tidy)...")
 		if err := installGoModules(dir); err != nil {
 			warn("依赖安装失败: %v", err)
@@ -1332,6 +1545,12 @@ func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 	}
 	gm := findGoMod(uiDir)
 	if gm == "" {
+		if dryRun {
+			// 预览 init -n 时 go.mod 本来就还不存在(它就是这次"将创建"的东西之一),
+			// 这时说"没找到 go.mod, 跳过"会让人以为依赖不会被抬。
+			info("(预览) 项目里还没有 go.mod; 真跑时会把配套运行时抬到 %s %s", runtimeModule, floor)
+			return
+		}
 		info("没找到 go.mod, 跳过运行时版本检查 (配套运行时是 %s %s)", runtimeModule, floor)
 		return
 	}
@@ -1513,7 +1732,7 @@ func binaryVersion(path string) (string, error) {
 
 // selfUpdate 升级 CLI 本体: 先弄清"我是谁"(可执行文件路径、当前版本),
 // 再把流程交给可测内核 selfUpdateAt。
-func selfUpdate(target string, checkOnly bool) {
+func selfUpdate(target string, checkOnly, jsonMode bool) {
 	exe, err := os.Executable()
 	if err != nil {
 		fatal("取不到当前可执行文件, 没法自我升级: %v (手动跑: go install %s@latest)", err, cliModule)
@@ -1521,7 +1740,7 @@ func selfUpdate(target string, checkOnly bool) {
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
-	if err := selfUpdateAt(exe, displayVersion(), target, checkOnly); err != nil {
+	if err := selfUpdateAt(exe, displayVersion(), target, checkOnly, jsonMode); err != nil {
 		fatal("%v", err)
 	}
 }
@@ -1530,7 +1749,7 @@ func selfUpdate(target string, checkOnly bool) {
 // 两个坑: ① 正在运行的 exe 不许就地覆写(Windows 拒绝、Linux 是 ETXTBSY) —— go install
 // 失败时把旧文件改名让路再试一次; ② 成没成以"跑新二进制拿到的版本"为准,
 // 不拿"命令没报错"当证据(go install 失败也可能只留下半截状态)。
-func selfUpdateAt(exe, current, target string, checkOnly bool) error {
+func selfUpdateAt(exe, current, target string, checkOnly, jsonMode bool) error {
 	if isTempBuildPath(exe) {
 		return fmt.Errorf("现在跑的是临时构建(%s), 它不是安装出来的文件, 不能自我升级; 装一次以后就能直接敲 xui: go install %s@latest", exe, cliModule)
 	}
@@ -1548,14 +1767,26 @@ func selfUpdateAt(exe, current, target string, checkOnly bool) error {
 			return fmt.Errorf("查询最新版本失败: %w", err)
 		}
 		// 这几行就是 --check 的全部结果, 加 -s 也得打(否则命令等于什么都没查)。
+		localBuild := !isReleaseTag(current)
+		upgradable := !localBuild && current != newest && versionBefore(current, newest)
+		if jsonMode {
+			printJSON(checkJSON{
+				Current:    current,
+				Latest:     newest,
+				LocalBuild: localBuild,
+				Upgradable: upgradable,
+				Command:    checkCommand(current, newest, localBuild, upgradable),
+			})
+			return nil
+		}
 		out("当前 CLI: %s", current)
 		out("最新 tag: %s", newest)
 		switch {
-		case !isReleaseTag(current):
+		case localBuild:
 			out("本地构建(%s)不算发布版; 想装正式版: xui self-update", current)
 		case current == newest:
 			out("已是最新")
-		case versionBefore(current, newest):
+		case upgradable:
 			out("可以升级: xui self-update %s", newest)
 		}
 		return nil
@@ -1804,13 +2035,14 @@ func add(opts componentOptions) {
 	order := resolveNames(reg, names)
 	switch {
 	case opts.view:
-		viewFiles(src, reg, order, opts.viewFile)
+		viewFiles(src, reg, order, opts.viewFile, opts.json)
 	case opts.diff:
-		diffFiles(src, reg, order, opts.uiDir, opts.diffFile)
+		diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json)
 	default:
-		install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
+		skipped := install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
 		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
 		ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
+		reportSkipped(skipped, opts.dryRun, opts.strict)
 	}
 }
 
@@ -1828,13 +2060,14 @@ func update(opts componentOptions) {
 	order := resolveNames(reg, names)
 	switch {
 	case opts.view:
-		viewFiles(src, reg, order, opts.viewFile)
+		viewFiles(src, reg, order, opts.viewFile, opts.json)
 	case opts.diff:
-		diffFiles(src, reg, order, opts.uiDir, opts.diffFile)
+		diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json)
 	default:
-		install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
+		skipped := install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
 		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
 		ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
+		reportSkipped(skipped, opts.dryRun, opts.strict)
 	}
 }
 
@@ -2146,7 +2379,7 @@ func classifyPlace(exists bool, local, remote []byte, baseline string, hasBaseli
 //
 // dryRun 只打印将要发生的动作, 不创建任何文件/目录、不写清单。
 // 多个组件共享同一文件(separator/badge)时只处理一次。
-func install(src *source, reg *registry, order []string, uiDir string, overwrite, dryRun bool) {
+func install(src *source, reg *registry, order []string, uiDir string, overwrite, dryRun bool) (skipped int) {
 	if !dryRun {
 		if err := os.MkdirAll(uiDir, 0o755); err != nil {
 			fatal("创建目录失败: %v", err)
@@ -2195,6 +2428,7 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 				info("更新 %s (版本升级)", dst)
 			case placeEdited, placeUnknown:
 				if !overwrite {
+					skipped++
 					// dry-run 只是预览, 文案统一用"将…", 别让用户以为已经动过文件。
 					verb := "跳过"
 					if dryRun {
@@ -2223,7 +2457,7 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 		}
 	}
 	if dryRun {
-		return
+		return skipped
 	}
 	if v := cliVersion(); v != "" {
 		if prevVersion != "" && prevVersion != v {
@@ -2233,6 +2467,28 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 	}
 	if err := inst.save(uiDir); err != nil {
 		warn("写入安装清单失败: %v", err)
+	}
+	return skipped
+}
+
+// exitPartial 是 --strict 下"有文件被跳过"的退出码。与 fatal 的 1 分开, CI 才能区分
+// "命令跑挂了(网络/权限)"与"跑通了但没更新干净(本地有改动)"。
+const exitPartial = 2
+
+// reportSkipped 汇总跳过: 默认只向 stderr 说一句就正常退出 —— 保守跳过是这套设计的
+// 正确行为, 不是故障, 不该让 `xui update` 在人类手里报错。要它因此失败就加 --strict
+// (CI/agent 用法: 跑一次 update --strict, 非 0 就说明有文件需要人工确认)。
+func reportSkipped(skipped int, dryRun, strict bool) {
+	if skipped == 0 {
+		return
+	}
+	verb := "被跳过"
+	if dryRun {
+		verb = "会被跳过"
+	}
+	warn("共 %d 个文件%s (本地有改动, 确认后加 -o/--overwrite; 逐文件原因见上面各行)", skipped, verb)
+	if strict {
+		os.Exit(exitPartial)
 	}
 }
 
@@ -2250,12 +2506,13 @@ func filterHit(name, file, filter string) bool {
 	return normalizeName(filter) == normalizeName(name)
 }
 
-// viewFiles 打印组件的文件内容(不写本地); filter 非空时只打匹配的文件。
+// viewFiles 打印组件的文件内容(不写本地); filter 非空时只打匹配的文件, json 出结构化。
 // 正文走 out/outRaw(命令结果, 不受 -s 影响); "一个都没匹配上"走 warn ——
 // 它不是结果, 更不该被 `>` 重定向当成内容收进文件。
-func viewFiles(src *source, reg *registry, order []string, filter string) {
+func viewFiles(src *source, reg *registry, order []string, filter string, jsonMode bool) {
 	done := map[string]bool{}
 	matched := false
+	var files []sourceFileJSON
 	for _, name := range order {
 		for _, f := range reg.Components[name].Files {
 			if done[f] {
@@ -2266,9 +2523,21 @@ func viewFiles(src *source, reg *registry, order []string, filter string) {
 				continue
 			}
 			matched = true
+			content := string(readComponent(src, f))
+			if jsonMode {
+				files = append(files, sourceFileJSON{Name: f, Component: name, Content: content})
+				continue
+			}
 			out("\n===== %s (%s) =====", f, name)
-			outRaw(string(readComponent(src, f)))
+			outRaw(content)
 		}
+	}
+	if jsonMode {
+		if files == nil {
+			files = []sourceFileJSON{}
+		}
+		printJSON(viewJSON{Source: src.desc(), Filter: filter, Matched: matched, Files: files})
+		return
 	}
 	if !matched {
 		warn("没有匹配的文件: %s (给组件名或文件基名, 组件见 xui list)", filter)
@@ -2276,36 +2545,55 @@ func viewFiles(src *source, reg *registry, order []string, filter string) {
 }
 
 // view 打印指定组件的全部源码(依赖闭包内的共享文件去重)。
-func view(names []string) {
+func view(names []string, jsonMode bool) {
 	src, reg := loadRegistry()
-	viewFiles(src, reg, resolveNames(reg, names), "")
+	viewFiles(src, reg, resolveNames(reg, names), "", jsonMode)
 }
 
 // infoCommand 打印本机环境与项目状态(不拉 registry, 离线可用)。整段都是命令结果。
-func infoCommand(uiDir string) {
+func infoCommand(uiDir string, jsonMode bool) {
 	ver := displayVersion()
 	wd, _ := os.Getwd()
-	out("xui: %s", ver)
-	out("工作目录: %s", wd)
-	out("Go: %s", runtime.Version())
+	src := strings.TrimSpace(os.Getenv("XUI_REGISTRY"))
+	if src == "" {
+		src = "默认(远程 main 分支)"
+	}
+	// 版本提示靠这个排查: 缓存里存着"上次查到的 @latest"与查的时间(一天一次)。
+	c := loadUpdateCheck(updateCheckPath())
+	// 组件目录里有多少 .go: 目录读不到 = 还没 init。
+	n := 0
+	initialized := false
 	if entries, err := os.ReadDir(uiDir); err == nil {
-		n := 0
+		initialized = true
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
 				n++
 			}
 		}
+	}
+	if jsonMode {
+		j := infoJSON{
+			CLI: ver, CWD: wd, Go: runtime.Version(),
+			ComponentsDir: uiDir, ComponentsInitialized: initialized, GoFiles: n,
+			Source: src,
+		}
+		if !c.CheckedAt.IsZero() {
+			j.CheckedAt = c.CheckedAt.Format("2006-01-02 15:04")
+			j.CheckLatest = c.Latest
+		}
+		printJSON(j)
+		return
+	}
+	out("xui: %s", ver)
+	out("工作目录: %s", wd)
+	out("Go: %s", runtime.Version())
+	if initialized {
 		out("%s: %d 个 Go 文件", uiDir, n)
 	} else {
 		out("%s: 未初始化", uiDir)
 	}
-	src := strings.TrimSpace(os.Getenv("XUI_REGISTRY"))
-	if src == "" {
-		src = "默认(远程 main 分支)"
-	}
 	out("数据源: %s", src)
-	// 版本提示靠这个排查: 缓存里存着"上次查到的 @latest"与查的时间(一天一次)。
-	if c := loadUpdateCheck(updateCheckPath()); !c.CheckedAt.IsZero() {
+	if !c.CheckedAt.IsZero() {
 		out("上次版本检查: %s, 当时 @latest = %s (关掉: 设 %s=1)",
 			c.CheckedAt.Format("2006-01-02 15:04"), orNone(c.Latest), updateCheckDisableEnv)
 	}
@@ -2320,14 +2608,15 @@ func orNone(s string) string {
 }
 
 // diffFiles 把本地文件与 registry 内容做逐行 diff(不写本地); filter 非空时只比匹配的
-// 文件(组件名或文件基名, 见 filterHit)。
+// 文件(组件名或文件基名, 见 filterHit); json 出结构化。
 // "一个都没匹配上"与"匹配上了但确实没差异"是两件事, 必须分开说: 都答"没有差异"会让用户
 // 以为已装的组件是最新的。
-func diffFiles(src *source, reg *registry, order []string, uiDir, filter string) {
+func diffFiles(src *source, reg *registry, order []string, uiDir, filter string, jsonMode bool) {
 	inst := loadManifest(uiDir)
 	done := map[string]bool{}
 	matched := false
 	differs := false
+	var files []diffFileJSON
 	for _, name := range order {
 		for _, f := range reg.Components[name].Files {
 			if done[f] {
@@ -2351,20 +2640,32 @@ func diffFiles(src *source, reg *registry, order []string, uiDir, filter string)
 			// 给差异标出来源, 否则光看 diff 分不清"是我改的"还是"版本升级" ——
 			// 这正是 update 要不要 -o 的分界。没有基线时只能说"判断不了", 别断言用户改过。
 			baseline, hasBaseline := inst.Files[f]
-			note := ""
+			note, state := "", ""
 			switch {
 			case os.IsNotExist(err):
-				note = " (本地没有, update 会创建)"
+				note, state = " (本地没有, update 会创建)", "missing"
 			case hasBaseline && baseline == sha256Hex(local):
-				note = " (本地未改动, 纯版本差异 —— update 会直接替换)"
+				note, state = " (本地未改动, 纯版本差异 —— update 会直接替换)", "upgrade"
 			case !hasBaseline:
-				note = " (没有该文件的安装清单基线, 无法判断来源 —— update 默认跳过, 需 -o 覆盖)"
+				note, state = " (没有该文件的安装清单基线, 无法判断来源 —— update 默认跳过, 需 -o 覆盖)", "unknown"
 			default:
-				note = " (本地已修改 —— update 会跳过, 需 -o 覆盖)"
+				note, state = " (本地已修改 —— update 会跳过, 需 -o 覆盖)", "edited"
+			}
+			text := unifiedDiff(dst, "components/"+f, string(local), remote)
+			if jsonMode {
+				files = append(files, diffFileJSON{Path: dst, File: f, State: state, Diff: text})
+				continue
 			}
 			out("\n=== %s%s ===", dst, note)
-			outRaw(unifiedDiff(dst, "components/"+f, string(local), remote))
+			outRaw(text)
 		}
+	}
+	if jsonMode {
+		if files == nil {
+			files = []diffFileJSON{}
+		}
+		printJSON(diffJSON{Dir: uiDir, Filter: filter, Matched: matched, Files: files})
+		return
 	}
 	switch {
 	case !matched:
@@ -2425,7 +2726,7 @@ func splitDiffLines(s string) []string {
 	return strings.Split(s, "\n")
 }
 
-// list 列出/搜索组件; -l/--limit 与 -o/--offset 按过滤后的顺序切片。
+// list 列出/搜索组件; -l/--limit 与 -o/--offset 按过滤后的顺序切片; -j 出结构化。
 func list(opts listOptions) {
 	src, reg := loadRegistry()
 	matched := filterComponents(allComponents(reg), opts.query)
@@ -2436,6 +2737,27 @@ func list(opts listOptions) {
 	end := len(matched)
 	if opts.limit > 0 && start+opts.limit < end {
 		end = start + opts.limit
+	}
+	if opts.json {
+		items := make([]componentJSON, 0, end-start)
+		for _, name := range matched[start:end] {
+			e := reg.Components[name]
+			// 空的一律给 [] 而不是 null, 调用方不必两种都防。
+			files, deps := e.Files, e.Deps
+			if files == nil {
+				files = []string{}
+			}
+			if deps == nil {
+				deps = []string{}
+			}
+			items = append(items, componentJSON{Name: name, Files: files, Deps: deps})
+		}
+		printJSON(listJSON{
+			Source: src.desc(), CLI: displayVersion(), Runtime: reg.Runtime,
+			Query: opts.query, Offset: opts.offset, Limit: opts.limit,
+			Total: len(matched), Shown: end - start, Components: items,
+		})
+		return
 	}
 	info("可用组件 (数据源: %s):", src.desc())
 	if start == end {
