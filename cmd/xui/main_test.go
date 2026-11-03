@@ -739,6 +739,64 @@ func TestParseComponentArgs(t *testing.T) {
 	if _, err := parseComponentArgs("add", []string{"-p", "--all"}); err == nil {
 		t.Error("-p 后紧跟选项应报缺值")
 	}
+	// 空值一律报错(两种写法同规则): 值被 shell 变量吃掉时不许静默退化成"少个过滤器"
+	for _, args := range [][]string{
+		{"-p=", "button"}, {"--path=", "button"}, {"--view=", "button"}, {"--diff=", "button"},
+		{"-p", "", "button"},
+	} {
+		if _, err := parseComponentArgs("add", args); err == nil {
+			t.Errorf("%v 空值应报错", args)
+		}
+	}
+	// 上游 shadcn 是 add -v, --view; 这里 -v 归了全局版本号, 报错要说清去向
+	if _, err := parseComponentArgs("add", []string{"-v", "button"}); err == nil ||
+		!strings.Contains(err.Error(), "--view") {
+		t.Errorf("-v 的报错该指向 --view, 实为 %v", err)
+	}
+}
+
+func TestParseListArgsPositionalQuery(t *testing.T) {
+	// `xui search button` 是最自然的写法(以前它报"未知参数 button")
+	got, err := parseListArgs([]string{"button"})
+	if err != nil || got.query != "button" {
+		t.Errorf("位置参数应当搜索词: %+v, %v", got, err)
+	}
+	if got, err := parseListArgs([]string{"table", "-l", "5"}); err != nil || got.query != "table" || got.limit != 5 {
+		t.Errorf("位置参数与选项混用失败: %+v, %v", got, err)
+	}
+	// -q 与位置参数一致, 两个都给且不同不猜
+	if got, err := parseListArgs([]string{"-q", "table", "table"}); err != nil || got.query != "table" {
+		t.Errorf("同词给两次不该报错: %+v, %v", got, err)
+	}
+	if _, err := parseListArgs([]string{"-q", "table", "card"}); err == nil {
+		t.Error("搜索词给了两次应报错")
+	}
+	if _, err := parseListArgs([]string{"button", "card"}); err == nil {
+		t.Error("给两个搜索词应报错")
+	}
+	// 空值两种写法都拒
+	for _, args := range [][]string{{"-q="}, {"--query="}, {"-l="}, {"-o="}, {"-q", ""}} {
+		if _, err := parseListArgs(args); err == nil {
+			t.Errorf("%v 空值应报错", args)
+		}
+	}
+}
+
+func TestParseInfoArgs(t *testing.T) {
+	// info 报的是"我的项目里 xui 装成什么样", 组件目录不是 ui 时得能指过去
+	if dir, err := parseInfoArgs(nil); err != nil || dir != "ui" {
+		t.Errorf("默认组件目录 = ui: %q, %v", dir, err)
+	}
+	for _, args := range [][]string{{"-p", "components"}, {"-p=components"}, {"--path=components"}} {
+		if dir, err := parseInfoArgs(args); err != nil || dir != "components" {
+			t.Errorf("%v 解析失败: %q, %v", args, dir, err)
+		}
+	}
+	for _, args := range [][]string{{"--wat"}, {"button"}, {"-p"}, {"-p="}, {"-p", ""}} {
+		if _, err := parseInfoArgs(args); err == nil {
+			t.Errorf("%v 应报错", args)
+		}
+	}
 }
 
 func TestParseSelfUpdateArgs(t *testing.T) {
@@ -775,7 +833,8 @@ func TestParseListArgs(t *testing.T) {
 		got.query != "card" || got.limit != 3 || got.offset != 1 {
 		t.Errorf("= 形式解析失败: %+v, %v", got, err)
 	}
-	for _, args := range [][]string{{"-l", "0"}, {"-l", "x"}, {"-o", "-1"}, {"button"}} {
+	// 裸位置参数现在是搜索词(见 TestParseListArgsPositionalQuery), 这里只留真正的坏输入
+	for _, args := range [][]string{{"-l", "0"}, {"-l", "x"}, {"-o", "-1"}} {
 		if _, err := parseListArgs(args); err == nil {
 			t.Errorf("%v 应报错", args)
 		}
@@ -1173,7 +1232,7 @@ func TestSilentKeepsCommandResults(t *testing.T) {
 	if got := captureOutput(t, func() { list(listOptions{limit: 5}) }); !strings.Contains(got, "button") {
 		t.Errorf("-s 下 list 的组件表被吞了: %q", got)
 	}
-	if got := captureOutput(t, infoCommand); !strings.Contains(got, "工作目录") {
+	if got := captureOutput(t, func() { infoCommand("ui") }); !strings.Contains(got, "工作目录") {
 		t.Errorf("-s 下 info 的报告被吞了: %q", got)
 	}
 	if got := captureOutput(t, func() { view([]string{"button"}) }); !strings.Contains(got, "package ui") {

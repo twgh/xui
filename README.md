@@ -290,9 +290,10 @@ xui update              # 升级已装组件(省略组件名 = ui/ 里已装的�
 xui update button       # 只升级指定组件(含依赖)
 xui update -o           # 连本地改过的文件一起覆盖(改动会丢, 先备份)
 xui list                # 列出可用组件
-xui search -q table     # 按组件名搜索(等价于 list -q table)
+xui search button       # 搜索: 位置参数就是搜索词(等价于 -q button)
+xui search -q table     # 按组件名搜索
 xui view button         # 打印组件源码
-xui info                # 显示 CLI / 项目环境信息
+xui info                # 显示 CLI / 项目环境信息(组件目录不是 ui 时: xui info -p <目录>)
 xui version             # 只打印版本(同 -v / --version; 离线可用, 不拉数据源)
 xui self-update         # 升级 CLI 自己(go install ...@latest)
 xui self-update v0.8.1  # 升到指定 tag(也可给 main / HEAD / commit 短哈希)
@@ -307,20 +308,23 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 - `init -n -f, --force`: **只**放开"目标目录已存在且非空"这道闸门, 不隐含"你的改动可以丢"(普通 `xui init [ui目录]` 用不上它, 它不会覆盖已有文件, 加 `-f` 会直接报错);
 - `--no-install`(init / add / update): 组件文件照写, 但**不联网动依赖** —— `init -n` 还跳过自动 `go mod tidy` 与 `xc` 安装(仍写 `winres/`), `add` / `update` 则不动 `go.mod` 的配套运行时(离线时用, 之后自己跑);
 - `-o, --overwrite`(init / add / update): 丢弃本地改动(默认保留, 见下方"更新时的判定")。对 `init -n` 来说它管的是模板文件(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore`)与基础组件;以前 `--force` 一个旗同时干这两件事, 于是一次 `init -n app --force` 能把你改过的 `main.go` 无声覆掉。
-- `add/update -p, --path <目录>`: 组件目录, 默认 `ui`;
+- `add/update/info -p, --path <目录>`: 组件目录, 默认 `ui`(`info` 也认它 —— 组件装在 `components/` 时, `xui info` 才不会再报 "ui/: 未初始化");
 - `add -a, --all`: 全部组件(`update` 不接受它 —— 省略组件名就已经是"更新已装的全部", 想把没装的也一起拷进来请用 `xui add --all`);
 - `add --dry-run`: 预览动作, 不写文件;
 - `add --view[=组件或文件]` / `--diff[=组件或文件]`: 查看源码 / 与本地对比, 不写本地;过滤值给组件名(`card`)或文件基名(`card.go`)都行, 一个都没匹配上时会明说"没有匹配的文件", 不会拿"没有差异"糊弄你;
-- `list/search -q, --query <词>` / `-l, --limit <n>` / `-o, --offset <n>`: 过滤、限制数量、跳过前 n 个;
+- `list/search [词]` / `-q, --query <词>` / `-l, --limit <n>` / `-o, --offset <n>`: 搜索词(位置参数与 `-q` 等价, `xui search button` 直接可用)、限制数量、跳过前 n 个;搜索词给两个且不同会报错, 不猜;
 - 通用 `-c, --cwd <目录>` 先切工作目录(`xui -c dir list` 与 `xui list -c dir` 等价);
 - 通用 `-s, --silent` **只压进度输出**: "创建了哪个文件"这类过程信息不打印, 但命令本身的结果照常输出(`list` 的组件表、`view`/`--diff` 的源码与差异、`info`、`version`、`self-update --check` 的对比), 警告与错误也照常打到 stderr。`xui list -s` 因此是一份没有表头的干净清单, 可以直接接管道;
 - `-v, --version`(等价于 `xui version`): 只打印版本, 离线可用、不拉数据源;
 - `-h, --help`: 显示帮助, 任何位置都能用(`xui --help` / `xui add --help`);
 - 短选项也接受 `-x=值` 的写法, 与长选项一致: `-p=src`、`-c=dir`、`-q=table`、`-l=5`、`-o=2`。
+- 带值的选项**两种写法都不许给空值**(`-p ""` 与 `-p=` 同样报错): 空目录会把组件直接拷进当前目录根, 空的 `--view=` 会把"只看一个文件"静默变成"全部打印" —— 值被 shell 变量吃掉时必须当场失败。
 
 只展示的参数不吞掉写文件的参数: `--view` / `--diff` 与 `--dry-run`、`-o/--overwrite`、
 `--no-install` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。
 `xui self-update --check` 同理不接受版本参数(`--check` 只回答"我相对 @latest 新不新")。
+`-v` 归了全局的版本号(等价 `xui version`), 所以看源码是 `xui add card --view` —— 打 `-v`
+会报错并指你去 `--view`, 不让你以为这个短选项不存在。
 
 组件源码拷进项目后归你所有; `add` / `update` / `init` 都不会覆盖你本地改过的文件, 确认要丢弃本地改动时加 `-o/--overwrite`。
 

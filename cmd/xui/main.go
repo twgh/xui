@@ -380,10 +380,11 @@ func main() {
 		}
 		view(names)
 	case "info":
-		if len(args) > 0 {
-			fatal("用法: xui info (不接受参数)")
+		uiDir, err := parseInfoArgs(args)
+		if err != nil {
+			fatal("%v", err)
 		}
-		infoCommand()
+		infoCommand(uiDir)
 	case "self-update":
 		target, checkOnly, err := parseSelfUpdateArgs(args)
 		if err != nil {
@@ -423,16 +424,34 @@ func outRaw(s string) {
 	fmt.Print(s)
 }
 
-// nextValue 取选项后面的值。缺值(到末尾、或后面紧跟另一个选项)时报错 ——
-// 否则 `xui add -p --all` 会把 --all 当成目录名, 最后报出莫名其妙的
-// "用法: xui add <组件...>"。负数不算选项, 让 `-l -1` 落到"需要正整数"那条分支。
+// nextValue 取选项后面的值。三种情况报错:
+//   - 到末尾(`xui add -p`)或值是空串(`xui add -p ""` 会把组件直接拷进当前目录根);
+//   - 后面紧跟另一个选项(`xui add -p --all` 以前会把 --all 当目录名, 最后报出莫名其妙的
+//     "用法: xui add <组件...>");
+//   - 负数不算选项, 让 `-l -1` 落到"需要正整数"那条分支。
+//
+// 空值一律拒: 与 `--flag=` 的写法同一规则, 不能让"值被 shell 变量吃掉"变成"少个过滤器"
+// 那种静默翻转(以前 --view= 会把"只看一个文件"打成"全部打印")。
 func nextValue(args []string, i int, flag string) (string, error) {
 	if i+1 >= len(args) {
 		return "", fmt.Errorf("%s 需要一个值", flag)
 	}
 	v := args[i+1]
+	if v == "" {
+		return "", fmt.Errorf("%s 的值不能为空", flag)
+	}
 	if _, err := strconv.Atoi(v); err != nil && strings.HasPrefix(v, "-") {
 		return "", fmt.Errorf("%s 需要一个值 (后面紧跟的是选项 %q)", flag, v)
+	}
+	return v, nil
+}
+
+// inlineValue 取 `-x=值` / `--flag=值` 写法里的值。空值报错, 与 nextValue 同一条规则 ——
+// 值被 shell 变量吃掉时, 绝不能退化成"少了一个过滤器"。
+func inlineValue(arg, prefix string) (string, error) {
+	v := strings.TrimPrefix(arg, prefix)
+	if v == "" {
+		return "", fmt.Errorf("%s 的值不能为空", strings.TrimSuffix(prefix, "="))
 	}
 	return v, nil
 }
@@ -454,17 +473,17 @@ func extractGlobal(args []string) ([]string, error) {
 				return nil, fmt.Errorf("切换工作目录失败: %v", err)
 			}
 		case strings.HasPrefix(a, "-c="):
-			dir := strings.TrimPrefix(a, "-c=")
-			if dir == "" {
-				return nil, fmt.Errorf("-c 需要一个目录")
+			dir, err := inlineValue(a, "-c=")
+			if err != nil {
+				return nil, err
 			}
 			if err := os.Chdir(dir); err != nil {
 				return nil, fmt.Errorf("切换工作目录失败: %v", err)
 			}
 		case strings.HasPrefix(a, "--cwd="):
-			dir := strings.TrimPrefix(a, "--cwd=")
-			if dir == "" {
-				return nil, fmt.Errorf("--cwd 需要一个目录")
+			dir, err := inlineValue(a, "--cwd=")
+			if err != nil {
+				return nil, err
 			}
 			if err := os.Chdir(dir); err != nil {
 				return nil, fmt.Errorf("切换工作目录失败: %v", err)
@@ -505,13 +524,17 @@ func parseInitArgs(args []string) (initOptions, error) {
 			i++
 			o.project = v
 		case strings.HasPrefix(a, "-n="):
-			if o.project = strings.TrimPrefix(a, "-n="); o.project == "" {
-				return o, fmt.Errorf("-n 需要一个项目名")
+			v, err := inlineValue(a, "-n=")
+			if err != nil {
+				return o, err
 			}
+			o.project = v
 		case strings.HasPrefix(a, "--name="):
-			if o.project = strings.TrimPrefix(a, "--name="); o.project == "" {
-				return o, fmt.Errorf("--name 需要一个项目名")
+			v, err := inlineValue(a, "--name=")
+			if err != nil {
+				return o, err
 			}
+			o.project = v
 		case a == "-f" || a == "--force":
 			o.force = true
 		case a == "-o" || a == "--overwrite":
@@ -580,13 +603,17 @@ func parseComponentArgs(cmd string, args []string) (componentOptions, error) {
 			i++
 			o.uiDir = v
 		case strings.HasPrefix(a, "-p="):
-			if o.uiDir = strings.TrimPrefix(a, "-p="); o.uiDir == "" {
-				return o, fmt.Errorf("-p 需要一个目录")
+			v, err := inlineValue(a, "-p=")
+			if err != nil {
+				return o, err
 			}
+			o.uiDir = v
 		case strings.HasPrefix(a, "--path="):
-			if o.uiDir = strings.TrimPrefix(a, "--path="); o.uiDir == "" {
-				return o, fmt.Errorf("--path 需要一个目录")
+			v, err := inlineValue(a, "--path=")
+			if err != nil {
+				return o, err
 			}
+			o.uiDir = v
 		case a == "--dry-run":
 			o.dryRun = true
 		case a == "--no-install":
@@ -594,13 +621,23 @@ func parseComponentArgs(cmd string, args []string) (componentOptions, error) {
 		case a == "--view":
 			o.view = true
 		case strings.HasPrefix(a, "--view="):
-			o.view = true
-			o.viewFile = strings.TrimPrefix(a, "--view=")
+			v, err := inlineValue(a, "--view=")
+			if err != nil {
+				return o, err
+			}
+			o.view, o.viewFile = true, v
 		case a == "--diff":
 			o.diff = true
 		case strings.HasPrefix(a, "--diff="):
-			o.diff = true
-			o.diffFile = strings.TrimPrefix(a, "--diff=")
+			v, err := inlineValue(a, "--diff=")
+			if err != nil {
+				return o, err
+			}
+			o.diff, o.diffFile = true, v
+		case a == "-v":
+			// 上游 shadcn 是 `add -v, --view`, 这里的 -v 归了全局版本号 —— 报错要说清去向,
+			// 否则照文档敲的人会以为 --view 不存在。
+			return o, fmt.Errorf("-v 是显示版本(xui version); 打印组件源码用 --view[=组件或文件]")
 		case strings.HasPrefix(a, "-"):
 			return o, fmt.Errorf("未知选项 %s", a)
 		default:
@@ -660,8 +697,11 @@ type listOptions struct {
 	offset int
 }
 
+// parseListArgs 解析 list / search。位置参数就是搜索词(`xui search button` 是最自然的
+// 写法, 以前它报"未知参数"), 与 -q/--query 等价;两个都给且不同则报错, 不猜用哪个。
 func parseListArgs(args []string) (listOptions, error) {
 	o := listOptions{}
+	var pos []string
 	intValue := func(flag, s string) (int, error) {
 		n, err := strconv.Atoi(s)
 		if err != nil {
@@ -680,9 +720,17 @@ func parseListArgs(args []string) (listOptions, error) {
 			i++
 			o.query = v
 		case strings.HasPrefix(a, "-q="):
-			o.query = strings.TrimPrefix(a, "-q=")
+			v, err := inlineValue(a, "-q=")
+			if err != nil {
+				return o, err
+			}
+			o.query = v
 		case strings.HasPrefix(a, "--query="):
-			o.query = strings.TrimPrefix(a, "--query=")
+			v, err := inlineValue(a, "--query=")
+			if err != nil {
+				return o, err
+			}
+			o.query = v
 		case a == "-l" || a == "--limit":
 			v, err := nextValue(args, i, a)
 			if err != nil {
@@ -695,13 +743,21 @@ func parseListArgs(args []string) (listOptions, error) {
 			}
 			o.limit = n
 		case strings.HasPrefix(a, "-l="):
-			n, err := intValue("-l", strings.TrimPrefix(a, "-l="))
+			v, err := inlineValue(a, "-l=")
+			if err != nil {
+				return o, err
+			}
+			n, err := intValue("-l", v)
 			if err != nil || n <= 0 {
 				return o, fmt.Errorf("-l 需要正整数")
 			}
 			o.limit = n
 		case strings.HasPrefix(a, "--limit="):
-			n, err := intValue("--limit", strings.TrimPrefix(a, "--limit="))
+			v, err := inlineValue(a, "--limit=")
+			if err != nil {
+				return o, err
+			}
+			n, err := intValue("--limit", v)
 			if err != nil || n <= 0 {
 				return o, fmt.Errorf("--limit 需要正整数")
 			}
@@ -718,22 +774,78 @@ func parseListArgs(args []string) (listOptions, error) {
 			}
 			o.offset = n
 		case strings.HasPrefix(a, "-o="):
-			n, err := intValue("-o", strings.TrimPrefix(a, "-o="))
+			v, err := inlineValue(a, "-o=")
+			if err != nil {
+				return o, err
+			}
+			n, err := intValue("-o", v)
 			if err != nil || n < 0 {
 				return o, fmt.Errorf("-o 需要非负整数")
 			}
 			o.offset = n
 		case strings.HasPrefix(a, "--offset="):
-			n, err := intValue("--offset", strings.TrimPrefix(a, "--offset="))
+			v, err := inlineValue(a, "--offset=")
+			if err != nil {
+				return o, err
+			}
+			n, err := intValue("--offset", v)
 			if err != nil || n < 0 {
 				return o, fmt.Errorf("--offset 需要非负整数")
 			}
 			o.offset = n
+		case strings.HasPrefix(a, "-"):
+			return o, fmt.Errorf("未知选项 %s", a)
 		default:
-			return o, fmt.Errorf("未知参数 %s", a)
+			pos = append(pos, a)
 		}
 	}
+	if len(pos) > 1 {
+		return o, fmt.Errorf("搜索词只能给一个, 实为 %v (想要全部就都别给, -q 只接一个词)", pos)
+	}
+	if len(pos) == 1 {
+		// 同一个词用 -q 和位置各给一次不算矛盾, 不必报错; 给成两个不同的词才要停。
+		if o.query != "" && o.query != pos[0] {
+			return o, fmt.Errorf("搜索词给了两个: -q %q 与 %q", o.query, pos[0])
+		}
+		o.query = pos[0]
+	}
 	return o, nil
+}
+
+// parseInfoArgs 给 info 解析组件目录: 它报的是"我的项目里 xui 装成什么样", 目录不是 ui
+// 时必须能指过去(以前 info 写死读 ui/, 组件装在 components/ 的项目里回答"ui/: 未初始化",
+// 是错的)。
+func parseInfoArgs(args []string) (string, error) {
+	uiDir := "ui"
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-p" || a == "--path":
+			v, err := nextValue(args, i, a)
+			if err != nil {
+				return "", err
+			}
+			i++
+			uiDir = v
+		case strings.HasPrefix(a, "-p="):
+			v, err := inlineValue(a, "-p=")
+			if err != nil {
+				return "", err
+			}
+			uiDir = v
+		case strings.HasPrefix(a, "--path="):
+			v, err := inlineValue(a, "--path=")
+			if err != nil {
+				return "", err
+			}
+			uiDir = v
+		case strings.HasPrefix(a, "-"):
+			return "", fmt.Errorf("未知选项 %s (用法: xui info [-p 组件目录])", a)
+		default:
+			return "", fmt.Errorf("xui info 不接受参数 %s (组件目录用 -p <目录>)", a)
+		}
+	}
+	return uiDir, nil
 }
 
 func parseViewArgs(args []string) ([]string, error) {
@@ -767,9 +879,9 @@ func usage() {
   xui update [组件...]       升级已装组件(省略组件名 = ui 目录里已装的全部);
                              安装后没改过的文件直接替换, 改过的跳过(见 -o);
                              连没装过的组件一起装是 xui add --all 的事, update 不接 --all
-  xui list | xui search      列出/搜索组件
+  xui list | xui search [词] 列出/搜索组件(位置参数就是搜索词, 等价于 -q 词)
   xui view <组件...>         打印组件源码
-  xui info                   显示 CLI / 项目环境信息
+  xui info [-p 目录]         显示 CLI / 项目环境信息(组件目录不是 ui 时用 -p 指过去)
   xui version                只打印版本(同 -v / --version; 离线可用, 不拉数据源)
   xui self-update [版本]     升级 CLI 自己(默认 @latest; 也可给 tag / main / commit)
                              --check 只比较当前与最新 tag, 不安装(不接版本参数)
@@ -781,9 +893,9 @@ func usage() {
   --no-install          init/add/update: 写文件但不联网动 go.mod 的依赖
                         (init -n 还跳过自动 go mod tidy 与 xc 安装, 仍写 winres/)
   -o, --overwrite       init/add/update: 丢弃本地改动(默认保留; 判定见下)
-  -p, --path <目录>     add/update: 组件目录(默认 ui)
+  -p, --path <目录>     add/update/info: 组件目录(默认 ui)
   -a, --all             add: 全部组件
-  -q, --query <词>      list/search: 按组件名过滤
+  -q, --query <词>      list/search: 按组件名过滤(直接写位置参数等价)
   -l, --limit <n>       list/search: 最多显示 n 个
   -o, --offset <n>      list/search: 跳过前 n 个
   -c, --cwd <目录>      先切换到该目录, 后续相对路径都以它为准
@@ -793,6 +905,8 @@ func usage() {
   -h, --help            显示本帮助(任何位置都能用)
 
 短选项也接受 -x=值 的写法(与 --long=值 一致), 例如 -p=src -l=5。
+带值的选项两种写法都不许给空值(-p "" 与 -p= 同样报错): 空目录会把组件直接拷进当前目录根,
+空的 --view= 会把"只看一个文件"静默变成"全部打印"。
 --view/--diff 是"只展示"的开关, 与 --dry-run / -o / --no-install 同时给会直接报错。
 
 改动判定(add/update 的组件文件与 init 的模板文件同一套): 装完之后没动过(本地哈希等于
@@ -2168,22 +2282,22 @@ func view(names []string) {
 }
 
 // infoCommand 打印本机环境与项目状态(不拉 registry, 离线可用)。整段都是命令结果。
-func infoCommand() {
+func infoCommand(uiDir string) {
 	ver := displayVersion()
 	wd, _ := os.Getwd()
 	out("xui: %s", ver)
 	out("工作目录: %s", wd)
 	out("Go: %s", runtime.Version())
-	if entries, err := os.ReadDir("ui"); err == nil {
+	if entries, err := os.ReadDir(uiDir); err == nil {
 		n := 0
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
 				n++
 			}
 		}
-		out("ui/: %d 个 Go 文件", n)
+		out("%s: %d 个 Go 文件", uiDir, n)
 	} else {
-		out("ui/: 未初始化")
+		out("%s: 未初始化", uiDir)
 	}
 	src := strings.TrimSpace(os.Getenv("XUI_REGISTRY"))
 	if src == "" {

@@ -450,16 +450,19 @@ xui add card --view      # 打印 registry 源码(可加 =card.go 或 =card 只�
 xui add card --diff      # 与本地文件做逐行 diff(过滤值同上)
 xui update               # 更新已装组件(省略组件名 = 组件目录里已装的全部;不接 --all)
 xui list                 # 列出可用组件
-xui search -q table      # 按名称搜索(等价于 list -q table)
+xui search table         # 按名称搜索(位置参数就是搜索词, 等价于 -q table)
 xui view button          # 打印组件源码
-xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
+xui info                 # CLI 版本 / 工作目录 / 组件目录状态 / 数据源(目录不是 ui 时: info -p <目录>)
 xui version              # 只打印版本(同 -v / --version; 离线可用, 不拉数据源)
 xui self-update [版本]   # 升级 CLI 自己(默认 @latest; 也可 tag / main / commit)
 xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不接受版本参数)
 ```
 
 - **默认不覆盖你改过的文件**:逐个比对内容 —— 本地没有则创建、内容一致则跳过、被改过则警告跳过;确认要丢掉本地改动时加 `-o/--overwrite`。判定看"安装基线"(组件目录 `.xui-manifest.json` 里记的上次写入哈希):基线对得上才叫"只是版本升级"(直接替换), 对不上叫"你改过"(默认保留), 该文件没有基线只说"无法判断来源"、不断言你改过。这是 copy-not-install 的前提:代码归你。
-- **组件目录**默认 `ui`, 可用 `add/update -p/--path <目录>` 指定;全局 `-c/--cwd` 先切换工作目录。
+- **组件目录**默认 `ui`, 可用 `add/update/info -p/--path <目录>` 指定(`info` 也认它, 否则组件装在 `components/` 时它会答"ui/: 未初始化" —— 那是错的);全局 `-c/--cwd` 先切换工作目录。
+- **带值的选项两种写法都不接受空值**(`-p ""` 与 `-p=` 一样当场报错): 空目录会把组件直接拷进当前目录根, 空的 `--view=` 会把"只看一个文件"静默变成"全部打印"。值被 shell 变量吃掉时该失败就失败, 不要退化成"少了一个过滤器"。
+- **`list` / `search` 的搜索词可以写成位置参数**(`xui search table` 与 `-q table` 等价);给了两个不同的词会报错而不是猜, 同一个词重复给不算矛盾。
+- **`-v` 是全局的版本号**(等价 `xui version`), 与上游 shadcn 的 `add -v, --view` 撞名 —— 取舍是把 `-v` 留给版本, 看源码用 `--view`;打 `xui add -v card` 会报错并指你去 `--view`, 不会让你以为这个开关不存在。
 - **静默 `-s/--silent` 只压进度输出**:它压掉"创建了哪个文件"这类过程信息, **命令本身的结果照打**(`list` 的组件表、`view`/`--diff` 的源码与差异、`info` 的报告、`version`、`self-update --check` 的对比), 警告与错误也照打到 stderr。所以 `xui list -s` 给你一份没有表头的干净清单, 可以直接 `|` 给脚本; 升级提示走 stderr, 不会混进被 `>` 重定向的源码里。
 - **只展示的参数不吞写文件的参数**:`--view` / `--diff` 与 `--dry-run`、`-o/--overwrite`、`--no-install` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。
 - **`update` 不接 `--all`**:`xui update` 省略组件名就已经是"更新组件目录里已装的全部"; 把没装过的组件也一起拷进来是 `xui add --all` 的事, 两个命令不该混在一个开关里。
