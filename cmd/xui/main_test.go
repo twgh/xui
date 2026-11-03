@@ -1844,6 +1844,86 @@ func mustRead(t *testing.T, path string) []byte {
 	return data
 }
 
+// DESIGN.md / AGENTS.md 可以点名: add 能单独拿到它们(没跑过 init 的项目也补得上),
+// update 只刷已存在的、不新增 —— 与 update 不顺手装新组件是同一条纪律。
+func TestNamedDocTargets(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	out := captureOutput(t, func() { add(componentOptions{names: []string{"DESIGN.md"}, uiDir: "ui"}) })
+	if !strings.Contains(out, "创建 ui\\DESIGN.md") && !strings.Contains(out, "创建 ui/DESIGN.md") {
+		t.Errorf("add 点名文档该创建它: %s", out)
+	}
+	if fileExists(filepath.Join("ui", "AGENTS.md")) {
+		t.Error("只点名 DESIGN.md 却把 AGENTS.md 也写了")
+	}
+	if got, _ := os.ReadFile(filepath.Join("ui", "DESIGN.md")); !strings.Contains(string(got), "xcgui") {
+		t.Error("DESIGN.md 内容不对")
+	}
+	// 文档也进清单(有基线才谈得上"你改过"与"随 CLI 升级")
+	if _, ok := loadManifest("ui").Files["DESIGN.md"]; !ok {
+		t.Error("DESIGN.md 没登记基线")
+	}
+
+	// update 已存在的那份: 没改过 = 已一致
+	out = captureOutput(t, func() { update(componentOptions{names: []string{"DESIGN.md"}, uiDir: "ui"}) })
+	if !strings.Contains(out, "已一致") {
+		t.Errorf("未改动的文档该报已一致: %s", out)
+	}
+	// update 不新增: AGENTS.md 不在目录里 → 只说明怎么办, 不写文件
+	out = captureOutput(t, func() { update(componentOptions{names: []string{"AGENTS.md"}, uiDir: "ui"}) })
+	if !strings.Contains(out, "xui add AGENTS.md") {
+		t.Errorf("该指明补齐的写法: %s", out)
+	}
+	if fileExists(filepath.Join("ui", "AGENTS.md")) {
+		t.Error("update 不该新增它没装过的文件")
+	}
+	// add 补上第二份, 且能同时处理组件目标与文档目标
+	out = captureOutput(t, func() {
+		add(componentOptions{names: []string{"AGENTS.md", "card"}, uiDir: "ui"})
+	})
+	for _, want := range []string{"card.go", "AGENTS.md"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("混合目标少了 %s: %s", want, out)
+		}
+	}
+	// 手改过的文档: update 指名也只跳过, 不覆写
+	p := filepath.Join("ui", "DESIGN.md")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, append(append([]byte{}, data...), []byte("\n我加的段\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() { update(componentOptions{names: []string{"DESIGN.md"}, uiDir: "ui"}) })
+	if !strings.Contains(out, "DESIGN.md 本地已修改, 跳过") {
+		t.Errorf("改过的文档该保留: %s", out)
+	}
+	if got, _ := os.ReadFile(p); !strings.Contains(string(got), "我加的段") {
+		t.Error("改过的 DESIGN.md 被覆写了")
+	}
+	// 路径写法也认(基名比对), 且拆分结果用规范名 —— 小写输入不能把基线记成两个键
+	for _, in := range []string{"ui/DESIGN.md", "design.md", "DESIGN.md"} {
+		d, c := splitForWrite(componentOptions{names: []string{in, "button"}})
+		if len(d) != 1 || d[0] != "DESIGN.md" || len(c) != 1 {
+			t.Errorf("%q 拆分不对: docs=%v comps=%v", in, d, c)
+		}
+	}
+	// --view/--diff 是展示模式, 文档名不参与拆分(留给 registry 的解析去报错并指路)
+	if d, _ := splitForWrite(componentOptions{names: []string{"DESIGN.md"}, view: true}); len(d) != 0 {
+		t.Errorf("--view 模式下不该把文档名当写入目标")
+	}
+}
+
 // TestMain 默认把 go get 换成桩: 单测绝不联网改依赖。
 func TestMain(m *testing.M) {
 	goGetModule = func(string, string) error { return nil }

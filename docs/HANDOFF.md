@@ -14,11 +14,19 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **文档可以点名 add/update(2026-11-03)**:
+  - **动机**: 上一批只让 `init` 能刷文档, 于是 ① 只用 `add` 装过组件、没跑 `init` 的项目拿不到这两份文档; ② 想只刷一份也得连组件一起动。
+  - **做法**: `cliDocs = {DESIGN.md, AGENTS.md}` + `splitForWrite`(只按**基名**比对, `ui/DESIGN.md` 也认;`--view/--diff` 模式一律不拆, 文档名留给 registry 解析去报错) + `placeDocs(create)`。`add` 传 `create=true`(可创建), `update` 传 `false`(只刷已存在的, 缺了就答"没有 X (它由 xui init 写入; 要单独拿它: xui add X)") —— 与"`update` 不顺手装新组件"是同一条纪律。`lookupComponent` 的报错也指路: `"DESIGN.md" 不是组件, 是 CLI 下发的文档`。
+  - **`scaffoldUI` 改为复用 `placeDocs`**(判定/清单只有一条路);顺带去掉 `docContent` 里对 DESIGN 的无意义 `renderUI`(见上一条的更正)。
+  - **踩坑**: 把文档写入搬进 `placeDocs` 后**没人建目录了** —— `xui add DESIGN.md` 直接 fatal "写入失败: open ui\DESIGN.md"。修法: `placeDocs` 在真要写之前 `MkdirAll`(与 `install` 同一纪律), 且只在真写过之后才存清单 —— 否则 `update` 空跑会留下一个空 `ui/`。
+  - **测试**: `TestNamedDocTargets`(点名 add 只创建被点的那份 + 混合目标 `add DESIGN.md AGENTS.md card` + update 不新增 + 改过的保留 + 基名容忍 + `--view` 模式不拆)。**测不出来的一次**: 该 bug 在 `captureOutput` 里走 `fatal` → `os.Exit`, 测试只剩 `exit status 1` 没有断言输出, 是真 binary 一把跑出来的 —— 记着: `fatal` 路径要用子进程测(如 `TestSkippedSummaryAndStrictExitCode` 那样), 不然静默变成"测试挂了但没说为什么"。
+  - **实测**(真 binary 四步): `add DESIGN.md AGENTS.md card` 三个都创建;`update DESIGN.md` 只碰 DESIGN.md(手改的 AGENTS.md 计数不变);空目录里 `update DESIGN.md` → 只提示、不建 `ui/`;`init -n app -p components` 后 `update DESIGN.md -p app/components` → `已一致`。
 - ✅ **组件目录的 DESIGN.md / AGENTS.md 纳入清单(2026-11-03)**:
   - **缺口**: 这两份以前是"存在就永远跳过" —— 等于第一次 `init` 那一刻定版, 之后 CLI 改了文档也传不到已有项目。实测证据: `myapp`(v0.8.x 建的)两份 AGENTS 里"API 看第九节"的错指(第九节其实是 **xcgui** 的清单)无法自愈。
   - **做法**: 新增 `placeFile`(内部就是 `classifyPlace` + 同一套措辞 + 写基线), `scaffoldUI` 先加载清单、写 DESIGN.md/AGENTS.md 并记录基线、存清单, 再进 `add()`(它 load 时会带上这两条, 合并保存不丢)。AGENTS.md 的写入从 `initProject` 移进 `scaffoldUI`(加 `dirAgents` 参数标明两种 init 的差异), 顺带补上以前漏做的 `{{UIDIR}}` 渲染 —— **给 `components/` 项目拷过去的 DESIGN.md 里写的还是 `ui/xxx` 路径**。
   - **`theme.go` 按用户要求不纳入**: 它就是给用户改主题的, 保持"存在就跳过, 加 `-o` 也不覆写"。
   - **写位置不变**: 目录级 AGENTS.md 仍只由普通 `init` 写(`init -n` 写项目根那份, 已在 `project_files` 清单里) —— 这次只解决"能不能更新", 不改"放哪"。
+  - **更正(下一批核实的)**: 上面"做法"里那句"顺带补上 DESIGN.md 漏做的 `{{UIDIR}}` 渲染、以前拷进 `components/` 还写着 `ui/xxx`"**说过头了** —— `docs/DESIGN.md` 里 `{{UIDIR}}` 出现 0 次, 它的行文按 AGENTS 的规矩本就是同目录裸文件名、与目录叫什么无关, 没有漏渲染这回事。代码里那个 `renderUI(DESIGN 内容)` 是无意义调用, 已删并在 `docContent` 注释写明"需要渲染的只有 AGENTS.md"。
   - **测试**: `TestInitRefreshesTrackedDocs` 覆盖清单登记、改过保留、没改过随版本刷新、`-o` 才丢弃、`theme.go` 永不动、`--dry-run` 不改文件。**三条断言我自己写反过两次**(② 基线设成改动前的哈希 → 落进 placeEdited 而非 placeUpgrade; ③ 用非 -o 分支的措辞去断言 -o 分支; ② 的"刷新后应等于 designData"恰好是正确结果), 修正后全绿。
   - **实测**(真 binary, 六步): 首次 init 创建两份并登记清单; 手改 AGENTS.md 重跑 → `本地已修改, 跳过` 且内容保住; 改仓库 `docs/DESIGN.md` 模拟 CLI 升级 → `更新 ui\DESIGN.md (版本升级)` 且内容刷新; 还原后再跑 → 仍是"版本升级"不说"丢弃"; 未改动重跑 → `已一致`; 两次 init 幂等(16 行"已一致/跳过")。依赖回归 `add alert` / `add --all` + `go build ./ui` 通过。
   - **文档**: DESIGN 第五节加一条"文档也会跟着升级"(随 init 下发), README 未动(等用户对"已有项目"段用哪版表态)。

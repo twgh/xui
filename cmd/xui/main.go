@@ -1076,6 +1076,8 @@ func usage() {
   xui update [组件...]       升级已装组件(省略组件名 = ui 目录里已装的全部);
                              安装后没改过的文件直接替换, 改过的跳过(见 -o);
                              连没装过的组件一起装是 xui add --all 的事, update 不接 --all
+  xui add DESIGN.md          只要 CLI 下发的文档(DESIGN.md / AGENTS.md 不是组件, 不在
+  xui update DESIGN.md       registry 里): add 可以单独拿/update 只刷已在目录里的那份)
   xui list | xui search [词] 列出/搜索组件(位置参数就是搜索词, 等价于 -q 词)
   xui view <组件...>         打印组件源码
   xui info [-p 目录]         显示 CLI / 项目环境信息(组件目录不是 ui 时用 -p 指过去)
@@ -1258,9 +1260,6 @@ func scaffoldUI(dir string, w writeOpts, dirAgents bool) error {
 			return fmt.Errorf("创建目录失败: %v", err)
 		}
 	}
-	inst := loadManifest(dir)
-	skipped := false
-
 	themePath := filepath.Join(dir, "theme.go")
 	switch {
 	case fileExists(themePath):
@@ -1274,47 +1273,17 @@ func scaffoldUI(dir string, w writeOpts, dirAgents bool) error {
 		info("创建 %s", themePath)
 	}
 
-	// 配套文档: 组件源码的注释里大量 "见 DESIGN 第 N 节", 拷给用户才是活的。
-	// 从模块根读(go run pkg@version 时位于模块缓存, 源码文件同样在), 读不到不阻断 init。
-	docPath := filepath.Join(dir, "DESIGN.md")
-	data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md"))
-	switch {
-	case err != nil:
-		warn("读取 DESIGN.md 失败, 跳过: %v", err)
-	default:
-		// 下发前把 {{UIDIR}} 换成实际目录名(目录不叫 ui 时文档里说的路径也得对)。
-		if placeFile(docPath, "DESIGN.md", []byte(renderUI(string(data), dir)), &inst, w.overwrite, w.dryRun) {
-			skipped = true
-		}
-	}
-
-	// 组件目录的 AGENTS.md: README 不在 init 的写入范围(用户项目已有自己的),
-	// 所以用法与改组件规则放在组件目录里, 由 AI 助手在改这个目录时读取。
+	docs := []string{"DESIGN.md"}
 	if dirAgents {
-		agentsPath := filepath.Join(dir, "AGENTS.md")
-		body := []byte(renderUI(agentsDirTemplate, dir))
-		if placeFile(agentsPath, "AGENTS.md", body, &inst, w.overwrite, w.dryRun) {
-			skipped = true
-		}
+		// 目录级 AGENTS.md 只有普通 init 要; init -n 写的是项目根那份(在 project_files 里)。
+		docs = append(docs, "AGENTS.md")
 	}
+	skipped := placeDocs(docs, dir, w, true)
 
-	if !w.dryRun {
-		if err := inst.save(dir); err != nil {
-			warn("写入安装清单失败: %v", err)
-		}
-	}
 	// 拷入全部基础组件, 开箱即用(window 是快速开始示例用的主窗口封装)
 	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: w.overwrite, noInstall: w.noInstall, dryRun: w.dryRun})
-	reportSkipped(skippedCount(skipped), w.dryRun, false)
+	reportSkipped(skipped, w.dryRun, false)
 	return nil
-}
-
-// skippedCount 把"有没有跳过"折成 reportSkipped 要的条数(文档没有条数可言, 只关心要不要提示)。
-func skippedCount(skipped bool) int {
-	if skipped {
-		return 1
-	}
-	return 0
 }
 
 // fileExists 只问"路径在不在"(读一次 Stat)。
@@ -2181,15 +2150,109 @@ func isReleaseVersion(v string) bool {
 // baseComponents 是 init 默认装好的基础组件(window 是模板主窗口用的封装)。
 var baseComponents = []string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card", "window"}
 
-// add 拷贝组件(含依赖闭包); --view/--diff 只展示不写文件。
+// cliDocs 是 CLI 自己下发的两份文档。它们**不在 registry.json 里**(不是组件), 内容由 CLI 带,
+// 所以跟 CLI 版本走、不跟 XUI_REGISTRY 钉的组件 tag 走。名字可以直接写在 add/update 后面:
+//
+//	xui add DESIGN.md      # 只要文档(项目里没跑过 init 时补齐)
+//	xui update AGENTS.md   # 只刷这一份, 不动任何组件
+//
+// 分工与 add/update 一贯的边界一致: add 可以创建, update 只刷已存在的。
+var cliDocs = []string{"DESIGN.md", "AGENTS.md"}
+
+// splitForWrite 只在写入模式下把名字拆成"文档目标 + 组件目标"; --view/--diff 是展示模式,
+// 文档名在那儿当未知组件报错(它们不参与 diff)。基名比对, 所以 ui/DESIGN.md 也认。
+func splitForWrite(opts componentOptions) (docs, comps []string) {
+	if opts.view || opts.diff {
+		return nil, opts.names
+	}
+	for _, n := range opts.names {
+		if d := docTargetName(n); d != "" {
+			docs = append(docs, d) // 用规范名, 后面按名字取内容/记基线才对得上(输入可以是小写或带路径)
+			continue
+		}
+		comps = append(comps, n)
+	}
+	return docs, comps
+}
+
+func isDocTarget(name string) bool { return docTargetName(name) != "" }
+
+// docTargetName 返回这个输入指的是哪份文档(拿**规范文件名**回, 因为报错里的建议命令要能直接照抄);
+// 不是文档则返回 ""。基名比对, 所以 ui/DESIGN.md 也认。
+func docTargetName(name string) string {
+	base := filepath.Base(filepath.ToSlash(name))
+	for _, d := range cliDocs {
+		if strings.EqualFold(base, d) {
+			return d
+		}
+	}
+	return ""
+}
+
+// docContent 取要下发的文档内容(DESIGN.md 从模块根读, 与 init 同源)。
+//
+// DESIGN.md 不需要按目录名渲染: 它的行文按"同目录裸文件名"写(见 AGENTS 的规矩), 本来就与
+// 目录叫什么无关;需要渲染的只有 AGENTS.md(它会写"-p <目录>"这类路径)。
+func docContent(name, uiDir string) ([]byte, error) {
+	switch name {
+	case "DESIGN.md":
+		data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md"))
+		if err != nil {
+			return nil, fmt.Errorf("读取 %s 失败: %w", name, err)
+		}
+		return data, nil
+	case "AGENTS.md":
+		return []byte(renderUI(agentsDirTemplate, uiDir)), nil
+	}
+	return nil, fmt.Errorf("不是可指名的文档: %s", name)
+}
+
+// placeDocs 把点名的文档写进组件目录(create=false 时只刷已存在的, 不新增)。返回被跳过的条数。
+func placeDocs(docs []string, uiDir string, w writeOpts, create bool) int {
+	inst := loadManifest(uiDir)
+	skipped, changed := 0, false
+	for _, name := range docs {
+		dst := filepath.Join(uiDir, name)
+		data, err := docContent(name, uiDir)
+		if err != nil {
+			warn("%v", err)
+			continue
+		}
+		if !create && !fileExists(dst) {
+			// update 不往目录里新增它没装过的东西(与它不装新组件是同一条纪律)。
+			info("没有 %s (它由 xui init 写入; 要单独拿它: xui add %s)", dst, name)
+			continue
+		}
+		if !w.dryRun {
+			// 与 install 同一纪律: 要动手了才建目录(update 空跑不该留下空目录)。
+			if err := os.MkdirAll(uiDir, 0o755); err != nil {
+				warn("创建目录失败: %v", err)
+				continue
+			}
+		}
+		if placeFile(dst, name, data, &inst, w.overwrite, w.dryRun) {
+			skipped++
+		}
+		changed = true
+	}
+	if !w.dryRun && changed {
+		if err := inst.save(uiDir); err != nil {
+			warn("写入安装清单失败: %v", err)
+		}
+	}
+	return skipped
+}
+
+// add 拷贝组件(含依赖闭包); --view/--diff 只展示不写文件; 点名 DESIGN.md/AGENTS.md 时只给文档。
 func add(opts componentOptions) {
+	docs, comps := splitForWrite(opts)
 	src, reg := loadRegistry()
-	names := opts.names
+	names := comps
 	if opts.all {
 		names = allComponents(reg)
 	}
-	if len(names) == 0 {
-		fatal("用法: xui add <组件...> | xui add --all  (组件见 xui list)")
+	if len(names) == 0 && len(docs) == 0 {
+		fatal("用法: xui add <组件...> | xui add --all  (组件见 xui list; 文档可点名 DESIGN.md / AGENTS.md)")
 	}
 	order := resolveNames(reg, names)
 	switch {
@@ -2198,19 +2261,24 @@ func add(opts componentOptions) {
 	case opts.diff:
 		diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json)
 	default:
-		skipped := install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
-		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
-		ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
+		skipped := placeDocs(docs, opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, true)
+		if len(order) > 0 {
+			skipped += install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
+			// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
+			ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
+		}
 		reportSkipped(skipped, opts.dryRun, opts.strict)
 	}
 }
 
 // update 更新已装组件: 省略组件名时 = uiDir 里已装的全部(按 registry 依赖闭包)。
-// --all 在这里会被解析器拒掉(update 不该顺手装新组件, 那是 add 的事)。
+// --all 在这里会被解析器拒掉(update 不该顺手装新组件, 那是 add 的事);
+// 点名 DESIGN.md / AGENTS.md 则只刷文档(已存在的才刷)。
 func update(opts componentOptions) {
+	docs, comps := splitForWrite(opts)
 	src, reg := loadRegistry()
-	names := opts.names
-	if len(names) == 0 {
+	names := comps
+	if len(names) == 0 && len(docs) == 0 {
 		if names = installedComponents(reg, opts.uiDir); len(names) == 0 {
 			info("%s 下没有已安装的组件 (先用 xui add 装)", opts.uiDir)
 			return
@@ -2223,9 +2291,13 @@ func update(opts componentOptions) {
 	case opts.diff:
 		diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json)
 	default:
-		skipped := install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
-		// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
-		ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
+		// create=false: update 只刷已经在目录里的东西, 不新增。
+		skipped := placeDocs(docs, opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, false)
+		if len(order) > 0 {
+			skipped += install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
+			// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
+			ensureRuntime(opts.uiDir, reg.Runtime, opts.dryRun, !opts.noInstall)
+		}
 		reportSkipped(skipped, opts.dryRun, opts.strict)
 	}
 }
@@ -2289,6 +2361,12 @@ func lookupComponent(reg *registry, name string) string {
 		if hit != "" && !dup {
 			return hit
 		}
+	}
+	if d := docTargetName(name); d != "" {
+		// DESIGN.md / AGENTS.md 不是组件, 是 add/update 可点名的文档; 在 --view/--diff 与
+		// xui view 里它们没有内容可比(那些读的是 registry), 所以说清去哪儿能指名。
+		// 建议里用规范文件名(回显用户输入的归一化形式会给出不能照抄的命令)。
+		fatal("%q 不是组件, 是 CLI 下发的文档 (指名它请用 xui add %s 或 xui update %s; --view/--diff 只作用于组件)", name, d, d)
 	}
 	fatal("未知组件 %q%s (xui list 查看可用组件)", name, suggestComponent(reg, want))
 	return "" // 不可达, fatal 会退出
