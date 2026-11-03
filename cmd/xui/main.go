@@ -17,7 +17,7 @@
 //
 // 装好以后升级 CLI 自己: xui self-update(或 xui self-update --check 只看)。
 //
-// 通用选项: -c/--cwd <目录> 先切目录, -s/--silent 只打印警告与错误。
+// 通用选项: -c/--cwd <目录> 先切目录, -s/--silent 只压进度输出(结果与警告/错误照常)。
 //
 // 数据源默认是仓库 main 分支(组件永远最新), 并按"直连 → Gitee 镜像 → GitCode 镜像 →
 // 加速代理"的顺序自动选路(直连最快但有墙, 国内镜像稳定, 代理兜底); 环境变量 XUI_REGISTRY 可指向
@@ -338,7 +338,7 @@ func main() {
 		if len(args) > 0 {
 			fatal("用法: xui version")
 		}
-		fmt.Println("xui " + displayVersion())
+		out("xui %s", displayVersion())
 		return
 	}
 	switch cmd {
@@ -356,9 +356,9 @@ func main() {
 			}
 			return
 		}
-		initProject(opts.uiDir, opts.force)
+		initProject(opts.uiDir, opts.force, opts.noInstall)
 	case "add", "update":
-		opts, err := parseComponentArgs(args)
+		opts, err := parseComponentArgs(cmd, args)
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -385,20 +385,9 @@ func main() {
 		}
 		infoCommand()
 	case "self-update":
-		// 只认一个可选版本参数与 --check; 别在这里发明新语法。
-		var target string
-		checkOnly := false
-		for _, a := range args {
-			switch {
-			case a == "--check":
-				checkOnly = true
-			case strings.HasPrefix(a, "-"):
-				fatal("未知选项 %s (用法: xui self-update [版本|--check])", a)
-			case target != "":
-				fatal("用法: xui self-update [版本|--check] (只能给一个版本)")
-			default:
-				target = a
-			}
+		target, checkOnly, err := parseSelfUpdateArgs(args)
+		if err != nil {
+			fatal("%v", err)
 		}
 		selfUpdate(target, checkOnly)
 	default:
@@ -406,7 +395,8 @@ func main() {
 	}
 }
 
-// quiet 由全局 -s/--silent 打开: 只抑制普通进度输出, 警告与错误照常打印。
+// quiet 由全局 -s/--silent 打开: 只压进度输出(info/infoRaw), 命令结果(out/outRaw)、
+// 警告与错误一律照常。
 var quiet bool
 
 func info(format string, a ...any) {
@@ -415,10 +405,22 @@ func info(format string, a ...any) {
 	}
 }
 
+// infoRaw 与 info 同属进度输出(不补换行), 受 -s/--silent 影响。
 func infoRaw(s string) {
 	if !quiet {
 		fmt.Print(s)
 	}
+}
+
+// out / outRaw 打印**命令本身的结果** —— list 的组件表、view/diff 的源码与差异、
+// info 与 self-update --check 的报告。它们和"创建了哪个文件"这类进度不是一回事:
+// 结果是用户要读、要 `>` 重定向走的东西, 加 -s 把它一起吞掉等于命令没跑却退出码 0。
+func out(format string, a ...any) {
+	fmt.Printf(format+"\n", a...)
+}
+
+func outRaw(s string) {
+	fmt.Print(s)
 }
 
 // nextValue 取选项后面的值。缺值(到末尾、或后面紧跟另一个选项)时报错 ——
@@ -523,9 +525,7 @@ func parseInitArgs(args []string) (initOptions, error) {
 		return o, fmt.Errorf("用法: xui init [ui目录] | xui init -n <项目名>")
 	}
 	if o.project == "" {
-		if o.noInstall {
-			return o, fmt.Errorf("--no-install 只用于 init -n")
-		}
+		// --no-install 对两种 init 都成立: 普通 init 也会抬配套运行时依赖(add 路径)。
 		o.uiDir = "ui"
 		if len(pos) == 1 {
 			o.uiDir = pos[0]
@@ -545,12 +545,14 @@ type componentOptions struct {
 	viewFile  string
 	diff      bool
 	diffFile  string
-	// noInstall 由 init --no-install 传进来: 不联网动 go.mod, 只打印要跑的命令。
-	// 不是 CLI 参数, 所以解析器不会填它。
+	// noInstall = 写组件文件但不联网动 go.mod 的配套运行时(与 init --no-install 同一个旗)。
 	noInstall bool
 }
 
-func parseComponentArgs(args []string) (componentOptions, error) {
+// parseComponentArgs 解析 add / update。cmd 参与校验: 两个命令共用参数集,
+// 但 --all 在 update 里不是"更新全部已装"(省略组件名本来就是这个意思), 它会把整套
+// registry 组件拷进来 = add; 静默接受它等于让 update 悄悄装新东西。
+func parseComponentArgs(cmd string, args []string) (componentOptions, error) {
 	o := componentOptions{uiDir: "ui"}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -576,6 +578,8 @@ func parseComponentArgs(args []string) (componentOptions, error) {
 			}
 		case a == "--dry-run":
 			o.dryRun = true
+		case a == "--no-install":
+			o.noInstall = true
 		case a == "--view":
 			o.view = true
 		case strings.HasPrefix(a, "--view="):
@@ -598,7 +602,44 @@ func parseComponentArgs(args []string) (componentOptions, error) {
 	if o.all && len(o.names) > 0 {
 		return o, fmt.Errorf("--all 不能与组件名同时使用")
 	}
+	if cmd == "update" && o.all {
+		return o, fmt.Errorf("xui update 不带组件名就是更新 %s 里已装的全部; 想把没装的组件也一起装上请用 xui add --all", o.uiDir)
+	}
+	if o.view || o.diff {
+		// --view/--diff 只展示、不写文件: 这些"怎么写"的开关跟着给会被静默忽略, 直接拒。
+		if o.dryRun {
+			return o, fmt.Errorf("--dry-run 与 --view/--diff 不能同时使用 (--view/--diff 本来就不写文件)")
+		}
+		if o.overwrite {
+			return o, fmt.Errorf("-o/--overwrite 与 --view/--diff 不能同时使用 (--view/--diff 本来就不写文件)")
+		}
+		if o.noInstall {
+			return o, fmt.Errorf("--no-install 与 --view/--diff 不能同时使用 (--view/--diff 本来就不写文件)")
+		}
+	}
 	return o, nil
+}
+
+// parseSelfUpdateArgs 只认一个可选版本参数与 --check; 别在这里发明新语法。
+func parseSelfUpdateArgs(args []string) (target string, checkOnly bool, err error) {
+	for _, a := range args {
+		switch {
+		case a == "--check":
+			checkOnly = true
+		case strings.HasPrefix(a, "-"):
+			return "", false, fmt.Errorf("未知选项 %s (用法: xui self-update [版本|--check])", a)
+		case target != "":
+			return "", false, fmt.Errorf("用法: xui self-update [版本|--check] (只能给一个版本)")
+		default:
+			target = a
+		}
+	}
+	if checkOnly && target != "" {
+		// --check 只回答"我相对 @latest 新不新"。把版本参数收下又丢掉, 会让人以为
+		// 它检查的是自己刚指定的那个版本。
+		return "", false, fmt.Errorf("xui self-update --check 不接受版本 (要升到指定版本就去掉 --check: xui self-update %s)", target)
+	}
+	return target, checkOnly, nil
 }
 
 // listOptions 是 list / search 的参数集(对齐 shadcn search: -q / -l / -o)。
@@ -708,35 +749,39 @@ func usage() {
   xui add --all              拷贝全部组件
   xui add <组件...> --dry-run
                              只显示将创建/覆盖/跳过的文件
-  xui add <组件...> --view[=文件]
+  xui add <组件...> --view[=组件或文件]
                              打印组件源码, 不写本地
-  xui add <组件...> --diff[=文件]
+  xui add <组件...> --diff[=组件或文件]
                              与本地文件做逐行 diff, 不写本地
   xui update [组件...]       升级已装组件(省略组件名 = ui 目录里已装的全部);
-                             安装后没改过的文件直接替换, 改过的跳过(见 -o)
+                             安装后没改过的文件直接替换, 改过的跳过(见 -o);
+                             连没装过的组件一起装是 xui add --all 的事, update 不接 --all
   xui list | xui search      列出/搜索组件
   xui view <组件...>         打印组件源码
   xui info                   显示 CLI / 项目环境信息
   xui version                只打印版本(同 -v / --version; 离线可用, 不拉数据源)
   xui self-update [版本]     升级 CLI 自己(默认 @latest; 也可给 tag / main / commit)
-                             --check 只比较当前与最新 tag, 不安装
+                             --check 只比较当前与最新 tag, 不安装(不接版本参数)
 
 选项:
   -n, --name <项目名>   init: 新建项目目录
   -f, --force           init: 允许写入非空项目目录(覆盖模板文件)
-  --no-install          init -n: 跳过自动 go mod tidy 与 xc 安装(仍写 winres/)
+  --no-install          init/add/update: 写文件但不联网动 go.mod 的依赖
+                        (init -n 还跳过自动 go mod tidy 与 xc 安装, 仍写 winres/)
   -o, --overwrite       add/update: 覆盖本地已修改的文件
   -p, --path <目录>     add/update: 组件目录(默认 ui)
-  -a, --all             add/update: 全部组件
+  -a, --all             add: 全部组件
   -q, --query <词>      list/search: 按组件名过滤
   -l, --limit <n>       list/search: 最多显示 n 个
   -o, --offset <n>      list/search: 跳过前 n 个
   -c, --cwd <目录>      先切换到该目录, 后续相对路径都以它为准
-  -s, --silent          只打印警告与错误
+  -s, --silent          只压进度输出; 命令结果(list/view/diff/info/version)、
+                        警告与错误照常
   -v, --version         显示版本(本地构建显示 (devel) + 短 commit)
   -h, --help            显示本帮助(任何位置都能用)
 
 短选项也接受 -x=值 的写法(与 --long=值 一致), 例如 -p=src -l=5。
+--view/--diff 是"只展示"的开关, 与 --dry-run / -o / --no-install 同时给会直接报错。
 
 运行时版本: 组件源码跟 main 分支, 而运行时 github.com/twgh/xui 只能按 tag 取 ——
                         registry.json 的 runtime 字段是与这批组件配套的运行时版本,
@@ -744,7 +789,8 @@ func usage() {
                         (--dry-run 或 --no-install 时只打印命令, 不联网改依赖)
 
 升级提示: 每天最多后台查一次 @latest(结果写用户缓存目录, 前台不等网络), 命令正常跑完
-                        顺带提示一句"有新版"; -s/--silent 或 XUI_NO_UPDATE_CHECK=1 关闭。
+                        在 stderr 提示一句"有新版"(不污染被重定向的结果);
+                        -s/--silent 或 XUI_NO_UPDATE_CHECK=1 关闭。
 
 数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
   不设                  自动选路: 直连 → Gitee 镜像 → GitCode 镜像 →
@@ -780,8 +826,8 @@ func moduleRoot() string {
 
 // ---------------------------------------------------------------- 各命令实现
 
-func initProject(dir string, force bool) {
-	if err := scaffoldUI(dir, force, false); err != nil {
+func initProject(dir string, force, noInstall bool) {
+	if err := scaffoldUI(dir, force, noInstall); err != nil {
 		fatal("%v", err)
 	}
 	// 组件目录的 AGENTS.md: README 不在 init 的写入范围(用户项目已有自己的),
@@ -1317,15 +1363,16 @@ func selfUpdateAt(exe, current, target string, checkOnly bool) error {
 		if err != nil {
 			return fmt.Errorf("查询最新版本失败: %w", err)
 		}
-		info("当前 CLI: %s", current)
-		info("最新 tag: %s", newest)
+		// 这几行就是 --check 的全部结果, 加 -s 也得打(否则命令等于什么都没查)。
+		out("当前 CLI: %s", current)
+		out("最新 tag: %s", newest)
 		switch {
 		case !isReleaseTag(current):
-			info("本地构建(%s)不算发布版; 想装正式版: xui self-update", current)
+			out("本地构建(%s)不算发布版; 想装正式版: xui self-update", current)
 		case current == newest:
-			info("已是最新")
+			out("已是最新")
 		case versionBefore(current, newest):
-			info("可以升级: xui self-update %s", newest)
+			out("可以升级: xui self-update %s", newest)
 		}
 		return nil
 	}
@@ -1457,7 +1504,8 @@ func notifyAvailableUpdate(cmd string) {
 	path := updateCheckPath()
 	c := loadUpdateCheck(path)
 	if msg := updateNotice(displayVersion(), c, time.Now()); msg != "" {
-		info("%s", msg)
+		// 走 stderr: `xui view button.go > button.go` 这类重定向里, 提示语混进正文就是坏代码。
+		warn("%s", msg)
 	}
 	if shouldProbeUpdate(c, time.Now()) {
 		saveUpdateCheck(path, updateCheck{CheckedAt: time.Now(), Latest: c.Latest})
@@ -1583,13 +1631,11 @@ func add(opts componentOptions) {
 }
 
 // update 更新已装组件: 省略组件名时 = uiDir 里已装的全部(按 registry 依赖闭包)。
+// --all 在这里会被解析器拒掉(update 不该顺手装新组件, 那是 add 的事)。
 func update(opts componentOptions) {
 	src, reg := loadRegistry()
 	names := opts.names
-	switch {
-	case opts.all:
-		names = allComponents(reg)
-	case len(names) == 0:
+	if len(names) == 0 {
 		if names = installedComponents(reg, opts.uiDir); len(names) == 0 {
 			info("%s 下没有已安装的组件 (先用 xui add 装)", opts.uiDir)
 			return
@@ -1969,26 +2015,42 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 	}
 }
 
-// viewFiles 打印组件的文件内容(不写本地); filter 非空时按文件名过滤。
+// filterHit 判断 --view=/--diff= 后面那个值是否指向这个文件: 文件基名(button.go,
+// 带路径的 ui/button.go 也认)或组件名(button / date-picker)都算命中。
+// 用户刚在命令里打过组件名, 到这一步却必须改写成文件基名是不可用的门槛 ——
+// 而 `--diff=button` 匹配不到文件时旧版会回一句"没有差异", 直接把"没匹配上"说成"已经是最新"。
+func filterHit(name, file, filter string) bool {
+	if filter == "" {
+		return true
+	}
+	if filepath.Base(filter) == filepath.Base(file) {
+		return true
+	}
+	return normalizeName(filter) == normalizeName(name)
+}
+
+// viewFiles 打印组件的文件内容(不写本地); filter 非空时只打匹配的文件。
+// 正文走 out/outRaw(命令结果, 不受 -s 影响); "一个都没匹配上"走 warn ——
+// 它不是结果, 更不该被 `>` 重定向当成内容收进文件。
 func viewFiles(src *source, reg *registry, order []string, filter string) {
 	done := map[string]bool{}
-	found := false
+	matched := false
 	for _, name := range order {
 		for _, f := range reg.Components[name].Files {
 			if done[f] {
 				continue
 			}
 			done[f] = true
-			if filter != "" && filepath.Base(f) != filepath.Base(filter) {
+			if !filterHit(name, f, filter) {
 				continue
 			}
-			found = true
-			info("\n===== %s (%s) =====", f, name)
-			infoRaw(string(readComponent(src, f)))
+			matched = true
+			out("\n===== %s (%s) =====", f, name)
+			outRaw(string(readComponent(src, f)))
 		}
 	}
-	if !found {
-		info("没有匹配的文件: %s", filter)
+	if !matched {
+		warn("没有匹配的文件: %s (给组件名或文件基名, 组件见 xui list)", filter)
 	}
 }
 
@@ -1998,13 +2060,13 @@ func view(names []string) {
 	viewFiles(src, reg, resolveNames(reg, names), "")
 }
 
-// infoCommand 打印本机环境与项目状态(不拉 registry, 离线可用)。
+// infoCommand 打印本机环境与项目状态(不拉 registry, 离线可用)。整段都是命令结果。
 func infoCommand() {
 	ver := displayVersion()
 	wd, _ := os.Getwd()
-	info("xui: %s", ver)
-	info("工作目录: %s", wd)
-	info("Go: %s", runtime.Version())
+	out("xui: %s", ver)
+	out("工作目录: %s", wd)
+	out("Go: %s", runtime.Version())
 	if entries, err := os.ReadDir("ui"); err == nil {
 		n := 0
 		for _, e := range entries {
@@ -2012,18 +2074,18 @@ func infoCommand() {
 				n++
 			}
 		}
-		info("ui/: %d 个 Go 文件", n)
+		out("ui/: %d 个 Go 文件", n)
 	} else {
-		info("ui/: 未初始化")
+		out("ui/: 未初始化")
 	}
 	src := strings.TrimSpace(os.Getenv("XUI_REGISTRY"))
 	if src == "" {
 		src = "默认(远程 main 分支)"
 	}
-	info("数据源: %s", src)
+	out("数据源: %s", src)
 	// 版本提示靠这个排查: 缓存里存着"上次查到的 @latest"与查的时间(一天一次)。
 	if c := loadUpdateCheck(updateCheckPath()); !c.CheckedAt.IsZero() {
-		info("上次版本检查: %s, 当时 @latest = %s (关掉: 设 %s=1)",
+		out("上次版本检查: %s, 当时 @latest = %s (关掉: 设 %s=1)",
 			c.CheckedAt.Format("2006-01-02 15:04"), orNone(c.Latest), updateCheckDisableEnv)
 	}
 }
@@ -2036,20 +2098,25 @@ func orNone(s string) string {
 	return s
 }
 
-// diffFiles 把本地文件与 registry 内容做逐行 diff(不写本地); filter 非空时按文件名过滤。
+// diffFiles 把本地文件与 registry 内容做逐行 diff(不写本地); filter 非空时只比匹配的
+// 文件(组件名或文件基名, 见 filterHit)。
+// "一个都没匹配上"与"匹配上了但确实没差异"是两件事, 必须分开说: 都答"没有差异"会让用户
+// 以为已装的组件是最新的。
 func diffFiles(src *source, reg *registry, order []string, uiDir, filter string) {
 	inst := loadManifest(uiDir)
 	done := map[string]bool{}
-	found := false
+	matched := false
+	differs := false
 	for _, name := range order {
 		for _, f := range reg.Components[name].Files {
 			if done[f] {
 				continue
 			}
 			done[f] = true
-			if filter != "" && filepath.Base(f) != filepath.Base(filter) {
+			if !filterHit(name, f, filter) {
 				continue
 			}
+			matched = true
 			remote := string(readComponent(src, f))
 			dst := filepath.Join(uiDir, f)
 			local, err := os.ReadFile(dst)
@@ -2059,7 +2126,7 @@ func diffFiles(src *source, reg *registry, order []string, uiDir, filter string)
 			if err == nil && string(local) == remote {
 				continue
 			}
-			found = true
+			differs = true
 			// 给差异标出来源, 否则光看 diff 分不清"是我改的"还是"版本升级" ——
 			// 这正是 update 要不要 -o 的分界。没有基线时只能说"判断不了", 别断言用户改过。
 			baseline, hasBaseline := inst.Files[f]
@@ -2074,12 +2141,15 @@ func diffFiles(src *source, reg *registry, order []string, uiDir, filter string)
 			default:
 				note = " (本地已修改 —— update 会跳过, 需 -o 覆盖)"
 			}
-			info("\n=== %s%s ===", dst, note)
-			infoRaw(unifiedDiff(dst, "components/"+f, string(local), remote))
+			out("\n=== %s%s ===", dst, note)
+			outRaw(unifiedDiff(dst, "components/"+f, string(local), remote))
 		}
 	}
-	if !found {
-		info("没有差异")
+	switch {
+	case !matched:
+		warn("没有匹配的文件: %s (给组件名或文件基名, 组件见 xui list)", filter)
+	case !differs:
+		out("没有差异")
 	}
 }
 
@@ -2149,9 +2219,9 @@ func list(opts listOptions) {
 	info("可用组件 (数据源: %s):", src.desc())
 	if start == end {
 		if len(matched) == 0 {
-			info("  (没有匹配的组件)")
+			out("  (没有匹配的组件)")
 		} else {
-			info("  (没有更多组件)")
+			out("  (没有更多组件)")
 		}
 	}
 	for _, name := range matched[start:end] {
@@ -2160,10 +2230,10 @@ func list(opts listOptions) {
 		if len(e.Deps) > 0 {
 			extra = "  (依赖: " + strings.Join(e.Deps, ", ") + ")"
 		}
-		info("  %-12s %s%s", name, strings.Join(e.Files, ", "), extra)
+		out("  %-12s %s%s", name, strings.Join(e.Files, ", "), extra)
 	}
 	if opts.query != "" || opts.limit > 0 || opts.offset > 0 {
-		info("\n共 %d 个匹配, 显示 %d 个", len(matched), end-start)
+		out("\n共 %d 个匹配, 显示 %d 个", len(matched), end-start)
 	}
 }
 

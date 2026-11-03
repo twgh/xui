@@ -446,24 +446,27 @@ xui init                 # 已有项目: 只创建组件目录(默认 ui/: theme
 xui add button dialog    # 追加组件(自动带上依赖的组件)
 xui add --all            # 拷贝全部组件
 xui add card --dry-run   # 预览将创建/覆盖/跳过的文件, 不写本地
-xui add card --view      # 打印 registry 源码(可加 =card.go 只看某个文件)
-xui add card --diff      # 与本地文件做逐行 diff
-xui update               # 更新已装组件(省略组件名 = 组件目录里已装的全部)
+xui add card --view      # 打印 registry 源码(可加 =card.go 或 =card 只看某个文件/某个组件)
+xui add card --diff      # 与本地文件做逐行 diff(过滤值同上)
+xui update               # 更新已装组件(省略组件名 = 组件目录里已装的全部;不接 --all)
 xui list                 # 列出可用组件
 xui search -q table      # 按名称搜索(等价于 list -q table)
 xui view button          # 打印组件源码
 xui info                 # CLI 版本 / 工作目录 / ui 状态 / 数据源
 xui version              # 只打印版本(同 -v / --version; 离线可用, 不拉数据源)
 xui self-update [版本]   # 升级 CLI 自己(默认 @latest; 也可 tag / main / commit)
-xui self-update --check  # 只比较当前与 @latest 的版本, 不安装
+xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不接受版本参数)
 ```
 
 - **默认不覆盖你改过的文件**:逐个比对内容 —— 本地没有则创建、内容一致则跳过、被改过则警告跳过;确认要丢掉本地改动时加 `-o/--overwrite`。这是 copy-not-install 的前提:代码归你。
-- **组件目录**默认 `ui`, 可用 `add/update -p/--path <目录>` 指定;全局 `-c/--cwd` 先切换工作目录, `-s/--silent` 只打印警告与错误。
+- **组件目录**默认 `ui`, 可用 `add/update -p/--path <目录>` 指定;全局 `-c/--cwd` 先切换工作目录。
+- **静默 `-s/--silent` 只压进度输出**:它压掉"创建了哪个文件"这类过程信息, **命令本身的结果照打**(`list` 的组件表、`view`/`--diff` 的源码与差异、`info` 的报告、`version`、`self-update --check` 的对比), 警告与错误也照打到 stderr。所以 `xui list -s` 给你一份没有表头的干净清单, 可以直接 `|` 给脚本; 升级提示走 stderr, 不会混进被 `>` 重定向的源码里。
+- **只展示的参数不吞写文件的参数**:`--view` / `--diff` 与 `--dry-run`、`-o/--overwrite`、`--no-install` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。
+- **`update` 不接 `--all`**:`xui update` 省略组件名就已经是"更新组件目录里已装的全部"; 把没装过的组件也一起拷进来是 `xui add --all` 的事, 两个命令不该混在一个开关里。
 - **新建项目**:目标目录已存在且非空时需 `-f/--force`(只覆盖模板文件, 不动无关文件)。
-- **依赖安装**:`xui init -n` 生成后默认在项目目录执行 `go mod tidy`(生成 `go.sum`);离线或想手动控制时加 `--no-install`, 之后自己跑一次。
-- **升级自己**:`xui self-update [版本]` 跑 `go install github.com/twgh/xui/cmd/xui@<目标>`(默认 `@latest`, 也可 `vX.Y.Z` / `main` / `HEAD` / commit 短哈希)。成没成以"跑新二进制拿到的版本"为准;正在运行的 exe 不许就地覆写, 失败时会把它改名成 `.old` 让路重试一次。`--check` 只比较当前与 `@latest`。
-- **升级提示**:每天最多后台查一次 `@latest`(派生一个内部子进程, 前台不等网络), 结果写用户缓存目录的 `xui/update-check.json`, 之后的命令在末尾提示一句;`-s/--silent` 与 `XUI_NO_UPDATE_CHECK=1` 关闭, `xui info` 能看到上次检查的时间与结果。本地/`go run` 构建不提示。
+- **依赖安装**:`xui init -n` 生成后默认在项目目录执行 `go mod tidy`(生成 `go.sum`);离线或想手动控制时加 `--no-install`, 之后自己跑一次。`--no-install` 对 `add` / `update` / `init` 三种都成立 —— 组件文件照写, 只是不动 `go.mod`。
+- **升级自己**:`xui self-update [版本]` 跑 `go install github.com/twgh/xui/cmd/xui@<目标>`(默认 `@latest`, 也可 `vX.Y.Z` / `main` / `HEAD` / commit 短哈希)。成没成以"跑新二进制拿到的版本"为准;正在运行的 exe 不许就地覆写, 失败时会把它改名成 `.old` 让路重试一次。`--check` 只比较当前与 `@latest`, 因此**不接受版本参数**(收下又丢掉会让人以为查的是那个版本)。
+- **升级提示**:每天最多后台查一次 `@latest`(派生一个内部子进程, 前台不等网络), 结果写用户缓存目录的 `xui/update-check.json`, 之后的命令在末尾向 stderr 提示一句;`-s/--silent` 与 `XUI_NO_UPDATE_CHECK=1` 关闭, `xui info` 能看到上次检查的时间与结果。本地/`go run` 构建不提示。
 - **配套运行时版本**:组件源码跟 `main`(永远最新), 运行时 `github.com/twgh/xui` 只能按 tag 取, 两者的差值就是编译错误(`undefined: xui.Xxx`,因为组件用了新加的运行时助手而项目钉着旧 tag)。`registry.json` 的 `runtime` 声明与这批组件**配套**的运行时版本 —— 每次发布都抬成刚发的 tag(只改 CLI 也抬), 所以 `xui update` 会顺带把项目 `go.mod` 的该依赖升到最新发布版(等价 `go get github.com/twgh/xui@<tag>`), 运行时的修复也一并带上;`--dry-run` 与 `--no-install` 只打印命令, `go.mod` 里 `replace` 了该模块时完全不动你的依赖。
 - **数据源**:默认从仓库 `main` 分支拉组件(永远最新),自动在直连 / Gitee 镜像 / GitCode 镜像 / 加速代理之间选路;拷到一半某个文件拉不到(镜像限速、临时挂起)会自动换下一个源继续,不会留下半套组件源码。`XUI_REGISTRY` 可指向本地目录或任意 `http(s)://` 基址(离线开发 / 锁定组件版本),显式设置时只走你写的地址、失败直接报错(不静默降级)。
 - **registry.json** 是组件清单:每个组件登记 `files`(要拷的文件,含跨文件助手)与 `deps`(依赖的其它组件)。CLI 只拷这些 `.go` 文件;运行时(`github.com/twgh/xui`)与图标子包(`github.com/twgh/xui/icons`)是 Go 模块依赖,不进组件目录。

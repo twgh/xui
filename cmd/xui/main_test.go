@@ -358,7 +358,8 @@ func TestParseInitArgs(t *testing.T) {
 		{"--name=", []string{"--name=myapp"}, initOptions{project: "myapp"}, false},
 		{"-n 加 force", []string{"-f", "-n", "myapp"}, initOptions{project: "myapp", force: true}, false},
 		{"--no-install", []string{"--no-install", "-n", "myapp"}, initOptions{project: "myapp", noInstall: true}, false},
-		{"--no-install 缺 -n", []string{"--no-install"}, initOptions{}, true},
+		// 普通 init 也会抬配套运行时依赖(add 路径), 所以 --no-install 对它同样成立
+		{"--no-install 无 -n", []string{"--no-install"}, initOptions{uiDir: "ui", noInstall: true}, false},
 		{"-n 缺值", []string{"-n"}, initOptions{}, true},
 		{"-n= 空值", []string{"-n="}, initOptions{}, true},
 		{"-n 与位置参数冲突", []string{"-n", "myapp", "ui"}, initOptions{}, true},
@@ -574,7 +575,7 @@ func TestFindXcNoInstall(t *testing.T) {
 func TestInitProjectDocsAreDirAgnostic(t *testing.T) {
 	t.Setenv("XUI_REGISTRY", moduleRoot())
 	dir := filepath.Join(t.TempDir(), "widgets")
-	initProject(dir, false)
+	initProject(dir, false, false)
 
 	doc, err := os.ReadFile(filepath.Join(dir, "DESIGN.md"))
 	if err != nil {
@@ -600,43 +601,90 @@ func TestInitProjectDocsAreDirAgnostic(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("custom"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	initProject(dir, false)
+	initProject(dir, false, false)
 	if got, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md")); string(got) != "custom" {
 		t.Error("重复 init 覆盖了已有的 AGENTS.md")
 	}
 }
 
 func TestParseComponentArgs(t *testing.T) {
-	got, err := parseComponentArgs([]string{"-o", "-p", "components", "button", "card"})
+	got, err := parseComponentArgs("add", []string{"-o", "-p", "components", "button", "card"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !got.overwrite || got.uiDir != "components" || len(got.names) != 2 {
 		t.Errorf("解析结果不对: %+v", got)
 	}
-	if got, err := parseComponentArgs([]string{"--all"}); err != nil || !got.all {
+	if got, err := parseComponentArgs("add", []string{"--all"}); err != nil || !got.all {
 		t.Errorf("--all 解析失败: %+v, %v", got, err)
 	}
-	if got, err := parseComponentArgs([]string{"--dry-run", "--view=button.go", "button"}); err != nil ||
-		!got.dryRun || !got.view || got.viewFile != "button.go" {
-		t.Errorf("dry-run/view 解析失败: %+v, %v", got, err)
+	// --no-install 对 add/update 也成立: 写组件但不动 go.mod
+	if got, err := parseComponentArgs("update", []string{"--no-install", "button"}); err != nil ||
+		!got.noInstall || got.dryRun {
+		t.Errorf("--no-install 解析失败: %+v, %v", got, err)
 	}
-	if _, err := parseComponentArgs([]string{"--view", "--diff", "button"}); err == nil {
-		t.Error("--view 与 --diff 应互斥")
-	}
-	if _, err := parseComponentArgs([]string{"--all", "button"}); err == nil {
-		t.Error("--all 与组件名应互斥")
-	}
-	if _, err := parseComponentArgs([]string{"--wat"}); err == nil {
+	if _, err := parseComponentArgs("add", []string{"--wat"}); err == nil {
 		t.Error("未知选项应报错")
 	}
+	// 旧用例: --dry-run 与 --view 同时给时, switch 里 view 先赢、dry-run 静默失效
+	for _, args := range [][]string{
+		{"--dry-run", "--view"},
+		{"-o", "--diff"},
+		{"--no-install", "--view=button.go"},
+	} {
+		if _, err := parseComponentArgs("add", args); err == nil {
+			t.Errorf("%v: --view/--diff 不写文件, 与写文件的开关同时给应报错", args)
+		}
+	}
+	if got, err := parseComponentArgs("add", []string{"--dry-run", "button"}); err != nil || !got.dryRun {
+		t.Errorf("--dry-run 单独给应可用: %+v, %v", got, err)
+	}
+	if got, err := parseComponentArgs("add", []string{"--view=button.go", "button"}); err != nil ||
+		!got.view || got.viewFile != "button.go" {
+		t.Errorf("--view=文件 解析失败: %+v, %v", got, err)
+	}
+	// update --all 实际含义是"把整套 registry 拷进来"(= add), 不该由 update 悄悄做
+	if _, err := parseComponentArgs("update", []string{"--all"}); err == nil {
+		t.Error("update 不该接受 --all")
+	}
+	if _, err := parseComponentArgs("update", []string{"button"}); err != nil {
+		t.Errorf("update 带组件名应可用: %v", err)
+	}
+	if _, err := parseComponentArgs("add", []string{"--view", "--diff", "button"}); err == nil {
+		t.Error("--view 与 --diff 应互斥")
+	}
+	if _, err := parseComponentArgs("add", []string{"--all", "button"}); err == nil {
+		t.Error("--all 与组件名应互斥")
+	}
 	// 短选项也接受 = 形式(与 --path= 一致)
-	if got, err := parseComponentArgs([]string{"-p=src", "button"}); err != nil || got.uiDir != "src" {
+	if got, err := parseComponentArgs("add", []string{"-p=src", "button"}); err != nil || got.uiDir != "src" {
 		t.Errorf("-p=src 解析失败: %+v, %v", got, err)
 	}
 	// 值位置紧跟另一个选项时要报缺值, 不能把 --all 当成目录名
-	if _, err := parseComponentArgs([]string{"-p", "--all"}); err == nil {
+	if _, err := parseComponentArgs("add", []string{"-p", "--all"}); err == nil {
 		t.Error("-p 后紧跟选项应报缺值")
+	}
+}
+
+func TestParseSelfUpdateArgs(t *testing.T) {
+	if target, check, err := parseSelfUpdateArgs(nil); err != nil || target != "" || check {
+		t.Errorf("无参数 = 升到 latest: %q %v %v", target, check, err)
+	}
+	if target, check, err := parseSelfUpdateArgs([]string{"v0.8.1"}); err != nil || target != "v0.8.1" || check {
+		t.Errorf("版本参数解析失败: %q %v %v", target, check, err)
+	}
+	if target, check, err := parseSelfUpdateArgs([]string{"--check"}); err != nil || target != "" || !check {
+		t.Errorf("--check 解析失败: %q %v %v", target, check, err)
+	}
+	// --check 只回答"我相对 @latest 新不新"; 收下版本又丢掉会让人以为它查的是那个版本
+	if _, _, err := parseSelfUpdateArgs([]string{"v9.9.9", "--check"}); err == nil {
+		t.Error("--check 与版本同时给应报错")
+	}
+	if _, _, err := parseSelfUpdateArgs([]string{"--wat"}); err == nil {
+		t.Error("未知选项应报错")
+	}
+	if _, _, err := parseSelfUpdateArgs([]string{"v0.8.0", "v0.8.1"}); err == nil {
+		t.Error("给两个版本应报错")
 	}
 }
 
@@ -1029,6 +1077,73 @@ func TestOverwriteWordingTellsUpgradeFromLostEdit(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(dst); string(data) != v3 {
 		t.Errorf("-o 仍应覆盖, 实为 %q", data)
+	}
+}
+
+// -s/--silent 该压的是进度, 不是命令本身的结果: list / view / info / self-update --check
+// 的正文以前全走 info, 加 -s 就是 0 字节 + 退出码 0, 脚本与 AI 助手读到的是"什么都没发生"。
+func TestSilentKeepsCommandResults(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	quiet = true
+	defer func() { quiet = false }()
+
+	if got := captureOutput(t, func() { list(listOptions{limit: 5}) }); !strings.Contains(got, "button") {
+		t.Errorf("-s 下 list 的组件表被吞了: %q", got)
+	}
+	if got := captureOutput(t, infoCommand); !strings.Contains(got, "工作目录") {
+		t.Errorf("-s 下 info 的报告被吞了: %q", got)
+	}
+	if got := captureOutput(t, func() { view([]string{"button"}) }); !strings.Contains(got, "package ui") {
+		t.Errorf("-s 下 view 的源码被吞了: %q", got)
+	}
+	stubSelfUpdate(t, filepath.Join(t.TempDir(), "bin"), "v0.9.9", "v0.9.9")
+	if got := captureOutput(t, func() { _ = selfUpdateAt("/home/u/go/bin/xui", "v0.8.0", "", true) }); !strings.Contains(got, "最新 tag") {
+		t.Errorf("-s 下 --check 的结果被吞了: %q", got)
+	}
+	// 进度输出仍然闭嘴
+	if got := captureOutput(t, func() { info("创建 %s", "ui/button.go") }); got != "" {
+		t.Errorf("进度输出不该在 -s 下出现: %q", got)
+	}
+}
+
+// --view=/--diff= 的过滤值既接受文件基名也接受组件名(用户刚在命令里打过它);
+// 一个都没匹配上时必须说"没有匹配的文件" —— 答"没有差异"等于骗人说已经是最新的。
+func TestDiffAndViewFilterTakeComponentName(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+
+	if got := captureOutput(t, func() {
+		add(componentOptions{names: []string{"button"}, uiDir: "ui", diff: true, diffFile: "button"})
+	}); !strings.Contains(got, "没有差异") {
+		t.Errorf("--diff=button 应按组件名命中并报告没有差异: %q", got)
+	}
+	if got := captureOutput(t, func() {
+		add(componentOptions{names: []string{"button"}, uiDir: "ui", diff: true, diffFile: "card.go"})
+	}); strings.Contains(got, "没有差异") || !strings.Contains(got, "没有匹配的文件") {
+		t.Errorf("--diff 没命中任何文件, 不该说没有差异: %q", got)
+	}
+	if got := captureOutput(t, func() {
+		add(componentOptions{names: []string{"button"}, uiDir: "ui", view: true, viewFile: "button"})
+	}); !strings.Contains(got, "package ui") || strings.Contains(got, "没有匹配的文件") {
+		t.Errorf("--view=button 应打出源码: %q", got)
 	}
 }
 
