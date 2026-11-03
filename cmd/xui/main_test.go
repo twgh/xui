@@ -1924,6 +1924,103 @@ func TestNamedDocTargets(t *testing.T) {
 	}
 }
 
+// 基线要按"交付完成那一刻盘上的内容"记。以前按"打算写的字节"记, 而同一次 init -n 后面
+// 自己就会改写 go.mod(抬配套运行时的 go get、以及 go mod tidy) —— 于是文件一交付就和自己
+// 的基线不一致, 下次 init -n --force 会说"本地已修改, 跳过", 可用户根本没动过。
+func TestInitNewProjectBaselinesMatchDeliveredState(t *testing.T) {
+	// 造一份本地源: registry.runtime 比 CLI 自身版本高 ⇒ init 会去抬依赖(触发 go.mod 被改写)
+	src := t.TempDir()
+	reg := `{"runtime":"v9.9.9","components":{`
+	for _, c := range baseComponents {
+		reg += `"` + c + `":{"files":["` + c + `.go"],"deps":[]},`
+	}
+	reg = strings.TrimSuffix(reg, ",") + `}}`
+	if err := os.WriteFile(filepath.Join(src, "registry.json"), []byte(reg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(src, "components"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range baseComponents {
+		if err := os.WriteFile(filepath.Join(src, "components", c+".go"), []byte("package ui\n// "+c+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("XUI_REGISTRY", filepath.ToSlash(src))
+	stubWinresMake(t)
+
+	// go get 的桩要真的改写 go.mod —— 只记录调用就复现不出"我们自己动了这个文件"
+	origGet := goGetModule
+	t.Cleanup(func() { goGetModule = origGet })
+	goGetModule = func(dir, spec string) error {
+		p := filepath.Join(dir, "go.mod")
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		out := regexp.MustCompile(`(github\.com/twgh/xui v[^\s]+)`).ReplaceAllString(string(data), "github.com/twgh/xui v9.9.9")
+		return os.WriteFile(p, []byte(out), 0o644)
+	}
+
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd := t.TempDir()
+	if err := os.Chdir(wd); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	if err := initNewProject("app", "ui", false, writeOpts{}); err != nil {
+		t.Fatalf("init -n 失败: %v", err)
+	}
+	// 抬依赖确实发生了(否则这个测试没测到东西)
+	onDisk, err := os.ReadFile(filepath.Join(wd, "app", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(onDisk), "v9.9.9") {
+		t.Fatalf("桩没生效, go.mod 还是:\n%s", onDisk)
+	}
+	// 基线必须等于盘上内容
+	man := loadManifest(filepath.Join(wd, "app", "ui"))
+	if man.Project["go.mod"] != sha256Hex(onDisk) {
+		t.Errorf("go.mod 基线不是交付后的内容: 清单 %s ≠ 盘上 %s", man.Project["go.mod"], sha256Hex(onDisk))
+	}
+	// 重跑 --force: 我们动过但不算用户改 → 该"已一致"(以前会说"本地已修改, 跳过")
+	out := captureOutput(t, func() {
+		if err := initNewProject("app", "ui", true, writeOpts{noInstall: true}); err != nil {
+			t.Errorf("重跑失败: %v", err)
+		}
+	})
+	if !strings.Contains(out, "go.mod") || strings.Contains(out, "go.mod 本地已修改") {
+		t.Errorf("自己抬过依赖的 go.mod 不该说本地已修改:\n%s", out)
+	}
+	// 反过来: 用户真改过时不能被"洗成基线"蒙过去
+	p := filepath.Join(wd, "app", "README.md")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, append(append([]byte{}, data...), []byte("\n我的项目说明\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() {
+		if err := initNewProject("app", "ui", true, writeOpts{noInstall: true}); err != nil {
+			t.Errorf("重跑失败: %v", err)
+		}
+	})
+	if !strings.Contains(out, "README.md 本地已修改, 跳过") {
+		t.Errorf("用户改过的该报本地已修改:\n%s", out)
+	}
+	// 被跳过的那份不能被顺手洗成基线(否则下次模板升级会连用户改动一起替换)
+	man = loadManifest(filepath.Join(wd, "app", "ui"))
+	if man.Project["README.md"] == sha256Hex(mustRead(t, p)) {
+		t.Error("跳过的文件被洗成了基线 —— 下次模板升级会覆掉用户的改动")
+	}
+}
+
 // TestMain 默认把 go get 换成桩: 单测绝不联网改依赖。
 func TestMain(m *testing.M) {
 	goGetModule = func(string, string) error { return nil }

@@ -1360,6 +1360,8 @@ func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 		{".gitignore", gitignoreTemplate},
 	}
 	skipped := 0
+	// delivered 记下"这次真的交付了"哪些模板 —— 末尾要按盘上的内容重算它们的基线(见下面)。
+	delivered := map[string]bool{}
 	// 预览用的动词: 与实际写入同一套判定, 只是前面加"将"、不落盘。
 	verb := func(created string) string {
 		if w.dryRun {
@@ -1383,11 +1385,13 @@ func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 					return fmt.Errorf("写入 %s 失败: %v", path, err)
 				}
 				inst.Project[f.name] = sha256Hex(data)
+				delivered[f.name] = true
 			}
 			info("%s %s", verb("创建"), path)
 		case placeSame:
 			if !w.dryRun {
 				inst.Project[f.name] = sha256Hex(data)
+				delivered[f.name] = true
 			}
 			info("已一致 %s", path)
 		case placeUpgrade:
@@ -1397,6 +1401,7 @@ func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 					return fmt.Errorf("写入 %s 失败: %v", path, err)
 				}
 				inst.Project[f.name] = sha256Hex(data)
+				delivered[f.name] = true
 			}
 			info("%s %s (模板升级)", verb("更新"), path)
 		case placeEdited, placeUnknown:
@@ -1419,6 +1424,7 @@ func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 					return fmt.Errorf("写入 %s 失败: %v", path, err)
 				}
 				inst.Project[f.name] = sha256Hex(data)
+				delivered[f.name] = true
 			}
 			info("%s %s%s", verb("覆盖"), path, lost)
 		}
@@ -1451,6 +1457,24 @@ func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 		} else {
 			depsReady = true
 			info("依赖安装完成")
+		}
+	}
+	// 基线按"交付完成那一刻盘上的内容"记, 而不是"我们打算写的字节": 同一次 init -n 后面
+	// 自己就会改写 go.mod(ensureRuntime 的 go get、以及 go mod tidy 都会动它), 按原样记
+	// 就必然与盘上一致不上 —— 下次 `init -n --force` 会说"本地已修改, 跳过", 可用户根本没
+	// 动过。只重算这次真的交付了的那些: 被跳过的那份(用户改过)不许洗成基线, 否则下次模板
+	// 升级会连用户的改动一起替换掉。清单要重新加载 —— scaffoldUI 里的 add 已经存过一份。
+	if len(delivered) > 0 {
+		man := loadManifest(uiDir)
+		for f := range delivered {
+			data, err := os.ReadFile(filepath.Join(dir, f))
+			if err != nil {
+				continue
+			}
+			man.Project[f] = sha256Hex(data)
+		}
+		if err := man.save(uiDir); err != nil {
+			warn("写入安装清单失败: %v", err)
 		}
 	}
 	next := "接下来:\n"
