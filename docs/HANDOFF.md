@@ -14,6 +14,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **README 瘦身: 只留"怎么用"(2026-11-03, 461 → 394 行)**: 用户反馈太长。按 AGENTS 的分工把不属于"面向用户的安装与用法"的五类内容清出去, 规则已写进 AGENTS 的 README 条目(避免下次再长回来)。
+  - **A 修复史与辩驳口吻(9 处)**: 「以前 `--force` 一个旗同时干两件事…能把你改过的 main.go 无声覆掉」「以前这条是写死 ui/ 的」「init 以前完全没有预览, 只能赌一把」「不会拿"没有差异"糊弄你」「收下 `-j` 又不生效是骗人」「默认 0 是有意的」「不该去改那个不相干模块的依赖」等 —— 全是向 reviewer 解释"为什么改", 用户只需要"怎么做"。**这些改动的过程与实测证据本来就在本文各批条目里, 没有信息损失**。
+  - **B CLI 内部机制**: 探测就是拉一次 `registry.json`(6s 超时)、选路逐行打 stderr、拷到一半换源并"粘住"、清单里 `project_files` 这个字段名、`undefined: xui.PresenceOnce` 的成因推导。留结论(会换源、不会留半套、五种情况不动依赖), 细节以代码与 DESIGN 为准。
+  - **C 三份重复**: 同一约定在 README / DESIGN 第五节 / `xui --help` 各抄一份(grep 证据: `只压进度输出` 1/1/3, `配套运行时` 2/1/7)。定死归属 —— **开关清单与改动判定以 `xui --help` 为准**, `-j` 的 JSON 字段表只在 README(别处没这份), 原理与坑在 DESIGN, 时间线在本文。README 的选项从 17 条散段改成一张 15 行的表。
+  - **D 仓库内部/贡献者内容**: 删 `## 设计要点`(与 DESIGN 一~三节重复)、`## 参考实现` 一节(shadcn 仓库内路径 + "demo/ 是视觉验证程序")、"改任何组件的交互前先看 DESIGN 第四节末"那条**给 AI 的规则**(AGENTS 已有)。**核实过没有信息损失**: AGENTS 记的本地参考实现路径更准确(令牌在 `src/index.css`, README 原写的 `app/globals.css` 是上游仓库的形状), 逐组件的上游来源本文各条目也各有记录; hover 过渡/`xui.Hover`/`Presence` 机制在 DESIGN 有 17 处, 所以 README 的动画段压成"要做的两件事 + 指针"。
+  - **E 组件表**: 逐行去掉 `With*/Set*` 全量枚举(59 → 58 行, 合并了 Avatar/AvatarGroup 与 Toggle/ToggleGroup 两行), 每行只留"作用 + 会影响选型的注意点"(ComboBox/Combobox 的命名陷阱、Popover 内嵌自弹窗要 `WithPopoverKeepOnBlur`、Tray 单实例警告、Textarea 随内容长高 vs Input+WithMultiline)。**踩到一次静默缺失**: 整段替换先吃掉了 `Label / Card / Badge / Separator`, 补回后仍漏了 Carousel / Resizable / Tabs / Tooltip —— 是拿 `registry.json` 逐键比对才发现的, 只 diff 上一版看不出来(上一版本身就是错的对照)。教训已写进上面的验证条。
+  - **顺带修准一处死指针**: README 原说 DESIGN 第九节是"已验证 API 清单", 实际那是**本库依赖的 xcgui** 的 API 清单, 不是 xui 各组件的选项表 —— 组件完整选项改指向 pkg.go.dev 与组件源码注释(每个 `With*` 都有注释)。AGENTS 的 DESIGN 条目同步写清, 免得以后再指错。
+  - **验证**: 组件名与 `registry.json` 逐键比对(65 键, 唯一两个不匹配是 `combobox-search` 这个文件键与顶层 `components` 键, 都不是组件名);表格行都以 `|` 收尾;`#cli` 锚点仍在(第 45 行引用它);被删的辩驳措辞 grep 无残留;`docs/` 与 AGENTS 没有指向被删章节的死引用。
 - ✅ **CLI: 一批参数设计问题(2026-11-03, 延续 -o 措辞那条规则)**:
   - **规则**: 参数被接受就必须生效; 措辞不能超出证据; 结果(payload)与进度(progress)分两层。
   - **`-s/--silent` 不再吞掉命令结果**: 新增 `out`/`outRaw`(结果, 永远打 stdout)与 `info`/`infoRaw`(进度, 受 -s 压)。改为结果输出的有 `list` 的组件表与计数、`view`/`--diff` 的源码与差异头、`infoCommand`、`self-update --check` 的对比、`xui version`(原来走裸 `fmt.Println`, 与 -s 的关系不明)。实测修复前 `xui list -s` / `xui info -s` = **0 字节 + exit 0**(脚本读到"什么都没发生"), 修复后分别 3207 / 252 字节。
@@ -908,6 +916,7 @@
 
 - ℹ️ Input 的文字/光标/选区/IME 由原生 Edit 绘制(只开放字体/字色/占位符色/插入符色/内边距, 见 DESIGN 三 第 4 条 / 23 / 61)。
 - 完整清单见 DESIGN 第七节。
+
 
 ## 待办
 

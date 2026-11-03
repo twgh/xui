@@ -124,104 +124,84 @@ t.SidebarPrimaryForeground = t.PrimaryForeground
 xui.SetTheme(&t)
 ```
 
-demo 的标题栏调色板菜单与「基础1 → 主题色」卡片演示了这套做法(蓝色/绿色/紫色/玫瑰/橙色, 亮暗各一套)。
+demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做法(`go run github.com/twgh/xui/demo@latest` 可直接跑)。
 
 ## 组件
 
 | 组件 | 说明 |
 |---|---|
-| Button | 6 变体(Primary/Secondary/Outline/Ghost/Destructive/Link)× 8 尺寸档(xs/sm/default/lg + 4 个方形图标档),hover/按下/禁用/焦点环/校验失败(`WithButtonInvalid`);`WithIcon` 做图标按钮,`WithButtonLeadingIcon` / `WithButtonTrailingIcon` 做"图标+文字",`WithButtonAlign(Start/Between)` 控制整宽按钮的内容对齐(示例里的 justify-start/justify-between)、`WithButtonRounded` 胶囊、`WithButtonExpanded` / `WithButtonHasPopup` 对应弹层触发区、`WithButtonLoading` 显示 1s/圈旋转的加载图标;`cx` 传 0 时按文字自动量宽 |
-| ButtonGroup | 按钮组(`components/buttongroup.go`):横向/纵向(`WithButtonGroupOrientation`)、首尾外角 + 相邻边直角、宽高按内容自撑;可放 Button / Input / ComboBox;`NewButtonGroupText` 文本块、`NewButtonGroupSeparator` 分隔条跟随组高;组里嵌组自动 8px 间距 |
-| Alert | 提示条:图标 + 标题 + 描述 + 右上动作槽;`AlertDefault` / `AlertDestructive` 两变体,标题/描述随宽度自动折行、高度按内容自撑;`Action()` 里放 Button / Badge |
-| Empty | 空状态容器(`components/empty.go`):图标底板(`EmptyMediaIcon`, 40px bg-muted 圆角)/无底板媒体 + 标题 + 描述 + 动作区;`NewEmpty` 的 `Header()` / `Content()` / `Body()` 三个槽位,内边距 24、间距 24、整块居中;不画边框(与上游默认一致),高度自撑,整页空态可 `xui.ItemFillHeight` 让内容垂直居中 |
-| Field | 表单字段布局(`components/field.go`):`NewField` + `Label` / `Title` / `Description` / `Content` / `SetInvalid`;`FieldSet`(gap 24)/ `FieldGroup`(gap 28)/ `FieldLegend` / `FieldSeparator`(可带居中文字)/ `FieldError`(多条去重);垂直/水平取向,校验失败时标签转 destructive;横向 `Content` 默认 240 宽(嵌套布局只认 Fixed 宽,用 `xui.ItemWidth` 覆盖) |
-| Item | 列表项(`components/item.go`):`NewItem` + `Media()` / `Content()` / `Actions()` / `Header()` / `Footer()` 槽位;`ItemDefault` / `ItemOutline` / `ItemMuted` 三变体,`ItemSizeDefault` / `ItemSizeSm` 两档;`ItemMedia`(icon 变体 32 底板)/ `NewItemTitle` / `NewItemDescription` / `NewItemGroup` / `NewItemSeparator`;Content 宽度按媒体/动作实测自动锁成 Fixed |
-| Breadcrumb | 面包屑(`components/breadcrumb.go`):`NewBreadcrumb` 横向换行列表 + `NewBreadcrumbItem` / `NewBreadcrumbLink`(hover 过渡到前景色、`OnClick`)/ `NewBreadcrumbPage` / `NewBreadcrumbSeparator`(可换图标)/ `NewBreadcrumbEllipsis`;文本自绘、按字体精确量宽 |
-| Kbd | 键帽(`components/kbd.go`):高 20、bg-muted、rounded-sm、text-xs,宽度按文字自适应;`NewKbdGroup` 组合键间距 4 |
-| Skeleton | 骨架屏(`components/skeleton.go`):bg-accent + 主题圆角 + 2s 脉冲;`WithSkeletonCircle` 头像、`WithSkeletonRadius` 自定义圆角、`WithSkeletonStatic` 关闭动画 |
-| Spinner | 加载指示器(`components/spinner.go`):Loader2 图标 1s/圈旋转,`WithSpinnerSize` / `WithSpinnerMuted` / `WithSpinnerColorFunc`,`SetSpinning` 开关 |
-| Toggle | 双状态按钮(`components/toggle.go`):`ToggleVariantDefault`(透明底)/ `ToggleVariantOutline`(border-input)、`ToggleSizeDefault/Sm/Lg`(h-9/h-8/h-10);`WithTogglePressed` 初始选中、`WithToggleIcon` 行内图标、`WithToggleInvalid` 校验失败;鼠标/空格/回车切换,支持焦点环与 `OnChange` |
-| ToggleGroup | 切换按钮组(`components/toggle.go`):`NewToggleGroup(parent, WithToggleGroupVariant/Size/Spacing/Multiple)` + `AddItem(value, text, ...)`;单选默认同组互斥且可全部取消,`Value` / `SetValue` / `OnChange`,spacing=0 首尾外角(分段控件),spacing 为逻辑像素 |
-| NativeSelect | 原生下拉框(`components/native_select.go`):ComboBox 载体 + `<option value>` 字符串语义(`Value` / `SetValue` / `OnValueChange`);`WithNativeSelectPlaceholder` / `WithNativeSelectSize` / `WithNativeSelectInvalid`;富条目(图标/禁用/分组)用 Select |
-| Select | 独立下拉选择框(`components/select.go`,radix item-aligned 弹层):条目 `SelectItem{Value, Text, Icon, Disabled}`、分组 `SelectGroup{Label, Items}`(`WithSelectGroups` / `WithSelectItems`);弹层盖住触发区、选中项正对触发区,↑↓(跳过禁用)/Home/End 移动高亮、Enter/空格 选中、ESC 关闭;`Open` / `Close` / `IsOpen` / `SetValue` / `OnChange` |
-| InputOTP | 验证码输入框(`components/inputotp.go`):逐格输入,打进已填格 = 替换并前进;←→/Home/End 移动、Backspace 空格退格、Ctrl+V 分发粘贴(非法字符跳过);`WithInputOTPLength` / `WithInputOTPPattern(InputOTPPatternDigit/Alphanumeric/Any)` / `WithInputOTPSeparatorAfter(n)` / `WithInputOTPValue` / `WithInputOTPInvalid` / `WithInputOTPDisabled`;全满触发 `OnComplete` |
-| Accordion | 手风琴(`components/accordion.go`):`NewAccordion` + `AddItem(value, title)`(返回条目,内容放 `ContentStack()`,**内容里的子项记得 `xui.ItemFill` 声明宽度**);single 单开互斥可全收 / `WithAccordionMultiple` 各自独立;触发区 hover 下划线 + 箭头随开合切换,条目间 1px 分隔线,展开 200ms 高度过渡;根 `Value` / `SetValue` / `OnChange` |
-| Popover | 弹出卡片(`components/popover.go`):`NewPopover(trigger.Handle, WithPopoverContent(func(c int){...}))`,内容放进纵向流容器;点击触发、点外部/ESC 关闭;默认宽 288、内边距 16、内容高自撑,`WithPopoverWidth/Height/Padding/Gap/Side/Align`;内容里嵌了会自己弹窗的控件(如 ColorPicker)时用 `WithPopoverKeepOnBlur(true)`,否则点那个控件时本卡片先失焦关掉;`PopoverHeader/Title/Description` 做标题区;`Open/Close/IsOpen/Refresh` |
-| HoverCard | 悬停卡片(`components/hovercard.go`):`NewHoverCard(trigger.Handle, WithHoverCardContent(...))`;悬停 700ms 打开、移出 300ms 关闭,卡片可交互且不抢焦点;`WithHoverCardWidth/Padding/Side/Align/Delay`;适合用户资料预览 |
-| Avatar | 圆形头像(`components/avatar.go`):`NewAvatar(..., fallback, WithAvatarSize/Image/ImageData/Ring/Badge)`;图片居中裁圆,无图回落首字母;右下角徽标(可带图标);`NewAvatarGroup` 负间距叠放 + `Add` / `AddCount`;尺寸 sm 24 / default 32 / lg 40 |
-| Sheet | 侧边面板(`components/sheet.go`):`NewSheet(w.Handle, WithSheetSide(SheetRight/Left/Top/Bottom))`,标题/描述/内容/页脚与 Dialog 同一套(`SetTitle` / `SetDescription` / `Content()` / `AddFooter`);`WithSheetWidth` / `WithSheetCloseButton` / `WithSheetDuration`;ESC / 点遮罩 / X 关闭,Tab 焦点陷阱,从贴边侧滑入 |
-| Drawer | 底部抽屉(`components/drawer.go`):`NewDrawer(w.Handle)` + 同款内容 API;顶部抓手按住下拖过面板高 1/3 关闭、否则回弹;`WithDrawerDirection` 可改 top/left/right;`BindTrigger` / `BindClose` / `OnClose` |
-| Menubar | 菜单栏(`components/menubar.go`):`NewMenubar(card.Content())` + `AddMenu("文件")`,条目 API 与 Menu 共用(`Item` / `Check` / `Radio` / `Label` / `Separator` / `Sub`,选项同为 `MenuShortcut` / `MenuOnSelect` / `MenuOnCheck` / `MenuDisabled` / `MenuDestructive` / `MenuGroup` / `MenuIcon` / `MenuInset`);打开任一菜单后鼠标移到其它触发区即切换,↑↓/Home/End/Enter/←→/ESC/Tab 键盘导航,子菜单悬停展开 |
-| NavigationMenu | 导航菜单(`components/navigationmenu.go`):`NewNavigationMenu(parent)` + `AddMenu(title, func(c *ui.NavigationMenuContent){ c.Link(标题, 说明, fn) }, WithNavigationMenuWidth(w))` + `AddLink`;所有菜单共用一个贴在列表下方的视口,悬停 200ms 打开、离开 150ms 收起,切换菜单时视口随内容收放、新页面从切换方向滑入;内容里可用 `LinkIn` 放进 `xui.HStack` 做多列网格,`c.Handle()` 放任意自定义控件;内容不抢焦点,键盘 ←→/↓/Enter/ESC 与 `Value` / `SetValue` / `OnValueChange` |
-| Carousel | 轮播(`components/carousel.go`):`NewCarousel(x,y,cx,cy,parent, WithCarouselLoop/Controls/Vertical/Gap/Duration/InitialIndex/Autoplay/OnChange)` + `AddSlide(func(s *ui.CarouselSlide){...})`;整页滑动(300ms,循环首尾相接)、←/→ 键盘翻页、鼠标拖拽松手吸附;上/下张是内容外侧 48px 的圆形描边按钮,到边界禁用;幻灯片是纵向流容器,内容超出由视口裁剪;`SetIndex` / `Next` / `Prev` / `Index` / `SetLoop` / `SetAutoplay` / `PrevButton` / `NextButton` |
-| Resizable | 可调整分栏(`components/resizable.go`):`NewResizableGroup(x,y,cx,cy,parent, WithResizableVertical/Disabled/OnResize)` + `AddPanel(WithResizableSize/Min/Max)` + `AddHandle(WithResizableGrip)`;面板按百分比分主轴空间、窗口缩放保持比例,拖动分隔条伸缩两侧面板(相邻到下限后挤压更远的);方向键每次 5%、Home/End 到边界、双击分隔条复位;分隔条可 Tab 聚焦;`Sizes` / `SetSizes` / `OnResize` / `SetDisabled` |
-| Sidebar | 侧边栏(`components/sidebar.go`):`NewSidebar(x,y,cx,cy,parent, WithSidebarSide/Variant/Collapsible/Width/IconWidth/Open/Rail/OnOpenChange)` 返回"面板 + 主内容区",`Main()` 放页面内容;`Header()` / `Content()` / `Footer()` + `AddHeaderItem` / `AddFooterItem`;`AddGroup(label)` 分组(标签 + 组动作 + 菜单), `AddItem(text, icon, WithSidebarItemActive/Size/Badge/Tooltip/Disabled/OnClick/Action)`, `AddSub()` 子菜单(右侧 chevron, 点击父项开合, `SubOpen` / `SetSubOpen` / `ToggleSub`);三种外观(sidebar/floating/inset)、左右贴边、offcanvas/icon/none 折叠(200ms 宽度过渡,Ctrl+B),icon 折叠悬停出右侧 tooltip,rail 细条点击开合;`SetOpen` / `Toggle` / `Open` / `OnOpenChange` |
-| Command | 命令面板(`components/command.go`):`NewCommand` + `AddGroup(label).AddItem(value,text, WithCommandItemIcon/Shortcut/Keywords/Disabled)` + `AddSeparator`;输入即过滤、↑↓ 循环跳过禁用、Home/End/Enter/ESC,鼠标悬停高亮;`WithCommandOnSelect/Placeholder/EmptyText`;可放进 `ui.NewDialog` 组合成命令面板弹窗 |
-| Checkbox / Radio | 自绘指示器 + 原生状态管理;Checkbox 三态(`WithCheckboxIndeterminate` / `SetIndeterminate`,不确定态画减号、点击落到选中)、校验态(`WithCheckboxInvalid` / `SetInvalid`);Radio 同款校验态;两者都支持空格切换/选中与键盘焦点环;"整块区域可点"时用 `Checkbox.Toggle()` / `Radio.Select()` 走与点击指示器相同的路径(`SetSelected` 是不触发回调的静默版),放进非 Card 底色的容器时用 `SetBackdrop` 跟随宿主底色(组件重绘不擦底) |
-| RadioGroup | 单选组(`components/radiogroup.go`):`NewRadioGroup(parent, WithRadioGroupValue/Disabled/Invalid/Spacing)` + `AddItem(value, text)`;另用 `Attach(radio, value)` 收编放在 Field 等子容器里的条目(跨父级互斥);`Value` / `SetValue` / `OnChange` / `SetDisabled` / `SetInvalid`;↑↓←→ 循环移动并选中、Home/End 首末、空格选中,组级禁用不影响各自原有禁用项 |
-| Textarea | 文本域(`components/textarea.go`):`NewTextarea(x,y,cx,cy,parent,opts...)` = Input 的多行预设 + **随内容自动长高**(`field-sizing-content`);上下内边距 8、默认最小高度 64(min-h-16,`cy` 可覆盖),占位符/禁用/校验环沿用 Input;行数取原生 Edit 的显示行数(含自动换行),内容永远装得下所以不出滚动条;要固定高度/滚动条用 `Input` + `WithMultiline` |
-| Input | 原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环,占位符随主题;校验失败态 `WithInputInvalid`;内嵌附加件:`WithLeadingIcon` / `WithPrefixText` / `WithSuffixText` / `WithClearButton` / `WithPasswordToggle`(配合 `SetPasswordVisible` / `PasswordVisible`) / `WithCounter`;步进器 `WithStepper(min,max,step)` + `SetNumber` / `Number` / `OnStep`(支持 −/+ 按钮与 ↑/↓ 键,失焦自动夹取吸附;`WithStepperArrows` 换成上下三角 = 原生 number 输入框形态,`WithStepperAutoHide` 让按钮只在悬停/聚焦时出现) |
-| Switch / Progress / Slider | 开关 / 进度条 / 滑块。Switch: 尺寸 `WithSwitchSize`、`WithSwitchDisabled`、`WithSwitchInvalid`(aria-invalid 红边 + 常驻红环)、空格切换;Progress: `WithProgressMax`、`WithProgressIndeterminate`(短条往返)、指示器颜色函数、`ui.NewProgressField`(标题 + 百分比 + 条);Slider: 值域/步进(`WithSliderRange` / `WithSliderStep`)、值数组(范围与多滑块 `WithSliderValues` / `WithSliderRangeValue`)、垂直(`WithSliderVertical`)、`WithSliderInverted`、`WithSliderDisabled`、`minStepsBetweenThumbs`,以及 `OnValuesChange` / `OnValuesCommit` |
-| InputGroup | 输入组(`components/inputgroup.go`):输入框与附加件共用一层边框/焦点环,内层是"裸输入"(不画壳体,见 `WithInputBare`);`Addon(InputGroupInlineStart/InlineEnd/BlockStart/BlockEnd)` 四向附加件,内容可 `Text` / `Icon` / `Button` / `IconButton` / `Kbd` / `Spinner` / `MenuButton`(复合 addon:下拉菜单触发)/ `Content()` 自由放控件;一个 addon 可放多个控件(整体外扩一次、间距 8),按钮尺寸支持 xs/sm/icon-xs/icon-sm;`Input(...)` / `Textarea(cy,...)` / `Search(placeholder)`;`SetInvalid` / `SetDisabled` / `Focus`;block-* 存在时自动切成"标题行 + 输入行 + 页脚行"的三段式,文本域高度自撑 |
-| Tabs | 标签页(default / line 两个变体):行内图标(`TabsItem`)、单标签禁用、value 语义(`WithTabsValues`)、面板绑定(`BindPanel`);支持纵向堆叠(`WithTabsVertical`)与自动换行(`WithTabsWrap`);键盘 = 整块一个 Tab 站点, ←/→/↑/↓ 移动、Home/End 首末、Enter/空格切换(`WithTabsManual`) |
-| Collapsible | 可折叠面板(触发区 + 内容区):`NewCollapsible` 建根容器,`BindTrigger` 绑定任意 Button 作触发区,内容放进 `Content()`/`ContentStack()`;展开/收起带 200ms 高度过渡(收起后不占布局),支持初始展开(`WithCollapsibleOpen`)、禁用与 `OnOpenChange` |
-| ComboBox | 原生下拉框(列表由独立透明弹出窗口承载, 打开时 100ms 淡入);触发区支持 sm 尺寸(`WithComboSize`)与校验失败态(`WithComboInvalid`)。**注意**: 这是原生 ComboBox 载体(`shadcn select` 的对应物);要"输入即过滤的建议列表"用下面的 Combobox |
-| Combobox | 自动补全选择框(`components/combobox_search.go`,对应 shadcn 文档的 Combobox = Popover + Command):触发按钮 + 弹层搜索框 + 建议列表;输入即过滤(不区分大小写)、↑↓ 循环移动(跳过禁用)、Home/End、Enter 选中、ESC 关闭;条目模型与 Select 共用 `SelectItem{Value,Text,Icon,Disabled}` / `SelectGroup{Label,Items}`;单选选中即关闭,`WithComboboxMultiple` 多选点击切换且保持打开(触发区显示"首个值 +N");`WithComboboxPlaceholder/SearchPlaceholder/EmptyText/Value/Values/Size/Invalid/Disabled`、`SetItems` / `SetGroups` / `SetValue` / `SetValues` / `SetQuery` / `Open` / `Close` / `IsOpen` / `OnChange` |
-| Calendar | 月历卡片(全自绘):6×7 固定网格、周起始日可调(`WithCalendarWeekStart`)、选中实心/今天浅底/悬停过渡;**范围选择**(`WithCalendarRange` + `WithCalendarOnRangeSelect`, 两次点击落区间、端点交换/中段色带, 同 react-day-picker)、**多月并排**(`WithCalendarMonths(1~4)`)、**ISO 周数列**(`WithCalendarWeekNumbers`)、禁用(`WithCalendarDisabled` + Before/After/Weekend/Dates helper)与预订划线(`WithCalendarStrike`)、年月可下拉(`WithCalendarYearRange`)、页脚/预设(`WithCalendarFooter` / `WithCalendarPresets`, 自动换行);可独立摆放, 弹层内用 `WithCalendarFlat` 免双层边框; 尺寸 helper `CalWidthFor` / `CalWidthForWeekNumbers` / `CalHeightForMonths` |
-| DatePicker | 日期框:outline 触发区 + 自建阴影弹层(内含 Calendar),下方放不下自动翻到上方;点外部/ESC 关闭,`OnChange` 回调;**范围模式**(`WithDatePickerRange`, 弹层并排两个月, 起点未落终点时保持打开, `Range/SetRange/OnRangeChange`)、预设按钮(`WithDatePickerPresets`)、年份范围与禁用日期、**可输入形态**(`WithDatePickerEditable`: 可键入 2026-10-22 / 今天 / 3天后, Enter/失焦回写, 右侧日历钮打开弹层) |
-| TimePicker | 时间框:outline 触发区 + 弹层内"时/分"两列滚动列表(原生 ListBox 行为,条目自绘);选择即生效,弹层保持打开 |
-| ColorPicker | 颜色选择器(`components/colorpicker.go`):触发区(色块 + `#rrggbb` + chevron) + 弹层(SV 方块 / 色相条 / 预设色 / Hex 输入);SV 方块按下即取色、拖出方块也能继续调(捕获鼠标),色相条点/拖改色相,预设色点选,Hex 满 6 位才应用;颜色以 `#rrggbb` 进出,`WithColorPickerValue` / `WithColorPickerOnChange` / `WithColorPickerWidth` / `WithColorPickerPlaceholder` / `WithColorPickerPresets`,方法 `Value` / `SetValue` / `OnChange` / `Open` / `Close` / `Toggle` / `IsOpen` |
-| Menu | 下拉菜单 / 右键菜单(原生菜单承载行为 + 自绘皮肤):条目 / 勾选 / 单选组 / 子菜单 / 快捷键 / 禁用 / 破坏性 / 文字缩进(`MenuInset`, 条目/Label/Sub 都可用) / 前置图标(`MenuIcon`);`NewContextMenu(触发区元素, build)` 右键触发(每次右键重建菜单, 支持 `SetEnabled` / `OnOpenChange`);弹层宽支持 `Width` 固定、触发区对齐、内容自适应 + 128 下限 |
-| Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点):上下左右四方向 + 对齐/间距、显示延迟与跳过延迟、键盘焦点也触发、内容可带快捷键块(`WithTipShortcut`) |
-| Toast | 通知(窗口内覆盖元素,默认右下角堆叠,支持四角与上下居中):4 种语义类型(success/error/warning/info)+ 动作按钮 + 可选关闭按钮;`WithToastRichColors` 可让类型给整卡上色;自动关闭(默认 4s)、悬停暂停、进出场滑入淡入;`NewToaster(w.Handle).Success("标题","描述")` |
-| ScreenToast | 屏幕通知(独立置顶小窗,固定在**屏幕**右下角;应用最小化/隐藏也能看到,不占任务栏、不抢焦点):`NewScreenToaster(w.Handle)` 指定宿主窗口(取它的显示器、驱动动画,并在宿主销毁时自动清理小窗);API 与 Toast 一致 —— `Show(ToastOptions)` / `Success/Error/Warning/Info/Loading` / `Promise` / `Update/Close`,选项 `WithScreenToastWidth/Offset/Gap/Duration/MaxVisible/RichColors/CloseButton`;共用 Toast 卡片绘制与 4s 自动关闭、悬停整组暂停 |
-| ScreenPopup | 屏幕弹窗(固定在**屏幕**工作区右下角的常驻面板,**不是通知**:默认不自动关闭、不堆叠):`NewScreenPopup(w.Handle, WithScreenPopupWidth/Height/Offset/Padding/Gap/Duration/Focusable/CloseButton/Header/OnOpenChange/Content)` 指定宿主窗口(取它的显示器、随宿主销毁),卡片是圆角阴影 + 任意 xui 内容(自动高,内容增删后 `FitContent`);`WithScreenPopupDuration(8*time.Second)` 显示后到点自动关(每次 `Show` 重新计时、不因悬停暂停),`WithScreenPopupHeader("标题")` 自带标题 + 右上角 X、`WithScreenPopupCloseButton()` 只要 X,`WithScreenPopupOnOpenChange(fn)` 同步开关状态(含 X/超时);`Show/Hide/Toggle/IsOpen/Content/Handle/Destroy`(显隐都有 100ms 淡入淡出, 内容与阴影一起淡; 关闭淡出中重新 `Show` 会反向淡入);默认不抢焦点(鼠标悬停/点击正常,但内容拿不到键盘焦点),`WithScreenPopupFocusable(true)` 改为可点击激活: 显示仍不抢前台, 用户点弹窗后输入框可用(失焦不自动关,ESC 收起) |
-| Tray | 系统托盘(`components/tray.go`):`NewTray(w.Handle, "app.ico", "提示", WithTrayMenu(func(m *ui.Menu){ ... }))` 创建即显示;左键默认还原/前台化绑定窗口(最大化时保持最大化, `WithTrayLeftClick` 可覆盖),右键弹出每次重建的 themed Menu;**图标也可从 exe 资源加载**:`WithTrayIconHandle(wapi.LoadImageW(wapi.GetModuleHandleW(""), common.StrPtr("APP"), wapi.IMAGE_ICON, 0, 0, wapi.LR_SHARED|wapi.LR_DEFAULTSIZE))`(资源由 `xc res` 生成 `.syso`;`LR_SHARED` 的图标不要 `DestroyIcon`),`WithTrayIconHandle` 的 HICON 不代管释放;`SetIcon/SetIconHandle/SetTips/Hide/Show/Balloon/Destroy`;监听 `TaskbarCreated`,Explorer 重启后自动恢复图标;⚠️ 同一进程只应创建一个托盘图标(xcgui 托盘 API 是全局状态) |
-| AppWindow | 主窗口封装:圆角阴影 + 自绘标题栏(最小化/最大化/关闭,双击标题栏最大化/还原,拖动,最大化图标自动切换) + 主题化底色;`NewAppWindow("标题", 640, 480)` 后往 `Content()` 里放内容,`AddCaptionButton` 加标题栏按钮(如切换主题),`WithAppWindowNoMinMax` 只留关闭 |
-| Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述(按宽度折行)+ 任意内容 + 页脚按钮;ESC、点击遮罩、右上角 X 关闭,Tab 在对话框内循环;`WithDialogScroll` 让内容区滚动、头部/页脚固定,`BindClose` 可把任意控件变成关闭钮 |
-| AlertDialog | 警示对话框:必须明确选择(无右上角 X、点遮罩不关闭、ESC 关闭,焦点落在 Cancel);`AlertDialogSizeDefault` / `Small`(居中头 + 等宽双列页脚)、`WithAlertDialogMedia` 图标块(含破坏性配色);`AddCancel` / `AddAction` 点击后关闭;与 Dialog 共用遮罩/模糊/焦点陷阱,支持对话框内再叠一层 |
-| Table | 数据表格(原生 `List` 载体 + 全自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽支持"占满剩余宽度" |
-| DataTable | 数据表格(`components/datatable.go`,在 Table 之上加排序/筛选/分页/编辑):`NewDataTable(x,y,cx,cy,parent, []DataColumn{Title, Width, Sortable, Compare, Align, Render, Hidden, NoHide, FilterOptions, ReadOnly}, WithDataTableSearch/NoSearch/PageSize/PageSizes/FilterColumns/Selection/ColumnToggle/Editing)`;表头点击弹 升序/降序/隐藏 菜单(再点当前项取消), Shift+点击表头追加**多列排序**(箭头后显示次序), 表头可拖拽换列顺序;顶部关键字筛选(不区分大小写, 清除按钮即时刷新)+ 每列**分面筛选**(配了 `FilterOptions` 的列在工具栏多出触发区, 点开是 Popover + Command 面板: 可搜索、连续多选不关闭、显示各选项当前行数);勾选 = `WithDataTableSelection`(普通点表头复选框 = 整页, Shift+点击 = 跨页全选筛选结果)、列显隐 = `WithDataTableColumnToggle`、富单元格 = `DataColumn.Render`、**双击原地编辑** = `WithDataTableEditing`(Enter/失焦提交、Esc 取消, `OnCellEdit` 返回 false 拒绝提交, `ReadOnly` 排除该列, 自绘列也能编辑);页脚总行数 / 每页行数下拉 / 第 x / y 页 + 首页·上一页·下一页·末页(到端点禁用);`SetRows/AddRow/Refresh/SetColumns`、`SetFilter/Filter`、`SetSort/Sort`、`SetSortKeys/SortKeys`、`SetPage/Page/PageCount`、`SetPageSize/PageSize`、`SetFacet/FacetValues/ResetFilters`、`Selected/ClearSelection/SelectAllFiltered`、`SetColumnVisible/ColumnVisible`、`OnSortChange/OnSortKeysChange/OnPageChange/OnFilterChange/OnFacetChange/OnRowClick/OnCellClick/OnSelectionChange/OnCellEdit`;空结果显示"暂无数据 / 没有匹配的数据" |
-| Tree | 树形视图(原生 `Tree` 载体 + 全自绘皮肤):缩进参考线/旋转 chevron/行悬浮选中;叶节点留空槽位文字全树对齐,点击 chevron 展开收起 |
-| Chart | 图表(`components/chart.go`,纯自绘):`NewChart(x,y,cx,cy,parent, WithChartKind(ChartBar/ChartLine/ChartArea/ChartPie/ChartDonut/ChartRadial/ChartRadar), WithChartData(分类, ChartSeries{Label, Values}), WithChartHorizontal(横向柱), WithChartStacked/Curve/Dots/BarLabels/Grid/Tooltip/Legend, WithChartYFormat/YDomain, WithChartInnerRatio, WithChartCenter(标题, 副标题))`;数值轴按数据自动取整齐刻度(1/2/2.5/5 × 10^n),柱/曲线/面积悬停出指示线 + 提示卡,圆环/饼图悬停扇区外扩并提示、中心可放两行文字、点图例临时隐藏该分类,径向图每分类一层同心弧、雷达图每分类一根等角轴(悬停高亮该轴);运行时可 `SetData/SetKind/SetHorizontal/SetStacked/SetCurve/SetDots/SetGrid/SetTooltip/SetLegend/SetBarLabels/SetYFormat/SetYDomain/SetCenter/SetInnerRatio`,点击数据点用 `OnPointClick` |
-| Pagination | 分页(纯自绘单元素,鼠标驱动):上一页/下一页 + 页码 + 省略号折叠(>7 页),内容居中、当前页为描边态;`SetTotal/SetPageSize/SetPage/OnChange` |
-| ScrollArea | 滚动容器(原生 `LayoutFrame` 载体):内容比容器高时纵向滚动,内容总大小按子项自动撑开、滚动条自动显隐;主题化细滚动条,内容区 `ContentStack()` 随便塞;`SetContentFill()` 切"铺满视口 + 面板吃剩余高度"形态 |
-| AspectRatio | 固定宽高比容器: 宽度由布局/布局项决定,高度 = 宽度 / ratio(16:9、1:1、9:16…),宽度变化时自动重算并逐级重排;内容放 `Content()` 里铺满比例框,`SetRatio` 运行时切换比例 |
-| Label / Card / Badge / Separator | 静态展示组件:Badge 6 变体(含 ghost/link,悬停生效)、行内图标(`WithBadgeLeadingIcon` / `WithBadgeTrailingIcon`)、加载指示器(`WithBadgeLoading` / `SetLoading`)、自定义配色(`WithBadgeColors` / `SetColors`)与点击回调(`WithBadgeOnClick` / `OnClick`,链接形态);cx 传 0 按内容量宽,`SetText` 改文案后自动重量。Card 支持 `sm` 尺寸与说明/页脚/卡片头(`NewCardHeader` 的标题+说明+右上动作区;`Card.Footer` 页脚内边距随尺寸、内容垂直居中)、Separator 支持垂直 |
+| Button | 6 变体(default/secondary/outline/ghost/destructive/link)× 8 尺寸档;图标按钮 / 图标+文字 / 内容对齐 / 胶囊 / 加载态;`cx` 传 0 按文字自动量宽 |
+| ButtonGroup | 按钮组:横向/纵向、首尾外角 + 相邻边直角、宽高按内容自撑;可混放 Button / Input / ComboBox |
+| Alert | 提示条:图标 + 标题 + 描述 + 右上动作槽;两变体(default/destructive),高度按内容自撑、文字自动折行 |
+| Empty | 空状态容器:图标底板 + 标题 + 描述 + 动作区;三个槽位 `Header()` / `Content()` / `Body()`,不画边框 |
+| Field | 表单字段布局:Label / Title / Description / Content / 校验错误区,垂直或水平取向;横向时内容默认 240 宽(嵌套布局只认 Fixed 宽) |
+| Item | 列表项:媒体 + 内容 + 动作区 + 头/尾槽位,三变体两尺寸;配 ItemGroup / ItemSeparator / ItemTitle / ItemDescription |
+| Breadcrumb | 面包屑:链接(hover 过渡 + `OnClick`)/ 当前页 / 分隔符 / 省略号 |
+| Kbd | 键帽:宽度按文字自适应;`NewKbdGroup` 排组合键 |
+| Skeleton | 骨架屏:主题圆角 + 2s 脉冲;`WithSkeletonCircle` 做头像占位 |
+| Spinner | 加载指示器:图标 1s/圈旋转,尺寸/配色可调 |
+| Toggle / ToggleGroup | 双状态按钮与按钮组:default / outline 两变体、三档尺寸;鼠标/空格/回车切换;单选组默认互斥且可全部取消,`spacing=0` 做成分段控件 |
+| NativeSelect | 原生下拉框:`<option value>` 字符串语义,最省事的选择框;富条目(图标/禁用/分组)用 Select |
+| Select | 自绘下拉(radix item-aligned 弹层):条目可带图标/禁用/分组;弹层盖住触发区、选中项正对触发区,键盘 ↑↓/Home/End/Enter/ESC |
+| InputOTP | 验证码输入:逐格输入、打进已填格替换并前进,Ctrl+V 分发粘贴;可限字符模式与分隔位,全满触发 `OnComplete` |
+| Accordion | 手风琴:single 单开互斥(可全收)或多开;200ms 高度过渡。**注意**内容里的子项要 `xui.ItemFill` 声明宽度 |
+| Collapsible | 可折叠面板:任意控件绑作触发区,内容放进 `ContentStack()`;收起后不占布局 |
+| Popover | 弹出卡片:点击触发、点外部/ESC 关闭;内容里嵌了会自己弹窗的控件(如 ColorPicker)时要 `WithPopoverKeepOnBlur(true)`,否则本卡片会先失焦关掉 |
+| HoverCard | 悬停卡片:悬停 700ms 打开、移出 300ms 关闭,可交互且不抢焦点;适合用户资料预览 |
+| Avatar / AvatarGroup | 圆形头像:图片居中裁圆、无图回落首字母、右下徽标;组做负间距叠放 |
+| Sheet | 侧边面板:标题/描述/内容/页脚与 Dialog 同一套;ESC / 点遮罩 / X 关闭,Tab 焦点陷阱,从贴边侧滑入,四边可选 |
+| Drawer | 底部抽屉:顶部抓手按住下拖过面板高 1/3 关闭、否则回弹;方向可改 top/left/right |
+| Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述折行 + 任意内容 + 页脚按钮;`WithDialogScroll` 内容区滚动而头部/页脚固定,`BindClose` 把任意控件变成关闭钮 |
+| AlertDialog | 警示对话框:必须明确选择(无 X、点遮罩不关,ESC 关,焦点落在 Cancel);可与 Dialog 共用遮罩/模糊/焦点陷阱,支持再叠一层 |
+| Menu | 下拉菜单 / 右键菜单(原生菜单承载行为 + 自绘皮肤):条目/勾选/单选/子菜单/快捷键/禁用/破坏性/前置图标;`NewContextMenu(元素, build)` 右键触发,每次重建 |
+| Menubar | 菜单栏:条目 API 与 Menu 共用;打开任一菜单后鼠标移到其它触发区即切换,全套键盘导航,子菜单悬停展开 |
+| NavigationMenu | 导航菜单:所有菜单共用一个视口,悬停开、切换时视口随内容收放、新页面从切换方向滑入;内容里可 `LinkIn` 进 `xui.HStack` 做多列网格 |
+| Sidebar | 侧边栏:返回"面板 + 主内容区",分组/子菜单/徽章/动作钮/折叠(offcanvas/icon/none, Ctrl+B)/左右贴边;三种外观 sidebar/floating/inset |
+| Command | 命令面板:输入即过滤、↑↓ 循环跳过禁用、Enter/ESC;可放进 `ui.NewDialog` 组合成 ⌘K 弹窗 |
+| Combobox | "输入即过滤"的建议列表(= Popover + Command):单选选中即关,`WithComboboxMultiple` 多选保持打开;条目模型与 Select 共用 |
+| ComboBox | **注意**: 这是原生 ComboBox 载体(对应 shadcn 的 `select`),不是上面那个 Combobox;要"输入即过滤"用 Combobox |
+| Input | 输入框:原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环;校验态、占位符、前缀/后缀/清除/密码切换/计数,以及步进器 `WithStepper`(−/+ 与 ↑/↓,失焦自动夹取吸附) |
+| Textarea | 文本域:Input 的多行预设 + **随内容自动长高**;要固定高度/滚动条用 `Input` + `WithMultiline` |
+| InputGroup | 输入组:输入框与附加件共用一层边框/焦点环,内层是"裸输入"(不画壳体);四向 addon 可放文本/图标/按钮/Kbd/下拉触发,一个 addon 放多个控件只整体外扩一次;`block-*` addon 存在时自动切成三段式 |
+| Checkbox / Radio | 自绘指示器 + 原生状态管理:Checkbox 三态(不确定态画减号、点击落到选中),两者都有校验态、空格切换与键盘焦点环;"整块区域可点"时用 `Checkbox.Toggle()` / `Radio.Select()`(走与点击指示器相同的路径,`SetSelected` 是不触发回调的静默版),放进非 Card 底色容器时用 `SetBackdrop` 跟随宿主底色 |
+| RadioGroup | 单选组:`AddItem(value, text)` 或 `Attach(radio, value)` 收编放在 Field 等子容器里的条目(跨父级互斥);↑↓←→ 循环移动并选中、Home/End 首末 |
+| Switch / Progress / Slider | 开关 / 进度条 / 滑块:都有禁用与校验态;Progress 可 indeterminate 短条往返与 `ui.NewProgressField`(标题 + 百分比 + 条);Slider 支持值域/步进、范围与多滑块、垂直、反向 |
+| Calendar | 月历(全自绘):6×7 网格、范围选择(两次点击落区间)、多月并排、ISO 周数列、禁用与预订划线、年月可下拉、页脚/预设;尺寸有 helper 算宽 |
+| DatePicker | 日期框:outline 触发区 + 弹层内放 Calendar,下方放不下自动翻到上方;范围模式并排两个月、预设按钮、禁用日期、可输入形态(键入 `2026-10-22` / `今天` / `3天后`) |
+| TimePicker | 时间框:弹层内"时/分"两列滚动列表,选择即生效、弹层保持打开 |
+| ColorPicker | 颜色选择器:触发区(色块 + `#rrggbb` + chevron)+ 弹层(SV 方块 / 色相条 / 预设色 / Hex 输入);颜色以 `#rrggbb` 进出 |
+| Table | 数据表格(原生 `List` 载体 + 自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽可"占满剩余宽度" |
+| DataTable | 在 Table 之上加排序 / 筛选 / 分页 / 勾选 / 列显隐 / 双击原地编辑;表头菜单排序(Shift+点多列排序)、表头可拖拽换列顺序、分面筛选、跨页全选(Shift+点表头复选框);列的行为由 `DataColumn` 的字段描述(排序/对齐/富渲染/隐藏/筛选项/只读) |
+| Tree | 树形视图(原生 `Tree` 载体 + 自绘皮肤):缩进参考线 / 旋转 chevron / 行悬浮选中;叶节点留空槽位使文字全树对齐 |
+| Chart | 图表(纯自绘):柱/折/面积/饼/圆环/径向/雷达,堆叠、平滑、数据点、图例临时隐藏、悬停指示线与提示卡、Y 轴刻度按数据自动取整齐值、点击数据点回调 |
+| Pagination | 分页:上/下一页 + 页码 + 省略号折叠(>7 页),当前页描边态 |
+| Carousel | 轮播:整页滑动(300ms、循环首尾相接)、←/→ 键盘翻页、鼠标拖拽松手吸附;上/下张是内容外侧 48px 的圆形描边按钮,到边界禁用;幻灯片是纵向流容器,内容超出由视口裁剪;可自动播放与指定初始页 |
+| Resizable | 可调整分栏:面板按百分比分主轴空间、窗口缩放保持比例,拖动分隔条伸缩两侧(相邻到下限后挤压更远的);方向键每次 5%、Home/End 到边界、双击分隔条复位,分隔条可 Tab 聚焦 |
+| ScrollArea | 滚动容器(原生 `LayoutFrame` 载体):内容比容器高时滚动、内容大小按子项自动撑开、滚动条自动显隐;`SetContentFill()` 切"铺满视口 + 面板吃剩余高度"形态 |
+| AspectRatio | 固定宽高比容器:高度 = 宽度 / ratio,宽度变化时自动重算并逐级重排 |
+| Tabs | 标签页(default / line 两变体):行内图标、单标签禁用、value 语义、`BindPanel` 绑面板;支持纵向堆叠与自动换行;键盘 = 整块一个 Tab 站点,←/→/↑/↓ 移动、Home/End 首末、Enter/空格切换 |
+| Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点):四方向 + 对齐/间距、显示延迟与跳过延迟、键盘焦点也触发、内容可带快捷键块 |
+| Toast | 通知(窗口内覆盖元素):默认右下角堆叠,四角与上下居中可选;4 种语义类型 + 动作按钮 + 可选关闭钮,自动关闭、悬停暂停、滑入淡入 |
+| ScreenToast | 屏幕通知:独立置顶小窗,固定在**屏幕**右下角,应用最小化/隐藏也能看到、不抢焦点;卡片绘制与自动关闭与 Toast 同款 |
+| ScreenPopup | 屏幕弹窗:固定在屏幕工作区右下角的**常驻**面板 —— 不是通知(默认不自动关闭、不堆叠),内容任意 xui 控件、高度自撑;默认不抢焦点,`WithScreenPopupFocusable(true)` 改为点击后键盘可用 |
+| Tray | 系统托盘:左键还原/前台化绑定窗口(可覆盖),右键弹 themed Menu,资源图标可直接用 `.syso` 里的 HICON;监听 `TaskbarCreated`,Explorer 重启后自动恢复图标。⚠️ 同一进程只应创建一个托盘图标(xcgui 的托盘 API 是全局状态) |
+| AppWindow | 主窗口封装:圆角阴影 + 自绘标题栏(最小化/最大化/关闭、双击最大化/还原、最大化图标自动切换)+ 主题化底色;`NewAppWindow("标题", 640, 480)` 后往 `Content()` 放内容,`AddCaptionButton` 加标题栏按钮 |
+| Label / Card / Badge / Separator | 静态展示组件:Badge 6 变体(含 ghost/link)、行内图标、加载指示器、自定义配色与点击回调,`cx` 传 0 按内容量宽、`SetText` 后自动重量;Card 有 `sm` 尺寸与卡片头(标题 + 说明 + 右上动作区)/ 说明 / 页脚;Separator 支持垂直 |
 
 交互类组件默认带齐 4 态: 正常 / hover / 按下 / 禁用, 外加键盘焦点环(静态展示与容器类组件没有按下态)。
 
 hover 带过渡动画(默认 **150ms + cubic-bezier(0.4,0,0.2,1)**, 与 tailwind / shadcn 的 `transition-*`
-默认值一致; 表格行/树行/菜单条目这类逐项高亮同样有过渡)。过渡由运行时管理(临时开一个 16ms 的
-定时器, 跑完自动关, 静止时零开销;实际帧率受下面的 `SetPaintFrequency` 节流), 组件侧只写一行:
-`hv := xui.Hover(hEle, st.Hover)` + `xui.Fade(静止色, 悬停色, hv)`。整体时长/开关可调:
-
-```go
-xui.SetHoverDuration(200 * time.Millisecond) // 改时长
-xui.SetHoverDuration(0)                      // 关掉过渡(立即到位)
-```
-
-想让过渡更顺(约 60fps)只需在 app 初始化里放开 xcgui 默认的 30ms 重绘节流:
+默认值一致; 表格行/树行/菜单条目同样有), 过渡由运行时管理(静止时零开销)。两件事你自己要做:
 
 ```go
 a := app.New(true)
 a.EnableAutoDPI(true).EnableDPI(true)
-a.SetPaintFrequency(10)   // 实测帧率 30.9 → 59.0 fps(见 DESIGN.md 第八节 46)
+a.SetPaintFrequency(10)                  // 放开 xcgui 默认的 30ms 重绘节流: 实测 30.9 → 59.0 fps
+xui.SetHoverDuration(200 * time.Millisecond) // 改过渡时长;传 0 = 立即到位(关掉过渡)
 ```
 
-对话框与提示气泡自带进出场动画(dialog 淡入淡出 100ms、tooltip 淡入+8px 滑入 150ms, 对齐
-shadcn/tw-animate-css 的默认值)。自己的弹层要用同款动画时:
-
-```go
-// 整组元素淡入/淡出(进度 0→1 进场, 1→0 退场; apply 每帧收到当前进度)
-xui.Presence(hWnd, 0, visible, xui.PopupDuration,
-    func(v float64) { xui.SetElementsAlpha(v, panel, btn1, btn2) },
-    func(v float64) { /* 退场到位后在这里隐藏 */ })
-
-// 异型/阴影弹层小窗: 淡入 + 从 (x, y+dy) 滑到 (x, y)
-xui.Presence(hWnd, 0, true, xui.PopupDuration,
-    xui.SlideWindowAlpha(hPopup, x, y, 0, dy, 255), nil)
-```
+对话框与提示气泡自带进出场动画(dialog 淡入淡出 100ms、tooltip 淡入 + 8px 滑入 150ms)。自己的弹层
+要用同款动画就交给运行时的 `xui.Presence`(不要自己起定时器), 用法与坑见 DESIGN.md。
 
 ## 图标
 
@@ -256,6 +236,8 @@ paths, sw, err := xui.ParseIconSVG(svgText)   // 想先校验 / 自己缓存归�
 
 ## CLI
 
+开关清单与改动判定以 `xui --help` 为准(它随 CLI 版本走); 下面只列影响用法的几个, `-j` 的字段表只在本文档里。
+
 ### 安装 / 升级
 
 ```bash
@@ -264,23 +246,20 @@ go install github.com/twgh/xui/cmd/xui@latest
 
 装一次后直接敲 `xui ...`。二进制在 `$(go env GOPATH)/bin`(Windows 默认
 `%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。升级重跑同一条命令,
-或者直接用 CLI 自己: `xui self-update`(核对靠跑新二进制拿版本, 不只看命令是否报错);
-`xui self-update --check` 只比较当前版本与 `@latest`。`@latest` 偶尔会被模块代理缓存拖旧,
-想立刻用某个版本就直接写 tag(`xui self-update v0.8.1`, 也支持 `main` / commit 短哈希)。
+或者用 CLI 自己: `xui self-update`(`--check` 只比较当前版本与 `@latest`)。`@latest` 偶尔被
+模块代理缓存拖旧, 想立刻用某个版本就直接写 tag(`xui self-update v0.8.1`, 也支持 `main` / commit 短哈希)。
 
-CLI 会**每天最多后台查一次**新版(结果写用户缓存目录 `xui/update-check.json`, 前台命令不等网络),
-命令跑完后向 stderr 提示一句"有新版" —— 走 stderr 是为了不混进被 `>` 重定向的源码里。
-只认正式发布版: `go run` / 本地构建不提示。
-不想被打扰: 加 `-s/--silent`, 或设环境变量 `XUI_NO_UPDATE_CHECK=1`(查到的时间与结果都能用
-`xui info` 看到)。
+CLI 每天最多后台查一次新版(前台不等网络), 命令跑完后向 stderr 提示一句"有新版" —— 走 stderr
+所以不会混进被 `>` 重定向的源码。`go run` / 本地构建不提示; 不想被打扰就加 `-s/--silent`
+或设 `XUI_NO_UPDATE_CHECK=1`(上次查到的时间与结果都能用 `xui info` 看到)。
 
 ### 命令
 
 ```bash
 xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + 组件目录(默认 ui/) + winres/)
-xui init -n myapp -p components # 同上, 但组件目录叫 components/(main.go/README/AGENTS 与清单都跟着这个名字)
+xui init -n myapp -p components # 同上, 但组件目录叫 components/(import 路径与下发文档都跟着这个名字)
+xui init -n myapp --dry-run # 预览整个生成过程: 不建目录、不写文件、不联网
 xui init -n myapp --force # 目录已存在且非空时放开这道闸门(你的改动仍然保留; 要丢弃再加 -o)
-xui init -n myapp --dry-run # 预览整个生成过程: 不建目录、不写文件、不联网(init 也能预览了)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
 xui init [组件目录]     # 已有项目: 只写组件目录(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
 xui add button card     # 追加拷贝指定组件(自动带上依赖)
@@ -288,17 +267,15 @@ xui add --all           # 拷贝全部组件
 xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地
 xui add card --view     # 打印组件源码(可加 =card.go 或 =card 只看某个文件/某个组件), 不写本地
 xui add card --diff     # 与本地文件做逐行 diff(过滤值同上), 不写本地
-xui update              # 升级已装组件(省略组件名 = ui/ 里已装的全部; 不接 --all)
+xui update              # 升级已装组件(省略组件名 = 组件目录里已装的全部; 不接 --all)
 xui update button       # 只升级指定组件(含依赖)
 xui update -o           # 连本地改过的文件一起覆盖(改动会丢, 先备份)
 xui list                # 列出可用组件
 xui search button       # 搜索: 位置参数就是搜索词(等价于 -q button)
-xui search -q table     # 按组件名搜索
 xui view button         # 打印组件源码
 xui info                # 显示 CLI / 项目环境信息(组件目录不是 ui 时: xui info -p <目录>)
 xui version             # 只打印版本(同 -v / --version; 离线可用, 不拉数据源)
-xui self-update         # 升级 CLI 自己(go install ...@latest)
-xui self-update v0.8.1  # 升到指定 tag(也可给 main / HEAD / commit 短哈希)
+xui self-update [版本]  # 升级 CLI 自己(默认 @latest; 也可 tag / main / commit 短哈希)
 xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本参数)
 ```
 
@@ -306,35 +283,30 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 
 选项:
 
-- `init -n, --name <项目名>`: 新建项目目录(`-n myapp` 等价于在当前目录创建 `myapp/`);
-- `init -n -f, --force`: **只**放开"目标目录已存在且非空"这道闸门, 不隐含"你的改动可以丢"(普通 `xui init [ui目录]` 用不上它, 它不会覆盖已有文件, 加 `-f` 会直接报错);
-- `--no-install`(init / add / update): 组件文件照写, 但**不联网动依赖** —— `init -n` 还跳过自动 `go mod tidy` 与 `xc` 安装(仍写 `winres/`), `add` / `update` 则不动 `go.mod` 的配套运行时(离线时用, 之后自己跑);
-- `-o, --overwrite`(init / add / update): 丢弃本地改动(默认保留, 见下方"更新时的判定")。对 `init -n` 来说它管的是模板文件(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore`)与基础组件;以前 `--force` 一个旗同时干这两件事, 于是一次 `init -n app --force` 能把你改过的 `main.go` 无声覆掉。
-- `-p, --path <目录>`(init / add / update / info): 组件目录, 默认 `ui`。`init -n` 也认它 —— 在新项目里就把目录名定下来(`main.go` 的 import、README、AGENTS 与安装清单都跟着走), 以前这条是写死 `ui/` 的, 想要 `components/` 只能 init 完再手工删掉空的 `ui/` 并改文档;限制必须是**项目内的相对目录**(绝对路径或 `..` 跳出会被拒 —— 清单落在组件目录里, 跳出去之后就找不到自己的基线了)。`info` 认它是因为组件装在 `components/` 时, 不认的 `xui info` 会答 "ui/: 未初始化", 那是错的;
-- `add -a, --all`: 全部组件(`update` 不接受它 —— 省略组件名就已经是"更新已装的全部", 想把没装的也一起拷进来请用 `xui add --all`);
-- `--dry-run`(init / add / update): 只预览会做什么, **没有任何副作用** —— 不建目录、不写文件、不写清单、不联网、不调 `xc` 生成 `.syso`。`init` 以前完全没有预览, 只能在别人的仓库里赌一把;现在 `xui init -n app --dry-run` 会一路打"将创建 …", 最后一行明确说没写任何东西;
-- `add --view[=组件或文件]` / `--diff[=组件或文件]`: 查看源码 / 与本地对比, 不写本地;过滤值给组件名(`card`)或文件基名(`card.go`)都行, 一个都没匹配上时会明说"没有匹配的文件", 不会拿"没有差异"糊弄你;
-- `list/search [词]` / `-q, --query <词>` / `-l, --limit <n>` / `-o, --offset <n>`: 搜索词(位置参数与 `-q` 等价, `xui search button` 直接可用)、限制数量、跳过前 n 个;搜索词给两个且不同会报错, 不猜;
-- `-j, --json`: 把命令结果改出结构化 JSON, 给脚本与 AI 助手读 —— 支持 `list` / `search` / `info` / `view`, `add` / `update` 的 `--view` / `--diff`, 以及 `self-update --check`。别的地方不给: 写文件那条路径的输出是一串过程日志, 收下 `-j` 又不生效是骗人(所以 `xui add card --json` 会直接报错, 预览写入动作用 `--dry-run`);
-- `--strict`(add / update): 有文件因本地改动被跳过时, 用退出码 2 失败(默认只汇总一句就正常退出);
-- 通用 `-c, --cwd <目录>` 先切工作目录(`xui -c dir list` 与 `xui list -c dir` 等价);
-- 通用 `-s, --silent` **只压进度输出**: "创建了哪个文件"这类过程信息不打印, 但命令本身的结果照常输出(`list` 的组件表、`view`/`--diff` 的源码与差异、`info`、`version`、`self-update --check` 的对比), 警告与错误也照常打到 stderr。`xui list -s` 因此是一份没有表头的干净清单, 可以直接接管道;
-- `-v, --version`(等价于 `xui version`): 只打印版本, 离线可用、不拉数据源;
-- `-h, --help`: 显示帮助, 任何位置都能用(`xui --help` / `xui add --help`);
-- 短选项也接受 `-x=值` 的写法, 与长选项一致: `-p=src`、`-c=dir`、`-q=table`、`-l=5`、`-o=2`。
-- 带值的选项**两种写法都不许给空值**(`-p ""` 与 `-p=` 同样报错): 空目录会把组件直接拷进当前目录根, 空的 `--view=` 会把"只看一个文件"静默变成"全部打印" —— 值被 shell 变量吃掉时必须当场失败。
+| 选项 | 用于 | 作用 |
+|---|---|---|
+| `-n, --name <项目名>` | init | 新建完整项目(`-n .` = 铺在当前空目录) |
+| `-f, --force` | init -n | 放开"目标目录已存在且非空"这道闸门;**不**隐含丢弃你的改动 |
+| `-o, --overwrite` | init / add / update | 丢弃本地改动(默认保留, 见下方判定);管模板文件与组件文件 |
+| `-p, --path <目录>` | init / add / update / info | 组件目录, 默认 `ui`。`init -n` 用它在新项目里定名字(import 路径与下发文档跟着走);只许项目内的相对目录(绝对路径或 `..` 跳出会被拒) |
+| `--no-install` | init / add / update | 组件文件照写, 但不联网动依赖(`init -n` 还跳过 `go mod tidy` 与 `xc` 安装) |
+| `--dry-run` | init / add / update | 只预览, **没有任何副作用**:不建目录、不写文件、不写清单、不联网、不生成 `.syso` |
+| `-a, --all` | add | 全部组件(`update` 不接:省略组件名就已经是"已装的全部", 要连没装的一起装用 `add --all`) |
+| `--view[=组件或文件]` / `--diff[=组件或文件]` | add / update | 打印源码 / 与本地对比, 不写本地;过滤值给组件名(`card`)或文件基名(`card.go`)都行 |
+| `[词]` / `-q, --query` / `-l, --limit` / `-o, --offset` | list / search | 搜索词(位置参数与 `-q` 等价)、限制数量、跳过前 n 个 |
+| `-j, --json` | list / search / info / view / `--view` / `--diff` / `self-update --check` | 结果出结构化 JSON(字段表见下) |
+| `--strict` | add / update | 有文件被跳过时用退出码 2 失败(默认只汇总一句就正常退出) |
+| `-c, --cwd <目录>` | 全部 | 先切到该目录, 后续相对路径都以它为准 |
+| `-s, --silent` | 全部 | **只压进度输出**:命令结果(`list` 的表、`view`/`--diff` 的正文、`info`、`version`、`--check` 的对比)照常, 警告与错误照常;`xui list -s` 就是一份没有表头、可直接接管道的清单 |
+| `-v, --version` / `-h, --help` | 全部 | 版本 / 帮助(`-h` 任何位置都生效) |
 
-只展示的参数不吞掉写文件的参数: `--view` / `--diff` 与 `--dry-run`、`-o/--overwrite`、
-`--no-install` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。
-`xui self-update --check` 同理不接受版本参数(`--check` 只回答"我相对 @latest 新不新")。
-`-v` 归了全局的版本号(等价 `xui version`), 所以看源码是 `xui add card --view` —— 打 `-v`
-会报错并指你去 `--view`, 不让你以为这个短选项不存在。
+三条约束:
 
-**退出码**: `0` = 跑通了(该装的都装了; 有跳过时 stderr 会给一句"共 N 个文件被跳过"的汇总);
-`1` = 命令本身失败(源拉不到、权限、参数错);`2` = 只在你加了 `--strict` 且有文件被跳过时出现。
-默认 `0` 是有意的: 保守跳过本地改动是这套设计的**正确行为**, 不该让人类手里的 `xui update` 报错;
-CI / agent 想"没更新干净就失败"就跑 `xui update --strict`(与 `--dry-run` 一起用可以在不写文件的
-前提下先检查一遍)。
+- **带值的选项不给空值** —— `-p ""` 与 `-p=` 一样当场报错(空目录会把组件拷进当前目录根, 空的 `--view=` 会从"只看一个文件"变成"全部打印")。
+- **`--view` / `--diff` 不与 `--dry-run` / `-o` / `--no-install` / `--strict` 同用** —— 它们本来就不写文件, 一起给会直接报错;`-v` 是版本号, 看源码写 `--view`;`self-update --check` 不接受版本参数。
+- 短选项也接受 `-x=值`, 与长选项一致: `-p=src`、`-l=5`、`-o=2`。
+
+**退出码**: `0` = 跑通(有跳过时 stderr 给一句"共 N 个文件被跳过"的汇总);`1` = 命令失败(源拉不到、权限、参数错);`2` = 加了 `--strict` 且有文件被跳过。CI 想"没更新干净就失败"就跑 `xui update --strict`(配 `--dry-run` 可先空跑一遍)。
 
 **结构化输出(`-j`)的字段**:
 
@@ -343,17 +315,14 @@ CI / agent 想"没更新干净就失败"就跑 `xui update --strict`(与 `--dry-
 | `list` / `search` | `source` `cli` `runtime`(数据源声明的配套运行时) `query` `offset` `limit` `total`(匹配数) `shown`(本次显示数) `components[]{name files[] deps[]}` |
 | `info` | `cli` `cwd` `go` `componentsDir` `componentsInitialized` `goFiles` `source` `updateCheckAt` `updateCheckLatest` |
 | `view` / `--view` | `source` `filter` `matched` `files[]{name component content}` |
-| `--diff` | `dir` `filter` `matched` `files[]{path file state diff}`, `state` = `missing` / `upgrade` / `edited` / `unknown`(与人类可读输出同一套判定) |
+| `--diff` | `dir` `filter` `matched` `files[]{path file state diff}`, `state` = `missing` / `upgrade` / `edited` / `unknown` |
 | `self-update --check` | `current` `latest` `localBuild` `upgradable` `command`(下一步该跑什么, 已最新时为空串) |
 
-两条约定: 空的 `files` / `components` / `deps` 一律是 `[]` 而不是 `null`;
-过滤值谁都没挨着时 `matched=false`(这时 `files` 也是空, 但**不等于**"这个组件没有文件"或"没有差异")。
+空的 `files` / `components` / `deps` 一律是 `[]` 而不是 `null`;过滤值没命中时靠 `matched=false` 区分(这时 `files` 也是空, 但不是"没有差异")。
 
 组件源码拷进项目后归你所有; `add` / `update` / `init` 都不会覆盖你本地改过的文件, 确认要丢弃本地改动时加 `-o/--overwrite`。
 
-**更新时的判定**: `add` / `update` 会在组件目录写一份 `.xui-manifest.json`, 记下每个文件安装那一刻的
-sha256;`init -n` 生成项目骨架时把 `go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore`
-也记进同一份清单的 `project_files`。之后逐文件比对(组件与模板**共用这一套判定**):
+**更新时的判定**: CLI 在组件目录写一份 `.xui-manifest.json`, 记下每个文件安装那一刻的 sha256(`init -n` 生成的 `go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore` 也一起记)。之后逐文件比对 —— 组件文件与模板文件**共用这一套判定**:
 
 | 本地文件 | `xui update` 的动作 |
 |---|---|
@@ -363,26 +332,13 @@ sha256;`init -n` 生成项目骨架时把 `go.mod` / `main.go` / `README.md` / `
 | 内容不同,且清单哈希对不上(你改过) | 警告并跳过,要 `-o` 才覆盖(“本地修改已丢弃”) |
 | 内容不同,但清单里没有这个文件(老项目 / 手动删了清单) | 警告并跳过,要 `-o` 才覆盖(只说“无安装清单基线, 无法判断是否改过”, 不断言你改过) |
 
-也就是说: 自己没动过的组件文件会跟着版本正常升级, 只有你手改过的那些才需要 `-o`;
-输出措辞按同一套判定走 —— 干净项目的差异一律报“版本升级”, 不会让你以为有改动被丢了。
-`--diff` 的每个文件头也标的是这个来源判定。清单缺失时(老项目、或手动删了它)行为退回保守模式 ——
-一律“无法判断来源”并跳过, 加 `-o` 一次性解决后清单会重新生成。
+也就是说: 自己没动过的文件会跟着版本正常升级, 只有你手改过的那些才需要 `-o`;`--diff` 的每个文件头也标的是同一个来源判定。清单缺失(老项目 / 手动删了它)时退回保守模式 —— 一律"无法判断来源"并跳过, 加 `-o` 之后清单会重新生成。
 
-**运行时版本**: 组件源码跟 `main`(永远最新), 而运行时 `github.com/twgh/xui` 是 Go 模块依赖、
-**只能按 tag 取** —— 两者对不上就是编译错误: 组件用了本批新增的运行时助手(如 `xui.PresenceOnce`)
-而项目还钉着旧 tag, 报 `undefined: xui.PresenceOnce`。所以 `registry.json` 顶层声明 `runtime`
-= **与 main 上这批组件配套的运行时版本**(每次发布都会抬成刚发的 tag, 只改 CLI 也抬),
-`add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖抬到它(等价于
-`go get github.com/twgh/xui@<tag>`, `go.sum` 一起更新), 升级完直接 `go build` 就行 ——
-运行时的修复(比如过渡表泄漏)也随之一路带上, 不用你再 `go get -u`。
-有五种情况不动你的依赖: `--dry-run` 与 `--no-install`(init / add / update 都认)只打印命令; `go.mod` 里把这个模块
-`replace` 到本地工作副本时一切以你的 replace 为准; 项目里找不到 `go.mod` 时只提示; 找到的那份 `go.mod`
-**既在当前目录之外、又没要求 `github.com/twgh/xui`** 时也不动(在临时目录或别人的 monorepo 上层里跑 CLI,
-不该去改那个不相干模块的依赖)。
-想自己锁版本: 先 `go get github.com/twgh/xui@<你选的 tag>` 再跑 `xui update` 即可。
+**运行时版本**: 组件源码跟 `main`(永远最新), 而运行时 `github.com/twgh/xui` 是 Go 模块依赖、**只能按 tag 取**;`registry.json` 的 `runtime` 字段声明与这批组件**配套**的运行时版本(每次发布都抬成刚发的 tag)。`add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖抬到它(等价 `go get github.com/twgh/xui@<tag>`, `go.sum` 一起更新), 升级完直接 `go build` 就行, 不用你再 `go get -u`。
 
-**数据源**: 默认从仓库 `main` 分支现拉组件, 组件永远最新。CLI 本体的版本由 `go install` / `go run`
-时的 `@latest` 或 tag 决定; 组件版本用下面的 `XUI_REGISTRY` 锁。默认源**自动选路**:
+这五种情况不动你的依赖: `--dry-run` 与 `--no-install` 只打印命令;`go.mod` 里把该模块 `replace` 到本地工作副本时以你的 `replace` 为准;项目里找不到 `go.mod` 时只提示;找到的那份 `go.mod` 既在当前目录之外、又没要求 `github.com/twgh/xui` 时也只提示。想自己锁版本: 先 `go get github.com/twgh/xui@<你选的 tag>` 再跑 `xui update`。
+
+**数据源**: 默认从仓库 `main` 分支现拉组件(组件永远最新); CLI 本体的版本由 `go install` / `go run` 时的 `@latest` 或 tag 决定, 组件版本用下面的 `XUI_REGISTRY` 锁。默认源**自动选路**, 第一个通的用它跑完本次命令, 全都不通才降级到 CLI 内嵌源码;拷到一半某个文件拉不到(镜像限速、临时挂起)会自动换下一个源接着拷, 不会留下半套组件目录。选路过程逐行打在 stderr 上。
 
 ```
 直连 https://raw.githubusercontent.com/twgh/xui/main
@@ -390,12 +346,6 @@ sha256;`init -n` 生成项目骨架时把 `go.mod` / `main.go` / `README.md` / `
   → GitCode 镜像 https://api.gitcode.com/api/v5/repos/twgh/xui/contents (国内备用)
   → 加速代理 ghfast / gh-proxy                             (兜底)
 ```
-
-每个候选的探测就是拉一次 `registry.json`(6s 超时), 第一个通的用它跑完本次命令; 全都不通才降级到
-CLI 内嵌源码。选路过程逐行打在 stderr 上, 想看清卡在哪一环直接看输出。
-
-拷到一半某个文件拉不到(镜像限速、临时挂起)时, CLI 会按候选顺序换下一个源接着拷并把新源粘住,
-不会留下半套 `ui/`。
 
 环境变量 `XUI_REGISTRY` 覆盖数据源(**写什么就用什么,不再套代理**):
 
@@ -409,21 +359,11 @@ XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dial
 
 显式指定 `XUI_REGISTRY` 时拉取失败会直接报错(便于排查),不静默降级。
 
-## 设计要点(为什么这样做)
-
-- **copy-not-install**: 组件源码进你的仓库, 可改可删, 不受上游版本绑架 —— 组件是起点, 不是黑盒。
-- **行为/视觉分层**: xcgui 原生控件当作"无头"层(事件/状态/焦点/输入法), `AddEvent_Paint` + `drawx` 只负责外观。
-- **绘制时取令牌**: 组件永不缓存颜色, 这是零成本换肤的前提; 需要同步给原生 API 的颜色(Edit 文字色、窗口底色)通过 `xui.OnThemeChangeFor` 订阅(元素销毁时自动反注册)。
-- **组件文件薄**: 绘制细节下沉到运行时助手(`xui.Painter`); 连 hover 过渡这种"要定时器/要生命周期"的脏活也归运行时(`xui.Hover`/`HoverItem`/`Fade`), 拷贝文件主要是"变体→令牌映射 + 几笔绘制", 降低升级冲突面。
-- **交互语义对齐 shadcn 源码**: hover 透明度、focus-visible(键盘才显示焦点框)、disabled opacity-50、按压下沉等均逐条对照 shadcn-ui 官方源码实现。
-
 ## 已知约束
 
-- 渲染模式固定按 Direct2D(`app.New(true)`)设计。
-
+- 渲染固定按 Direct2D 设计(`app.New(true)`)。
 - 组件坐标使用逻辑像素(`XEle_GetClientRect` 返回未缩放矩形), 框架渲染时统一按窗口 DPI 变换;
   自绘**不要**再乘 DPI(开 `EnableAutoDPI` + `EnableDPI` 即可)。
-  
 - **本模块的 `go` 指令是 1.18**: 即使你用 Go 1.22+ 的工具链, `for range` 的循环变量也按**旧语义共享** ——
   在循环里给控件注册回调(或起 goroutine)时, 循环变量必须先拷一份, 否则所有回调都取到最后一次的值:
 
@@ -436,25 +376,18 @@ XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dial
 
 详见 [DESIGN.md](docs/DESIGN.md)。
 
-## 参考实现(shadcn-ui)
-
-交互语义与视觉以 [shadcn-ui](https://github.com/shadcn-ui/ui) 官方源码为准:
-
-- 组件源码: `packages/shadcn/src/registry/**/ui/*.tsx`(语义的唯一权威来源)
-- 主题令牌: `app/globals.css` 的 `:root` / `.dark`
-
-本仓库的 `demo/` 是按它逐页对照做的视觉验证程序(全组件 + 亮/暗主题), 可对照运行。
-
 ## 项目文档
+
+交互语义与视觉逐条对照 [shadcn-ui](https://github.com/shadcn-ui/ui) 官方源码实现; 汇总在 DESIGN.md 第四节末。
 
 | 文档 | 内容 |
 |---|---|
 | README.md | 本文: 安装 / 用法 / 组件一览 |
-| [docs/DESIGN.md](docs/DESIGN.md) | **自定义指南(随 `xui init` 安装到组件目录, 默认 `ui/DESIGN.md`)**: 架构原理、主题系统、组件解剖、**xcgui 踩坑全集(第八节)**、已验证 API 清单 |
+| [docs/DESIGN.md](docs/DESIGN.md) | **自定义指南(随 `xui init` 安装到组件目录, 默认 `ui/DESIGN.md`)**: 架构原理、主题系统、组件解剖、与 shadcn 的语义对照、**xcgui 踩坑全集(第八节)**、本库依赖的 xcgui API 清单(第九节) |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 仓库维护者用: 当前进度 / 待办 / 仓库结构 / 常用命令 / 视觉验证工作流 |
 | [AGENTS.md](AGENTS.md) | 仓库维护者用: AI 会话入口硬规则与文档导航 |
 
-> 改任何组件的交互前, 先看 DESIGN.md 第四节末「与 shadcn 对齐的语义(权威汇总)」, 再对照 shadcn-ui 官方源码。
+组件自己的完整选项与方法清单在 [pkg.go.dev](https://pkg.go.dev/github.com/twgh/xui) 和拷进你项目的源码注释里(源码就在组件目录, 每个 `With*` 都带说明)。
 
 ## License
 
