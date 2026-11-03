@@ -351,7 +351,7 @@ func main() {
 			fatal("%v", err)
 		}
 		if opts.project != "" {
-			if err := initNewProject(opts.project, opts.force, opts.writes()); err != nil {
+			if err := initNewProject(opts.project, opts.uiDir, opts.force, opts.writes()); err != nil {
 				fatal("%v", err)
 			}
 			return
@@ -654,6 +654,25 @@ func parseInitArgs(args []string) (initOptions, error) {
 			o.force = true
 		case a == "-o" || a == "--overwrite":
 			o.overwrite = true
+		case a == "-p" || a == "--path":
+			v, err := nextValue(args, i, a)
+			if err != nil {
+				return o, err
+			}
+			i++
+			o.uiDir = v
+		case strings.HasPrefix(a, "-p="):
+			v, err := inlineValue(a, "-p=")
+			if err != nil {
+				return o, err
+			}
+			o.uiDir = v
+		case strings.HasPrefix(a, "--path="):
+			v, err := inlineValue(a, "--path=")
+			if err != nil {
+				return o, err
+			}
+			o.uiDir = v
 		case a == "--no-install":
 			o.noInstall = true
 		case a == "--dry-run":
@@ -664,25 +683,53 @@ func parseInitArgs(args []string) (initOptions, error) {
 			pos = append(pos, a)
 		}
 	}
-	if o.project != "" && len(pos) > 0 {
-		return o, fmt.Errorf("init -n 不能同时指定 ui 目录")
-	}
 	if len(pos) > 1 {
 		return o, fmt.Errorf("用法: xui init [ui目录] | xui init -n <项目名>")
 	}
-	if o.project == "" {
-		// --no-install 对两种 init 都成立: 普通 init 也会抬配套运行时依赖(add 路径)。
+	if o.project != "" {
+		// init -n: -p 定的是"新项目里的组件目录", 必须落在项目内 —— 绝对路径或 .. 出去
+		// 会把组件写到别的仓库里, 而清单跟着组件走, 之后就找不到自己的基线了。
+		if len(pos) > 0 {
+			return o, fmt.Errorf("xui init -n 的位置参数是项目名的一部分, 组件目录请用 -p <目录>")
+		}
+		if o.uiDir == "" {
+			o.uiDir = "ui"
+		}
+		if err := checkUIWithinProject(o.uiDir); err != nil {
+			return o, err
+		}
+		return o, nil
+	}
+	// 普通 init: 位置参数与 -p 是同一个东西(组件目录), 两个都给且不同不猜。
+	if o.force {
+		// 普通 init 没有"非空目录"这道闸门, 已有文件一律保留 —— 收下 -f 又不生效
+		// 就是骗人; 真要丢弃本地改动说的是 -o。
+		return o, fmt.Errorf("xui init [ui目录] 不会覆盖已有文件, 不需要 --force; 要丢弃本地改动加 -o/--overwrite")
+	}
+	if o.uiDir == "" {
 		o.uiDir = "ui"
 		if len(pos) == 1 {
 			o.uiDir = pos[0]
 		}
-		if o.force {
-			// 普通 init 没有"非空目录"这道闸门, 已有文件一律保留 —— 收下 -f 又不生效
-			// 就是骗人; 真要丢弃本地改动说的是 -o。
-			return o, fmt.Errorf("xui init [ui目录] 不会覆盖已有文件, 不需要 --force; 要丢弃本地改动加 -o/--overwrite")
-		}
+	} else if len(pos) == 1 && pos[0] != o.uiDir {
+		return o, fmt.Errorf("组件目录给了两个: -p %q 与 %q", o.uiDir, pos[0])
 	}
 	return o, nil
+}
+
+// checkUIWithinProject 保证 init -n 的组件目录还在项目内: 不许绝对路径、不许有 ".." 这一段。
+// 判 segment 而不是判 Clean 的结果: filepath.Join 会把 ".." 直接消化掉("../ui" 变 "ui"),
+// 拿它来检测跳出等于永远不触发。
+func checkUIWithinProject(uiDir string) error {
+	if filepath.IsAbs(uiDir) || strings.HasPrefix(uiDir, "/") || strings.HasPrefix(uiDir, `\`) {
+		return fmt.Errorf("xui init -n 的 -p 要给项目内的相对目录, 实为 %q", uiDir)
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(uiDir), "/") {
+		if seg == ".." {
+			return fmt.Errorf("xui init -n 的 -p 不能跳出项目目录: %q(安装清单落在组件目录里, 跳出去之后就找不到自己的基线了)", uiDir)
+		}
+	}
+	return nil
 }
 
 // componentOptions 是 add / update 共用的参数集(对齐 shadcn add 的命名)。
@@ -1013,9 +1060,11 @@ func parseViewArgs(args []string) (names []string, jsonMode bool, err error) {
 func usage() {
 	fmt.Println(`xui — shadcn 风格的 xcgui 自绘组件
 
-  xui init -n <项目名>       新建完整 Go 项目(go.mod + main.go + README + AGENTS.md + ui/ 组件 + winres/ 图标资源)
+  xui init -n <项目名>       新建完整 Go 项目(go.mod + main.go + README + AGENTS.md + 组件目录 + winres/ 图标资源)
+  xui init -n <项目名> -p <目录>
+                             同上, 但组件目录改名(默认 ui; 必须落在项目内)
   xui init -n .              在当前空目录直接生成项目(项目名取目录名)
-  xui init [ui目录]          已有项目: 只初始化组件目录(默认 ui)
+  xui init [组件目录]        已有项目: 只初始化组件目录(默认 ui)
   xui add <组件...>          拷贝组件(自动带上依赖组件)
   xui add --all              拷贝全部组件
   xui add <组件...> --dry-run
@@ -1043,7 +1092,9 @@ func usage() {
   --dry-run             init/add/update: 只预览, 不建目录、不写文件、不联网
   --strict              add/update: 有文件因本地改动被跳过时用退出码 2 失败(给 CI)
   -o, --overwrite       init/add/update: 丢弃本地改动(默认保留; 判定见下)
-  -p, --path <目录>     add/update/info: 组件目录(默认 ui)
+  -p, --path <目录>     init/add/update/info: 组件目录(默认 ui)。init -n 用它在新项目
+                        里定目录名(必须是项目内的相对目录, 不能绝对也不能 .. 跳出);
+                        普通 init 它与位置参数是同一个东西
   -a, --all             add: 全部组件
   -q, --query <词>      list/search: 按组件名过滤(直接写位置参数等价)
   -l, --limit <n>       list/search: 最多显示 n 个
@@ -1123,7 +1174,7 @@ func initProject(dir string, w writeOpts) {
 		info("跳过 %s (已存在)", agentsPath)
 	} else if w.dryRun {
 		info("将创建 %s", agentsPath)
-	} else if err := os.WriteFile(agentsPath, []byte(agentsDirTemplate), 0o644); err != nil {
+	} else if err := os.WriteFile(agentsPath, []byte(renderUI(agentsDirTemplate, dir)), 0o644); err != nil {
 		warn("写入 AGENTS.md 失败: %v", err)
 	} else {
 		info("创建 %s", agentsPath)
@@ -1193,7 +1244,11 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// initNewProject 创建完整项目目录: go.mod + main.go + README + .gitignore + ui/。
+// initNewProject 创建完整项目目录: go.mod + main.go + README + .gitignore + 组件目录。
+//
+// uiSub 是组件目录相对项目根的名字(`-p` 指定, 默认 ui) —— 以前写死 ui/, 想要 components/
+// 的人只能 init 完再手工删掉 ui/, 而 README/AGENTS 与 main.go 的 import 都说的是 ui。
+// 目录名在这一步定下: 安装清单落在组件目录里, 之后每条命令靠 `-p` 指过去。
 //
 // 两个开关分开(以前挤在 -f 一个旗上, 于是"往非空目录里装"必然连带"丢掉你的改动"):
 //   - force     = 目标目录已存在且非空时才需要, 只负责开这道闸门;
@@ -1209,7 +1264,7 @@ func fileExists(path string) bool {
 //   - `-n .` 直接把骨架铺在当前目录(项目名取当前目录名);
 //   - 当前目录本身是空的、且目录名 == -n 的项目名时, 同样铺在当前目录 ——
 //     否则在 `D:\...\sitless` 里执行 `xui init -n sitless` 会生成 sitless/sitless。
-func initNewProject(name string, force bool, w writeOpts) error {
+func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 	dir := name
 	if name == "." {
 		cwd, err := os.Getwd()
@@ -1234,7 +1289,7 @@ func initNewProject(name string, force bool, w writeOpts) error {
 	} else if w.dryRun {
 		info("将创建项目目录 %s", dir)
 	}
-	uiDir := filepath.Join(dir, "ui")
+	uiDir := filepath.Join(dir, uiSub)
 	if !w.dryRun {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("创建项目目录失败: %v", err)
@@ -1251,9 +1306,9 @@ func initNewProject(name string, force bool, w writeOpts) error {
 	xuiVer, xcguiVer := templateVersions()
 	files := []struct{ name, body string }{
 		{"go.mod", fmt.Sprintf(goModTemplate, module, xuiVer, xcguiVer)},
-		{"main.go", fmt.Sprintf(mainGoTemplate, module, strconv.Quote(name))},
-		{"README.md", fmt.Sprintf(readmeTemplate, name)},
-		{"AGENTS.md", fmt.Sprintf(agentsProjectTemplate, module)},
+		{"main.go", renderUI(fmt.Sprintf(mainGoTemplate, module, strconv.Quote(name)), uiSub)},
+		{"README.md", renderUI(fmt.Sprintf(readmeTemplate, name), uiSub)},
+		{"AGENTS.md", renderUI(fmt.Sprintf(agentsProjectTemplate, module), uiSub)},
 		{".gitignore", gitignoreTemplate},
 	}
 	skipped := 0
@@ -1536,9 +1591,27 @@ func versionBefore(a, b string) bool {
 	}
 }
 
+// insideCwd 报告 dir 是否在当前目录或其下(取的是"用户站着的那个项目"这条边界:
+// `xui -c D:\proj ...` 已经把 cwd 定在项目根, 所以正常安装时组件目录的最近 go.mod 必然在其中)。
+func insideCwd(dir string) bool {
+	wd, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(wd, dir)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // ensureRuntime 把项目 go.mod 的运行时依赖抬到 registry 声明的配套版本。
 // 只在真正写文件的路径上调用(add/update/init 的写入分支); dryRun 只预览,
 // autoInstall=false(init --no-install)时只打印要跑的那条命令。
+//
+// 找 go.mod 是"从组件目录向上"的, 所以要挡住误伤: 在临时目录里跑 `xui add btn` 时,
+// 向上可能命中某个**无关**的父模块并改它的依赖。判据两条, 满足其一才动手 ——
+// 那个 go.mod 在当前目录之下(就是用户站着的项目), 或者它本来就 require 了本模块。
 func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 	if floor == "" {
 		return // 数据源没这个字段(老 tag / 镜像还没同步), 不动用户依赖
@@ -1559,9 +1632,15 @@ func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 		warn("读取 %s 失败, 跳过运行时版本检查: %v", gm, err)
 		return
 	}
+	gmDir := filepath.Dir(gm)
 	switch {
 	case module == runtimeModule:
 		// 向上找到了 xui 仓库自己的 go.mod(在仓库里跑 CLI), 不改仓库的依赖。
+		return
+	case !insideCwd(gmDir) && ver == "":
+		// 既不在当前目录之下(不是用户站着的那个项目), 又没声明本模块 —— 它跟这次安装的
+		// 组件没关系(在临时目录 / 别人 monorepo 的上层跑 CLI), 动它的依赖是越界。
+		info("%s 在当前目录之外且没有要求 %s, 不动它的依赖 (配套运行时是 %s)", gmDir, runtimeModule, floor)
 		return
 	case replaced:
 		// 本地联调(replace 到工作副本)时版本由开发者自己管, 抬 require 只会误导。
@@ -2846,6 +2925,16 @@ require (
 )
 `
 
+// uiDirToken 是下发模板里代表"组件目录"的占位符。用显式 token 而不是再加一个 %s:
+// 这些模板已经有 %s 在填模块路径/项目名, 再加动词会让 fmt.Sprintf 的参数顺序一眼看不出来,
+// 填错一位就是一份能编译但说假话的 README。
+const uiDirToken = "{{UIDIR}}"
+
+// renderUI 把模板里的占位符换成真正的组件目录名(目录名可以是 components/ 以外的任何合法名)。
+func renderUI(body, uiSub string) string {
+	return strings.ReplaceAll(body, uiDirToken, filepath.ToSlash(uiSub))
+}
+
 // mainGoTemplate 生成的项目入口: AppWindow + 一张示例卡片(只用 init 装好的基础组件)。
 const mainGoTemplate = `package main
 
@@ -2856,7 +2945,7 @@ import (
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
-	ui "%s/ui"
+	ui "%s/{{UIDIR}}"
 )
 
 func main() {
@@ -2873,7 +2962,7 @@ func main() {
 
 	_, stack := newCard(content.Handle, 12)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "欢迎使用 xui", stack.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "ui/ 目录是组件源码, 归你所有, 可随意修改。", stack.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "{{UIDIR}}/ 目录是组件源码, 归你所有, 可随意修改。", stack.Handle))
 	xui.ItemFill(ui.NewInput(0, 0, 0, 0, stack.Handle, ui.WithPlaceholder("输入点什么...")))
 	xui.ItemFill(ui.NewCheckbox(0, 0, 0, 0, "记住我", stack.Handle))
 
@@ -2881,7 +2970,7 @@ func main() {
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "开始使用", row.Handle), 104)
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "了解更多", row.Handle, ui.WithVariant(ui.ButtonOutline)), 104)
 
-	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "打开 ui/theme.go 改主题, 或看 ui/DESIGN.md 了解组件。", content.Handle).SetMuted())
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "打开 {{UIDIR}}/theme.go 改主题, 或看 {{UIDIR}}/DESIGN.md 了解组件。", content.Handle).SetMuted())
 
 	w.Show(true)
 	a.Run()
@@ -2928,9 +3017,9 @@ const agentsRules = `## 修改/自定义组件
 // README 归项目作者、可能被改写, 所以运行方式与组件用法要在这里留一份给 AI 助手。
 const agentsProjectTemplate = `# AGENTS.md — 给 AI 助手的项目说明
 
-本项目界面使用 xui(shadcn 风格的 xcgui 自绘组件库)。组件源码已经拷贝进 ui/(包名 ui),
+本项目界面使用 xui(shadcn 风格的 xcgui 自绘组件库)。组件源码已经拷贝进 {{UIDIR}}/(包名 ui),
 归项目所有, 可以随意修改。README.md 由项目作者维护、可能被改写; 用法与约定以本文件
-和 ui/DESIGN.md 为准。
+和 {{UIDIR}}/DESIGN.md 为准。
 
 ## 运行
 
@@ -2945,9 +3034,9 @@ go run .
 ## 目录
 
 - main.go — 应用入口与示例
-- ui/ — 组件源码(package ui, 扁平单包; 跨文件助手也在这里)
-- ui/theme.go — 主题令牌, 改这里全局换肤
-- ui/DESIGN.md — 完整说明书: 组件解剖、xcgui 踩坑全集(第八节, 按编号)、API 清单(第九节)
+- {{UIDIR}}/ — 组件源码(package ui, 扁平单包; 跨文件助手也在这里)
+- {{UIDIR}}/theme.go — 主题令牌, 改这里全局换肤
+- {{UIDIR}}/DESIGN.md — 完整说明书: 组件解剖、xcgui 踩坑全集(第八节, 按编号)、API 清单(第九节)
 - winres/ — exe 图标与版本信息(icon.ico + winres.json), 由 xc 生成 .syso
 
 ## 图标与版本信息
@@ -2984,12 +3073,13 @@ CLI 装一次即可(没装就把 xui 换成 go run github.com/twgh/xui/cmd/xui@l
 ~~~bash
 go install github.com/twgh/xui/cmd/xui@latest
 xui add table tree   # 自动带上依赖组件
-xui update           # 更新 ui/ 里已装组件
+xui update           # 更新 {{UIDIR}}/ 里已装组件
 xui list             # 列出可用组件
 ~~~
 
 CLI 逐个比对内容: 本地没有则创建、一致则跳过、被改过则警告跳过; 确认丢弃本地改动时加
--o/--overwrite。组件目录不是 ui/ 时, 用 -p <目录> 指定(相对项目根)。
+-o/--overwrite。本项目的组件目录是 {{UIDIR}}/(相对项目根), 下面所有命令都按它写; 目录名在
+xui init -n <项目名> -p <目录> 这一步就定下来了, 装好以后每条命令用 -p 指过去。
 装完组件, CLI 会把 go.mod 里的 github.com/twgh/xui 抬到与这批组件配套的运行时版本
 (组件源码跟仓库最新, 运行时按 tag 取); 离线或 --no-install 时只打印那条命令, 不动你的 go.mod。
 
@@ -2999,7 +3089,7 @@ CLI 逐个比对内容: 本地没有则创建、一致则跳过、被改过则�
 import (
     "github.com/twgh/xcgui/app"
     "github.com/twgh/xui"
-    ui "%s/ui"
+    ui "%s/{{UIDIR}}"
 )
 
 func main() {
@@ -3039,7 +3129,7 @@ const agentsDirTemplate = `# AGENTS.md — 给 AI 助手的目录说明
 ## 添加与更新组件
 
 CLI 装一次即可(没装就把 xui 换成 go run github.com/twgh/xui/cmd/xui@latest); 在项目根目录执行,
-本目录不是 ui/ 时用 -p 指定它相对项目根的路径:
+本目录叫 {{UIDIR}}: 在项目根执行 xui 时给 add/update/info 带上 -p {{UIDIR}}(目录就叫 ui 时可省):
 
 ~~~bash
 go install github.com/twgh/xui/cmd/xui@latest
@@ -3081,9 +3171,9 @@ go run .
 
 - main.go — 应用入口(AppWindow + 示例卡片)
 - AGENTS.md — 给 AI 助手的使用说明与修改规则(README 改写后仍然有效)
-- ui/ — 组件源码拷贝, 归你所有, 可随意修改
-- ui/theme.go — 主题令牌, 改这里全局换肤
-- ui/DESIGN.md — 组件自定义指南与 xcgui 踩坑全集
+- {{UIDIR}}/ — 组件源码拷贝, 归你所有, 可随意修改
+- {{UIDIR}}/theme.go — 主题令牌, 改这里全局换肤
+- {{UIDIR}}/DESIGN.md — 组件自定义指南与 xcgui 踩坑全集
 - winres/ — exe 图标与版本信息(已生成 syso, 开箱即用)
 
 ## 图标与版本信息

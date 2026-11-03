@@ -277,11 +277,12 @@ CLI 会**每天最多后台查一次**新版(结果写用户缓存目录 `xui/up
 ### 命令
 
 ```bash
-xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + ui/ + winres/)
+xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + 组件目录(默认 ui/) + winres/)
+xui init -n myapp -p components # 同上, 但组件目录叫 components/(main.go/README/AGENTS 与清单都跟着这个名字)
 xui init -n myapp --force # 目录已存在且非空时放开这道闸门(你的改动仍然保留; 要丢弃再加 -o)
 xui init -n myapp --dry-run # 预览整个生成过程: 不建目录、不写文件、不联网(init 也能预览了)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
-xui init [ui目录]       # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
+xui init [组件目录]     # 已有项目: 只写组件目录(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
 xui add button card     # 追加拷贝指定组件(自动带上依赖)
 xui add --all           # 拷贝全部组件
 xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地
@@ -309,7 +310,7 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 - `init -n -f, --force`: **只**放开"目标目录已存在且非空"这道闸门, 不隐含"你的改动可以丢"(普通 `xui init [ui目录]` 用不上它, 它不会覆盖已有文件, 加 `-f` 会直接报错);
 - `--no-install`(init / add / update): 组件文件照写, 但**不联网动依赖** —— `init -n` 还跳过自动 `go mod tidy` 与 `xc` 安装(仍写 `winres/`), `add` / `update` 则不动 `go.mod` 的配套运行时(离线时用, 之后自己跑);
 - `-o, --overwrite`(init / add / update): 丢弃本地改动(默认保留, 见下方"更新时的判定")。对 `init -n` 来说它管的是模板文件(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore`)与基础组件;以前 `--force` 一个旗同时干这两件事, 于是一次 `init -n app --force` 能把你改过的 `main.go` 无声覆掉。
-- `add/update/info -p, --path <目录>`: 组件目录, 默认 `ui`(`info` 也认它 —— 组件装在 `components/` 时, `xui info` 才不会再报 "ui/: 未初始化");
+- `-p, --path <目录>`(init / add / update / info): 组件目录, 默认 `ui`。`init -n` 也认它 —— 在新项目里就把目录名定下来(`main.go` 的 import、README、AGENTS 与安装清单都跟着走), 以前这条是写死 `ui/` 的, 想要 `components/` 只能 init 完再手工删掉空的 `ui/` 并改文档;限制必须是**项目内的相对目录**(绝对路径或 `..` 跳出会被拒 —— 清单落在组件目录里, 跳出去之后就找不到自己的基线了)。`info` 认它是因为组件装在 `components/` 时, 不认的 `xui info` 会答 "ui/: 未初始化", 那是错的;
 - `add -a, --all`: 全部组件(`update` 不接受它 —— 省略组件名就已经是"更新已装的全部", 想把没装的也一起拷进来请用 `xui add --all`);
 - `--dry-run`(init / add / update): 只预览会做什么, **没有任何副作用** —— 不建目录、不写文件、不写清单、不联网、不调 `xc` 生成 `.syso`。`init` 以前完全没有预览, 只能在别人的仓库里赌一把;现在 `xui init -n app --dry-run` 会一路打"将创建 …", 最后一行明确说没写任何东西;
 - `add --view[=组件或文件]` / `--diff[=组件或文件]`: 查看源码 / 与本地对比, 不写本地;过滤值给组件名(`card`)或文件基名(`card.go`)都行, 一个都没匹配上时会明说"没有匹配的文件", 不会拿"没有差异"糊弄你;
@@ -374,8 +375,10 @@ sha256;`init -n` 生成项目骨架时把 `go.mod` / `main.go` / `README.md` / `
 `add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖抬到它(等价于
 `go get github.com/twgh/xui@<tag>`, `go.sum` 一起更新), 升级完直接 `go build` 就行 ——
 运行时的修复(比如过渡表泄漏)也随之一路带上, 不用你再 `go get -u`。
-四种情况不动你的依赖: `--dry-run` 与 `--no-install`(init / add / update 都认)只打印命令; `go.mod` 里把这个模块
-`replace` 到本地工作副本时一切以你的 replace 为准; 项目里找不到 `go.mod` 时只提示。
+有五种情况不动你的依赖: `--dry-run` 与 `--no-install`(init / add / update 都认)只打印命令; `go.mod` 里把这个模块
+`replace` 到本地工作副本时一切以你的 replace 为准; 项目里找不到 `go.mod` 时只提示; 找到的那份 `go.mod`
+**既在当前目录之外、又没要求 `github.com/twgh/xui`** 时也不动(在临时目录或别人的 monorepo 上层里跑 CLI,
+不该去改那个不相干模块的依赖)。
 想自己锁版本: 先 `go get github.com/twgh/xui@<你选的 tag>` 再跑 `xui update` 即可。
 
 **数据源**: 默认从仓库 `main` 分支现拉组件, 组件永远最新。CLI 本体的版本由 `go install` / `go run`

@@ -230,7 +230,7 @@ func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
 	if err := os.Chdir(named); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject("sitless", false, writeOpts{noInstall: true}); err != nil {
+	if err := initNewProject("sitless", "ui", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("initNewProject 失败: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(named, "go.mod")); err != nil {
@@ -248,7 +248,7 @@ func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
 	if err := os.Chdir(dot); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject(".", false, writeOpts{noInstall: true}); err != nil {
+	if err := initNewProject(".", "ui", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("initNewProject(.) 失败: %v", err)
 	}
 	gomod, err := os.ReadFile(filepath.Join(dot, "go.mod"))
@@ -354,15 +354,25 @@ func TestParseInitArgs(t *testing.T) {
 	}{
 		{"默认 ui", nil, initOptions{uiDir: "ui"}, false},
 		{"旧位置参数", []string{"components"}, initOptions{uiDir: "components"}, false},
-		{"-n", []string{"-n", "myapp"}, initOptions{project: "myapp"}, false},
-		{"--name=", []string{"--name=myapp"}, initOptions{project: "myapp"}, false},
-		{"-n 加 force", []string{"-f", "-n", "myapp"}, initOptions{project: "myapp", force: true}, false},
+		// init -n 也带组件目录名(默认 ui): 以前这条是空的, 目录名被写死在 initNewProject 里
+		{"-n", []string{"-n", "myapp"}, initOptions{uiDir: "ui", project: "myapp"}, false},
+		{"--name=", []string{"--name=myapp"}, initOptions{uiDir: "ui", project: "myapp"}, false},
+		{"-n 加 force", []string{"-f", "-n", "myapp"}, initOptions{uiDir: "ui", project: "myapp", force: true}, false},
 		// force 与 overwrite 分开: -f 只开"非空目录"这道闸门, -o 才允许丢弃本地改动
-		{"-n 加 -o", []string{"-n", "myapp", "-o"}, initOptions{project: "myapp", overwrite: true}, false},
-		{"-o 与 -f 各自独立", []string{"--force", "--overwrite", "--name=myapp"}, initOptions{project: "myapp", force: true, overwrite: true}, false},
+		{"-n 加 -o", []string{"-n", "myapp", "-o"}, initOptions{uiDir: "ui", project: "myapp", overwrite: true}, false},
+		{"-o 与 -f 各自独立", []string{"--force", "--overwrite", "--name=myapp"}, initOptions{uiDir: "ui", project: "myapp", force: true, overwrite: true}, false},
+		// init -n 的 -p: 组件目录名在这一步就能定, 不用再 init 完手工删 ui/
+		{"-n 加 -p", []string{"-n", "myapp", "-p", "components"}, initOptions{uiDir: "components", project: "myapp"}, false},
+		{"-n 加 --path=", []string{"-n", "myapp", "--path=internal/ui"}, initOptions{uiDir: "internal/ui", project: "myapp"}, false},
+		{"-n 的 -p 不许绝对路径", []string{"-n", "myapp", "-p", "D:/other/ui"}, initOptions{}, true},
+		{"-n 的 -p 不许跳出项目", []string{"-n", "myapp", "-p", "../ui"}, initOptions{}, true},
 		{"普通 init 不需要 -f", []string{"-f"}, initOptions{}, true},
 		{"普通 init 的 -o", []string{"-o"}, initOptions{uiDir: "ui", overwrite: true}, false},
-		{"--no-install", []string{"--no-install", "-n", "myapp"}, initOptions{project: "myapp", noInstall: true}, false},
+		// 普通 init 的位置参数与 -p 是同一个东西: 同词不矛盾, 不同词不猜
+		{"普通 init 的 -p", []string{"-p", "widgets"}, initOptions{uiDir: "widgets"}, false},
+		{"普通 init -p 与位置同值", []string{"-p", "widgets", "widgets"}, initOptions{uiDir: "widgets"}, false},
+		{"普通 init -p 与位置冲突", []string{"-p", "widgets", "ui"}, initOptions{}, true},
+		{"--no-install", []string{"--no-install", "-n", "myapp"}, initOptions{uiDir: "ui", project: "myapp", noInstall: true}, false},
 		// 普通 init 也会抬配套运行时依赖(add 路径), 所以 --no-install 对它同样成立
 		{"--no-install 无 -n", []string{"--no-install"}, initOptions{uiDir: "ui", noInstall: true}, false},
 		{"-n 缺值", []string{"-n"}, initOptions{}, true},
@@ -414,7 +424,7 @@ func TestInitNewProject(t *testing.T) {
 	}
 	defer os.Chdir(old)
 
-	if err := initNewProject("myapp", false, writeOpts{noInstall: true}); err != nil {
+	if err := initNewProject("myapp", "ui", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("initNewProject 失败: %v", err)
 	}
 
@@ -529,14 +539,14 @@ func TestInitNewProject(t *testing.T) {
 	}
 
 	// 非空目录默认拒绝, --force 放行且不删除无关文件
-	if err := initNewProject("myapp", false, writeOpts{noInstall: true}); err == nil {
+	if err := initNewProject("myapp", "ui", false, writeOpts{noInstall: true}); err == nil {
 		t.Error("非空目录未加 --force 应报错")
 	}
 	keep := filepath.Join(dir, "myapp", "notes.txt")
 	if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject("myapp", true, writeOpts{noInstall: true}); err != nil {
+	if err := initNewProject("myapp", "ui", true, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("--force 应允许写入非空目录: %v", err)
 	}
 	if _, err := os.Stat(keep); err != nil {
@@ -560,7 +570,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 	}
 	defer os.Chdir(old)
 
-	if err := initNewProject("app", false, writeOpts{noInstall: true}); err != nil {
+	if err := initNewProject("app", "ui", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("首次 init 失败: %v", err)
 	}
 	mainGo := filepath.Join("app", "main.go")
@@ -573,7 +583,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 	}
 
 	// 只加 --force: 闸门开了, 但你的文件一个都不动
-	if err := initNewProject("app", true, writeOpts{noInstall: true}); err != nil {
+	if err := initNewProject("app", "ui", true, writeOpts{noInstall: true}); err != nil {
 		t.Fatalf("--force 应允许写入非空目录: %v", err)
 	}
 	if data, _ := os.ReadFile(mainGo); string(data) != "package main\n// 我的入口\n" {
@@ -581,7 +591,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 	}
 
 	// --force + -o: 这才是"确认丢弃改动"
-	if err := initNewProject("app", true, writeOpts{overwrite: true, noInstall: true}); err != nil {
+	if err := initNewProject("app", "ui", true, writeOpts{overwrite: true, noInstall: true}); err != nil {
 		t.Fatalf("--force -o 应覆盖: %v", err)
 	}
 	if data, _ := os.ReadFile(mainGo); string(data) == "package main\n// 我的入口\n" {
@@ -589,7 +599,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 	}
 	// 覆盖之后基线重建: 再跑一次是"模板没变", 不该继续说本地修改已丢弃
 	out := captureOutput(t, func() {
-		if err := initNewProject("app", true, writeOpts{overwrite: true, noInstall: true}); err != nil {
+		if err := initNewProject("app", "ui", true, writeOpts{overwrite: true, noInstall: true}); err != nil {
 			t.Errorf("重复 init 失败: %v", err)
 		}
 	})
@@ -602,7 +612,7 @@ func TestInitForceKeepsEditedTemplates(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = captureOutput(t, func() {
-		if err := initNewProject("app", true, writeOpts{noInstall: true}); err != nil {
+		if err := initNewProject("app", "ui", true, writeOpts{noInstall: true}); err != nil {
 			t.Errorf("--force 失败: %v", err)
 		}
 	})
@@ -1523,7 +1533,7 @@ func TestInitDryRunWritesNothing(t *testing.T) {
 	defer os.Chdir(old)
 
 	out := captureOutput(t, func() {
-		if err := initNewProject("app", false, writeOpts{dryRun: true}); err != nil {
+		if err := initNewProject("app", "ui", false, writeOpts{dryRun: true}); err != nil {
 			t.Errorf("预览失败: %v", err)
 		}
 	})
@@ -1545,7 +1555,7 @@ func TestInitDryRunWritesNothing(t *testing.T) {
 
 	// 已建好的项目里预览: 改过的模板要说"将跳过", 而且内容不许被动
 	// (setup 用 noInstall, 单测绝不联网跑 go mod tidy)
-	if err := initNewProject("app", false, writeOpts{noInstall: true}); err != nil {
+	if err := initNewProject("app", "ui", false, writeOpts{noInstall: true}); err != nil {
 		t.Fatal(err)
 	}
 	mainGo := filepath.Join("app", "main.go")
@@ -1553,7 +1563,7 @@ func TestInitDryRunWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = captureOutput(t, func() {
-		if err := initNewProject("app", true, writeOpts{dryRun: true}); err != nil {
+		if err := initNewProject("app", "ui", true, writeOpts{dryRun: true}); err != nil {
 			t.Errorf("预览失败: %v", err)
 		}
 	})
@@ -1573,6 +1583,145 @@ func TestInitDryRunWritesNothing(t *testing.T) {
 	}
 	if !strings.Contains(out, "将创建") {
 		t.Errorf("普通 init 预览缺少将创建:\n%s", out)
+	}
+}
+
+// init -n 的 -p 必须贯通到下发的每一份文件: 目录、清单、main.go 的 import、README/AGENTS
+// 里说的路径。以前组件目录写死 ui/, 想要 components/ 只能 init 完手工删一个空 ui/ 再改文档。
+func TestInitNewProjectCustomComponentsDir(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	stubWinresMake(t)
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	if err := initNewProject("app", "components", false, writeOpts{noInstall: true}); err != nil {
+		t.Fatalf("init -n -p components 失败: %v", err)
+	}
+	root := filepath.Join(dir, "app")
+	// 组件与清单都落在 components/, 而且不该再有 ui/
+	for _, f := range []string{"components/theme.go", "components/DESIGN.md", "components/button.go", "components/" + manifestName} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(f))); err != nil {
+			t.Errorf("缺少 %s: %v", f, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "ui")); !os.IsNotExist(err) {
+		t.Error("自定义目录名时不该再生成 ui/")
+	}
+	// 模板文件基线记在组件目录里那份清单上
+	if data, err := os.ReadFile(filepath.Join(root, "components", manifestName)); err != nil {
+		t.Fatal(err)
+	} else if !strings.Contains(string(data), `"project_files"`) {
+		t.Error("清单里该有模板文件的基线")
+	}
+	// import 路径跟着目录名走(包名仍是 ui, 靠别名)
+	mainGo, err := os.ReadFile(filepath.Join(root, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(mainGo), `ui "app/components"`) {
+		t.Errorf("main.go 的 import 没跟着改:\n%s", mainGo)
+	}
+	// 下发文档说的路径也得是真的(占位符不许漏在最后成品里)
+	for _, f := range []string{"README.md", "AGENTS.md", "main.go"} {
+		body, err := os.ReadFile(filepath.Join(root, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(body), uiDirToken) {
+			t.Errorf("%s 里漏了未替换的占位符", f)
+		}
+	}
+	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(readme), "- components/ — 组件源码拷贝") {
+		t.Errorf("README 的目录清单没跟着改:\n%s", readme)
+	}
+	// 之后每条命令用 -p 指得回去
+	addAt := captureOutput(t, func() {
+		add(componentOptions{names: []string{"card"}, uiDir: filepath.Join("app", "components")})
+	})
+	if !strings.Contains(addAt, "card.go") {
+		t.Errorf("往自定义目录 add 失败: %s", addAt)
+	}
+	if _, err := os.Stat(filepath.Join(root, "components", "card.go")); err != nil {
+		t.Errorf("card.go 没落到 components/: %v", err)
+	}
+}
+
+// findGoMod 是"从组件目录向上找最近的 go.mod", 所以在临时目录里跑 CLI 会命中某个**无关**的
+// 父模块并去改它的依赖。判据: 那份 go.mod 在当前目录之下(用户站着的项目), 或者它本来就
+// require 了 github.com/twgh/xui —— 两条都不满足就只提示不动。
+func TestEnsureRuntimeDoesNotTouchForeignGoMod(t *testing.T) {
+	cases := []struct {
+		name    string
+		parent  string // 父目录(当前目录之外)的 go.mod
+		wantGet bool
+	}{
+		{
+			"无关父模块: 没要求 xui",
+			"module someone/else\n\ngo 1.18\n",
+			false,
+		},
+		{
+			"父模块本来就用 xui: 该抬(在项目子目录里跑的形态)",
+			"module someone/else\n\ngo 1.18\n\nrequire github.com/twgh/xui v0.7.0\n",
+			true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			calls := stubGoGet(t)
+			old, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(c.parent), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			// cwd 是 root 的子目录, 组件目录在 cwd 下 —— 唯一的 go.mod 在 cwd **之外**
+			sub := filepath.Join(root, "scratch")
+			if err := os.MkdirAll(filepath.Join(sub, "ui"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chdir(sub); err != nil {
+				t.Fatal(err)
+			}
+			defer os.Chdir(old)
+
+			out := captureOutput(t, func() { ensureRuntime(filepath.Join(sub, "ui"), "v0.8.0", false, true) })
+			if c.wantGet {
+				if len(*calls) != 1 || (*calls)[0].spec != "github.com/twgh/xui@v0.8.0" {
+					t.Errorf("该抬但没抬, calls=%+v\n%s", *calls, out)
+				}
+				return
+			}
+			if len(*calls) != 0 {
+				t.Fatalf("不该动无关模块, calls=%+v", *calls)
+			}
+			if !strings.Contains(out, "在当前目录之外") || !strings.Contains(out, "不动它的依赖") {
+				t.Errorf("该说清为什么不动, 实为 %q", out)
+			}
+		})
+	}
+}
+
+// 正常项目里(go.mod 就是当前目录)必须照旧抬起来 —— 上面那条守卫不能过头。
+func TestEnsureRuntimeStillBumpsProjectRoot(t *testing.T) {
+	calls := stubGoGet(t)
+	chdirProject(t, "module myapp\n\ngo 1.18\n\nrequire github.com/twgh/xui v0.7.0\n")
+	ensureRuntime("ui", "v0.8.0", false, true)
+	if len(*calls) != 1 || (*calls)[0].spec != "github.com/twgh/xui@v0.8.0" {
+		t.Fatalf("项目根的依赖该抬上去, calls=%+v", *calls)
 	}
 }
 
