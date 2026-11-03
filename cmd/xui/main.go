@@ -1164,25 +1164,15 @@ func moduleRoot() string {
 // ---------------------------------------------------------------- 各命令实现
 
 func initProject(dir string, w writeOpts) {
-	if err := scaffoldUI(dir, w); err != nil {
+	// 组件目录里那份给 AI 助手的 AGENTS.md 由 scaffoldUI 写(与 DESIGN.md 同一套基线判定)。
+	if err := scaffoldUI(dir, w, true); err != nil {
 		fatal("%v", err)
-	}
-	// 组件目录的 AGENTS.md: README 不在 init 的写入范围(用户项目已有自己的),
-	// 所以用法与改组件规则放在组件目录里, 由 AI 助手在改这个目录时读取。
-	agentsPath := filepath.Join(dir, "AGENTS.md")
-	if _, err := os.Stat(agentsPath); err == nil {
-		info("跳过 %s (已存在)", agentsPath)
-	} else if w.dryRun {
-		info("将创建 %s", agentsPath)
-	} else if err := os.WriteFile(agentsPath, []byte(renderUI(agentsDirTemplate, dir)), 0o644); err != nil {
-		warn("写入 AGENTS.md 失败: %v", err)
-	} else {
-		info("创建 %s", agentsPath)
 	}
 	if w.dryRun {
 		info("\n以上是预览: 没有创建任何文件/目录, 也没有联网动依赖")
 		return
 	}
+	agentsPath := filepath.Join(dir, "AGENTS.md")
 	info("\n完成。接下来:")
 	info("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
 	info("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)", dir)
@@ -1191,16 +1181,86 @@ func initProject(dir string, w writeOpts) {
 	info("  5. AI 助手先读 %s (组件用法/添加更新/改组件规则)", agentsPath)
 }
 
-// scaffoldUI 写 ui 目录: theme.go + DESIGN.md + 基础组件。普通 init 与 init -n 共用。
-// overwrite = 允许丢弃本地改过的组件文件(add 的 -o); theme.go / DESIGN.md 已存在时永远保留。
-// noInstall = 不联网动 go.mod(配套运行时版本只打印命令)。
-func scaffoldUI(dir string, w writeOpts) error {
+// placeFile 按 classifyPlace 的判定写一个"由 CLI 下发"的文件, 并更新清单里的基线。
+// 组件源码、DESIGN.md、AGENTS.md 走的都是这一条, 所以"你改过就保留、没改过跟着版本走"
+// 在项目里只有一套行为、一套措辞。返回是否被跳过(给汇总用)。
+func placeFile(dst, rel string, data []byte, inst *installation, overwrite, dryRun bool) (skipped bool) {
+	local, err := os.ReadFile(dst)
+	missing := os.IsNotExist(err)
+	if err != nil && !missing {
+		fatal("读取 %s 失败: %v", dst, err)
+	}
+	baseline, hasBaseline := inst.Files[rel]
+	switch classifyPlace(!missing, local, data, baseline, hasBaseline) {
+	case placeCreate:
+		if dryRun {
+			info("将创建 %s", dst)
+			return false
+		}
+		writeFileOrFatal(dst, data)
+		inst.Files[rel] = sha256Hex(data)
+		info("创建 %s", dst)
+	case placeSame:
+		if !dryRun {
+			inst.Files[rel] = sha256Hex(data)
+		}
+		info("已一致 %s", dst)
+	case placeUpgrade:
+		if dryRun {
+			info("将更新 %s (版本升级)", dst)
+			return false
+		}
+		writeFileOrFatal(dst, data)
+		inst.Files[rel] = sha256Hex(data)
+		info("更新 %s (版本升级)", dst)
+	case placeEdited, placeUnknown:
+		if !overwrite {
+			verb := "跳过"
+			if dryRun {
+				verb = "将跳过"
+			}
+			if !hasBaseline {
+				warn("%s 内容与 CLI 下发的不同, 且没有安装清单基线, 无法判断来源, %s (确认本地无改动后加 -o/--overwrite 覆盖)", dst, verb)
+				return true
+			}
+			warn("%s 本地已修改, %s (确认后加 -o/--overwrite 覆盖)", dst, verb)
+			return true
+		}
+		lost := " (本地修改已丢弃)"
+		if !hasBaseline {
+			lost = " (无安装清单基线, 无法判断是否改过)"
+		}
+		if dryRun {
+			info("将覆盖 %s%s", dst, lost)
+			return false
+		}
+		writeFileOrFatal(dst, data)
+		inst.Files[rel] = sha256Hex(data)
+		info("覆盖 %s%s", dst, lost)
+	}
+	return false
+}
+
+// scaffoldUI 写 ui 目录: theme.go + DESIGN.md + AGENTS.md + 基础组件。普通 init 与 init -n 共用。
+//
+//   - overwrite = 允许丢弃本地改动(add 的 -o);
+//   - dryRun = 只说将做什么, 不建目录、不写文件;
+//   - dirAgents = 组件目录里也放一份给 AI 助手的 AGENTS.md(普通 init 才放: init -n 写的是
+//     项目根那份, 已在模板文件的清单里)。
+//
+// DESIGN.md / AGENTS.md 与组件源码共用同一套基线判定: 以前它们"存在就永远跳过", 于是
+// 第一次 init 那一刻文档就定版了, 之后 CLI 修了文档里的错也传不到已有项目。
+// theme.go 是明确给用户改的(改主题就在那里), 所以不纳入 —— 它存在就跳过, 一次都不覆写。
+func scaffoldUI(dir string, w writeOpts, dirAgents bool) error {
 	// dry-run 与 install 同一条纪律: 不建目录、不写文件, 只说将做什么。
 	if !w.dryRun {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("创建目录失败: %v", err)
 		}
 	}
+	inst := loadManifest(dir)
+	skipped := false
+
 	themePath := filepath.Join(dir, "theme.go")
 	switch {
 	case fileExists(themePath):
@@ -1217,25 +1277,44 @@ func scaffoldUI(dir string, w writeOpts) error {
 	// 配套文档: 组件源码的注释里大量 "见 DESIGN 第 N 节", 拷给用户才是活的。
 	// 从模块根读(go run pkg@version 时位于模块缓存, 源码文件同样在), 读不到不阻断 init。
 	docPath := filepath.Join(dir, "DESIGN.md")
+	data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md"))
 	switch {
-	case fileExists(docPath):
-		info("跳过 %s (已存在)", docPath)
-	case w.dryRun:
-		info("将创建 %s", docPath)
+	case err != nil:
+		warn("读取 DESIGN.md 失败, 跳过: %v", err)
 	default:
-		data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md"))
-		if err != nil {
-			warn("读取 DESIGN.md 失败, 跳过: %v", err)
-		} else if err := os.WriteFile(docPath, data, 0o644); err != nil {
-			warn("写入 DESIGN.md 失败: %v", err)
-		} else {
-			info("创建 %s", docPath)
+		// 下发前把 {{UIDIR}} 换成实际目录名(目录不叫 ui 时文档里说的路径也得对)。
+		if placeFile(docPath, "DESIGN.md", []byte(renderUI(string(data), dir)), &inst, w.overwrite, w.dryRun) {
+			skipped = true
 		}
 	}
 
+	// 组件目录的 AGENTS.md: README 不在 init 的写入范围(用户项目已有自己的),
+	// 所以用法与改组件规则放在组件目录里, 由 AI 助手在改这个目录时读取。
+	if dirAgents {
+		agentsPath := filepath.Join(dir, "AGENTS.md")
+		body := []byte(renderUI(agentsDirTemplate, dir))
+		if placeFile(agentsPath, "AGENTS.md", body, &inst, w.overwrite, w.dryRun) {
+			skipped = true
+		}
+	}
+
+	if !w.dryRun {
+		if err := inst.save(dir); err != nil {
+			warn("写入安装清单失败: %v", err)
+		}
+	}
 	// 拷入全部基础组件, 开箱即用(window 是快速开始示例用的主窗口封装)
 	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: w.overwrite, noInstall: w.noInstall, dryRun: w.dryRun})
+	reportSkipped(skippedCount(skipped), w.dryRun, false)
 	return nil
+}
+
+// skippedCount 把"有没有跳过"折成 reportSkipped 要的条数(文档没有条数可言, 只关心要不要提示)。
+func skippedCount(skipped bool) int {
+	if skipped {
+		return 1
+	}
+	return 0
 }
 
 // fileExists 只问"路径在不在"(读一次 Stat)。
@@ -1383,7 +1462,8 @@ func initNewProject(name, uiSub string, force bool, w writeOpts) error {
 	}
 	// init 没有 --strict(它是建仓的一步, 跳过模板该由用户决定), 只要那一句汇总。
 	reportSkipped(skipped, w.dryRun, false)
-	if err := scaffoldUI(uiDir, w); err != nil {
+	// init -n 不写组件目录那份 AGENTS.md: 它的项目根 AGENTS.md 已经在上面的模板清单里。
+	if err := scaffoldUI(uiDir, w, false); err != nil {
 		return err
 	}
 	// 图标/版本资源: winres/ 写好即生效, .syso 由 xc 生成; --no-install 不联网装 xc。

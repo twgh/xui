@@ -1725,6 +1725,125 @@ func TestEnsureRuntimeStillBumpsProjectRoot(t *testing.T) {
 	}
 }
 
+// 组件目录里的 DESIGN.md / AGENTS.md 以前是"存在就永远跳过": 第一次 init 那一刻定版,
+// 之后 CLI 修了文档里的错也传不到已有项目。现在与组件源码共用同一套基线判定。
+// theme.go 故意不纳入(它就是给用户改的), 所以它仍是"存在就跳过"。
+func TestInitRefreshesTrackedDocs(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	initProject("ui", writeOpts{})
+	agents := filepath.Join("ui", "AGENTS.md")
+	design := filepath.Join("ui", "DESIGN.md")
+	for _, f := range []string{agents, design} {
+		if !fileExists(f) {
+			t.Fatalf("缺少 %s", f)
+		}
+	}
+	// 清单里得登记这两份(有基线才分得清"你改过"与"文档随 CLI 升级")
+	man := loadManifest("ui")
+	for _, k := range []string{"AGENTS.md", "DESIGN.md"} {
+		if _, ok := man.Files[k]; !ok {
+			t.Errorf("清单没登记 %s", k)
+		}
+	}
+
+	// ① 手改过的保留
+	data, err := os.ReadFile(agents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine := append(append([]byte{}, data...), []byte("\n我自己加的一条规则\n")...)
+	if err := os.WriteFile(agents, mine, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := captureOutput(t, func() { initProject("ui", writeOpts{}) })
+	if !strings.Contains(out, "AGENTS.md 本地已修改, 跳过") {
+		t.Errorf("改过的文档该报本地已修改并跳过: %s", out)
+	}
+	if got, _ := os.ReadFile(agents); string(got) != string(mine) {
+		t.Error("改过的 AGENTS.md 被覆写了")
+	}
+
+	// ② 模拟"CLI 的文档更新了而你没动过": 盘上内容与远端不同(远端=仓库 docs/DESIGN.md),
+	// 而基线等于盘上内容 ⇒ 判定该走 placeUpgrade, 直接刷新并说"版本升级"。
+	designData, err := os.ReadFile(design)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := append(append([]byte{}, designData...), []byte("\n模拟新版文档\n")...)
+	if err := os.WriteFile(design, updated, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	man = loadManifest("ui")
+	man.Files["DESIGN.md"] = sha256Hex(updated)
+	if err := man.save("ui"); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() { initProject("ui", writeOpts{}) })
+	if !strings.Contains(out, "DESIGN.md (版本升级)") {
+		t.Errorf("没改过的文档该随版本刷新: %s", out)
+	}
+	// 刷新后的内容 = 远端下发的文档(远端本来就是 designData, 所以判"模拟标记被擦掉")
+	gotDesign, _ := os.ReadFile(design)
+	if bytes.Contains(gotDesign, []byte("模拟新版文档")) {
+		t.Error("DESIGN.md 没被刷新(还留着本地那份模拟内容)")
+	}
+
+	// ③ -o 才丢弃改动
+	if err := os.WriteFile(agents, mine, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() { initProject("ui", writeOpts{overwrite: true}) })
+	if !strings.Contains(out, "AGENTS.md 覆盖") && !strings.Contains(out, "覆盖 ui\\AGENTS.md (本地修改已丢弃)") {
+		t.Errorf("加 -o 时该报覆盖并说明丢弃: %s", out)
+	}
+	if got, _ := os.ReadFile(agents); string(got) == string(mine) {
+		t.Error("-o 之后 AGENTS.md 仍是被改过的内容")
+	}
+
+	// ④ theme.go 不纳入判定: 存在就一个字都不动
+	theme := filepath.Join("ui", "theme.go")
+	if err := os.WriteFile(theme, []byte("package ui\n// 我改过主题\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() { initProject("ui", writeOpts{overwrite: true}) })
+	if !strings.Contains(out, "theme.go (已存在)") {
+		t.Errorf("theme.go 该永远保留(即使加了 -o): %s", out)
+	}
+	if got, _ := os.ReadFile(theme); !strings.Contains(string(got), "我改过主题") {
+		t.Error("theme.go 被覆写了 —— 它是给用户改主题的, 不该纳入基线")
+	}
+
+	// ⑤ 预览不动文件
+	before := sha256Hex(mustRead(t, design))
+	out = captureOutput(t, func() { initProject("ui", writeOpts{dryRun: true}) })
+	if strings.Contains(out, "\n创建 ") || !strings.Contains(out, "预览") {
+		t.Errorf("--dry-run 措辞或预览总结不对: %s", out)
+	}
+	if sha256Hex(mustRead(t, design)) != before {
+		t.Error("--dry-run 改了 DESIGN.md")
+	}
+}
+
+// mustRead 读文件, 失败就终止当前测试。
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 // TestMain 默认把 go get 换成桩: 单测绝不联网改依赖。
 func TestMain(m *testing.M) {
 	goGetModule = func(string, string) error { return nil }
