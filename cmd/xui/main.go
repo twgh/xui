@@ -351,12 +351,12 @@ func main() {
 			fatal("%v", err)
 		}
 		if opts.project != "" {
-			if err := initNewProject(opts.project, opts.force, opts.noInstall); err != nil {
+			if err := initNewProject(opts.project, opts.force, opts.overwrite, opts.noInstall); err != nil {
 				fatal("%v", err)
 			}
 			return
 		}
-		initProject(opts.uiDir, opts.force, opts.noInstall)
+		initProject(opts.uiDir, opts.overwrite, opts.noInstall)
 	case "add", "update":
 		opts, err := parseComponentArgs(cmd, args)
 		if err != nil {
@@ -480,10 +480,14 @@ func extractGlobal(args []string) ([]string, error) {
 
 // initOptions 是 init 的解析结果: project 非空 = 新建完整项目(xui init -n)，
 // 否则 = 在已有项目里初始化组件目录(兼容原来的 xui init [ui目录])。
+// force 与 overwrite 是两件事(以前挤在 -f 一个旗上):
+//   - force    = 允许往已存在且非空的项目目录里写(只是开闸门, 不隐含"改动可以丢");
+//   - overwrite = 允许丢弃本地改动(与 add/update 的 -o 同一个意思、同一套判定)。
 type initOptions struct {
 	uiDir     string
 	project   string
 	force     bool
+	overwrite bool
 	noInstall bool
 }
 
@@ -510,6 +514,8 @@ func parseInitArgs(args []string) (initOptions, error) {
 			}
 		case a == "-f" || a == "--force":
 			o.force = true
+		case a == "-o" || a == "--overwrite":
+			o.overwrite = true
 		case a == "--no-install":
 			o.noInstall = true
 		case strings.HasPrefix(a, "-"):
@@ -529,6 +535,11 @@ func parseInitArgs(args []string) (initOptions, error) {
 		o.uiDir = "ui"
 		if len(pos) == 1 {
 			o.uiDir = pos[0]
+		}
+		if o.force {
+			// 普通 init 没有"非空目录"这道闸门, 已有文件一律保留 —— 收下 -f 又不生效
+			// 就是骗人; 真要丢弃本地改动说的是 -o。
+			return o, fmt.Errorf("xui init [ui目录] 不会覆盖已有文件, 不需要 --force; 要丢弃本地改动加 -o/--overwrite")
 		}
 	}
 	return o, nil
@@ -765,10 +776,11 @@ func usage() {
 
 选项:
   -n, --name <项目名>   init: 新建项目目录
-  -f, --force           init: 允许写入非空项目目录(覆盖模板文件)
+  -f, --force           init -n: 允许写入已存在且非空的项目目录(只开这道闸门,
+                        不隐含"你的改动可以丢"; 普通 init 用不上它)
   --no-install          init/add/update: 写文件但不联网动 go.mod 的依赖
                         (init -n 还跳过自动 go mod tidy 与 xc 安装, 仍写 winres/)
-  -o, --overwrite       add/update: 覆盖本地已修改的文件
+  -o, --overwrite       init/add/update: 丢弃本地改动(默认保留; 判定见下)
   -p, --path <目录>     add/update: 组件目录(默认 ui)
   -a, --all             add: 全部组件
   -q, --query <词>      list/search: 按组件名过滤
@@ -782,6 +794,10 @@ func usage() {
 
 短选项也接受 -x=值 的写法(与 --long=值 一致), 例如 -p=src -l=5。
 --view/--diff 是"只展示"的开关, 与 --dry-run / -o / --no-install 同时给会直接报错。
+
+改动判定(add/update 的组件文件与 init 的模板文件同一套): 装完之后没动过(本地哈希等于
+                        安装清单里的基线)→ 随版本升级直接替换; 基线对不上 → 你改过,
+                        默认保留, 要 -o 才覆盖; 该文件没有基线 → 只说"无法判断来源"。
 
 运行时版本: 组件源码跟 main 分支, 而运行时 github.com/twgh/xui 只能按 tag 取 ——
                         registry.json 的 runtime 字段是与这批组件配套的运行时版本,
@@ -826,8 +842,8 @@ func moduleRoot() string {
 
 // ---------------------------------------------------------------- 各命令实现
 
-func initProject(dir string, force, noInstall bool) {
-	if err := scaffoldUI(dir, force, noInstall); err != nil {
+func initProject(dir string, overwrite, noInstall bool) {
+	if err := scaffoldUI(dir, overwrite, noInstall); err != nil {
 		fatal("%v", err)
 	}
 	// 组件目录的 AGENTS.md: README 不在 init 的写入范围(用户项目已有自己的),
@@ -849,8 +865,9 @@ func initProject(dir string, force, noInstall bool) {
 }
 
 // scaffoldUI 写 ui 目录: theme.go + DESIGN.md + 基础组件。普通 init 与 init -n 共用。
+// overwrite = 允许丢弃本地改过的组件文件(add 的 -o); theme.go / DESIGN.md 已存在时永远保留。
 // noInstall = 不联网动 go.mod(配套运行时版本只打印命令)。
-func scaffoldUI(dir string, force, noInstall bool) error {
+func scaffoldUI(dir string, overwrite, noInstall bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("创建目录失败: %v", err)
 	}
@@ -877,19 +894,26 @@ func scaffoldUI(dir string, force, noInstall bool) error {
 	}
 
 	// 拷入全部基础组件, 开箱即用(window 是快速开始示例用的主窗口封装)
-	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: force, noInstall: noInstall})
+	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: overwrite, noInstall: noInstall})
 	return nil
 }
 
 // initNewProject 创建完整项目目录: go.mod + main.go + README + .gitignore + ui/。
-// 目标目录已存在且非空时默认拒绝, force 允许覆盖模板文件(不动无关文件)。
+//
+// 两个开关分开(以前挤在 -f 一个旗上, 于是"往非空目录里装"必然连带"丢掉你的改动"):
+//   - force     = 目标目录已存在且非空时才需要, 只负责开这道闸门;
+//   - overwrite = 允许丢弃本地改动, 判定与 add/update 的 -o 完全同一套(见 classifyPlace):
+//     与上次生成一致 → 随模板升级直接替换; 基线对不上 → 你改过, 默认保留; 没有基线 →
+//     只说"判断不了来源", 不断言你改过。go.mod / main.go / README.md 都是会被改的文件,
+//     光凭"存在"就覆写等于把用户代码抹了。
+//
 // noInstall = 跳过自动 go mod tidy(--no-install)。
 //
 // 目录规则:
 //   - `-n .` 直接把骨架铺在当前目录(项目名取当前目录名);
 //   - 当前目录本身是空的、且目录名 == -n 的项目名时, 同样铺在当前目录 ——
 //     否则在 `D:\...\sitless` 里执行 `xui init -n sitless` 会生成 sitless/sitless。
-func initNewProject(name string, force, noInstall bool) error {
+func initNewProject(name string, force, overwrite, noInstall bool) error {
 	dir := name
 	if name == "." {
 		cwd, err := os.Getwd()
@@ -907,7 +931,7 @@ func initNewProject(name string, force, noInstall bool) error {
 	}
 	if entries, err := os.ReadDir(dir); err == nil {
 		if len(entries) > 0 && !force {
-			return fmt.Errorf("目录 %s 已存在且非空 (确认后加 --force 覆盖模板文件)", dir)
+			return fmt.Errorf("目录 %s 已存在且非空 (确认后加 --force 写入; 已有的模板文件默认保留, 要丢弃本地改动再加 -o/--overwrite)", dir)
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("读取目录 %s 失败: %v", dir, err)
@@ -915,6 +939,12 @@ func initNewProject(name string, force, noInstall bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("创建项目目录失败: %v", err)
 	}
+	uiDir := filepath.Join(dir, "ui")
+	// 模板文件的基线记在同一份安装清单里(清单落在组件目录), 所以先确保目录存在并读回旧清单。
+	if err := os.MkdirAll(uiDir, 0o755); err != nil {
+		return fmt.Errorf("创建目录失败: %v", err)
+	}
+	inst := loadManifest(uiDir)
 
 	module := moduleNameFromProject(name)
 	xuiVer, xcguiVer := templateVersions()
@@ -927,16 +957,56 @@ func initNewProject(name string, force, noInstall bool) error {
 	}
 	for _, f := range files {
 		path := filepath.Join(dir, f.name)
-		action := "创建"
-		if _, err := os.Stat(path); err == nil {
-			action = "覆盖"
+		data := []byte(f.body)
+		local, err := os.ReadFile(path)
+		missing := os.IsNotExist(err)
+		if err != nil && !missing {
+			return fmt.Errorf("读取 %s 失败: %v", path, err)
 		}
-		if err := os.WriteFile(path, []byte(f.body), 0o644); err != nil {
-			return fmt.Errorf("写入 %s 失败: %v", path, err)
+		baseline, hasBaseline := inst.Project[f.name]
+		switch classifyPlace(!missing, local, data, baseline, hasBaseline) {
+		case placeCreate:
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				return fmt.Errorf("写入 %s 失败: %v", path, err)
+			}
+			inst.Project[f.name] = sha256Hex(data)
+			info("创建 %s", path)
+		case placeSame:
+			inst.Project[f.name] = sha256Hex(data)
+			info("已一致 %s", path)
+		case placeUpgrade:
+			// 与上次生成的一字不差 ⇒ 差异只可能来自 CLI 模板升级, 安全替换。
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				return fmt.Errorf("写入 %s 失败: %v", path, err)
+			}
+			inst.Project[f.name] = sha256Hex(data)
+			info("更新 %s (模板升级)", path)
+		case placeEdited, placeUnknown:
+			if !overwrite {
+				// 闸门已经开了(--force), 但丢弃改动是另一个决定 —— 默认保留你的文件。
+				if !hasBaseline {
+					warn("%s 与模板不同, 且没有生成时的基线, 无法判断来源, 跳过 (确认本地无改动后加 -o/--overwrite 覆盖)", path)
+					continue
+				}
+				warn("%s 本地已修改, 跳过 (确认后加 -o/--overwrite 覆盖)", path)
+				continue
+			}
+			lost := " (本地修改已丢弃)"
+			if !hasBaseline {
+				lost = " (无生成基线, 无法判断是否改过)"
+			}
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				return fmt.Errorf("写入 %s 失败: %v", path, err)
+			}
+			inst.Project[f.name] = sha256Hex(data)
+			info("覆盖 %s%s", path, lost)
 		}
-		info("%s %s", action, path)
 	}
-	if err := scaffoldUI(filepath.Join(dir, "ui"), force, noInstall); err != nil {
+	// 先落清单, scaffoldUI 里的 add 会读回同一份并补齐组件哈希(Project 字段跟着走)。
+	if err := inst.save(uiDir); err != nil {
+		warn("写入安装清单失败: %v", err)
+	}
+	if err := scaffoldUI(uiDir, overwrite, noInstall); err != nil {
 		return err
 	}
 	// 图标/版本资源: winres/ 写好即生效, .syso 由 xc 生成; --no-install 不联网装 xc。
@@ -1834,11 +1904,15 @@ const manifestName = ".xui-manifest.json"
 type installation struct {
 	Version string            `json:"version,omitempty"`
 	Files   map[string]string `json:"files"`
+	// Project 是 init -n 生成的项目骨架文件(go.mod / main.go / README.md / AGENTS.md /
+	// .gitignore, 键相对项目根)→ 写入时的 sha256。与组件共用这一份清单: 模板文件同样要
+	// 分得清"本地改过"和"模板随 CLI 升级", 否则覆写只能靠猜。
+	Project map[string]string `json:"project_files,omitempty"`
 }
 
 // loadManifest 读清单; 缺失或损坏都当作"没有清单"(行为退回保守的"警告跳过")。
 func loadManifest(uiDir string) installation {
-	m := installation{Files: map[string]string{}}
+	m := installation{Files: map[string]string{}, Project: map[string]string{}}
 	data, err := os.ReadFile(filepath.Join(uiDir, manifestName))
 	if err != nil {
 		return m
@@ -1848,6 +1922,10 @@ func loadManifest(uiDir string) installation {
 		return m
 	}
 	m.Files = got.Files
+	m.Project = got.Project
+	if m.Project == nil {
+		m.Project = map[string]string{}
+	}
 	m.Version = got.Version
 	return m
 }
@@ -1914,13 +1992,43 @@ func writeFileOrFatal(path string, data []byte) {
 	}
 }
 
-// install 逐文件写入, 按"安装基线"(清单里的哈希)判定差异来源, 四种情况:
+// placeAction 是"这个由 CLI 下发的文件该怎么处理"的判定结果。
+type placeAction int
+
+const (
+	placeCreate  placeAction = iota // 本地没有 → 创建
+	placeSame                       // 内容与新源码一致 → 不动
+	placeUpgrade                    // 本地 == 安装基线 → 差异只来自版本升级, 可直接替换
+	placeEdited                     // 基线对不上 → 本地改过, 默认跳过
+	placeUnknown                    // 该文件没有基线 → 判断不了来源, 默认跳过
+)
+
+// classifyPlace 是 add/update 的组件文件与 init 的模板文件**共用**的差异判定。
+//
+// 差异来源只看"安装基线"(清单里记的上次写入哈希): 只有基线对不上才叫本地改过; 没有基线
+// 时只能说"判断不了", 不能断言用户改过。判定必须在 overwrite 之前取 —— 否则 -o 会把纯
+// 版本升级也说成"本地修改已丢弃", 让人以为自己在干净项目上丢了改动。
+func classifyPlace(exists bool, local, remote []byte, baseline string, hasBaseline bool) placeAction {
+	switch {
+	case !exists:
+		return placeCreate
+	case string(local) == string(remote):
+		return placeSame
+	case hasBaseline && baseline == sha256Hex(local):
+		return placeUpgrade
+	case !hasBaseline:
+		return placeUnknown
+	default:
+		return placeEdited
+	}
+}
+
+// install 逐文件写入, 按 classifyPlace 的判定分五种情况:
 //   - 本地没有 → 创建;
 //   - 内容一致 → 跳过("已一致");
 //   - 内容不同, 但本地哈希等于基线(安装后没人动过) → 版本升级, 直接替换(-o 也是这句);
 //   - 内容不同, 基线对不上 → 本地改过, 警告跳过(-o 覆盖并报"本地修改已丢弃");
-//     该文件没有基线(老项目 / 清单里没登记)时同样跳过, 但只说"无法判断来源",
-//     不能断言用户改过。
+//   - 该文件没有基线(老项目 / 清单里没登记) → 同样跳过, 但只说"无法判断来源"。
 //
 // dryRun 只打印将要发生的动作, 不创建任何文件/目录、不写清单。
 // 多个组件共享同一文件(separator/badge)时只处理一次。
@@ -1946,13 +2054,10 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 			if err != nil && !missing {
 				fatal("读取 %s 失败: %v", dst, err)
 			}
-			// 差异来源只看"安装基线"(清单里记的上次安装哈希): 只有基线对不上才叫本地改过。
-			// 判定必须在 overwrite 之前 —— 否则 -o 会把纯版本升级也说成"本地修改已丢弃",
-			// 让人以为自己在干净项目上丢了改动。
+			// 差异来源只看"安装基线"(清单里记的上次安装哈希), 判定与 init 的模板文件共用。
 			baseline, hasBaseline := inst.Files[f]
-			untouched := hasBaseline && baseline == sha256Hex(old)
-			switch {
-			case missing:
+			switch classifyPlace(!missing, old, data, baseline, hasBaseline) {
+			case placeCreate:
 				if dryRun {
 					info("将创建 %s (%s)", dst, name)
 					continue
@@ -1960,12 +2065,12 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 				writeFileOrFatal(dst, data)
 				inst.Files[f] = sha256Hex(data)
 				info("创建 %s (%s)", dst, name)
-			case string(old) == string(data):
+			case placeSame:
 				if !dryRun {
 					inst.Files[f] = sha256Hex(data)
 				}
 				info("已一致 %s", dst)
-			case untouched:
+			case placeUpgrade:
 				// 本地与"上次安装"逐字节一致 ⇒ 差异只可能来自版本升级, 安全替换。
 				if dryRun {
 					info("将更新 %s (版本升级)", dst)
@@ -1974,7 +2079,20 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 				writeFileOrFatal(dst, data)
 				inst.Files[f] = sha256Hex(data)
 				info("更新 %s (版本升级)", dst)
-			case overwrite:
+			case placeEdited, placeUnknown:
+				if !overwrite {
+					// dry-run 只是预览, 文案统一用"将…", 别让用户以为已经动过文件。
+					verb := "跳过"
+					if dryRun {
+						verb = "将跳过"
+					}
+					if !hasBaseline {
+						warn("%s 内容与远端不同, 且没有该文件的安装清单基线, 无法判断来源, %s (确认本地无改动后加 -o/--overwrite 覆盖)", dst, verb)
+						continue
+					}
+					warn("%s 本地已修改, %s (确认后加 -o/--overwrite 覆盖)", dst, verb)
+					continue
+				}
 				lost := " (本地修改已丢弃)"
 				if !hasBaseline {
 					// 老项目 / 该文件从没进过清单: 没有基线, 不能断言用户改过。
@@ -1987,17 +2105,6 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 				writeFileOrFatal(dst, data)
 				inst.Files[f] = sha256Hex(data)
 				info("覆盖 %s%s", dst, lost)
-			default:
-				// dry-run 只是预览, 文案统一用"将…", 别让用户以为已经动过文件。
-				verb := "跳过"
-				if dryRun {
-					verb = "将跳过"
-				}
-				if !hasBaseline {
-					warn("%s 内容与远端不同, 且没有该文件的安装清单基线, 无法判断来源, %s (确认本地无改动后加 -o/--overwrite 覆盖)", dst, verb)
-					continue
-				}
-				warn("%s 本地已修改, %s (确认后加 -o/--overwrite 覆盖)", dst, verb)
 			}
 		}
 	}

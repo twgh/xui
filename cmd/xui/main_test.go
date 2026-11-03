@@ -230,7 +230,7 @@ func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
 	if err := os.Chdir(named); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject("sitless", false, true); err != nil {
+	if err := initNewProject("sitless", false, false, true); err != nil {
 		t.Fatalf("initNewProject 失败: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(named, "go.mod")); err != nil {
@@ -248,7 +248,7 @@ func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
 	if err := os.Chdir(dot); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject(".", false, true); err != nil {
+	if err := initNewProject(".", false, false, true); err != nil {
 		t.Fatalf("initNewProject(.) 失败: %v", err)
 	}
 	gomod, err := os.ReadFile(filepath.Join(dot, "go.mod"))
@@ -357,6 +357,11 @@ func TestParseInitArgs(t *testing.T) {
 		{"-n", []string{"-n", "myapp"}, initOptions{project: "myapp"}, false},
 		{"--name=", []string{"--name=myapp"}, initOptions{project: "myapp"}, false},
 		{"-n 加 force", []string{"-f", "-n", "myapp"}, initOptions{project: "myapp", force: true}, false},
+		// force 与 overwrite 分开: -f 只开"非空目录"这道闸门, -o 才允许丢弃本地改动
+		{"-n 加 -o", []string{"-n", "myapp", "-o"}, initOptions{project: "myapp", overwrite: true}, false},
+		{"-o 与 -f 各自独立", []string{"--force", "--overwrite", "--name=myapp"}, initOptions{project: "myapp", force: true, overwrite: true}, false},
+		{"普通 init 不需要 -f", []string{"-f"}, initOptions{}, true},
+		{"普通 init 的 -o", []string{"-o"}, initOptions{uiDir: "ui", overwrite: true}, false},
 		{"--no-install", []string{"--no-install", "-n", "myapp"}, initOptions{project: "myapp", noInstall: true}, false},
 		// 普通 init 也会抬配套运行时依赖(add 路径), 所以 --no-install 对它同样成立
 		{"--no-install 无 -n", []string{"--no-install"}, initOptions{uiDir: "ui", noInstall: true}, false},
@@ -409,7 +414,7 @@ func TestInitNewProject(t *testing.T) {
 	}
 	defer os.Chdir(old)
 
-	if err := initNewProject("myapp", false, true); err != nil {
+	if err := initNewProject("myapp", false, false, true); err != nil {
 		t.Fatalf("initNewProject 失败: %v", err)
 	}
 
@@ -524,18 +529,88 @@ func TestInitNewProject(t *testing.T) {
 	}
 
 	// 非空目录默认拒绝, --force 放行且不删除无关文件
-	if err := initNewProject("myapp", false, true); err == nil {
+	if err := initNewProject("myapp", false, false, true); err == nil {
 		t.Error("非空目录未加 --force 应报错")
 	}
 	keep := filepath.Join(dir, "myapp", "notes.txt")
 	if err := os.WriteFile(keep, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := initNewProject("myapp", true, true); err != nil {
+	if err := initNewProject("myapp", true, false, true); err != nil {
 		t.Fatalf("--force 应允许写入非空目录: %v", err)
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Error("--force 不应删除无关文件")
+	}
+}
+
+// --force 只负责开"目录已存在且非空"这道闸门, 丢弃本地改动是 -o 的决定。
+// 以前一个 -f 两件事都干: 组件文件有安装基线所以措辞正确, 而 go.mod/main.go/README.md
+// 这五个模板是无条件覆写 —— 实测能无声抹掉用户改过的入口文件。
+func TestInitForceKeepsEditedTemplates(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot())
+	stubWinresMake(t)
+	dir := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	if err := initNewProject("app", false, false, true); err != nil {
+		t.Fatalf("首次 init 失败: %v", err)
+	}
+	mainGo := filepath.Join("app", "main.go")
+	if err := os.WriteFile(mainGo, []byte("package main\n// 我的入口\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 删掉清单 = 老项目 / 手删: 没有基线时只能说"判断不了来源", 不能断言用户改过
+	if err := os.Remove(filepath.Join("app", "ui", manifestName)); err != nil {
+		t.Fatal(err)
+	}
+
+	// 只加 --force: 闸门开了, 但你的文件一个都不动
+	if err := initNewProject("app", true, false, true); err != nil {
+		t.Fatalf("--force 应允许写入非空目录: %v", err)
+	}
+	if data, _ := os.ReadFile(mainGo); string(data) != "package main\n// 我的入口\n" {
+		t.Errorf("--force 不该丢弃本地改动, 实为 %q", data)
+	}
+
+	// --force + -o: 这才是"确认丢弃改动"
+	if err := initNewProject("app", true, true, true); err != nil {
+		t.Fatalf("--force -o 应覆盖: %v", err)
+	}
+	if data, _ := os.ReadFile(mainGo); string(data) == "package main\n// 我的入口\n" {
+		t.Error("-o 应覆盖本地改动")
+	}
+	// 覆盖之后基线重建: 再跑一次是"模板没变", 不该继续说本地修改已丢弃
+	out := captureOutput(t, func() {
+		if err := initNewProject("app", true, true, true); err != nil {
+			t.Errorf("重复 init 失败: %v", err)
+		}
+	})
+	if strings.Contains(out, "本地修改已丢弃") {
+		t.Errorf("干净文件在 -o 下不该说丢弃了改动: %q", out)
+	}
+
+	// 有基线时措辞要指名"本地已修改"(上面删过清单, 这里补一条正常路径的断言)
+	if err := os.WriteFile(filepath.Join("app", "README.md"), []byte("# 我的说明\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() {
+		if err := initNewProject("app", true, false, true); err != nil {
+			t.Errorf("--force 失败: %v", err)
+		}
+	})
+	if !strings.Contains(out, "README.md 本地已修改") {
+		t.Errorf("有基线时该报本地已修改并跳过, 实为 %q", out)
+	}
+	if data, _ := os.ReadFile(filepath.Join("app", "README.md")); string(data) != "# 我的说明\n" {
+		t.Error("README.md 不该被覆写")
 	}
 }
 

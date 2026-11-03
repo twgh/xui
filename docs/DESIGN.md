@@ -458,12 +458,12 @@ xui self-update [版本]   # 升级 CLI 自己(默认 @latest; 也可 tag / main
 xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不接受版本参数)
 ```
 
-- **默认不覆盖你改过的文件**:逐个比对内容 —— 本地没有则创建、内容一致则跳过、被改过则警告跳过;确认要丢掉本地改动时加 `-o/--overwrite`。这是 copy-not-install 的前提:代码归你。
+- **默认不覆盖你改过的文件**:逐个比对内容 —— 本地没有则创建、内容一致则跳过、被改过则警告跳过;确认要丢掉本地改动时加 `-o/--overwrite`。判定看"安装基线"(组件目录 `.xui-manifest.json` 里记的上次写入哈希):基线对得上才叫"只是版本升级"(直接替换), 对不上叫"你改过"(默认保留), 该文件没有基线只说"无法判断来源"、不断言你改过。这是 copy-not-install 的前提:代码归你。
 - **组件目录**默认 `ui`, 可用 `add/update -p/--path <目录>` 指定;全局 `-c/--cwd` 先切换工作目录。
 - **静默 `-s/--silent` 只压进度输出**:它压掉"创建了哪个文件"这类过程信息, **命令本身的结果照打**(`list` 的组件表、`view`/`--diff` 的源码与差异、`info` 的报告、`version`、`self-update --check` 的对比), 警告与错误也照打到 stderr。所以 `xui list -s` 给你一份没有表头的干净清单, 可以直接 `|` 给脚本; 升级提示走 stderr, 不会混进被 `>` 重定向的源码里。
 - **只展示的参数不吞写文件的参数**:`--view` / `--diff` 与 `--dry-run`、`-o/--overwrite`、`--no-install` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。
 - **`update` 不接 `--all`**:`xui update` 省略组件名就已经是"更新组件目录里已装的全部"; 把没装过的组件也一起拷进来是 `xui add --all` 的事, 两个命令不该混在一个开关里。
-- **新建项目**:目标目录已存在且非空时需 `-f/--force`(只覆盖模板文件, 不动无关文件)。
+- **新建项目的两个开关分开**:`-f/--force` 只放开"目标目录已存在且非空"这道闸门;`-o/--overwrite` 才决定能不能丢弃本地改动, 而且与组件文件共用上面那套基线判定(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore` 的基线记在同一份清单的 `project_files` 里)。以前一个 `-f` 两件事都干, 于是一次 `xui init -n app --force` 能把你改过的 `main.go` 无声覆掉。普通 `xui init [ui目录]` 不覆盖已有文件, 给它 `-f` 会直接报错(要说"丢弃改动"请用 `-o`)。
 - **依赖安装**:`xui init -n` 生成后默认在项目目录执行 `go mod tidy`(生成 `go.sum`);离线或想手动控制时加 `--no-install`, 之后自己跑一次。`--no-install` 对 `add` / `update` / `init` 三种都成立 —— 组件文件照写, 只是不动 `go.mod`。
 - **升级自己**:`xui self-update [版本]` 跑 `go install github.com/twgh/xui/cmd/xui@<目标>`(默认 `@latest`, 也可 `vX.Y.Z` / `main` / `HEAD` / commit 短哈希)。成没成以"跑新二进制拿到的版本"为准;正在运行的 exe 不许就地覆写, 失败时会把它改名成 `.old` 让路重试一次。`--check` 只比较当前与 `@latest`, 因此**不接受版本参数**(收下又丢掉会让人以为查的是那个版本)。
 - **升级提示**:每天最多后台查一次 `@latest`(派生一个内部子进程, 前台不等网络), 结果写用户缓存目录的 `xui/update-check.json`, 之后的命令在末尾向 stderr 提示一句;`-s/--silent` 与 `XUI_NO_UPDATE_CHECK=1` 关闭, `xui info` 能看到上次检查的时间与结果。本地/`go run` 构建不提示。

@@ -278,6 +278,7 @@ CLI 会**每天最多后台查一次**新版(结果写用户缓存目录 `xui/up
 
 ```bash
 xui init -n myapp       # 新建完整项目(自动 go mod tidy; go.mod + main.go + README + AGENTS.md + ui/ + winres/)
+xui init -n myapp --force # 目录已存在且非空时放开这道闸门(你的改动仍然保留; 要丢弃再加 -o)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
 xui init [ui目录]       # 已有项目: 只写 ui/(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
 xui add button card     # 追加拷贝指定组件(自动带上依赖)
@@ -303,9 +304,9 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 选项:
 
 - `init -n, --name <项目名>`: 新建项目目录(`-n myapp` 等价于在当前目录创建 `myapp/`);
-- `init -f, --force`: 允许写入非空项目目录(覆盖模板文件, 不动无关文件);
+- `init -n -f, --force`: **只**放开"目标目录已存在且非空"这道闸门, 不隐含"你的改动可以丢"(普通 `xui init [ui目录]` 用不上它, 它不会覆盖已有文件, 加 `-f` 会直接报错);
 - `--no-install`(init / add / update): 组件文件照写, 但**不联网动依赖** —— `init -n` 还跳过自动 `go mod tidy` 与 `xc` 安装(仍写 `winres/`), `add` / `update` 则不动 `go.mod` 的配套运行时(离线时用, 之后自己跑);
-- `add/update -o, --overwrite`: 覆盖本地已修改的组件文件(默认警告并跳过, 见下方“更新时的判定”);
+- `-o, --overwrite`(init / add / update): 丢弃本地改动(默认保留, 见下方"更新时的判定")。对 `init -n` 来说它管的是模板文件(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore`)与基础组件;以前 `--force` 一个旗同时干这两件事, 于是一次 `init -n app --force` 能把你改过的 `main.go` 无声覆掉。
 - `add/update -p, --path <目录>`: 组件目录, 默认 `ui`;
 - `add -a, --all`: 全部组件(`update` 不接受它 —— 省略组件名就已经是"更新已装的全部", 想把没装的也一起拷进来请用 `xui add --all`);
 - `add --dry-run`: 预览动作, 不写文件;
@@ -321,10 +322,11 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 `--no-install` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。
 `xui self-update --check` 同理不接受版本参数(`--check` 只回答"我相对 @latest 新不新")。
 
-组件源码拷进项目后归你所有; `add` / `update` 都不会覆盖你本地改过的文件, 确认要丢弃本地改动时加 `-o/--overwrite`。
+组件源码拷进项目后归你所有; `add` / `update` / `init` 都不会覆盖你本地改过的文件, 确认要丢弃本地改动时加 `-o/--overwrite`。
 
 **更新时的判定**: `add` / `update` 会在组件目录写一份 `.xui-manifest.json`, 记下每个文件安装那一刻的
-sha256。之后升级时逐文件比对:
+sha256;`init -n` 生成项目骨架时把 `go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore`
+也记进同一份清单的 `project_files`。之后逐文件比对(组件与模板**共用这一套判定**):
 
 | 本地文件 | `xui update` 的动作 |
 |---|---|
