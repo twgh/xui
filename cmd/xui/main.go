@@ -68,7 +68,7 @@ var proxyPrefixes = []struct{ name, prefix string }{
 // 生成新项目 go.mod 的回退依赖版本。正式发布版(go run/install ...@vX)从 build info
 // 读到自身版本; 只有本地 devel 构建会用到这里的值, 取最近一个已发布版本保证可拉取。
 const (
-	fallbackXuiVersion   = "v0.8.1"
+	fallbackXuiVersion   = "v0.8.2"
 	fallbackXcguiVersion = "v1.4.3"
 )
 
