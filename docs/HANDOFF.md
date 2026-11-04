@@ -11,7 +11,7 @@
 ## 当前状态(截至 2026-11-04)
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
-- **发布**: v0.9.0(2026-11-04)。组件跟 `main` 下发, 运行时按 tag 取。
+- **发布**: v0.9.0(2026-11-04, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
 - **组件覆盖**: 经典 shadcn 组件已全覆盖(context-menu 在 `menu`, form 在 `field`); 完整清单见 README / DESIGN 第七节。未做: Direction / Typography / 长列表虚拟滚动。
 - **最近一批**: FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。
@@ -162,6 +162,7 @@ go mod tidy && go build -mod=mod ./ui
   - 抬完跑一次下限回归: `go mod edit -require=github.com/twgh/xui@<新 tag>` + `add --all` + `go build ./ui`(代理可能还没收录新 tag, 必要时 `GOPROXY=direct`)。
 - 只改组件源码不动运行时 → 不用打 tag(组件跟 `main` 下发); 改 CLI 行为才需要 tag(`go install ...@latest` 只认 tag)。版本号: **组件/运行时/API 变更走 minor, 只有 CLI 与文档变更走 patch**(v0.8.1 就是这么定的)。
 - 版本示例(`README` 里的 `@vX.Y.Z` 与 `XUI_REGISTRY=.../vX.Y.Z`)与 `fallbackXuiVersion` 随 tag 一起更新; notes 草稿写进 `.verify/` 给用户过目后才推送。
+- **GitHub Release**: 本机 `gh` 不可用(token / TLS), 用 PowerShell `Invoke-RestMethod` POST/PATCH; name 与 body 一律用 `[IO.File]::ReadAllText(path, [Text.Encoding]::UTF8)` 读文件后传 —— PS 5.1 把无 BOM 的 `.ps1` 当 ANSI 读, 脚本里直接写中文会乱码; 正文也别用 `Get-Content -Raw` 交给 `ConvertTo-Json`(会被当成对象写进发布页)。token 从 `git credential fill` 取, 用完立刻删临时文件。
 
 ### CLI registry 维护注意
 

@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **v0.9.0 发布(2026-11-04)**: 新增 FileDialog / Steps 两个组件, 走 minor。
+  - **顺序**: 组件与文档两笔提交 → 版本示例 + `fallbackXuiVersion` 提交(`9783427`)→ 轻量 tag `v0.9.0` → `runtime` 抬到 v0.9.0(`2258748`, tag 之后)。
+  - **推送**: `git push origin main v0.9.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool), `git ls-remote` 逐一对上; GitHub / Gitee 的 raw `registry.json` 已能看到 `runtime: v0.9.0` 与 `file-dialog` / `steps`。
+  - **Release**: https://github.com/twgh/xui/releases/tag/v0.9.0 , 名称为 `v0.9.0 — FileDialog / Steps / 文档配套下发`; 正文与 `.verify/v0.9.0.md` 逐行一致(只差 GitHub 去掉的尾部空行)。
+  - **下限回归**: 临时项目 `go mod edit -require=github.com/twgh/xui@v0.9.0` → 本地 registry `add --all` → `GOPROXY=direct GOSUMDB=off go mod tidy && go build ./ui` 通过。
+  - **踩坑**: PowerShell 5.1 把无 BOM 的 `.ps1` 当 ANSI 读, 脚本里直接写中文会让 release 名称乱码; `Get-Content -Raw` 的正文经 `ConvertTo-Json` 还会被当成对象写进发布页。改为 `[IO.File]::ReadAllText(path, UTF8)` 读 name/body 后 PATCH 修复。工作流已补进 HANDOFF「发布流程」。
+
 - ✅ **文档体积优化: DESIGN 第八节拆到 DESIGN-PITFALLS.md + HANDOFF 瘦身**(2026-11-04, 用户反馈 HANDOFF 单行太长/文件太大、DESIGN 400 多 KB 费 token):
   - **DESIGN.md**: ≈439KB/2097 行 → 156KB/825 行。第八节的 186 条正文原样移到同目录的 `DESIGN-PITFALLS.md`(310KB/1474 行), DESIGN 第八节只留编号 + 标题索引, 两处编号一一对应; 正文逐条原样搬运(空白归一化后与原第八节逐行相等), 顺带把 48~52 条误缩进在 47 下的嵌套列表提回顶层。
   - **HANDOFF.md**: 1205 行 → 237 行。按时间记录的 129 条完成 / 修复记录原样移到 `docs/CHANGELOG.md`, HANDOFF 只留当前状态、待办、仓库结构、命令与验证工作流。
