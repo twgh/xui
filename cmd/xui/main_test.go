@@ -260,6 +260,120 @@ func TestInitNewProjectIntoEmptyCwd(t *testing.T) {
 	}
 }
 
+// initCommand 的分派: 空目录里没有"已有项目"可言, 只写一个组件目录会让人拿到一份既不能
+// go run、也不能 go get(没有 go.mod)的骨架 —— 所以空目录直接生成完整项目, 等同 init -n .。
+// 三条边界: 只有 .git 也算空(git init 后建仓是常见顺序)、已在别人的 Go 模块里就不另起
+// go.mod(组件该并进那个模块)、目录非空时旧行为不变。
+func TestInitCommandInEmptyDirBuildsProject(t *testing.T) {
+	t.Setenv("XUI_REGISTRY", moduleRoot()) // 本地源: 不访问网络
+	stubWinresMake(t)
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	top := t.TempDir()
+
+	enter := func(rel string) string {
+		d := filepath.Join(top, rel)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(d); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	has := func(t *testing.T, dir string, want ...string) {
+		t.Helper()
+		for _, rel := range want {
+			if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+				t.Errorf("%s 应存在: %v", rel, err)
+			}
+		}
+	}
+	missing := func(t *testing.T, dir, rel string) {
+		t.Helper()
+		if _, err := os.Stat(filepath.Join(dir, rel)); err == nil {
+			t.Errorf("%s 不该创建", rel)
+		}
+	}
+
+	// 1. 空目录 → 完整项目, 项目名取目录名, 组件目录跟着位置参数
+	d := enter("myapp")
+	out := captureOutput(t, func() { initCommand(initOptions{uiDir: "ui", noInstall: true}) })
+	has(t, d, "go.mod", "main.go", "README.md", "AGENTS.md", ".gitignore",
+		filepath.Join("winres", "winres.json"), filepath.Join("ui", "theme.go"), filepath.Join("ui", "button.go"))
+	if !strings.Contains(out, "同 xui init -n .") {
+		t.Errorf("要说清走的是 init -n . 这条路:\n%s", out)
+	}
+	if data, err := os.ReadFile(filepath.Join(d, "go.mod")); err == nil && !strings.Contains(string(data), "module myapp") {
+		t.Errorf("go.mod 模块名应取目录名:\n%s", data)
+	}
+
+	// 2. 只有 .git 的目录: 建仓后 init 是常规顺序, 版本控制元数据不算"有内容"
+	d = enter("cloned/.git")
+	if err := os.WriteFile(filepath.Join(d, "config"), []byte("[core]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(filepath.Dir(d)); err != nil {
+		t.Fatal(err)
+	}
+	d = filepath.Dir(d)
+	out = captureOutput(t, func() { initCommand(initOptions{uiDir: "components", noInstall: true}) })
+	has(t, d, "go.mod", filepath.Join("components", "theme.go"))
+	if !strings.Contains(out, "项目名 cloned") {
+		t.Errorf("项目名应取目录名 cloned:\n%s", out)
+	}
+
+	// 3. 非空目录: 旧行为(只写组件目录), 但"没有 go.mod"要指路, 不能让人对着不能跑的下一步发懵
+	d = enter("busy")
+	if err := os.WriteFile(filepath.Join(d, "notes.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() { initCommand(initOptions{uiDir: "ui", noInstall: true}) })
+	has(t, d, filepath.Join("ui", "theme.go"))
+	missing(t, d, "main.go")
+	if !strings.Contains(out, "xui init -n") {
+		t.Errorf("没有 go.mod 时要指路 init -n:\n%s", out)
+	}
+
+	// 4. 空子目录但在别人的模块里: 不起第二个 go.mod, 组件并进那个模块
+	d = enter("proj/sub")
+	if err := os.WriteFile(filepath.Join(top, "proj", "go.mod"), []byte("module proj\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() { initCommand(initOptions{uiDir: "ui", noInstall: true}) })
+	has(t, d, filepath.Join("ui", "theme.go"))
+	missing(t, d, "go.mod")
+	if strings.Contains(out, "当前目录是空的") {
+		t.Errorf("在已有模块里不该起新项目:\n%s", out)
+	}
+
+	// 5. 组件目录落在当前目录之外: 要的是"组件放别处", 不是在这里建项目
+	d = enter("outer")
+	outDir := filepath.Join(top, "shared")
+	out = captureOutput(t, func() {
+		initCommand(initOptions{uiDir: filepath.ToSlash(filepath.Clean("../shared")), noInstall: true})
+	})
+	missing(t, d, "go.mod")
+	has(t, outDir, "theme.go")
+	if strings.Contains(out, "当前目录是空的") {
+		t.Errorf("跳出当前目录不该改成建项目:\n%s", out)
+	}
+
+	// 6. 预览: 空目录里的 init 与 init -n 一样, 只说将做什么
+	d = enter("dry")
+	out = captureOutput(t, func() { initCommand(initOptions{uiDir: "ui", noInstall: true, dryRun: true}) })
+	missing(t, d, "go.mod")
+	if !strings.Contains(out, "将创建 go.mod") {
+		t.Errorf("--dry-run 该预览整套项目:\n%s", out)
+	}
+	if entries, err := os.ReadDir(d); err == nil && len(entries) > 0 {
+		t.Errorf("--dry-run 落了盘: %v", entries)
+	}
+}
+
 // 端到端: 用 httptest 冒充远程源, 走完"拉 registry → 解析依赖 → 拷文件"。
 func TestAddViaRemoteSource(t *testing.T) {
 	files := map[string]string{

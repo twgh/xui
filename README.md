@@ -258,6 +258,7 @@ xui init -n myapp --dry-run # 预览整个生成过程: 不建目录、不写文
 xui init -n myapp --force # 目录已存在且非空时放开这道闸门(你的改动仍然保留; 要丢弃再加 -o)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
 xui init [组件目录]     # 已有项目: 只写组件目录(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
+                        # 空目录(且不在别的 Go 模块里)则等同于 xui init -n . —— 在这里生成完整项目
 xui add button card     # 追加拷贝指定组件(自动带上依赖)
 xui add --all           # 拷贝全部组件
 xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地

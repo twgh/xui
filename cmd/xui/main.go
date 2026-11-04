@@ -7,7 +7,7 @@
 // 免安装用法:
 //
 //	go run github.com/twgh/xui/cmd/xui@latest init -n myapp   # 新建完整项目
-//	go run github.com/twgh/xui/cmd/xui@latest init [ui目录]   # 已有项目装组件(默认 ui)
+//	go run github.com/twgh/xui/cmd/xui@latest init [ui目录]   # 已有项目装组件(默认 ui); 空目录则生成完整项目
 //	go run github.com/twgh/xui/cmd/xui@latest add button card ...
 //	go run github.com/twgh/xui/cmd/xui@latest add --all
 //	go run github.com/twgh/xui/cmd/xui@latest update [组件...]
@@ -357,13 +357,7 @@ func main() {
 		if err != nil {
 			fatal("%v", err)
 		}
-		if opts.project != "" {
-			if err := initNewProject(opts.project, opts.uiDir, opts.force, opts.writes()); err != nil {
-				fatal("%v", err)
-			}
-			return
-		}
-		initProject(opts.uiDir, opts.writes())
+		initCommand(opts)
 	case "add", "update":
 		opts, err := parseComponentArgs(cmd, args)
 		if err != nil {
@@ -606,7 +600,8 @@ func extractGlobal(args []string) ([]string, error) {
 }
 
 // initOptions 是 init 的解析结果: project 非空 = 新建完整项目(xui init -n)，
-// 否则 = 在已有项目里初始化组件目录(兼容原来的 xui init [ui目录])。
+// 否则 = 在当前目录初始化组件目录(兼容原来的 xui init [ui目录]; 空目录里由 initCommand
+// 改走完整项目, 见那里的 isBlankProjectDir)。
 // force 与 overwrite 是两件事(以前挤在 -f 一个旗上):
 //   - force    = 允许往已存在且非空的项目目录里写(只是开闸门, 不隐含"改动可以丢");
 //   - overwrite = 允许丢弃本地改动(与 add/update 的 -o 同一个意思、同一套判定)。
@@ -1085,6 +1080,7 @@ func usage() {
                              同上, 但组件目录改名(默认 ui; 必须落在项目内)
   xui init -n .              在当前空目录直接生成项目(项目名取目录名)
   xui init [组件目录]        已有项目: 只初始化组件目录(默认 ui)
+                             当前目录是空的(且不在别的 Go 模块里)= 上一条, 在这里生成完整项目
   xui add <组件...>          拷贝组件(自动带上依赖组件)
   xui add --all              拷贝全部组件
   xui add <组件...> --dry-run
@@ -1190,6 +1186,54 @@ func moduleRoot() string {
 
 // ---------------------------------------------------------------- 各命令实现
 
+// initCommand 分派 xui init 的三种走法:
+//   - -n <项目名>: 在(通常是新建的)目录里生成完整项目;
+//   - 空目录: 同一个脚手架铺在当前目录(项目名取目录名), 等同 xui init -n . —— 空目录里
+//     没有"已有项目"可言, 只写组件目录会让人拿到一份既不能 go run、也不能 go get 的骨架;
+//   - 其余: 已有项目, 只初始化组件目录。
+func initCommand(opts initOptions) {
+	if opts.project != "" {
+		if err := initNewProject(opts.project, opts.uiDir, opts.force, opts.writes()); err != nil {
+			fatal("%v", err)
+		}
+		return
+	}
+	cwd, err := os.Getwd()
+	if err == nil && isBlankProjectDir(cwd, opts.uiDir) {
+		// force=true 不是"允许写非空目录": 空/只有 .git 是上面自己判的, 这里的闸门没有内容可放。
+		info("当前目录是空的: 在这里生成完整项目 (项目名 %s, 同 xui init -n .)", projectNameFromDir(cwd))
+		if err := initNewProject(".", opts.uiDir, true, opts.writes()); err != nil {
+			fatal("%v", err)
+		}
+		return
+	}
+	initProject(opts.uiDir, opts.writes())
+}
+
+// isBlankProjectDir 报告 cwd 能不能直接当一个新项目根: 目录里没有内容(.git 这类版本控制
+// 元数据不算 —— git init 之后建仓是常见顺序)、不在别人的 Go 模块里(否则组件该并进那个
+// 模块, 而不是就地再起一个 go.mod)、目录名能当项目名, 且组件目录落在它内部。
+func isBlankProjectDir(cwd, uiDir string) bool {
+	if projectNameFromDir(cwd) == "" || findGoMod(cwd) != "" {
+		return false
+	}
+	// 组件目录跳出去(绝对路径 / .. / 当前目录根)时, 用户要的是"组件放别处/根上",
+	// 不是在这里建项目 —— 保持旧行为, 不猜。
+	if uiDir == "." || checkUIWithinProject(uiDir) != nil {
+		return false
+	}
+	entries, err := os.ReadDir(cwd)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.Name() != ".git" {
+			return false
+		}
+	}
+	return true
+}
+
 func initProject(dir string, w writeOpts) {
 	// 组件目录里那份给 AI 助手的 AGENTS.md 由 scaffoldUI 写(与 DESIGN.md 同一套基线判定)。
 	if err := scaffoldUI(dir, w, true); err != nil {
@@ -1206,6 +1250,9 @@ func initProject(dir string, w writeOpts) {
 	info("  3. 主题在 %s 中, 随意修改", filepath.Join(dir, "theme.go"))
 	info("  4. 改组件/主题前先看 %s (xcgui 的坑、令牌表、每个组件的画法都在里面)", filepath.Join(dir, "DESIGN.md"))
 	info("  5. AI 助手先读 %s (组件用法/添加更新/改组件规则)", agentsPath)
+	if findGoMod(dir) == "" {
+		info("\n当前目录不在任何 Go 模块里: 第 1 步的 go get 要先有 go.mod —— 自己 go mod init <模块路径>, 或直接要一套带 main.go 的骨架: xui init -n <项目名>(空目录里 xui init 就是这条)。")
+	}
 }
 
 // placeFile 按 classifyPlace 的判定写一个"由 CLI 下发"的文件, 并更新清单里的基线。
