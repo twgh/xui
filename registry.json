@@ -158,6 +158,10 @@
       "files": ["pagination.go", "textopt.go", "press.go"],
       "deps": []
     },
+    "steps": {
+      "files": ["steps.go", "textopt.go"],
+      "deps": []
+    },
     "scroll-area": {
       "files": ["scrollarea.go", "scrollbar.go"],
       "deps": []

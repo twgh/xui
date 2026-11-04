@@ -41,7 +41,7 @@ const (
 	pageForm4         // 表单4: 日期与时间 / 月历 / 范围与预设
 	pageForm5         // 表单5: 单选组 / 复选框三态与校验
 	pageNav1          // 导航1: 命令面板 / 下拉菜单 / 右键菜单
-	pageNav2          // 导航2: 标签页 / 面包屑 / 分页 / 可折叠面板
+	pageNav2          // 导航2: 标签页 / 面包屑 / 分页 / 步骤条 / 可折叠面板
 	pageNav3          // 导航3: 导航菜单(NavigationMenu) + 菜单栏(Menubar)
 	pageNav4          // 导航4: 侧边栏(Sidebar)
 	pageFeed1         // 反馈1: 对话框 / 提示气泡 / 警示对话框 / 对话框变体
@@ -2573,7 +2573,7 @@ func buildNav1Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "前置图标 / inset / 子菜单 / 勾选 / 单选 / 破坏性", v3.Handle).SetMuted())
 }
 
-// ===== 页 11: 导航2(标签页 / 分页 / 面包屑 / 可折叠面板) =====
+// ===== 页 11: 导航2(标签页 / 分页 / 面包屑 / 步骤条 / 可折叠面板) =====
 
 func buildNav2Page(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
@@ -2689,7 +2689,56 @@ func buildNav2Page(body *widget.LayoutEle) {
 	itMe := ui.NewBreadcrumbItem(bc2.Handle)
 	ui.NewBreadcrumbPage(itMe.Handle, "个人资料")
 
-	// ---- 第三行: 可折叠面板 ----
+	// ---- 步骤条 ----
+	_, vst := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "步骤条", vst.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"横向 / 竖向两形态; 已完成 / 当前 / 未达三态; 点已完成步回退; Tab 聚焦后 ←/→ 移动焦点、Enter 回退", vst.Handle))
+
+	stepItems := []ui.StepItem{
+		{Title: "账户信息", Description: "填写邮箱与姓名"},
+		{Title: "验证邮箱", Description: "输入收到的验证码"},
+		{Title: "设置密码", Description: "至少 8 位字符"},
+		{Title: "完成", Description: "开始使用"},
+	}
+	stepInfo := ui.NewLabel(0, 0, 0, 20, "", vst.Handle).SetMuted()
+	xui.ItemFill(stepInfo)
+	hSteps := ui.NewSteps(0, 0, 0, 0, vst.Handle, stepItems, ui.WithStepsCurrent(1))
+	xui.ItemFill(hSteps)
+
+	stepRow := xui.HStack(vst.Handle, 32, 8)
+	prevStep := ui.NewButton(0, 0, 0, 0, "上一步", stepRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(prevStep, 88)
+	nextStep := ui.NewButton(0, 0, 0, 0, "下一步", stepRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(nextStep, 88)
+
+	xui.ItemFill(hint(vst.Handle, "竖向(WithStepsOrientation(StepsVertical))"))
+	vSteps := ui.NewSteps(0, 0, 0, 0, vst.Handle, stepItems,
+		ui.WithStepsOrientation(ui.StepsVertical), ui.WithStepsCurrent(1))
+	xui.ItemFill(vSteps)
+
+	syncSteps := func(i int) {
+		hSteps.SetCurrent(i)
+		vSteps.SetCurrent(i)
+		stepInfo.SetText(fmt.Sprintf("第 %d 步 / 共 %d 步 · %s", i+1, len(stepItems), stepItems[i].Title)).Redraw(false)
+		prevStep.Enable(i > 0)
+		nextStep.Enable(i < len(stepItems)-1)
+		prevStep.Redraw(false)
+		nextStep.Redraw(false)
+	}
+	prevStep.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		syncSteps(hSteps.Current() - 1)
+		return 0
+	})
+	nextStep.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		syncSteps(hSteps.Current() + 1)
+		return 0
+	})
+	hSteps.OnChange(syncSteps)
+	vSteps.OnChange(syncSteps)
+	syncSteps(1)
+
+	// ---- 可折叠面板 ----
 	_, v4 := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可折叠面板", v4.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
@@ -4366,7 +4415,9 @@ func buildDemoTree(t *ui.Tree) int32 {
 	t.AddChild(src, "go.mod")
 	docs := t.AddRoot("docs")
 	t.AddChild(docs, "DESIGN.md")
+	t.AddChild(docs, "DESIGN-PITFALLS.md")
 	t.AddChild(docs, "HANDOFF.md")
+	t.AddChild(docs, "CHANGELOG.md")
 	t.AddRoot("README.md")
 	t.Expand(comp, true)
 	t.Expand(src, true)
