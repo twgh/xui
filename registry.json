@@ -18,6 +18,10 @@
       "files": ["colorpicker.go", "popup.go", "input.go", "scrollbar.go", "group.go", "textopt.go"],
       "deps": []
     },
+    "file-dialog": {
+      "files": ["filedialog.go"],
+      "deps": []
+    },
     "radio": {
       "files": ["radio.go"],
       "deps": []

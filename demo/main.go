@@ -37,7 +37,7 @@ const (
 	pageBase4         // 基础4: 滚动容器 / 列表项 / 手风琴
 	pageForm1         // 表单1: 输入 / 验证码 / 滑动条
 	pageForm2         // 表单2: 复选 / 单选 / 开关 / 下拉框 / Select
-	pageForm3         // 表单3: 字段与分组(Field / FieldSet)
+	pageForm3         // 表单3: 字段与分组(Field / FieldSet) / 文件对话框(FileDialog)
 	pageForm4         // 表单4: 日期与时间 / 月历 / 范围与预设
 	pageForm5         // 表单5: 单选组 / 复选框三态与校验
 	pageNav1          // 导航1: 命令面板 / 下拉菜单 / 右键菜单
@@ -580,7 +580,7 @@ func buildPages(hWindow, host int) {
 	buildBase4Page(bodies[pageBase4])
 	buildForm1Page(bodies[pageForm1])
 	buildForm2Page(bodies[pageForm2])
-	buildForm3Page(bodies[pageForm3])
+	buildForm3Page(bodies[pageForm3], hWindow)
 	buildForm4Page(bodies[pageForm4])
 	buildForm5Page(bodies[pageForm5])
 	buildNav1Page(bodies[pageNav1])
@@ -1843,9 +1843,9 @@ func buildForm2Page(body *widget.LayoutEle) {
 		ui.WithComboboxItems([]ui.SelectItem{{Value: "a", Text: "A"}})))
 }
 
-// ===== 页 7: 表单3(字段与分组) =====
+// ===== 页 7: 表单3(字段与分组 / 文件对话框) =====
 
-func buildForm3Page(body *widget.LayoutEle) {
+func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	rField := row(body.Handle, 0, gap)
 
 	_, vf := autoCard(col(rField.Handle, 1, gap).Handle, 10)
@@ -1935,6 +1935,67 @@ func buildForm3Page(body *widget.LayoutEle) {
 	lang := ui.NewComboBox(0, 0, 0, 0, fLang.Handle, []string{"简体中文", "English", "日本語"})
 	xui.ItemWidth(lang, 160)
 	lang.SetSelected(0)
+
+	// ---- 文件对话框(系统原生, 不套主题) ----
+	_, vfd := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "文件对话框(FileDialog)", vfd.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"原生打开 / 多选 / 保存 / 选择文件夹; 过滤器按「名称 + 通配符」生成, 取消返回空", vfd.Handle))
+
+	fd := ui.NewFileDialog(hWindow,
+		ui.WithFileDialogFilters(
+			ui.FileFilter{Name: "图片", Patterns: "*.png;*.jpg;*.jpeg;*.gif;*.bmp"},
+			ui.FileFilter{Name: "所有文件", Patterns: "*.*"}),
+		ui.WithFileDialogDefaultName("demo.png"),
+		ui.WithFileDialogDefaultExt("png"))
+
+	fdState := ui.NewLabel(0, 0, 0, 24, "结果: (尚未选择)", vfd.Handle).SetMuted()
+	xui.ItemFill(fdState)
+	showResult := func(label string, paths []string) {
+		switch len(paths) {
+		case 0:
+			fdState.SetText(label + ": 已取消")
+		case 1:
+			fdState.SetText(label + ": " + paths[0])
+		default:
+			fdState.SetText(fmt.Sprintf("%s: %d 个文件, 首个 %s", label, len(paths), paths[0]))
+		}
+		fdState.Redraw()
+	}
+
+	fdRow := xui.HStack(vfd.Handle, 32, 8)
+	btnOpen := ui.NewButton(0, 0, 0, 0, "打开文件", fdRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	btnOpen.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		if path := fd.Open(); path != "" {
+			showResult("打开", []string{path})
+		} else {
+			showResult("打开", nil)
+		}
+		return 0
+	})
+	btnMulti := ui.NewButton(0, 0, 0, 0, "打开多个", fdRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	btnMulti.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		showResult("多选", fd.OpenMulti())
+		return 0
+	})
+	btnSave := ui.NewButton(0, 0, 0, 0, "保存文件", fdRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	btnSave.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		if path := fd.Save(); path != "" {
+			showResult("保存", []string{path})
+		} else {
+			showResult("保存", nil)
+		}
+		return 0
+	})
+	btnDir := ui.NewButton(0, 0, 0, 0, "选择文件夹", fdRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	btnDir.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		if dir := fd.PickDir(); dir != "" {
+			showResult("目录", []string{dir})
+		} else {
+			showResult("目录", nil)
+		}
+		return 0
+	})
 }
 
 // ===== 页 8: 表单4(日期与时间 / 月历 / 范围与预设) =====
