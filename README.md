@@ -176,6 +176,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Tree | 树形视图(原生 `Tree` 载体 + 自绘皮肤):缩进参考线 / 旋转 chevron / 行悬浮选中;叶节点留空槽位使文字全树对齐 |
 | Chart | 图表(纯自绘):柱/折/面积/饼/圆环/径向/雷达,堆叠、平滑、数据点、图例临时隐藏、悬停指示线与提示卡、Y 轴刻度按数据自动取整齐值、点击数据点回调 |
 | Pagination | 分页:上/下一页 + 页码 + 省略号折叠(>7 页),当前页描边态 |
+| Steps | 步骤条:横向(圆点在上)/ 竖向(圆点在左)两形态;已完成 / 当前 / 未达三态;点已完成步回退,Tab 聚焦后 ←/→ 移动焦点、Enter 回退;放进非 Card 底色的容器时用 `SetBackdrop` 跟随宿主底色 |
 | Carousel | 轮播:整页滑动(300ms、循环首尾相接)、←/→ 键盘翻页、鼠标拖拽松手吸附;上/下张是内容外侧 48px 的圆形描边按钮,到边界禁用;幻灯片是纵向流容器,内容超出由视口裁剪;可自动播放与指定初始页 |
 | Resizable | 可调整分栏:面板按百分比分主轴空间、窗口缩放保持比例,拖动分隔条伸缩两侧(相邻到下限后挤压更远的);方向键每次 5%、Home/End 到边界、双击分隔条复位,分隔条可 Tab 聚焦 |
 | ScrollArea | 滚动容器(原生 `LayoutFrame` 载体):内容比容器高时滚动、内容大小按子项自动撑开、滚动条自动显隐;`SetContentFill()` 切"铺满视口 + 面板吃剩余高度"形态 |
@@ -202,7 +203,7 @@ xui.SetHoverDuration(200 * time.Millisecond) // 改过渡时长;传 0 = 立即�
 ```
 
 对话框与提示气泡自带进出场动画(dialog 淡入淡出 100ms、tooltip 淡入 + 8px 滑入 150ms)。自己的弹层
-要用同款动画就交给运行时的 `xui.Presence`(不要自己起定时器), 用法与坑见 DESIGN.md。
+要用同款动画就交给运行时的 `xui.Presence`(不要自己起定时器), 用法见 DESIGN.md、坑见 DESIGN-PITFALLS.md。
 
 ## 图标
 
@@ -258,14 +259,14 @@ xui init -n myapp -p components # 同上, 但组件目录叫 components/(import 
 xui init -n myapp --dry-run # 预览整个生成过程: 不建目录、不写文件、不联网
 xui init -n myapp --force # 目录已存在且非空时放开这道闸门(你的改动仍然保留; 要丢弃再加 -o)
 xui init -n .           # 在当前空目录直接生成项目(项目名取目录名)
-xui init [组件目录]     # 已有项目: 只写组件目录(theme.go + 基础组件 + DESIGN.md + AGENTS.md; 已存在则跳过)
+xui init [组件目录]     # 已有项目: 只写组件目录(theme.go + 基础组件 + DESIGN.md + DESIGN-PITFALLS.md + AGENTS.md)
                         # 空目录(且不在别的 Go 模块里)则等同于 xui init -n . —— 在这里生成完整项目
 xui add button card     # 追加拷贝指定组件(自动带上依赖)
 xui add --all           # 拷贝全部组件
 xui add card --dry-run  # 只显示将创建/覆盖/跳过的文件, 不写本地
 xui add card --view     # 打印组件源码(可加 =card.go 或 =card 只看某个文件/某个组件), 不写本地
 xui add card --diff     # 与本地文件做逐行 diff(过滤值同上), 不写本地
-xui update              # 升级已装组件(省略组件名 = 组件目录里已装的全部, 外加已在的两份文档; 不接 --all)
+xui update              # 升级已装组件(省略组件名 = 组件目录里已装的全部, 外加已在的文档; 不接 --all)
 xui update button       # 只升级指定组件(含依赖; 没装过的只提示, 不会替你装 —— 那是 add)
 xui update -o           # 连本地改过的文件一起覆盖(改动会丢, 先备份)
 xui list                # 列出可用组件
@@ -381,8 +382,10 @@ XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dial
 | 文档 | 内容 |
 |---|---|
 | README.md | 本文: 安装 / 用法 / 组件一览 |
-| [docs/DESIGN.md](docs/DESIGN.md) | **自定义指南(随 `xui init` 安装到组件目录, 默认 `ui/DESIGN.md`)**: 架构原理、主题系统、组件解剖、与 shadcn 的语义对照、**xcgui 踩坑全集(第八节)**、本库依赖的 xcgui API 清单(第九节) |
+| [docs/DESIGN.md](docs/DESIGN.md) | **自定义指南(随 `xui init` 安装到组件目录, 默认 `ui/DESIGN.md`)**: 架构原理、主题系统、组件解剖、与 shadcn 的语义对照、本库依赖的 xcgui API 清单(第九节); xcgui 踩坑只有第八节的编号索引 |
+| [docs/DESIGN-PITFALLS.md](docs/DESIGN-PITFALLS.md) | **DESIGN.md 第八节的完整内容(随 `xui init` 一起安装)**: xcgui 踩坑的现象 / 根因 / 修法, 按编号一一对应 |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 仓库维护者用: 当前进度 / 待办 / 仓库结构 / 常用命令 / 视觉验证工作流 |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | 仓库维护者用: 按时间记录的完成 / 修复条目(现象、根因、修法、验收) |
 | [AGENTS.md](AGENTS.md) | 仓库维护者用: AI 会话入口硬规则与文档导航 |
 
 组件自己的完整选项与方法清单在 [pkg.go.dev](https://pkg.go.dev/github.com/twgh/xui) 和拷进你项目的源码注释里(源码就在组件目录, 每个 `With*` 都带说明)。

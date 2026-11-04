@@ -303,7 +303,8 @@ func TestInitCommandInEmptyDirBuildsProject(t *testing.T) {
 	d := enter("myapp")
 	out := captureOutput(t, func() { initCommand(initOptions{uiDir: "ui", noInstall: true}) })
 	has(t, d, "go.mod", "main.go", "README.md", "AGENTS.md", ".gitignore",
-		filepath.Join("winres", "winres.json"), filepath.Join("ui", "theme.go"), filepath.Join("ui", "button.go"))
+		filepath.Join("winres", "winres.json"), filepath.Join("ui", "theme.go"),
+		filepath.Join("ui", "DESIGN.md"), filepath.Join("ui", "DESIGN-PITFALLS.md"), filepath.Join("ui", "button.go"))
 	if !strings.Contains(out, "同 xui init -n .") {
 		t.Errorf("要说清走的是 init -n . 这条路:\n%s", out)
 	}
@@ -550,7 +551,7 @@ func TestInitNewProject(t *testing.T) {
 
 	for _, f := range []string{
 		"go.mod", "main.go", "README.md", "AGENTS.md", ".gitignore",
-		"ui/theme.go", "ui/DESIGN.md", "ui/button.go", "ui/window.go",
+		"ui/theme.go", "ui/DESIGN.md", "ui/DESIGN-PITFALLS.md", "ui/button.go", "ui/window.go",
 		"winres/icon.ico", "winres/winres.json",
 		"rsrc_windows_386.syso", "rsrc_windows_amd64.syso",
 	} {
@@ -1748,7 +1749,7 @@ func TestInitNewProjectCustomComponentsDir(t *testing.T) {
 	}
 	root := filepath.Join(dir, "app")
 	// 组件与清单都落在 components/, 而且不该再有 ui/
-	for _, f := range []string{"components/theme.go", "components/DESIGN.md", "components/button.go", "components/" + manifestName} {
+	for _, f := range []string{"components/theme.go", "components/DESIGN.md", "components/DESIGN-PITFALLS.md", "components/button.go", "components/" + manifestName} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(f))); err != nil {
 			t.Errorf("缺少 %s: %v", f, err)
 		}
@@ -1907,14 +1908,15 @@ func TestInitRefreshesTrackedDocs(t *testing.T) {
 	initProject("ui", writeOpts{})
 	agents := filepath.Join("ui", "AGENTS.md")
 	design := filepath.Join("ui", "DESIGN.md")
-	for _, f := range []string{agents, design} {
+	pitfalls := filepath.Join("ui", "DESIGN-PITFALLS.md")
+	for _, f := range []string{agents, design, pitfalls} {
 		if !fileExists(f) {
 			t.Fatalf("缺少 %s", f)
 		}
 	}
-	// 清单里得登记这两份(有基线才分得清"你改过"与"文档随 CLI 升级")
+	// 清单里得登记这几份(有基线才分得清"你改过"与"文档随 CLI 升级")
 	man := loadManifest("ui")
-	for _, k := range []string{"AGENTS.md", "DESIGN.md"} {
+	for _, k := range []string{"AGENTS.md", "DESIGN.md", "DESIGN-PITFALLS.md"} {
 		if _, ok := man.Files[k]; !ok {
 			t.Errorf("清单没登记 %s", k)
 		}
@@ -2026,15 +2028,24 @@ func TestNamedDocTargets(t *testing.T) {
 	if !strings.Contains(out, "创建 ui\\DESIGN.md") && !strings.Contains(out, "创建 ui/DESIGN.md") {
 		t.Errorf("add 点名文档该创建它: %s", out)
 	}
+	// 配套文件一起给: DESIGN.md 第八节只有索引, 正文在 DESIGN-PITFALLS.md
+	if !fileExists(filepath.Join("ui", "DESIGN-PITFALLS.md")) {
+		t.Error("点名 DESIGN.md 时没有一起交付配套的 DESIGN-PITFALLS.md")
+	}
 	if fileExists(filepath.Join("ui", "AGENTS.md")) {
 		t.Error("只点名 DESIGN.md 却把 AGENTS.md 也写了")
 	}
 	if got, _ := os.ReadFile(filepath.Join("ui", "DESIGN.md")); !strings.Contains(string(got), "xcgui") {
 		t.Error("DESIGN.md 内容不对")
 	}
+	if got, _ := os.ReadFile(filepath.Join("ui", "DESIGN-PITFALLS.md")); !strings.Contains(string(got), "第八节") {
+		t.Error("DESIGN-PITFALLS.md 内容不对")
+	}
 	// 文档也进清单(有基线才谈得上"你改过"与"随 CLI 升级")
-	if _, ok := loadManifest("ui").Files["DESIGN.md"]; !ok {
-		t.Error("DESIGN.md 没登记基线")
+	for _, k := range []string{"DESIGN.md", "DESIGN-PITFALLS.md"} {
+		if _, ok := loadManifest("ui").Files[k]; !ok {
+			t.Errorf("%s 没登记基线", k)
+		}
 	}
 
 	// update 已存在的那份: 没改过 = 已一致
@@ -2075,14 +2086,34 @@ func TestNamedDocTargets(t *testing.T) {
 	if got, _ := os.ReadFile(p); !strings.Contains(string(got), "我加的段") {
 		t.Error("改过的 DESIGN.md 被覆写了")
 	}
-	// 裸 update = 把这个目录里 CLI 给过的都刷新: 已装组件 + 已在的两份文档
+	// 裸 update = 把这个目录里 CLI 给过的都刷新: 已装组件 + 已在的文档
 	out = captureOutput(t, func() { update(componentOptions{uiDir: "ui"}) })
-	for _, want := range []string{"DESIGN.md", "AGENTS.md"} {
+	for _, want := range []string{"DESIGN.md", "DESIGN-PITFALLS.md", "AGENTS.md"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("裸 update 该连已交付的 %s 一起刷新: %s", want, out)
 		}
 	}
-	// 但缺的那份不补(那是 add/init 的活), 也不吭声
+	// 老项目迁移: DESIGN.md 已在、配套文件还没有(拆分前 init 的目录) → update 补上。
+	// 它不算"update 顺手装新东西": DESIGN.md 第八节正文就在配套文件里, 缺了就是断链。
+	os.Remove(filepath.Join("ui", "DESIGN-PITFALLS.md"))
+	out = captureOutput(t, func() { update(componentOptions{uiDir: "ui", dryRun: true}) })
+	if !strings.Contains(out, "将创建") || !strings.Contains(out, "DESIGN-PITFALLS.md") {
+		t.Errorf("--dry-run 该预告补装配套文件: %s", out)
+	}
+	if fileExists(filepath.Join("ui", "DESIGN-PITFALLS.md")) {
+		t.Error("--dry-run 不该真的补写配套文件")
+	}
+	out = captureOutput(t, func() { update(componentOptions{uiDir: "ui"}) })
+	if !strings.Contains(out, "DESIGN-PITFALLS.md") || !fileExists(filepath.Join("ui", "DESIGN-PITFALLS.md")) {
+		t.Errorf("老项目缺配套文件时 update 该补上: %s", out)
+	}
+	// 点名 DESIGN.md 的 update 与裸 update 同一口径: 也把配套文件补齐
+	os.Remove(filepath.Join("ui", "DESIGN-PITFALLS.md"))
+	captureOutput(t, func() { update(componentOptions{names: []string{"DESIGN.md"}, uiDir: "ui"}) })
+	if !fileExists(filepath.Join("ui", "DESIGN-PITFALLS.md")) {
+		t.Error("update 点名 DESIGN.md 时没有补上配套文件")
+	}
+	// 但缺的 AGENTS.md 不补(那是 add/init 的活), 也不吭声
 	os.Remove(filepath.Join("ui", "AGENTS.md"))
 	out = captureOutput(t, func() { update(componentOptions{uiDir: "ui"}) })
 	if fileExists(filepath.Join("ui", "AGENTS.md")) {
@@ -2097,11 +2128,22 @@ func TestNamedDocTargets(t *testing.T) {
 		t.Errorf("点名一份不存在的文档时该指明补齐的写法: %s", out)
 	}
 	// 路径写法也认(基名比对), 且拆分结果用规范名 —— 小写输入不能把基线记成两个键
-	for _, in := range []string{"ui/DESIGN.md", "design.md", "DESIGN.md"} {
+	for in, want := range map[string]string{
+		"ui/DESIGN.md": "DESIGN.md", "design.md": "DESIGN.md", "DESIGN.md": "DESIGN.md",
+		"ui/DESIGN-PITFALLS.md": "DESIGN-PITFALLS.md", "design-pitfalls.md": "DESIGN-PITFALLS.md",
+	} {
 		d, c := splitForWrite(componentOptions{names: []string{in, "button"}})
-		if len(d) != 1 || d[0] != "DESIGN.md" || len(c) != 1 {
+		if len(d) != 1 || d[0] != want || len(c) != 1 {
 			t.Errorf("%q 拆分不对: docs=%v comps=%v", in, d, c)
 		}
+	}
+	// 主文档展开时带上配套文件: 名字里写一次 DESIGN.md 就交付两份, 重复点名不重复写
+	if got := expandDocs([]string{"DESIGN.md", "AGENTS.md", "DESIGN-PITFALLS.md"}); len(got) != 3 ||
+		got[0] != "DESIGN.md" || got[1] != "DESIGN-PITFALLS.md" || got[2] != "AGENTS.md" {
+		t.Errorf("expandDocs 展开不对: %v", got)
+	}
+	if got := expandDocs([]string{"DESIGN-PITFALLS.md"}); len(got) != 1 || got[0] != "DESIGN-PITFALLS.md" {
+		t.Errorf("单独点名配套文件时不该反向牵出 DESIGN.md: %v", got)
 	}
 	// --view/--diff 是展示模式, 文档名不参与拆分(留给 registry 的解析去报错并指路)
 	if d, _ := splitForWrite(componentOptions{names: []string{"DESIGN.md"}, view: true}); len(d) != 0 {

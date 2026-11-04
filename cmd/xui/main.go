@@ -712,7 +712,7 @@ func parseInitArgs(args []string) (initOptions, error) {
 	if o.force {
 		// 普通 init 没有"非空目录"这道闸门, 已有文件一律保留 —— 收下 -f 又不生效
 		// 就是骗人; 真要丢弃本地改动说的是 -o。
-		return o, fmt.Errorf("xui init [ui目录] 不会覆盖已有文件, 不需要 --force; 要丢弃本地改动加 -o/--overwrite")
+		return o, fmt.Errorf("xui init [ui目录] 没有非空目录闸门, 不需要 --force; 要丢弃本地改动加 -o/--overwrite")
 	}
 	if o.uiDir == "" {
 		o.uiDir = "ui"
@@ -1091,12 +1091,13 @@ func usage() {
                              与本地文件做逐行 diff, 不写本地
                              (过滤值谁都没命中 = 命令失败, 退出码 1; 不是"没有差异")
   xui update [组件...]       升级已装组件(省略组件名 = ui 目录里已装的全部, 外加已在的
-                             DESIGN.md / AGENTS.md);
+                             DESIGN.md / DESIGN-PITFALLS.md / AGENTS.md);
                              安装后没改过的文件直接替换, 改过的跳过(见 -o);
                              连没装过的组件一起装是 xui add 的事: 点名没装过的组件只提示,
                              update 不接 --all
-  xui add DESIGN.md          只要 CLI 下发的文档(DESIGN.md / AGENTS.md 不是组件, 不在
-  xui update DESIGN.md       registry 里): add 可以单独拿/update 只刷已在目录里的那份)
+  xui add DESIGN.md          只要 CLI 下发的文档(DESIGN.md / DESIGN-PITFALLS.md / AGENTS.md
+  xui update DESIGN.md       不是组件, 不在 registry 里): add 可以单独拿/update 只刷已在目录
+                             里的那份; DESIGN.md 会连配套的 DESIGN-PITFALLS.md 一起给
   xui list | xui search [词] 列出/搜索组件(位置参数就是搜索词, 等价于 -q 词)
   xui view <组件...>         打印组件源码
   xui info [-p 目录]         显示 CLI / 项目环境信息(组件目录不是 ui 时用 -p 指过去)
@@ -1235,7 +1236,7 @@ func isBlankProjectDir(cwd, uiDir string) bool {
 }
 
 func initProject(dir string, w writeOpts) {
-	// 组件目录里那份给 AI 助手的 AGENTS.md 由 scaffoldUI 写(与 DESIGN.md 同一套基线判定)。
+	// 组件目录里那份给 AI 助手的 AGENTS.md 由 scaffoldUI 写(与其它下发文档同一套基线判定)。
 	if err := scaffoldUI(dir, w, true); err != nil {
 		fatal("%v", err)
 	}
@@ -1248,7 +1249,8 @@ func initProject(dir string, w writeOpts) {
 	info("  1. go get github.com/twgh/xui github.com/twgh/xcgui")
 	info("  2. 在代码中 import 目录 %s 下的组件 (包名 ui, 与目录名无关, 可自行起别名)", dir)
 	info("  3. 主题在 %s 中, 随意修改", filepath.Join(dir, "theme.go"))
-	info("  4. 改组件/主题前先看 %s (xcgui 的坑、令牌表、每个组件的画法都在里面)", filepath.Join(dir, "DESIGN.md"))
+	info("  4. 改组件/主题前先看 %s (令牌表、每个组件的画法; xcgui 的坑在配套的 %s)",
+		filepath.Join(dir, "DESIGN.md"), filepath.Join(dir, "DESIGN-PITFALLS.md"))
 	info("  5. AI 助手先读 %s (组件用法/添加更新/改组件规则)", agentsPath)
 	if findGoMod(dir) == "" {
 		info("\n当前目录不在任何 Go 模块里: 第 1 步的 go get 要先有 go.mod —— 自己 go mod init <模块路径>, 或直接要一套带 main.go 的骨架: xui init -n <项目名>(空目录里 xui init 就是这条)。")
@@ -1256,7 +1258,7 @@ func initProject(dir string, w writeOpts) {
 }
 
 // placeFile 按 classifyPlace 的判定写一个"由 CLI 下发"的文件, 并更新清单里的基线。
-// 组件源码、DESIGN.md、AGENTS.md 走的都是这一条, 所以"你改过就保留、没改过跟着版本走"
+// 组件源码与 CLI 下发的文档走的都是这一条, 所以"你改过就保留、没改过跟着版本走"
 // 在项目里只有一套行为、一套措辞。返回是否被跳过(给汇总用)。
 func placeFile(dst, rel string, data []byte, inst *installation, overwrite, dryRun bool) (skipped bool) {
 	local, err := os.ReadFile(dst)
@@ -1315,14 +1317,15 @@ func placeFile(dst, rel string, data []byte, inst *installation, overwrite, dryR
 	return false
 }
 
-// scaffoldUI 写 ui 目录: theme.go + DESIGN.md + AGENTS.md + 基础组件。普通 init 与 init -n 共用。
+// scaffoldUI 写 ui 目录: theme.go + DESIGN.md + DESIGN-PITFALLS.md + AGENTS.md + 基础组件。
+// 普通 init 与 init -n 共用。
 //
 //   - overwrite = 允许丢弃本地改动(add 的 -o);
 //   - dryRun = 只说将做什么, 不建目录、不写文件;
 //   - dirAgents = 组件目录里也放一份给 AI 助手的 AGENTS.md(普通 init 才放: init -n 写的是
 //     项目根那份, 已在模板文件的清单里)。
 //
-// DESIGN.md / AGENTS.md 与组件源码共用同一套基线判定: 以前它们"存在就永远跳过", 于是
+// 下发的文档与组件源码共用同一套基线判定: 以前它们"存在就永远跳过", 于是
 // 第一次 init 那一刻文档就定版了, 之后 CLI 修了文档里的错也传不到已有项目。
 // theme.go 是明确给用户改的(改主题就在那里), 所以不纳入 —— 它存在就跳过, 一次都不覆写。
 func scaffoldUI(dir string, w writeOpts, dirAgents bool) error {
@@ -1345,7 +1348,7 @@ func scaffoldUI(dir string, w writeOpts, dirAgents bool) error {
 		info("创建 %s", themePath)
 	}
 
-	docs := []string{"DESIGN.md"}
+	docs := []string{"DESIGN.md", "DESIGN-PITFALLS.md"}
 	if dirAgents {
 		// 目录级 AGENTS.md 只有普通 init 要; init -n 写的是项目根那份(在 project_files 里)。
 		docs = append(docs, "AGENTS.md")
@@ -2316,14 +2319,47 @@ func isReleaseVersion(v string) bool {
 // baseComponents 是 init 默认装好的基础组件(window 是模板主窗口用的封装)。
 var baseComponents = []string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card", "window"}
 
-// cliDocs 是 CLI 自己下发的两份文档。它们**不在 registry.json 里**(不是组件), 内容由 CLI 带,
+// cliDocs 是 CLI 自己下发的文档。它们**不在 registry.json 里**(不是组件), 内容由 CLI 带,
 // 所以跟 CLI 版本走、不跟 XUI_REGISTRY 钉的组件 tag 走。名字可以直接写在 add/update 后面:
 //
-//	xui add DESIGN.md      # 只要文档(项目里没跑过 init 时补齐)
+//	xui add DESIGN.md      # 只要文档(项目里没跑过 init 时补齐; 连带配套的 DESIGN-PITFALLS.md)
 //	xui update AGENTS.md   # 只刷这一份, 不动任何组件
 //
 // 分工与 add/update 一贯的边界一致: add 可以创建, update 只刷已存在的。
-var cliDocs = []string{"DESIGN.md", "AGENTS.md"}
+var cliDocs = []string{"DESIGN.md", "DESIGN-PITFALLS.md", "AGENTS.md"}
+
+// docCompanions 是必须成对交付的文档: DESIGN.md 第八节只剩编号索引, 完整条目(现象/根因/修法)
+// 都在 DESIGN-PITFALLS.md 里 —— 少了配套文件, 说明书里的"见第八节 N"就是指向空处。
+// 点名主文档时把配套一起带上(见 expandDocs)。
+var docCompanions = map[string]string{"DESIGN.md": "DESIGN-PITFALLS.md"}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// expandDocs 把点名的文档展开成实际要交付的文件(主文档带上配套文件), 保持顺序并去重。
+func expandDocs(docs []string) []string {
+	seen := make(map[string]bool, len(docs))
+	out := make([]string, 0, len(docs))
+	addOne := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	for _, name := range docs {
+		addOne(name)
+		if c := docCompanions[name]; c != "" {
+			addOne(c)
+		}
+	}
+	return out
+}
 
 // splitForWrite 只在写入模式下把名字拆成"文档目标 + 组件目标"; --view/--diff 是展示模式,
 // 文档名在那儿当未知组件报错(它们不参与 diff)。基名比对, 所以 ui/DESIGN.md 也认。
@@ -2355,14 +2391,14 @@ func docTargetName(name string) string {
 	return ""
 }
 
-// docContent 取要下发的文档内容(DESIGN.md 从模块根读, 与 init 同源)。
+// docContent 取要下发的文档内容(DESIGN.md / DESIGN-PITFALLS.md 从模块根读, 与 init 同源)。
 //
-// DESIGN.md 不需要按目录名渲染: 它的行文按"同目录裸文件名"写(见 AGENTS 的规矩), 本来就与
+// 这两份不需要按目录名渲染: 它们的行文按"同目录裸文件名"写(见 AGENTS 的规矩), 本来就与
 // 目录叫什么无关;需要渲染的只有 AGENTS.md(它会写"-p <目录>"这类路径)。
 func docContent(name, uiDir string) ([]byte, error) {
 	switch name {
-	case "DESIGN.md":
-		data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", "DESIGN.md"))
+	case "DESIGN.md", "DESIGN-PITFALLS.md":
+		data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", name))
 		if err != nil {
 			return nil, fmt.Errorf("读取 %s 失败: %w", name, err)
 		}
@@ -2434,7 +2470,7 @@ func placeDocs(docs []string, uiDir string, w writeOpts, create bool) int {
 	return skipped
 }
 
-// existingDocs 返回组件目录里**已有**的那两份文档 —— 裸 `xui update` 连它们一起刷新。
+// existingDocs 返回组件目录里**已有**的那些文档 —— 裸 `xui update` 连它们一起刷新。
 // 它们不是"新增": 是 init 交付过、也记在清单里的东西, 更新本来就该管。
 // 缺的一份都不补也不吭声(补齐是 add/init 的活), 否则只用 add 装组件的项目每次 update 都被提醒。
 func existingDocs(uiDir string) []string {
@@ -2447,7 +2483,8 @@ func existingDocs(uiDir string) []string {
 	return out
 }
 
-// add 拷贝组件(含依赖闭包); --view/--diff 只展示不写文件; 点名 DESIGN.md/AGENTS.md 时只给文档。
+// add 拷贝组件(含依赖闭包); --view/--diff 只展示不写文件; 点名文档时只给文档
+// (DESIGN.md 会连配套的 DESIGN-PITFALLS.md 一起交付, 见 expandDocs)。
 func add(opts componentOptions) {
 	docs, comps := splitForWrite(opts)
 	src, reg := loadRegistry()
@@ -2456,7 +2493,7 @@ func add(opts componentOptions) {
 		names = allComponents(reg)
 	}
 	if len(names) == 0 && len(docs) == 0 {
-		fatal("用法: xui add <组件...> | xui add --all  (组件见 xui list; 文档可点名 DESIGN.md / AGENTS.md)")
+		fatal("用法: xui add <组件...> | xui add --all  (组件见 xui list; 文档可点名 DESIGN.md / DESIGN-PITFALLS.md / AGENTS.md)")
 	}
 	order := resolveNames(reg, names)
 	switch {
@@ -2465,7 +2502,7 @@ func add(opts componentOptions) {
 	case opts.diff:
 		requireMatched(diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json), opts.diffFile)
 	default:
-		skipped := placeDocs(docs, opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, true)
+		skipped := placeDocs(expandDocs(docs), opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, true)
 		if len(order) > 0 {
 			skipped += install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
 			// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
@@ -2476,15 +2513,15 @@ func add(opts componentOptions) {
 }
 
 // update 更新已装组件: 省略组件名时 = uiDir 里已装的全部(按 registry 依赖闭包)
-// **加上目录里已有的 DESIGN.md / AGENTS.md**。
+// **加上目录里已有的 DESIGN.md / DESIGN-PITFALLS.md / AGENTS.md**。
 // --all 在这里会被解析器拒掉(update 不该顺手装新组件, 那是 add 的事);
-// 点名 DESIGN.md / AGENTS.md 则只刷指定的那几份(已存在的才刷)。
+// 点名文档则只刷指定的那几份(已存在的才刷; DESIGN.md 的配套文件缺失时补上, 见函数内)。
 func update(opts componentOptions) {
 	docs, comps := splitForWrite(opts)
 	src, reg := loadRegistry()
 	names := comps
 	if len(names) == 0 && len(docs) == 0 {
-		// 裸 update = "把这个目录里 CLI 给过的东西都刷新": 已装组件 + 已交付的两份文档。
+		// 裸 update = "把这个目录里 CLI 给过的东西都刷新": 已装组件 + 已交付的文档。
 		names = installedComponents(reg, opts.uiDir)
 		docs = existingDocs(opts.uiDir)
 		if len(names) == 0 && len(docs) == 0 {
@@ -2499,8 +2536,16 @@ func update(opts componentOptions) {
 	case opts.diff:
 		requireMatched(diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json), opts.diffFile)
 	default:
+		w := writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}
 		// create=false: update 只刷已经在目录里的东西, 不新增。
-		skipped := placeDocs(docs, opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, false)
+		skipped := placeDocs(docs, opts.uiDir, w, false)
+		// 配套文件是 DESIGN.md 的一部分(第八节正文), 不算"update 顺手装新东西": 老项目里
+		// DESIGN.md 已在、DESIGN-PITFALLS.md 还没有时补上 —— 刷新后的 DESIGN.md 第八节是
+		// 索引, 缺配套文件就成了指向空处的说明书。
+		if companion := docCompanions["DESIGN.md"]; containsString(docs, "DESIGN.md") &&
+			!containsString(docs, companion) && fileExists(filepath.Join(opts.uiDir, "DESIGN.md")) {
+			skipped += placeDocs([]string{companion}, opts.uiDir, w, true)
+		}
 		// 裸 update 已按 installedComponents 筛过, 但显式点名绕过了它 —— 名字叫 update、
 		// 行为是 add(在空目录里 `xui update button` 会把 button 全套创建出来)。这里统一挡掉:
 		// 一个文件都不在本地的组件算"没装过", 只指路不给装。
@@ -2602,7 +2647,7 @@ func lookupComponent(reg *registry, name string) string {
 		}
 	}
 	if d := docTargetName(name); d != "" {
-		// DESIGN.md / AGENTS.md 不是组件, 是 add/update 可点名的文档; 在 --view/--diff 与
+		// 下发的文档不是组件, 是 add/update 可点名的目标; 在 --view/--diff 与
 		// xui view 里它们没有内容可比(那些读的是 registry), 所以说清去哪儿能指名。
 		// 建议里用规范文件名(回显用户输入的归一化形式会给出不能照抄的命令)。
 		fatal("%q 不是组件, 是 CLI 下发的文档 (指名它请用 xui add %s 或 xui update %s; --view/--diff 只作用于组件)", name, d, d)
@@ -3424,15 +3469,18 @@ func setWindowIcons(w *ui.AppWindow) {
 // 用 ~~~ 而不是 ``` 围栏: Go 原始字符串不能包含反引号。
 const agentsRules = `## 修改/自定义组件
 
-- 先读 DESIGN.md: 交互语义看第四节末的汇总表, xcgui 的坑看第八节(按编号);第九节是**本库依赖的
-  xcgui API 清单**, 不是组件选项表 —— 每个组件的选项与方法看本目录的源码注释(或 pkg.go.dev)。
+- 先读 DESIGN.md: 交互语义看第四节末的汇总表;第九节是**本库依赖的 xcgui API 清单**, 不是
+  组件选项表 —— 每个组件的选项与方法看本目录的源码注释(或 pkg.go.dev)。
+- xcgui 的坑(现象/根因/修法)在同目录的 DESIGN-PITFALLS.md(第八节, 按编号);DESIGN.md 第八节
+  只有编号索引。源码注释里的 "见第八节 N" 按编号去那份查。
 - 颜色、圆角、字体一律从主题令牌取(xui.Current()), 禁止硬编码颜色; 不要缓存颜色,
   切换主题用 xui.OnThemeChangeFor(元素句柄, fn) 订阅重绘。
 - 事件一律用 AddEvent* 系列(有 2000 回调上限); hover 过渡用 xui.Hover / xui.Fade,
   弹层进出场用 xui.Presence, 不要自己起定时器或缓存过渡值。
 - 布局禁止绝对坐标: Fill = 父级整尺寸(不是剩余空间), Weight = 剩余空间(仅父级尺寸确定时
   有效), Auto = 随内容自撑; 页面/长内容用 ui.ScrollArea(见 DESIGN 8.55/8.56/8.66)。
-- 组件源码里的 "见 DESIGN 第 N 节 / 第八节 N 条" 指 DESIGN.md; 章节与条目编号稳定, 只增不改。
+- 组件源码里的 "见 DESIGN 第 N 节" 指 DESIGN.md, "见第八节 N 条" 指 DESIGN-PITFALLS.md;
+  章节与条目编号稳定, 只增不改。
 `
 
 // agentsProjectTemplate 是 `xui init -n` 生成到项目根的 AGENTS.md。
@@ -3441,7 +3489,7 @@ const agentsProjectTemplate = `# AGENTS.md — 给 AI 助手的项目说明
 
 本项目界面使用 xui(shadcn 风格的 xcgui 自绘组件库)。组件源码已经拷贝进 {{UIDIR}}/(包名 ui),
 归项目所有, 可以随意修改。README.md 由项目作者维护、可能被改写; 用法与约定以本文件
-和 {{UIDIR}}/DESIGN.md 为准。
+和 {{UIDIR}}/DESIGN.md、{{UIDIR}}/DESIGN-PITFALLS.md 为准。
 
 ## 运行
 
@@ -3458,7 +3506,8 @@ go run .
 - main.go — 应用入口与示例
 - {{UIDIR}}/ — 组件源码(package ui, 扁平单包; 跨文件助手也在这里)
 - {{UIDIR}}/theme.go — 主题令牌, 改这里全局换肤
-- {{UIDIR}}/DESIGN.md — 完整说明书: 组件解剖、xcgui 踩坑全集(第八节, 按编号)、依赖的 xcgui API 清单(第九节)
+- {{UIDIR}}/DESIGN.md — 说明书: 架构、主题、组件解剖、依赖的 xcgui API 清单(第九节)
+- {{UIDIR}}/DESIGN-PITFALLS.md — xcgui 踩坑全集(现象/根因/修法, 按编号; DESIGN.md 第八节是索引)
 - winres/ — exe 图标与版本信息(icon.ico + winres.json), 由 xc 生成 .syso
 
 ## 图标与版本信息
@@ -3545,7 +3594,8 @@ const agentsDirTemplate = `# AGENTS.md — 给 AI 助手的目录说明
 本目录是 xui(shadcn 风格的 xcgui 自绘组件库)的组件源码拷贝(package ui), 归项目所有,
 可以随意修改。README.md 由项目作者维护、可能被改写; 组件用法与修改规则以本文件为准。
 
-- DESIGN.md — 配套说明书: 架构、主题系统、组件解剖、xcgui 踩坑全集(第八节, 按编号)、依赖的 xcgui API 清单(第九节)
+- DESIGN.md — 说明书: 架构、主题系统、组件解剖、依赖的 xcgui API 清单(第九节)
+- DESIGN-PITFALLS.md — xcgui 踩坑全集(现象/根因/修法, 按编号; DESIGN.md 第八节只有索引)
 - theme.go — 主题令牌, 改这里全局换肤
 - 其余 *.go — 组件源码(扁平单包, 互相直接调用)
 
@@ -3597,7 +3647,8 @@ go run .
 - AGENTS.md — 给 AI 助手的使用说明与修改规则(README 改写后仍然有效)
 - {{UIDIR}}/ — 组件源码拷贝, 归你所有, 可随意修改
 - {{UIDIR}}/theme.go — 主题令牌, 改这里全局换肤
-- {{UIDIR}}/DESIGN.md — 组件自定义指南与 xcgui 踩坑全集
+- {{UIDIR}}/DESIGN.md — 组件自定义指南
+- {{UIDIR}}/DESIGN-PITFALLS.md — xcgui 踩坑全集(现象/根因/修法, 按编号)
 - winres/ — exe 图标与版本信息(已生成 syso, 开箱即用)
 
 ## 图标与版本信息
