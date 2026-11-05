@@ -7,7 +7,7 @@
 //   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
 //
 // 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
-// 启动页 XUI_HOME_PAGE = 0..18 = 基础1..4 / 表单1..5 / 导航1..4 / 反馈1..3 / 图表 / 数据 / 图标。
+// 启动页 XUI_HOME_PAGE = 0..20 = 基础1..4 / 表单1..5 / 导航1..6 / 反馈1..3 / 图表 / 数据 / 图标。
 package main
 
 import (
@@ -41,9 +41,11 @@ const (
 	pageForm4         // 表单4: 日期与时间 / 月历 / 范围与预设
 	pageForm5         // 表单5: 单选组 / 复选框三态与校验
 	pageNav1          // 导航1: 命令面板 / 下拉菜单 / 右键菜单
-	pageNav2          // 导航2: 标签页 / 面包屑 / 分页 / 步骤条 / 时间轴 / 可折叠面板
-	pageNav3          // 导航3: 导航菜单(NavigationMenu) + 菜单栏(Menubar)
-	pageNav4          // 导航4: 侧边栏(Sidebar)
+	pageNav2          // 导航2: 标签页 / 面包屑 / 分页
+	pageNav3          // 导航3: 步骤条 / 可折叠面板
+	pageNav4          // 导航4: 时间轴
+	pageNav5          // 导航5: 导航菜单(NavigationMenu) + 菜单栏(Menubar)
+	pageNav6          // 导航6: 侧边栏(Sidebar)
 	pageFeed1         // 反馈1: 对话框 / 提示气泡 / 警示对话框 / 对话框变体
 	pageFeed2         // 反馈2: 提示条 / 通知 / 进度 / 空状态
 	pageFeed3         // 反馈3: 侧边 Sheet / 底部 Drawer
@@ -57,7 +59,7 @@ const (
 var pageTitles = [...]string{
 	"基础1", "基础2", "基础3", "基础4",
 	"表单1", "表单2", "表单3", "表单4", "表单5",
-	"导航1", "导航2", "导航3", "导航4",
+	"导航1", "导航2", "导航3", "导航4", "导航5", "导航6",
 	"反馈1", "反馈2", "反馈3",
 	"图表",
 	"数据", "图标",
@@ -587,6 +589,8 @@ func buildPages(hWindow, host int) {
 	buildNav2Page(bodies[pageNav2])
 	buildNav3Page(bodies[pageNav3])
 	buildNav4Page(bodies[pageNav4])
+	buildNav5Page(bodies[pageNav5])
+	buildNav6Page(bodies[pageNav6])
 	buildFeed1Page(bodies[pageFeed1], hWindow)
 	buildFeed2Page(bodies[pageFeed2], hWindow)
 	buildFeed3Page(bodies[pageFeed3], hWindow)
@@ -2589,7 +2593,7 @@ func buildNav1Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "前置图标 / inset / 子菜单 / 勾选 / 单选 / 破坏性", v3.Handle).SetMuted())
 }
 
-// ===== 页 11: 导航2(标签页 / 分页 / 面包屑 / 步骤条 / 可折叠面板) =====
+// ===== 页 11: 导航2(标签页 / 面包屑 / 分页) =====
 
 func buildNav2Page(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
@@ -2704,7 +2708,11 @@ func buildNav2Page(body *widget.LayoutEle) {
 	ui.NewBreadcrumbSeparator(bc2.Handle)
 	itMe := ui.NewBreadcrumbItem(bc2.Handle)
 	ui.NewBreadcrumbPage(itMe.Handle, "个人资料")
+}
 
+// ===== 页 12: 导航3(步骤条 / 可折叠面板) =====
+
+func buildNav3Page(body *widget.LayoutEle) {
 	// ---- 步骤条 ----
 	_, vst := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "步骤条", vst.Handle))
@@ -2765,6 +2773,21 @@ func buildNav2Page(body *widget.LayoutEle) {
 	iconSteps.OnChange(syncSteps)
 	syncSteps(1)
 
+	// ---- 可折叠面板 ----
+	_, v4 := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可折叠面板", v4.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"radix Collapsible: 触发区 + 内容区两种组合; 内容高度 200ms 过渡, 收起后不占布局", v4.Handle))
+	ex := row(v4.Handle, 0, 24)
+	left := col(ex.Handle, 1, 8)
+	buildCollapsibleOrder(left.Handle)
+	buildCollapsibleTextTrigger(left.Handle)
+	buildCollapsibleTree(col(ex.Handle, 1, 8).Handle)
+}
+
+// ===== 页 13: 导航4(时间轴) =====
+
+func buildNav4Page(body *widget.LayoutEle) {
 	// ---- 时间轴 ----
 	_, vtl := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "时间轴", vtl.Handle))
@@ -2849,17 +2872,6 @@ func buildNav2Page(body *widget.LayoutEle) {
 		ui.WithTimelineItemColor(ui.TimelineColorMuted))
 	htl3.AddItem(ui.WithTimelineItemTitle("上线"), ui.WithTimelineItemDescription("10 月 1 日"))
 	xui.ItemFill(desc(vtl3.Handle, "水平条目的内容高会实时量测: 上下交替时按两侧最高内容对齐同一条轴线; 窗口缩放后自动重排。"))
-
-	// ---- 可折叠面板 ----
-	_, v4 := autoCard(body.Handle, 10)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可折叠面板", v4.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"radix Collapsible: 触发区 + 内容区两种组合; 内容高度 200ms 过渡, 收起后不占布局", v4.Handle))
-	ex := row(v4.Handle, 0, 24)
-	left := col(ex.Handle, 1, 8)
-	buildCollapsibleOrder(left.Handle)
-	buildCollapsibleTextTrigger(left.Handle)
-	buildCollapsibleTree(col(ex.Handle, 1, 8).Handle)
 }
 
 // buildCollapsibleTextTrigger 演示整宽文字触发区(justify-between: 文字靠左、箭头贴右)。
@@ -3027,9 +3039,9 @@ func borderedBox(parent int, h int32, horizontal bool) *widget.LayoutEle {
 	return box
 }
 
-// ===== 页 12: 导航3(导航菜单 / 菜单栏) =====
+// ===== 页 14: 导航5(导航菜单 / 菜单栏) =====
 
-func buildNav3Page(body *widget.LayoutEle) {
+func buildNav5Page(body *widget.LayoutEle) {
 	// ---- 导航菜单(共享视口) ----
 	_, vn := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "导航菜单", vn.Handle))
@@ -3155,11 +3167,11 @@ func buildNav3Page(body *widget.LayoutEle) {
 		"↑↓ 移动 · Enter 选中 · ←→ 切换顶级菜单 · ESC 关闭并把焦点还给触发区; 子菜单悬停展开(非激活弹层, 不抢焦点)。"))
 }
 
-// ===== 页 13: 导航4(侧边栏) =====
+// ===== 页 15: 导航6(侧边栏) =====
 
-// buildNav4Page 展示 Sidebar: inset 外观 + 图标折叠 + 分组/子菜单/徽章/动作 + 折叠态 tooltip。
+// buildNav6Page 展示 Sidebar: inset 外观 + 图标折叠 + 分组/子菜单/徽章/动作 + 折叠态 tooltip。
 // 外壳固定在 560 高, 面板内容超出时在侧栏内部滚动。
-func buildNav4Page(body *widget.LayoutEle) {
+func buildNav6Page(body *widget.LayoutEle) {
 	_, v := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "侧边栏", v.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
@@ -3248,7 +3260,7 @@ func buildNav4Page(body *widget.LayoutEle) {
 		"点触发钮或 Ctrl+B 收起; 收起后菜单项只留图标, 悬停出提示; 点子菜单父项可展开/收起(右侧 chevron 旋转); 子菜单/徽章/动作随折叠隐藏。"))
 }
 
-// ===== 页 14: 反馈1(对话框 / 提示气泡 / 警示对话框 / 对话框变体) =====
+// ===== 页 16: 反馈1(对话框 / 提示气泡 / 警示对话框 / 对话框变体) =====
 
 func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	r := row(body.Handle, 0, gap)
@@ -3326,7 +3338,7 @@ func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(desc(vdv.Handle, "嵌套示例: 点「打开警示」在对话框上再叠一层; 连按 ESC 会先关上层。"))
 }
 
-// ===== 页 15: 反馈2(提示条 / 通知 / 进度 / 空状态) =====
+// ===== 页 17: 反馈2(提示条 / 通知 / 进度 / 空状态) =====
 
 func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	// ---- 第一行: 提示条 ----
@@ -3712,7 +3724,7 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	tip.Bind(learn.Handle, "Empty 不画边框(上游默认也没有可见边框); 需要边框时放进 Card")
 }
 
-// ===== 页 16: 反馈3(侧边 Sheet / 底部 Drawer) =====
+// ===== 页 18: 反馈3(侧边 Sheet / 底部 Drawer) =====
 
 // toggleDemoTray 启用/停用演示托盘图标。图标从 exe 的 APP 资源加载
 // (demo/winres 由 `xc res make` 生成 .syso), 不需要运行时写临时文件。
@@ -3896,7 +3908,7 @@ func buildDrawerDemo(hWindow int, openBtn *ui.Button, status *ui.Label) {
 	dr.BindTrigger(openBtn)
 }
 
-// ===== 页 17: 图表(Chart) =====
+// ===== 页 19: 图表(Chart) =====
 // 每张卡片一张图: 柱状(分组/堆叠) / 折线 / 面积(堆叠) / 环形 / 饼图。
 // 图表高度是显式常量(240): 自绘几何按元素矩形算, 高度必须确定, 不能靠内容自撑。
 func buildChartPage(body *widget.LayoutEle) {
@@ -4007,7 +4019,7 @@ func buildChartPage(body *widget.LayoutEle) {
 	xui.ItemFill(radar)
 }
 
-// ===== 页 18: 数据(DataTable / 树) =====
+// ===== 页 20: 数据(DataTable / 树) =====
 func buildDataPage(body *widget.LayoutEle) {
 	r := rowStretch(body.Handle, gap) // 铺满型页面: 表格/树跟随窗口长高(内容区已 SetContentFill)
 
@@ -4290,7 +4302,7 @@ func showTaskMenu(hWindow int, task demoTask) {
 	m.PopupAtCursor(hWindow)
 }
 
-// ===== 页 19: 图标(icons 资源子包) =====
+// ===== 页 21: 图标(icons 资源子包) =====
 // 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
 // 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
 // 点击把名字复制到剪贴板。

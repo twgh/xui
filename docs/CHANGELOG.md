@@ -5,6 +5,11 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **demo 导航2 页面拆分**(2026-11-05, 用户反馈"导航2页面太长了"):
+  - **导航2** = 标签页 / 面包屑 / 分页; 新增 **导航3** = 步骤条 / 可折叠面板; 新增 **导航4** = 时间轴(竖向 start/交替/end + 水平三行)。原导航3/4(导航菜单/菜单栏、侧边栏)顺延为 **导航5/6**。
+  - `pageTitles`、页面枚举、构建函数与页头注释同步; `XUI_HOME_PAGE` 映射变为 **0..20**(导航2=10 / 导航3=11 / 导航4=12 / 图标页=20), HANDOFF 的启动页清单与图标页说明一并更新。
+  - **验收**: `go build/vet/test ./...` 全绿; 150% DPI 截图确认页签 21 项按 11+10 两行均衡换行, 导航2 停在分页卡、导航3 从步骤条滚到可折叠面板、导航4 覆盖全部时间轴示例、导航5 菜单与底部图标页(20)映射正确; 各页滚动条范围正常, 无空白页。
+
 - ✅ **Timeline 支持两侧交替 / 水平取向 / 节点样式**(2026-11-05, 用户需求"支持交替展现, 内容在时间轴两侧轮流出现; 支持水平方向", 并参照 Ant Design Timeline 补齐值得做的特性):
   - **取向与模式**: `WithTimelineOrientation(ui.TimelineHorizontal)`; `WithTimelineMode(ui.TimelineStart / TimelineEnd / TimelineAlternate)`。竖向 start 轴线在左、内容在右, end 轴线在右、内容右对齐, alternate 轴线居中、左右交替(第一条在左); 水平 start 轴线在顶、内容在下, end 轴线在底、内容在上, alternate 轴线居中、上下交替(第一条在上), 各条等分容器宽度。
   - **节点样式**: `WithTimelineItemColor(ui.TimelineColorPrimary / Destructive / Muted)` 或 `WithTimelineItemColorFunc` 自定义主题色; `WithTimelineItemIcon` 用 16px 图标代替圆点; `WithTimelineItemLoading` + `SetLoading` 画运行时旋转指示器; `WithTimelineVariant(ui.TimelineOutlined)` 把实心点改成空心环(中心用宿主底色挖洞, 轴线不会穿过)。优先级: 加载 > 图标 > 空心环 > 实心点。

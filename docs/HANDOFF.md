@@ -13,7 +13,7 @@
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
 - **发布**: v0.9.0(2026-11-04, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
 - **组件覆盖**: 经典 shadcn 组件已全覆盖(context-menu 在 `menu`, form 在 `field`); 完整清单见 README / DESIGN 第七节。未做: Direction / Typography / 长列表虚拟滚动。
-- **最近一批**: Timeline 支持竖向/水平、start/end/alternate 与节点色/图标/加载/空心样式、Rating 星级评分、Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件。
+- **最近一批**: demo 导航2 拆为导航2(标签页/面包屑/分页)、导航3(步骤条/可折叠面板)、导航4(时间轴), 原导航菜单/侧边栏顺延为导航5/6(`XUI_HOME_PAGE` 0..20); Timeline 支持竖向/水平、start/end/alternate 与节点色/图标/加载/空心样式、Rating 星级评分、Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
@@ -107,7 +107,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
-# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..18 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/导航4/反馈1/反馈2/反馈3/图表/数据/图标
+# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..20 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/导航4/导航5/导航6/反馈1/反馈2/反馈3/图表/数据/图标
 #     XUI_ANIM_SCALE=5 把 hover / 弹层 / Collapsible 的过渡慢放 5 倍(抓中间帧用)
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)
@@ -233,5 +233,5 @@ go mod tidy && go build -mod=mod ./ui
 - `icons/` 子包内置 **2130 个** lucide 图标(lucide-static **1.52.0**), **每图标一个 `IconXxx` 常量**;按名字取用 `icons.Path("eye")`(给"名字来自用户输入/配置"的场合)。数据由 `scripts/gen_icons.py` 生成(默认取最新版, `--version` 可钉版)
 - 出图走**直通 D2D 几何填充**(`d2dicon.go`), GDI 模式(`app.New(false)`)自动回落折线描边
 - 体积(实测, 同基准 `-s -w`): 只用常量 **+0 字节**;调 `Path/Names` 引用整张表 **+426KB**
-- demo 第 19 页「图标」是浏览入口(`XUI_HOME_PAGE=18`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
+- demo 第 21 页「图标」是浏览入口(`XUI_HOME_PAGE=20`):9×4 格 + 搜索 + 翻页, 悬浮出 Tooltip 显示图标名、点击复制
 - **原理、坑、性能结论见 DESIGN-PITFALLS.md 第八节 43(抗锯齿 / figure 数)与 44(资源预处理 / 名字单射 / arc 标志位)**
