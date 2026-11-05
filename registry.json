@@ -166,6 +166,10 @@
       "files": ["rating.go"],
       "deps": []
     },
+    "timeline": {
+      "files": ["timeline.go"],
+      "deps": ["label"]
+    },
     "scroll-area": {
       "files": ["scrollarea.go", "scrollbar.go"],
       "deps": []

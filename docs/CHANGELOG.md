@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Timeline 时间轴组件**(2026-11-05, 组件缺口盘点中"timeline"一条; shadcn 无官方组件, 语义按社区通行做法定死并写进 DESIGN 第四节末):
+  - `components/timeline.go`: `NewTimeline(x, y, cx, cy, parent, WithTimelineGap/Backdrop)` + `AddItem(WithTimelineItemTime/Title/Description)` + `SetBackdrop`。条目本身是竖向 `LayoutEle` 内容槽, 内置 时间/标题/说明 三个 Label, 之后可继续加任意 Label / Item / Card。
+  - **绘制**: 左侧轴线 2px `border` + 实心圆点 10px `primary`(外加 7px 宿主底色光环盖住轴线), 圆点对齐条目**第一个可见子项**的垂直中心; 首条不画上方线、末条不画下方线。
+  - **关键几何**: 条目间距用**元素底部内边距**表达(默认 24), 轴线画满这段内边距才能和下一段接上; 如果改用布局项外边距, 线会被条目矩形裁掉, 相邻两段之间永远缺一截。
+  - **擦除**: 每个条目先把自己左侧节点列(32px)铺成宿主底色再画线和点 —— 线条长度随内容高度变化, 透明元素重绘不擦底会留下上一帧的线头; 默认 `Card`, 非 Card 容器用 `WithTimelineBackdrop`/`SetBackdrop`。
+  - demo 导航2 加"时间轴"卡片(订单时间线 4 条: 已创建 / 已付款 / 已发货 / 待收货, 第三条内容槽里嵌一个 outline `Item` 展示物流信息); registry 加 `timeline`(files: `timeline.go`, deps: `label`)。
+  - **验收**: `go build/vet/test ./...` 全绿; 150% DPI 亮/暗截图确认四条时间线轴线连续、圆点与首行(时间)垂直居中、首条无上方线、末条无下方线、内嵌 Item 后轴线延伸到条目底部; `xui add timeline` 闭包(自动带上 label)与 `add --all` 编译通过。
+
 - ✅ **Rating 星级评分组件**(2026-11-05, 组件缺口盘点中"rating"一条; shadcn 无官方组件, 语义按社区通行做法定死并写进 DESIGN 第四节末):
   - `components/rating.go`: `NewRating(x, y, cx, cy, parent, WithRatingValue/Max/Half/Readonly/Disabled)` + `Value / SetValue / SetReadonly / SetDisabled / OnChange`。
   - **语义**: 5 星(可配)、整星/半星(0.5 步进); 悬停预览、点击提交(命中星左半 = i+0.5, 右半 = i+1); 只读只展示、禁用 50% 透明且不响应; 整块一个焦点元素, ←/↓ 减一档、→/↑ 加一档、Home/End 两端(到端点不循环), 键盘改值立即 OnChange。

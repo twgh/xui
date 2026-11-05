@@ -2765,6 +2765,26 @@ func buildNav2Page(body *widget.LayoutEle) {
 	iconSteps.OnChange(syncSteps)
 	syncSteps(1)
 
+	// ---- 时间轴 ----
+	_, vtl := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "时间轴", vtl.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"竖向轴线 + 节点圆点 + 内容槽; 内置时间/标题/说明, 也能直接加 Label / Item / Card", vtl.Handle))
+	tl := ui.NewTimeline(0, 0, 0, 0, vtl.Handle)
+	xui.ItemFill(tl)
+	tl.AddItem(ui.WithTimelineItemTime("09:24"), ui.WithTimelineItemTitle("订单已创建"),
+		ui.WithTimelineItemDescription("订单 #4189 · 共 3 件商品"))
+	tl.AddItem(ui.WithTimelineItemTime("10:05"), ui.WithTimelineItemTitle("已付款"),
+		ui.WithTimelineItemDescription("微信支付 ¥ 268.00"))
+	ship := tl.AddItem(ui.WithTimelineItemTime("14:32"), ui.WithTimelineItemTitle("已发货"),
+		ui.WithTimelineItemDescription("顺丰速运 SF1234567890"))
+	track := ui.NewItem(0, 0, 0, 0, ship.Handle, ui.WithItemVariant(ui.ItemOutline), ui.WithItemSize(ui.ItemSizeSm))
+	xui.ItemFill(track)
+	ui.NewItemTitle(track.Content().Handle, "运输中")
+	ui.NewItemDescription(track.Content().Handle, "快件已到达【杭州转运中心】")
+	tl.AddItem(ui.WithTimelineItemTime("预计明天"), ui.WithTimelineItemTitle("待收货"),
+		ui.WithTimelineItemDescription("预计 11 月 6 日送达"))
+
 	// ---- 可折叠面板 ----
 	_, v4 := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可折叠面板", v4.Handle))
