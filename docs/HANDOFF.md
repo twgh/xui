@@ -13,7 +13,7 @@
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
 - **发布**: v0.9.0(2026-11-04, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
 - **组件覆盖**: 经典 shadcn 组件已全覆盖(context-menu 在 `menu`, form 在 `field`); 完整清单见 README / DESIGN 第七节。未做: Direction / Typography / 长列表虚拟滚动。
-- **最近一批**: Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件。
+- **最近一批**: Rating 星级评分、Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
@@ -29,7 +29,6 @@
 - ⬜ **组件缺口(2026-11-04 盘点: 上游 registry index + 桌面 app 常用面比对; 经典 shadcn 组件已全覆盖 —— context-menu 在 `menu`, form 在 `field`)**:
   - ⬜ **`tag-input`** — 可就地删除的 chips 输入(回车成标签 / 退格删末个 / 标签上 ×)。现在 combobox 多选触发区只显示"首个值 +N"(`triggerText`), 不能删, 差这一步。
   - ⬜ **tree 勾选与多选** — `tree.go` 目前只有单选(`Selected/Select/OnSelect`), 没有 checkbox 路径; xcgui Tree 也没勾选 API, 要沿用本组件已有的 `AddEvent_Tree_DrawItem` 自绘项前勾选框(父节点半选 + `Checked/CheckedKeys/OnCheckChange`), 并处理点击吞掉原生单选(同 DataTable 勾选行的做法)。
-  - ⬜ **`rating`** — 星级评分: 半星 / 只读 / 键盘方向键, 悬停与焦点口径复用 slider, 填充色取 badge/progress 那套令牌。
   - ⬜ **`timeline`** — 竖向轴线 + 节点圆点 + 内容槽, 由 `item`/`card` 组合; lucide 已有 IconTimeline 可作 demo 配图。
   - ⬜ **`status-bar`** — 窗口底部状态栏(左中右槽 + 尺寸条 + 悬停提示), 现在只能拿 container + separator 手拼。
   - ⬜ **长列表性能 / 虚拟滚动** — DataTable 是原生 List + 分页, 万行级没有出路; 要么上虚拟滚动, 要么在 DESIGN 差异表明确写死"必须分页"并给出推荐页大小。

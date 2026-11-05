@@ -1737,6 +1737,22 @@ func buildForm2Page(body *widget.LayoutEle) {
 	ui.NewSwitch(0, 0, rsInv.Handle, ui.WithSwitchInvalid(), ui.WithSwitchChecked(true))
 	ui.NewSwitch(0, 0, rsInv.Handle, ui.WithSwitchChecked(true))
 
+	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
+
+	xui.ItemFill(hint(v2.Handle, "评分(半星 / 只读 / 禁用; 点击与 ←/→/Home/End)"))
+	rt := ui.NewRating(0, 0, 0, 0, v2.Handle, ui.WithRatingHalf(), ui.WithRatingValue(3.5))
+	xui.ItemFill(rt)
+	rtState := ui.NewLabel(0, 0, 0, 0, "当前评分: 3.5 / 5", v2.Handle).SetMuted()
+	xui.ItemFill(rtState)
+	rt.OnChange(func(v float64) {
+		rtState.SetText(fmt.Sprintf("当前评分: %g / 5", v)).Redraw()
+	})
+
+	xui.ItemFill(hint(v2.Handle, "只读(4 星) / 禁用(3 星)"))
+	rtRow := xui.HStack(v2.Handle, 24, 12)
+	ui.NewRating(0, 0, 0, 0, rtRow.Handle, ui.WithRatingReadonly(), ui.WithRatingValue(4))
+	ui.NewRating(0, 0, 0, 0, rtRow.Handle, ui.WithRatingDisabled(), ui.WithRatingValue(3))
+
 	// ---- 右列 1: 下拉框 ----
 	_, v4 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "下拉框", v4.Handle))

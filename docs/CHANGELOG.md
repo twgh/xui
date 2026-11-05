@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Rating 星级评分组件**(2026-11-05, 组件缺口盘点中"rating"一条; shadcn 无官方组件, 语义按社区通行做法定死并写进 DESIGN 第四节末):
+  - `components/rating.go`: `NewRating(x, y, cx, cy, parent, WithRatingValue/Max/Half/Readonly/Disabled)` + `Value / SetValue / SetReadonly / SetDisabled / OnChange`。
+  - **语义**: 5 星(可配)、整星/半星(0.5 步进); 悬停预览、点击提交(命中星左半 = i+0.5, 右半 = i+1); 只读只展示、禁用 50% 透明且不响应; 整块一个焦点元素, ←/↓ 减一档、→/↑ 加一档、Home/End 两端(到端点不循环), 键盘改值立即 OnChange。
+  - **绘制**: 空星用 lucide `IconStar` 描边(`muted-foreground/50`), 实心/半星用同色 **实心 SVG 多边形**叠画(`primary`); 半星 = 星形沿 x=12 中轴线闭合的左半。焦点环只围星星区(不用 `p.FocusFrame` 的元素整矩形), 元素被 `ItemFill` 拉宽时不会围出一整行空环。
+  - **踩坑(形状对不上)**: 第一版填充多边形按"外径 10 / 内径 4.2"估算, 比 lucide 星形瘦一圈, 实心星描边内侧露出一圈背景白缝(像空心星套了个描边); 按 lucide 的实际曲率改成内径约 6.0 后贴合, 半星也沿中轴线闭合无缝。
+  - demo 表单2 左列"选择控件"卡加评分段(3.5 半星 + 只读 4 星 / 禁用 3 星 + 实时标签); registry 加 `rating`(files: `rating.go`)。
+  - **验收**: `go test ./components -run TestRating`(值吸附/自然宽度/命中映射/实心星 SVG 解析)、`go build/vet/test ./...` 全绿; 150% DPI 亮/暗截图 —— 3.5 半星、悬停第 5 颗预览 5 星、点第 1 颗变 1、按 → 两次(半星步进)到 2 且焦点环出现、Home 归零、点第 3 颗左半到 2.5、只读悬停/点击与禁用点击均不变化; `xui add rating` 与 `add --all` 的闭包编译通过。
+
 - ✅ **Steps 支持自定义图标**(2026-11-05, 用户需求"支持自定义图标, 而不只是序号"):
   - `StepItem` 新增 `Icon string`(与 `Button.WithIcon` / `Painter.Icon` 同口径: `icons.IconXxx` 常量、path 数据或整段 SVG)。非空时圆点里**三态都画该图标**, 代替当前/未达态的序号与已完成态的对勾; 完成与否仍由圆点填充/环色与连接线颜色表达(同 Ant Design / Element Plus 的 step icon 口径, 写进 DESIGN 第四节末)。
   - 图标边长 14(对勾 12): 24px 圆点、2px 环的洞是 20px, 14 留 3px 呼吸; 复杂 lucide 轮廓在 12px 下容易糊。

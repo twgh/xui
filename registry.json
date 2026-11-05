@@ -162,6 +162,10 @@
       "files": ["steps.go", "textopt.go"],
       "deps": []
     },
+    "rating": {
+      "files": ["rating.go"],
+      "deps": []
+    },
     "scroll-area": {
       "files": ["scrollarea.go", "scrollbar.go"],
       "deps": []
