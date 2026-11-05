@@ -3475,7 +3475,7 @@ const agentsRules = `## 修改/自定义组件
   只有编号索引。源码注释里的 "见第八节 N" 按编号去那份查。
 - 颜色、圆角、字体一律从主题令牌取(xui.Current()), 禁止硬编码颜色; 不要缓存颜色,
   切换主题用 xui.OnThemeChangeFor(元素句柄, fn) 订阅重绘。
-- 事件一律用 AddEvent* 系列(有 2000 回调上限); hover 过渡用 xui.Hover / xui.Fade,
+- 事件一律用 AddEvent* 系列; hover 过渡用 xui.Hover / xui.Fade,
   弹层进出场用 xui.Presence, 不要自己起定时器或缓存过渡值。
 - 布局禁止绝对坐标: Fill = 父级整尺寸(不是剩余空间), Weight = 剩余空间(仅父级尺寸确定时
   有效), Auto = 随内容自撑; 页面/长内容用 ui.ScrollArea(见 DESIGN 8.55/8.56/8.66)。
