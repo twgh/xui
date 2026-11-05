@@ -17,25 +17,31 @@ import (
 //   - 横向: 每步等宽, 指示圆点居中, 标题/说明在圆点下方居中; 圆点之间画连接线;
 //   - 竖向: 指示圆点在左、文字在右, 圆点之间画竖线; 行高按是否有说明固定;
 //   - 三态: 已完成(主色实心 + 对勾) / 当前(主色描边环 + 主色编号) / 未达(边框色环 + 弱化编号);
+//     步骤带 Icon 时圆点里改画图标, 代替序号与对勾, 三态仍由颜色区分;
 //   - 已完成步可点回, 当前与未达步不响应鼠标(避免"点了没反应"的误导)。
 const (
-	stepsCircle   int32 = 24               // 指示圆点直径(size-6)
-	stepsBorder   int32 = 2                // 圆点环宽(border-2)
-	stepsIcon     int32 = 12               // 对勾图标尺寸
-	stepsHGap     int32 = 8                // 圆点与标题的间距
-	stepsTitleH   int32 = 20               // text-sm 行高
-	stepsDescH    int32 = 16               // text-xs 行高
-	stepsDescGap  int32 = 2                // 标题与说明的间距
-	stepsRowGap   int32 = 12               // 竖向相邻行之间的连接线长度
-	stepsTextPadX int32 = 4                // 横向每列文字左右的呼吸量
-	stepsTextLeft int32 = stepsCircle + 12 // 竖向文字起点(圆点 + gap-3)
-	stepsFocusPad int32 = 3                // 焦点环外扩量: 元素四周留出的呼吸量
+	stepsCircle       int32 = 24               // 指示圆点直径(size-6)
+	stepsBorder       int32 = 2                // 圆点环宽(border-2)
+	stepsIcon         int32 = 12               // 对勾图标尺寸
+	stepsItemIconSize int32 = 14               // 自定义图标尺寸(比对勾大一点, 复杂轮廓才不糊)
+	stepsHGap         int32 = 8                // 圆点与标题的间距
+	stepsTitleH       int32 = 20               // text-sm 行高
+	stepsDescH        int32 = 16               // text-xs 行高
+	stepsDescGap      int32 = 2                // 标题与说明的间距
+	stepsRowGap       int32 = 12               // 竖向相邻行之间的连接线长度
+	stepsTextPadX     int32 = 4                // 横向每列文字左右的呼吸量
+	stepsTextLeft     int32 = stepsCircle + 12 // 竖向文字起点(圆点 + gap-3)
+	stepsFocusPad     int32 = 3                // 焦点环外扩量: 元素四周留出的呼吸量
 )
 
 // StepItem 是单个步骤的内容。
 type StepItem struct {
 	Title       string // 步骤标题
 	Description string // 步骤说明(可空; 任一非空时横向/竖向统一预留说明行)
+	// Icon 是圆点内的自定义图标(见 xui.Painter.Icon: icons.IconXxx 常量、path 数据或整段 SVG)。
+	// 非空时**三态都画它**, 代替当前/未达态的序号与已完成态的对勾; 完成与否仍由圆点颜色
+	// (主色实心 / 主色环 / 边框环)与连接线表达 —— 同 Ant Design / Element Plus 的 step icon 口径。
+	Icon string
 }
 
 // StepsOrientation 是步骤条的取向。
@@ -456,14 +462,26 @@ func (s *Steps) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		switch {
 		case completed:
 			stepsFill(p, b.circle, t.Primary)
-			icon := stepsInset(b.circle, (stepsCircle-stepsIcon)/2)
-			p.IconRotatedOffset(icons.IconCheck, &icon, t.PrimaryForeground, 2, 0, 0, 0)
+			if icon := s.items[i].Icon; icon != "" {
+				stepsItemIcon(p, b.circle, icon, t.PrimaryForeground)
+			} else {
+				icon := stepsInset(b.circle, (stepsCircle-stepsIcon)/2)
+				p.IconRotatedOffset(icons.IconCheck, &icon, t.PrimaryForeground, 2, 0, 0, 0)
+			}
 		case current:
 			stepsRing(p, b.circle, t.Primary, s.backdropColor(t), stepsBorder)
-			stepsNumber(p, b.circle, strconv.Itoa(i+1), numFont, t.Primary)
+			if icon := s.items[i].Icon; icon != "" {
+				stepsItemIcon(p, b.circle, icon, t.Primary)
+			} else {
+				stepsNumber(p, b.circle, strconv.Itoa(i+1), numFont, t.Primary)
+			}
 		default:
 			stepsRing(p, b.circle, t.Border, s.backdropColor(t), stepsBorder)
-			stepsNumber(p, b.circle, strconv.Itoa(i+1), numFont, t.MutedForeground)
+			if icon := s.items[i].Icon; icon != "" {
+				stepsItemIcon(p, b.circle, icon, t.MutedForeground)
+			} else {
+				stepsNumber(p, b.circle, strconv.Itoa(i+1), numFont, t.MutedForeground)
+			}
 		}
 
 		titleColor := t.Foreground
@@ -635,6 +653,12 @@ func stepsRing(p *xui.Painter, rc xc.RECT, ring, hole xui.Color, width int32) {
 		return
 	}
 	stepsFill(p, inner, hole)
+}
+
+// stepsItemIcon 在圆点内居中绘制自定义图标。
+func stepsItemIcon(p *xui.Painter, rc xc.RECT, data string, color xui.Color) {
+	box := stepsInset(rc, (stepsCircle-stepsItemIconSize)/2)
+	p.Icon(data, &box, color, 2)
 }
 
 // stepsNumber 在圆点内居中绘制编号。

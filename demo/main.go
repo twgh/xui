@@ -2717,9 +2717,19 @@ func buildNav2Page(body *widget.LayoutEle) {
 		ui.WithStepsOrientation(ui.StepsVertical), ui.WithStepsCurrent(1))
 	xui.ItemFill(vSteps)
 
+	xui.ItemFill(hint(vst.Handle, "自定义图标(StepItem.Icon, 代替序号与对勾, 三态仍由颜色区分)"))
+	iconSteps := ui.NewSteps(0, 0, 0, 0, vst.Handle, []ui.StepItem{
+		{Title: "账户信息", Description: "填写邮箱与姓名", Icon: icons.IconUser},
+		{Title: "验证邮箱", Description: "输入收到的验证码", Icon: icons.IconMail},
+		{Title: "设置密码", Description: "至少 8 位字符", Icon: icons.IconLock},
+		{Title: "完成", Description: "开始使用", Icon: icons.IconCircleCheckBig},
+	}, ui.WithStepsCurrent(1))
+	xui.ItemFill(iconSteps)
+
 	syncSteps := func(i int) {
 		hSteps.SetCurrent(i)
 		vSteps.SetCurrent(i)
+		iconSteps.SetCurrent(i)
 		stepInfo.SetText(fmt.Sprintf("第 %d 步 / 共 %d 步 · %s", i+1, len(stepItems), stepItems[i].Title)).Redraw(false)
 		prevStep.Enable(i > 0)
 		nextStep.Enable(i < len(stepItems)-1)
@@ -2736,6 +2746,7 @@ func buildNav2Page(body *widget.LayoutEle) {
 	})
 	hSteps.OnChange(syncSteps)
 	vSteps.OnChange(syncSteps)
+	iconSteps.OnChange(syncSteps)
 	syncSteps(1)
 
 	// ---- 可折叠面板 ----

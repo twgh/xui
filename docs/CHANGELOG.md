@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Steps 支持自定义图标**(2026-11-05, 用户需求"支持自定义图标, 而不只是序号"):
+  - `StepItem` 新增 `Icon string`(与 `Button.WithIcon` / `Painter.Icon` 同口径: `icons.IconXxx` 常量、path 数据或整段 SVG)。非空时圆点里**三态都画该图标**, 代替当前/未达态的序号与已完成态的对勾; 完成与否仍由圆点填充/环色与连接线颜色表达(同 Ant Design / Element Plus 的 step icon 口径, 写进 DESIGN 第四节末)。
+  - 图标边长 14(对勾 12): 24px 圆点、2px 环的洞是 20px, 14 留 3px 呼吸; 复杂 lucide 轮廓在 12px 下容易糊。
+  - demo 导航2 步骤条卡片加第三行"自定义图标"(用户 / 邮件 / 锁 / 完成四枚图标, 与横向、竖向联动)。
+  - **验收**: `go build/vet/test ./...` 全绿; 150% DPI 截图确认横向/竖向三态图标都居中、已完成白图标压在主色实心圆上清晰、当前主色图标、未达弱化图标; 点击已完成步回退时图标态随当前步联动; 亮/暗主题各看一遍。
+
 - ✅ **v0.9.0 发布(2026-11-04)**: 新增 FileDialog / Steps 两个组件, 走 minor。
   - **顺序**: 组件与文档两笔提交 → 版本示例 + `fallbackXuiVersion` 提交(`9783427`)→ 轻量 tag `v0.9.0` → `runtime` 抬到 v0.9.0(`2258748`, tag 之后)。
   - **推送**: `git push origin main v0.9.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool), `git ls-remote` 逐一对上; GitHub / Gitee 的 raw `registry.json` 已能看到 `runtime: v0.9.0` 与 `file-dialog` / `steps`。
