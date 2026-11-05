@@ -1743,19 +1743,67 @@ func buildForm2Page(body *widget.LayoutEle) {
 
 	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
 
-	xui.ItemFill(hint(v2.Handle, "评分(半星 / 只读 / 禁用; 点击与 ←/→/Home/End)"))
-	rt := ui.NewRating(0, 0, 0, 0, v2.Handle, ui.WithRatingHalf(), ui.WithRatingValue(3.5))
+	const (
+		demoHeartFull = `<svg viewBox="0 0 24 24"><path fill="currentColor" d="M2 9.5A5.5 5.5 0 0 1 11.591 5.824A.56 .56 0 0 0 12.409 5.824A5.49 5.49 0 0 1 22 9.5C22 11.79 20.5 13.5 19 15L13.508 20.313A2 2 0 0 1 10.508 20.332L5 15C3.5 13.5 2 11.8 2 9.5 Z"/></svg>`
+		demoHeartHalf = `<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 20.8 L10.508 20.332 L5 15 C3.5 13.5 2 11.8 2 9.5 A5.5 5.5 0 0 1 11.591 5.824 L12 5.82 Z"/></svg>`
+	)
+
+	xui.ItemFill(hint(v2.Handle, "评分(半星 / 文案 / 再点当前星清零; 点击与 ←/→/Home/End)"))
+	rt := ui.NewRating(0, 0, 0, 0, v2.Handle, ui.WithRatingHalf(), ui.WithRatingValue(3.5),
+		ui.WithRatingLabels([]string{"很差", "差", "一般", "好", "很好"}))
 	xui.ItemFill(rt)
 	rtState := ui.NewLabel(0, 0, 0, 0, "当前评分: 3.5 / 5", v2.Handle).SetMuted()
 	xui.ItemFill(rtState)
-	rt.OnChange(func(v float64) {
-		rtState.SetText(fmt.Sprintf("当前评分: %g / 5", v)).Redraw()
+	rtVal, rtPreview, rtFocus := 3.5, "", ""
+	refreshRt := func() {
+		rtState.SetText(fmt.Sprintf("当前评分: %g / 5%s%s", rtVal, rtPreview, rtFocus)).Redraw()
+	}
+	rt.OnChange(func(v float64) { rtVal = v; refreshRt() })
+	rt.OnHoverChange(func(v float64) {
+		if v < 0 {
+			rtPreview = ""
+		} else {
+			rtPreview = fmt.Sprintf(" · 预览: %g", v)
+		}
+		refreshRt()
 	})
+	rt.OnFocus(func() { rtFocus = " · 焦点进入"; refreshRt() })
+	rt.OnBlur(func() { rtFocus = " · 焦点离开"; refreshRt() })
+	rt.OnKeyDown(func(vk uintptr) { rtFocus = fmt.Sprintf(" · 键 0x%X", vk); refreshRt() })
 
-	xui.ItemFill(hint(v2.Handle, "只读(4 星) / 禁用(3 星)"))
+	xui.ItemFill(hint(v2.Handle, "只读(4 星) / 禁用(3 星) / 不允许清除"))
 	rtRow := xui.HStack(v2.Handle, 24, 12)
 	ui.NewRating(0, 0, 0, 0, rtRow.Handle, ui.WithRatingReadonly(), ui.WithRatingValue(4))
 	ui.NewRating(0, 0, 0, 0, rtRow.Handle, ui.WithRatingDisabled(), ui.WithRatingValue(3))
+	ui.NewRating(0, 0, 0, 0, rtRow.Handle, ui.WithRatingAllowClear(false), ui.WithRatingValue(3))
+
+	xui.ItemFill(hint(v2.Handle, "尺寸 small / medium / large"))
+	rtSizes := xui.HStack(v2.Handle, 34, 12)
+	ui.NewRating(0, 0, 0, 0, rtSizes.Handle, ui.WithRatingSize(ui.RatingSmall), ui.WithRatingValue(2))
+	ui.NewRating(0, 0, 0, 0, rtSizes.Handle, ui.WithRatingValue(3))
+	ui.NewRating(0, 0, 0, 0, rtSizes.Handle, ui.WithRatingSize(ui.RatingLarge), ui.WithRatingValue(4))
+
+	xui.ItemFill(hint(v2.Handle, "自定义图标(心形三态) / 关闭键盘(方向键交回焦点切换)"))
+	rtIcons := xui.HStack(v2.Handle, 30, 12)
+	ui.NewRating(0, 0, 0, 0, rtIcons.Handle, ui.WithRatingHalf(), ui.WithRatingValue(2.5),
+		ui.WithRatingIcons(icons.IconHeart, demoHeartFull, demoHeartHalf))
+	ui.NewRating(0, 0, 0, 0, rtIcons.Handle, ui.WithRatingKeyboard(false), ui.WithRatingValue(3))
+
+	xui.ItemFill(hint(v2.Handle, "焦点 / 按键回调 + Blur()(聚焦后失焦按钮依次触发两个事件)"))
+	rtFocusRow := xui.HStack(v2.Handle, 28, 8)
+	focusBtn := ui.NewButton(0, 0, 0, 0, "聚焦", rtFocusRow.Handle,
+		ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline))
+	focusBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		rt.SetFocus()
+		return 0
+	})
+	blurBtn := ui.NewButton(0, 0, 0, 0, "聚焦后失焦", rtFocusRow.Handle,
+		ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline))
+	blurBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		rt.SetFocus()
+		rt.Blur()
+		return 0
+	})
 
 	// ---- 右列 1: 下拉框 ----
 	_, v4 := autoCard(colR.Handle, 10)

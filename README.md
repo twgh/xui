@@ -166,7 +166,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Checkbox / Radio | 自绘指示器 + 原生状态管理:Checkbox 三态(不确定态画减号、点击落到选中),两者都有校验态、空格切换与键盘焦点环;"整块区域可点"时用 `Checkbox.Toggle()` / `Radio.Select()`(走与点击指示器相同的路径,`SetSelected` 是不触发回调的静默版),放进非 Card 底色容器时用 `SetBackdrop` 跟随宿主底色 |
 | RadioGroup | 单选组:`AddItem(value, text)` 或 `Attach(radio, value)` 收编放在 Field 等子容器里的条目(跨父级互斥);↑↓←→ 循环移动并选中、Home/End 首末 |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块:都有禁用与校验态;Progress 可 indeterminate 短条往返与 `ui.NewProgressField`(标题 + 百分比 + 条);Slider 支持值域/步进、范围与多滑块、垂直、反向 |
-| Rating | 星级评分(纯自绘):整星 / 半星、悬停预览、只读与禁用;点击提交,聚焦后 ←/↓ 减一档、→/↑ 加一档、Home/End 两端 |
+| Rating | 星级评分(纯自绘):整星 / 半星、悬停预览、只读与禁用;点击提交(再点当前星清零)、聚焦后 ←/↓ 减一档、→/↑ 加一档、Home/End 两端;`WithRatingSize` 三档尺寸、`WithRatingLabels` 文案展现、`WithRatingIcons` 自定义图标、`OnHoverChange` 预览回调、`WithRatingKeyboard(false)` 关闭键盘;`OnFocus`/`OnBlur`/`OnKeyDown` 焦点与按键回调、`Blur()` 移除焦点 |
 | Calendar | 月历(全自绘):6×7 网格、范围选择(两次点击落区间)、多月并排、ISO 周数列、禁用与预订划线、年月可下拉、页脚/预设;尺寸有 helper 算宽 |
 | DatePicker | 日期框:outline 触发区 + 弹层内放 Calendar,下方放不下自动翻到上方;范围模式并排两个月、预设按钮、禁用日期、可输入形态(键入 `2026-10-22` / `今天` / `3天后`) |
 | TimePicker | 时间框:弹层内"时/分"两列滚动列表,选择即生效、弹层保持打开 |

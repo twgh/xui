@@ -5,6 +5,18 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Rating 补齐 Ant Design Rate 的 6 项特性**(2026-11-05, 用户需求"看看 rating.go 有没有值得添加的特性", 参照 [Ant Design Rate](https://ant.design/components/rate-cn) 与 `rc-rate` 源码; 第 6 项焦点回调按用户追加要求一并做):
+  - **allowClear**: 默认开, 再次点击当前值归 0 并触发 `OnChange(0)`; `WithRatingAllowClear(false)` / `SetAllowClear` 可关。清除后用 `cleaned` 压住悬停预览(同 `rc-rate` 的 cleanedValue), 否则指针没动、MouseMove 会立刻把刚清掉的星又点亮, 画面与读数不一致。
+  - **预览与文案**: `OnHoverChange(fn)`(离开/清除传 -1) + `WithRatingLabels([]string)` 在星星区右侧画 ceil(当前值或预览)-1 对应文案, 半星按 ceil 取上一档, 值为 0 不画; 文案宽用 `xui.TextWidth` 量一次并计入元素自然宽, 文案区单独铺 `Card` 底擦掉上一帧文字残影(透明元素重绘不擦底)。
+  - **keyboard 开关**: `WithRatingKeyboard(false)` / `SetKeyboard` 把 ←/↓/→/↑/Home/End 交回 xcgui 的焦点切换; 观察型 `OnKeyDown` 在开关关闭时仍转发按键。
+  - **尺寸档**: `RatingSmall/Medium/Large` = 星边长 15/20/25(AntD `controlHeight×0.625`); `ratingNaturalWidth/Area/StarRect/ValueAt` 全部改成按实例 `starSize` 计算, 奇数尺寸的中线判定要向上取整(15 的一半仍属左半)。只在构造时给, 运行中改会让元素矩形与自然宽脱节。
+  - **自定义图标与 hover 反馈**: `WithRatingIcons(outline, full, half)` 三态 SVG(口径同 `StepItem.Icon` / `Painter.Icon`); `Painter` 没有裁剪 API, 半星必须自带沿 x=12 闭合的左半 path。悬停那颗星用运行时 `xui.HoverItem` 取过渡值, 经 `Painter.Icon` 的可选 `scale` 放大 1.1 倍(AntD `starHoverScale`), 命中测试矩形不动。
+  - **焦点/按键回调(第 6 项)**: `OnFocus` / `OnBlur` / `OnKeyDown(vk)` 透出事件, `Blur()` 用宿主窗口 `XWnd_SetFocusEle(0)` 把焦点交还窗口(xcgui 没有元素级 KillFocus API); 失焦顺带清悬停预览。实测 `SetFocusEle(0)` 会触发 KillFocus, `Blur()` 有效。
+  - **未纳入**: AntD 的黄色 `starColor`/`starBg` 组件 token(保持 shadcn 的 `primary` + `muted-foreground/50` 语义)、RTL、`autoFocus`、受控 `value`、逐星 `tooltips` 弹层(整块单元素 + `Tooltip.Bind` 按元素绑定会与组件自己的 MouseMove 抢时序)、运行时改尺寸档/文案(元素矩形不会自己变宽)。
+  - demo 表单2 "选择控件"卡评分段扩展为: 半星 + 文案 + 清除、只读/禁用/不允许清除、三档尺寸、心形三态 + 关闭键盘、焦点/按键回调 + `Blur()` 两个按钮; registry 无变化(仍只有 `rating.go`)。
+  - **验收**: `go test ./components -run TestRating`(值吸附、三档几何/命中映射、清除取值、文案与悬停索引、选项复制、SVG 解析、焦点回调/Blur 安全)、`go build/vet/test ./...` 全绿; `xui add rating` 闭包与 `add --all` 逐组件编译通过; 150% DPI 亮/暗截图 —— 3.5 半星 + "好"、再点当前星归 0(5 空星、文案消失)、悬停第 5 颗显示"很好 / 预览: 5"、点击提交到 5、Home 归零且出现焦点环与"键 0x24"、`Blur()` 后显示"焦点离开"、keyboard=false 行点第 4 颗变 4 但按 → 不变、三档尺寸与心形三态在亮/暗两套配色下均正常。
+  - **追加修复(hover 放大不回退)**: 鼠标移出评分组件后, 被悬停的那颗星仍保持 1.1 倍放大, 预览星与文案也一并残留。根因: `clearHover()` 只清状态没重绘 —— 逐项 hover 过渡的回退靠 paint 每帧调用 `xui.HoverItem(active=false)` 推进, 而 MouseLeave 之后不会再有 MouseMove, 少这一帧就永远停在放大终态。修法: `clearHover()` 无条件 `Redraw(true)`(hover 已是 -1 也要重绘, 过渡值可能还停在 1)。验收: 150% DPI 截图 —— 悬停第 1 颗星显示"预览: 1 / 很差"且该星放大, 移开后恢复 3.5 半星 + "好"、5 颗星等大、预览文案消失; `go build/vet/test ./...` 全绿。
+
 - ✅ **Steps 补齐状态 / 进度 / 可点 / 尺寸**(2026-11-05, 用户需求"看看步骤条有没有值得添加的特性", 参照 Ant Design Steps):
   - **状态**: 新增 `StepStatus`(`Auto / Wait / Process / Finish / Error`)与 `StepItem.Status` 单步覆盖; 出错步 = 破坏色实心圆 + X, 指向它的连接线也转破坏色; `WithStepsStatus` 指定当前步的默认状态(如整条流程标红)。
   - **进度**: `StepItem.Percent`(1..100) 在进行中步骤的圆点环上画主色进度弧, 并新增 `SetItemPercent(i, pct)` 供上传/安装流程动态推进; 连接线保持状态色, 不重复表达进度。
