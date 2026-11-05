@@ -177,7 +177,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Tree | 树形视图(原生 `Tree` 载体 + 自绘皮肤):缩进参考线 / 旋转 chevron / 行悬浮选中;叶节点留空槽位使文字全树对齐 |
 | Chart | 图表(纯自绘):柱/折/面积/饼/圆环/径向/雷达,堆叠、平滑、数据点、图例临时隐藏、悬停指示线与提示卡、Y 轴刻度按数据自动取整齐值、点击数据点回调 |
 | Pagination | 分页:上/下一页 + 页码 + 省略号折叠(>7 页),当前页描边态 |
-| Steps | 步骤条:横向(圆点在上)/ 竖向(圆点在左)两形态;已完成 / 当前 / 未达三态;`StepItem.Icon` 给每步指定自定义图标(`icons.IconXxx` / path / 整段 SVG),代替序号与对勾、三态仍用颜色区分;点已完成步回退,Tab 聚焦后 ←/→ 移动焦点、Enter 回退;放进非 Card 底色的容器时用 `SetBackdrop` 跟随宿主底色 |
+| Steps | 步骤条:横向(圆点在上)/ 竖向(圆点在左)两形态;已完成 / 进行中 / 未达 / 出错四态(`StepItem.Status` 可单步覆盖,错误步连接线变红);`StepItem.Icon` 给每步指定自定义图标(`icons.IconXxx` / path / 整段 SVG),代替序号与对勾、状态仍用颜色区分;默认点已完成步回退,`WithStepsClickable` 放开任意非禁用步、`StepItem.Disabled` 单步禁用;`StepItem.Percent` 在当前步圆点上画进度弧;`WithStepsSize(StepsSmall)` 小号、`WithStepsInitial` 偏移起始编号;Tab 聚焦后 ←/→ 移动焦点、Enter/空格激活;放进非 Card 底色的容器时用 `SetBackdrop` 跟随宿主底色 |
 | Timeline | 时间轴:竖向 / 水平两取向;`WithTimelineMode` 控制内容在 start / end / alternate(竖向左右交替、水平上下交替)哪一侧;节点支持语义色(`WithTimelineItemColor`)/ 自定义色函数 / 自定义图标 / 加载态,`WithTimelineVariant(ui.TimelineOutlined)` 切空心节点;条目内置时间/标题/说明,也可直接组合 Label / Item / Card;首条不画上游线、末条不画下游线 |
 | Carousel | 轮播:整页滑动(300ms、循环首尾相接)、←/→ 键盘翻页、鼠标拖拽松手吸附;上/下张是内容外侧 48px 的圆形描边按钮,到边界禁用;幻灯片是纵向流容器,内容超出由视口裁剪;可自动播放与指定初始页 |
 | Resizable | 可调整分栏:面板按百分比分主轴空间、窗口缩放保持比例,拖动分隔条伸缩两侧(相邻到下限后挤压更远的);方向键每次 5%、Home/End 到边界、双击分隔条复位,分隔条可 Tab 聚焦 |

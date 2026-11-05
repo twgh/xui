@@ -159,7 +159,7 @@
       "deps": []
     },
     "steps": {
-      "files": ["steps.go", "textopt.go"],
+      "files": ["steps.go", "d2dfill.go", "textopt.go"],
       "deps": []
     },
     "rating": {
@@ -271,7 +271,7 @@
       "deps": []
     },
     "chart": {
-      "files": ["chart.go"],
+      "files": ["chart.go", "d2dfill.go"],
       "deps": []
     }
   }

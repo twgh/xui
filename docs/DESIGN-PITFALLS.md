@@ -1298,9 +1298,9 @@ hover 背景底边正好贴住弹层底边、滚轮还能再滚一下。
      - **中性主题的 `Chart1..5` 是灰阶**: 上游饼图百分比标签写死 `fill="var(--background)"`(片色之上的反色文字), 那是给彩色色板定的; 灰阶片 + 浅色正文 = 看不见。改成在 `Foreground`/`Background` 之间**比亮度差**取更对比的那个(`chartContrastText`)。注意不能按"片色亮就用 Foreground": 暗色主题的 Foreground 本身接近白色, 浅灰片照样糊掉 —— 只比两个候选谁离片色更远, 与主题无关。
      - **提示卡画在元素内部**: 跟随光标在图表区内翻转/夹紧(允许盖住图例但不出客户区), 不新建小窗 —— 小窗要额外处理 DPI、置顶、主题重绘、点击穿透, 唯一收益是"能超出卡片边界"。
 
-160. **平滑的扇形: `XDraw_FillPolygonF` 在 D2D 下没有抗锯齿, 而直通 D2D 拿到的渲染目标没有元素变换**(`chart.go`):
-     - **现象**: 饼图/环形图的扇区外弧与内弧是一圈硬台阶(半径越大越明显)。加密采样**治不了** —— 台阶来自光栅化阶段(多边形是硬填充), 不是几何精度(`FillPolygonF` 画整圆同样有台阶)。
-     - **修法**: 走与图标相同的 D2D 直通 —— `d2d.NewRenderTargetByHandle(xc.XDraw_GetD2dRenderTarget(p.Draw.Handle))` 取渲染目标、`factory.NewGeometryFigures([]d2d.GeometryFigure{{Points: flat, Closed: true}})` 建闭环几何、`rt.FillGeometryColor(geom.Base(), d2d.NewColorF(...))` 出图; 失败(纯 GDI 渲染)再回落 `FillPolygonF`。
+160. **平滑的扇形: `XDraw_FillPolygonF` 在 D2D 下没有抗锯齿, 而直通 D2D 拿到的渲染目标没有元素变换**(`chart.go`, 另见 `steps.go` 的进度弧):
+     - **现象**: 饼图/环形图的扇区外弧与内弧是一圈硬台阶(半径越大越明显)。加密采样**治不了** —— 台阶来自光栅化阶段(多边形是硬填充), 不是几何精度(`FillPolygonF` 画整圆同样有台阶)。Steps 在当前步骤圆点上画的进度弧同理: 20px 小圆上尤其明显。
+     - **修法**: 走与图标相同的 D2D 直通 —— `d2d.NewRenderTargetByHandle(xc.XDraw_GetD2dRenderTarget(p.Draw.Handle))` 取渲染目标、`factory.NewGeometryFigures([]d2d.GeometryFigure{{Points: flat, Closed: true}})` 建闭环几何、`rt.FillGeometryColor(geom.Base(), d2d.NewColorF(...))` 出图; 失败(纯 GDI 渲染)再回落 `FillPolygonF`。公共实现抽到 `d2dfill.go` 的 `fillPolygonSmooth`, chart / steps 的 registry 闭包都包含该文件(单组件安装仍能独立编译)。
      - **必须先用 `xc.XDraw_ConvRect(hDraw, &rc)` 把客户区矩形换算成画布坐标**, 再按 `sx/sy/DX/DY` 给渲染目标设置变换。直通拿到的 RT 上没有"当前元素"的变换(炫彩是在刷新自己的绘制命令时才施加), 不换算时 150% DPI 下扇区会按"逻辑像素当物理像素"画出来 —— 整个图形缩小到 1/1.5 并偏向左上(实测圆心正好落在逻辑坐标处, 一开始误以为布局错了)。变换要 `defer` 恢复, 否则残留矩阵会把后续 `XDraw_*` 绘制一起平移/缩放。
      - **元素 alpha 要自己乘**(`xc.XEle_GetAlpha`): 直通绕过了框架的元素 alpha 合成(与图标同因), 否则元素淡入淡出时扇区仍是全不透明。
      - **同一段代码里的百分比标签会被折行**: `DrawText` 在矩形内**自动换行**, 而 `TextWidth` 量出的宽度与绘制的排版宽度不严格相等 —— 卡着 `tw` 给框时 `"48%"` 会折成 `48` + `%` 两行。矩形左右各留 4px。

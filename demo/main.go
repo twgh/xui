@@ -2717,7 +2717,7 @@ func buildNav3Page(body *widget.LayoutEle) {
 	_, vst := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "步骤条", vst.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"横向 / 竖向两形态; 已完成 / 当前 / 未达三态; 点已完成步回退; Tab 聚焦后 ←/→ 移动焦点、Enter 回退", vst.Handle))
+		"横向 / 竖向两形态; 已完成 / 进行中 / 未达 / 出错四态; 默认点已完成步回退; Tab 聚焦后 ←/→ 移动焦点、Enter 激活", vst.Handle))
 
 	stepItems := []ui.StepItem{
 		{Title: "账户信息", Description: "填写邮箱与姓名"},
@@ -2741,14 +2741,51 @@ func buildNav3Page(body *widget.LayoutEle) {
 		ui.WithStepsOrientation(ui.StepsVertical), ui.WithStepsCurrent(1))
 	xui.ItemFill(vSteps)
 
-	xui.ItemFill(hint(vst.Handle, "自定义图标(StepItem.Icon, 代替序号与对勾, 三态仍由颜色区分)"))
+	xui.ItemFill(hint(vst.Handle, "自定义图标 + 任意步可点(StepItem.Icon / WithStepsClickable; 第 4 步 Disabled 只挡点击)"))
 	iconSteps := ui.NewSteps(0, 0, 0, 0, vst.Handle, []ui.StepItem{
 		{Title: "账户信息", Description: "填写邮箱与姓名", Icon: icons.IconUser},
 		{Title: "验证邮箱", Description: "输入收到的验证码", Icon: icons.IconMail},
 		{Title: "设置密码", Description: "至少 8 位字符", Icon: icons.IconLock},
-		{Title: "完成", Description: "开始使用", Icon: icons.IconCircleCheckBig},
-	}, ui.WithStepsCurrent(1))
+		{Title: "完成", Description: "开始使用", Icon: icons.IconCircleCheckBig, Disabled: true},
+	}, ui.WithStepsCurrent(1), ui.WithStepsClickable())
 	xui.ItemFill(iconSteps)
+
+	xui.ItemFill(hint(vst.Handle, "出错状态(StepItem.Status = StepStatusError; 指向它的连接线同步变红)"))
+	errSteps := ui.NewSteps(0, 0, 0, 0, vst.Handle, []ui.StepItem{
+		{Title: "账户信息"},
+		{Title: "验证邮箱"},
+		{Title: "设置密码", Status: ui.StepStatusError},
+		{Title: "完成"},
+	}, ui.WithStepsCurrent(2))
+	xui.ItemFill(errSteps)
+
+	xui.ItemFill(hint(vst.Handle, "小号 + 进度 + 起始编号(WithStepsSize(StepsSmall) / StepItem.Percent / WithStepsInitial(2))"))
+	smallInfo := ui.NewLabel(0, 0, 0, 20, "", vst.Handle).SetMuted()
+	xui.ItemFill(smallInfo)
+	smallSteps := ui.NewSteps(0, 0, 0, 0, vst.Handle, []ui.StepItem{
+		{Title: "解析"},
+		{Title: "上传", Percent: 35},
+		{Title: "校验"},
+		{Title: "完成"},
+	}, ui.WithStepsCurrent(1), ui.WithStepsSize(ui.StepsSmall), ui.WithStepsInitial(2))
+	xui.ItemFill(smallSteps)
+	progressRow := xui.HStack(vst.Handle, 32, 8)
+	progressBtn := ui.NewButton(0, 0, 0, 0, "推进进度", progressRow.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(progressBtn, 88)
+	progressPct := int32(35)
+	showProgress := func() {
+		smallInfo.SetText(fmt.Sprintf("当前步进度 %d%% · 编号从第 3 步起", progressPct)).Redraw(false)
+	}
+	progressBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		progressPct += 15
+		if progressPct > 100 {
+			progressPct = 100
+		}
+		smallSteps.SetItemPercent(1, progressPct)
+		showProgress()
+		return 0
+	})
+	showProgress()
 
 	syncSteps := func(i int) {
 		hSteps.SetCurrent(i)

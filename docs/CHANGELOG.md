@@ -5,6 +5,16 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Steps 补齐状态 / 进度 / 可点 / 尺寸**(2026-11-05, 用户需求"看看步骤条有没有值得添加的特性", 参照 Ant Design Steps):
+  - **状态**: 新增 `StepStatus`(`Auto / Wait / Process / Finish / Error`)与 `StepItem.Status` 单步覆盖; 出错步 = 破坏色实心圆 + X, 指向它的连接线也转破坏色; `WithStepsStatus` 指定当前步的默认状态(如整条流程标红)。
+  - **进度**: `StepItem.Percent`(1..100) 在进行中步骤的圆点环上画主色进度弧, 并新增 `SetItemPercent(i, pct)` 供上传/安装流程动态推进; 连接线保持状态色, 不重复表达进度。
+  - **可点性**: `WithStepsClickable` 放开任意非禁用、非当前步(默认仍只可点回已完成步); `StepItem.Disabled` 单步禁用但保留显示与键盘浏览; 命中/键盘激活统一走 `canActivate`。
+  - **尺寸与编号**: `WithStepsSize(StepsSmall)` 走独立几何/字号表(圆点 20、标题 18/说明 14); `WithStepsInitial(n)` 只偏移显示编号, 不影响索引与点击语义。
+  - **绘制**: 进度弧用扇环多边形拼(同图表扇区), 填充走 D2D 直通 `FillGeometry` 获得抗锯齿 —— `XDraw_FillPolygonF` 在 D2D 下是硬填充, 小圆点上的弧会出现一圈台阶(见 DESIGN 第八节 160); 公共助手抽到 `d2dfill.go`, chart 与 steps 的 registry 闭包共同包含(单组件安装仍可独立编译); 四态圆点/图标/标题/说明配色与错误段连接线在 `onPaint` 内实时取主题令牌。
+  - **未纳入**: AntD 的 `type`(dot / navigation / inline / panel)、`progressDot`、`maxCount`、`responsive`、`subTitle`、`labelPlacement` / `titlePlacement`、`variant` 与逐条 `content` —— 与现有单元素自绘的布局方向/组件边界不匹配或收益不明确, 不增加公共 API。
+  - demo 导航3 步骤条卡: 自定义图标行改为可点 + 第 4 步禁用; 新增出错状态行(红色连接线 + X)与小号/进度/起始编号行(进度按钮从 35% 动态推进)。
+  - **验收**: `go test ./components -run TestSteps`(自然高度含小号档、横/竖向布局、命中谓词、statusAt 覆盖优先级、canActivate 禁用与可点), `go build/vet/test ./...` 全绿; 150% DPI 亮/暗截图 —— 错误节点与入线变红、进度弧从 35% 随按钮推进到 95%、小号几何与编号 3..6、点图标行第 3 步三行联动、点禁用第 4 步无变化; `xui add steps` 闭包与 `add --all` 编译通过。
+
 - ✅ **demo 导航2 页面拆分**(2026-11-05, 用户反馈"导航2页面太长了"):
   - **导航2** = 标签页 / 面包屑 / 分页; 新增 **导航3** = 步骤条 / 可折叠面板; 新增 **导航4** = 时间轴(竖向 start/交替/end + 水平三行)。原导航3/4(导航菜单/菜单栏、侧边栏)顺延为 **导航5/6**。
   - `pageTitles`、页面枚举、构建函数与页头注释同步; `XUI_HOME_PAGE` 映射变为 **0..20**(导航2=10 / 导航3=11 / 导航4=12 / 图标页=20), HANDOFF 的启动页清单与图标页说明一并更新。
