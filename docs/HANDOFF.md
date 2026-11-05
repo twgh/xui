@@ -13,7 +13,7 @@
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
 - **发布**: v0.9.0(2026-11-04, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
 - **组件覆盖**: 经典 shadcn 组件已全覆盖(context-menu 在 `menu`, form 在 `field`); 完整清单见 README / DESIGN 第七节。未做: Direction / Typography / 长列表虚拟滚动。
-- **最近一批**: Timeline 时间轴、Rating 星级评分、Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件。
+- **最近一批**: Timeline 支持竖向/水平、start/end/alternate 与节点色/图标/加载/空心样式、Rating 星级评分、Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 已知限制(不是待办, 是 xcgui 的能力边界)

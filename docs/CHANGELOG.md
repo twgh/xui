@@ -5,6 +5,15 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Timeline 支持两侧交替 / 水平取向 / 节点样式**(2026-11-05, 用户需求"支持交替展现, 内容在时间轴两侧轮流出现; 支持水平方向", 并参照 Ant Design Timeline 补齐值得做的特性):
+  - **取向与模式**: `WithTimelineOrientation(ui.TimelineHorizontal)`; `WithTimelineMode(ui.TimelineStart / TimelineEnd / TimelineAlternate)`。竖向 start 轴线在左、内容在右, end 轴线在右、内容右对齐, alternate 轴线居中、左右交替(第一条在左); 水平 start 轴线在顶、内容在下, end 轴线在底、内容在上, alternate 轴线居中、上下交替(第一条在上), 各条等分容器宽度。
+  - **节点样式**: `WithTimelineItemColor(ui.TimelineColorPrimary / Destructive / Muted)` 或 `WithTimelineItemColorFunc` 自定义主题色; `WithTimelineItemIcon` 用 16px 图标代替圆点; `WithTimelineItemLoading` + `SetLoading` 画运行时旋转指示器; `WithTimelineVariant(ui.TimelineOutlined)` 把实心点改成空心环(中心用宿主底色挖洞, 轴线不会穿过)。优先级: 加载 > 图标 > 空心环 > 实心点。
+  - **水平几何**: 条目先按 1fr 参与首轮布局, 尺寸确定后由延迟 reflow 锁成等宽 Fixed(横向 Weight 列不会把宽度下发给 Fill 子项); 实测各条内容高, 按共享轴线写上下内边距, 使每条总高相等(start = 内容 + 32, end/alternate 按两侧最高内容对齐), 线条才能横贯一条直线。竖向 alternate 的轴线位置与左右内边距按容器宽度实时计算, 窗口缩放后重新居中。
+  - **踩坑(窗口卡死 / 未响应)**: 初版在 `AddItem` 里同步 `AdjustLayout` 祖先、且 reflow 每次都无条件上推最近框架; 水平时间轴第一次排完后的尺寸事件又触发下一轮 reflow, 滚动条/卡片 Auto 高在两次布局结果间来回, 页 10 启动即 100% CPU、白屏不绘制。**修法**: 构建期只排自己, 祖先重排只针对最近的 ScrollArea 框架(或窗口)一次; reflow 先比对宽度/内边距/轴线值, 没变化就直接返回, 不再触发外层布局。修复后同一页面连续缩放、亮暗切换均稳定。
+  - **未纳入**: AntD 的 `reverse`(调用方加条目时自行倒序即可)、`titleSpan`(本库节点列宽固定 32)、逐条 `placement` 覆盖(与 `mode` 重叠)、旧版 `pending` 虚线尾巴(用 loading 节点表达进行中)。这些没有明确收益, 不增加公共 API。
+  - demo 导航2: 原竖向 start 卡保留, 新增"时间轴 · 两侧交替"卡(语义色/图标/加载态 + 竖向 end)与"时间轴 · 水平"卡(start / end / alternate + 空心节点三行)。
+  - **验收**: `go test ./components -run TestTimeline`(模式取向对应侧、竖向 alternate 左右等宽与轴线间距、水平三种模式的内边距总和与轴线间距)、`go build/vet/test ./...` 全绿; 150% DPI 亮/暗截图 —— 竖向 start/end/alternate、水平 start/end/alternate、图标/空心/灰点/红色节点/旋转加载态、轴线逐段连续且首末不越界; 窗口缩窄后水平条目等分重算、竖向 alternate 轴线重新居中、无卡死; `xui add timeline`(自动带 label)与 `add --all` 编译通过。
+
 - ✅ **Timeline 时间轴组件**(2026-11-05, 组件缺口盘点中"timeline"一条; shadcn 无官方组件, 语义按社区通行做法定死并写进 DESIGN 第四节末):
   - `components/timeline.go`: `NewTimeline(x, y, cx, cy, parent, WithTimelineGap/Backdrop)` + `AddItem(WithTimelineItemTime/Title/Description)` + `SetBackdrop`。条目本身是竖向 `LayoutEle` 内容槽, 内置 时间/标题/说明 三个 Label, 之后可继续加任意 Label / Item / Card。
   - **绘制**: 左侧轴线 2px `border` + 实心圆点 10px `primary`(外加 7px 宿主底色光环盖住轴线), 圆点对齐条目**第一个可见子项**的垂直中心; 首条不画上方线、末条不画下方线。
