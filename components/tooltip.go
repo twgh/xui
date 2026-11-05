@@ -108,6 +108,9 @@ type Tooltip struct {
 	winWatch map[int]bool // 已挂"窗口级鼠标移动"回调的窗口
 	hosts    map[int]bool // 已挂"宿主销毁 → 销毁气泡窗"清理的宿主窗口
 	dying    map[int]bool // 正在销毁的宿主: 拒绝迟到的鼠标事件再显示气泡
+	// suppressed 是被暂时压制的元素: 按住抓手拖动这类连续交互期间, 元素持续收到
+	// MouseMove, 气泡会在拖动中反复弹出且不再跟随(见 suppress)。
+	suppressed map[int]bool
 	text     string
 	side     TipSide // 当前实际显示方向(翻转后的结果)
 	arrow    int32   // 箭头在贴元素那条边上的中心(窗口内坐标: 上下时是 x, 左右时是 y)
@@ -118,6 +121,10 @@ type Tooltip struct {
 	// MouseLeave 可能晚于新元素的 MouseStay 到达(实测: 相邻图标格之间移动),
 	// 此时按元素过滤掉这条迟到的 leave, 否则刚显示的提示会被立刻关掉。
 	shownEle int
+	// anchorX/Y/W/H 是上一次落位时目标元素(屏幕逻辑坐标)的位置与尺寸: 气泡显示期间
+	// 元素一旦位移(拖动/缩放窗口、布局重排)就要跟着重新落位, 否则停在原地不动
+	// (见 request 与 DESIGN 第八节 188)。
+	anchorX, anchorY, anchorW, anchorH int32
 
 	// 延迟: dashDelay 对应 radix Provider 的 delayDuration, skip 对应 skipDelayDuration
 	// (移出后短时间内移到下一个元素不再等延迟)。
@@ -206,6 +213,7 @@ func (t *Tooltip) BindTip(hEle int, text string, opts ...TipOption) *Tooltip {
 		delete(t.cfg, hEle)
 		delete(t.bound, hEle)
 		delete(t.hostOf, hEle)
+		delete(t.suppressed, hEle)
 		delete(tooltipReg, hEle)
 		if t.shownEle == hEle {
 			t.Hide()
@@ -306,6 +314,11 @@ func (t *Tooltip) hitTest(hWnd int, pt *xc.POINT) {
 		if !widgetVisible(hEle) {
 			continue
 		}
+		// 还要确认没被祖先裁掉(见 clippedByAncestor): 元素矩形是**未裁剪**的,
+		// 滚出 ScrollArea 视口的控件仍带着视口外(甚至跑到标签栏/标题栏上)的坐标。
+		if clippedByAncestor(hEle, pt) {
+			continue
+		}
 		t.request(hEle)
 		return
 	}
@@ -384,13 +397,72 @@ func (t *Tooltip) cancelPending() {
 	}
 }
 
+// suppress 暂时压住某个元素的自动提示(on=false 恢复)。
+//
+// 为什么需要: 元素被 `XEle_SetCapture` 之后仍会持续收到 MouseMove/MouseStay, 按住拖动
+// 期间气泡会跟着抓手一路重新落位(见 request 的跟随逻辑), 一边缩放窗口一边飘着气泡既
+// 晃眼也没意义; 松手时光标往往已经不在窗口里(收不到 MouseLeave, 也没有窗口级 hitTest),
+// 还会留在屏幕上不消失(用户报障: 拖完窗口大小后提示气泡不消失)。所以连续交互的组件
+// (状态栏尺寸抓手)在起手时压住、收手时放开。
+func (t *Tooltip) suppress(hEle int, on bool) {
+	if t == nil {
+		return
+	}
+	if !on {
+		delete(t.suppressed, hEle)
+		return
+	}
+	if t.suppressed == nil {
+		t.suppressed = map[int]bool{}
+	}
+	t.suppressed[hEle] = true
+	if t.shownEle == hEle {
+		t.Hide()
+	}
+}
+
+// anchorOf 读元素当前的屏幕逻辑位置与尺寸, 口径与 showNow 的落位完全一致
+// (含 Button 少按下一层 pressShift 的处理, 否则每次比较都会被判成"动过")。
+func anchorOf(hEle, hWnd int) (sx, sy, w, h int32, ok bool) {
+	if hWnd == 0 || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
+		return 0, 0, 0, 0, false
+	}
+	var rc, wr xc.RECT
+	xc.XEle_GetWndClientRect(hEle, &rc)
+	if rc.Right <= rc.Left || rc.Bottom <= rc.Top {
+		return 0, 0, 0, 0, false
+	}
+	if xc.XEle_GetUserData(hEle) == uiRoleButton {
+		rc.Bottom -= pressShift
+	}
+	xc.XWnd_GetRect(hWnd, &wr)
+	return wr.Left + rc.Left, wr.Top + rc.Top, rc.Right - rc.Left, rc.Bottom - rc.Top, true
+}
+
+// anchorMoved 报告气泡描述的元素是否相对上次落位移动或改过尺寸
+// (拖窗口、窗口缩放、布局重排、页面滚动都会改它)。
+func (t *Tooltip) anchorMoved(hEle int) bool {
+	sx, sy, w, h, ok := anchorOf(hEle, t.hWnd)
+	if !ok {
+		return false
+	}
+	return sx != t.anchorX || sy != t.anchorY || w != t.anchorW || h != t.anchorH
+}
+
 // request 是"该显示了"的统一入口: 按配置与 skipDelay 决定立即显示还是排队。
 func (t *Tooltip) request(hEle int) {
-	if t == nil || t.dying[windowOf(hEle)] {
+	if t == nil || t.dying[windowOf(hEle)] || t.suppressed[hEle] {
 		return
 	}
 	if t.shown && t.shownEle == hEle {
-		return // 已经显示(在目标之间横移只需挪位置)
+		// 已经显示: 目标没动就什么都不做(悬停时 MouseMove 每帧都会来, 不能每次都重量);
+		// 一旦元素位移(拖动/缩放窗口、布局重排、页面滚动)就重新落位跟上, 否则气泡
+		// 会僵在旧坐标(见 DESIGN 第八节 188)。重新落位走 showNow 的非首次分支:
+		// 只挪窗口、重画, 不重播进场动画。
+		if t.anchorMoved(hEle) {
+			t.showNow(hEle)
+		}
+		return
 	}
 	if t.tips[hEle] == "" {
 		return
@@ -498,6 +570,10 @@ func (t *Tooltip) showNow(hEle int) {
 	}
 	t.text = text
 	t.shownEle = hEle
+	// 宿主在这里就更新(而不是只在首次显示时设): 同一个 Tooltip 被多个窗口的元素共用时,
+	// 从 A 窗的提示切到 B 窗的提示是走"非首次"分支的; 不更新的话 hide 的退场过渡、
+	// 宿主销毁清理和下面的锚点比对都会用错窗口。
+	t.hWnd = hWnd
 
 	bw, bh, _, _ := t.measure(text, cfg)
 
@@ -516,6 +592,9 @@ func (t *Tooltip) showNow(hEle int) {
 	xc.XWnd_GetRect(hWnd, &wr)
 	sx, sy := wr.Left+rc.Left, wr.Top+rc.Top
 	ex, ey := rc.Right-rc.Left, rc.Bottom-rc.Top
+	// 记下落位时的锚点: 气泡显示期间元素一动(request 里比对)就按这里重排
+	// (见 DESIGN 第八节 188)。
+	t.anchorX, t.anchorY, t.anchorW, t.anchorH = sx, sy, ex, ey
 
 	// 工作区(逻辑像素): 翻转与夹紧都按**窗口所在显示器的工作区**算, 不能拿 0 当屏幕顶 ——
 	// 副屏原点非 0(显示器摆在主屏正上方时 y 是负的)时 "y < 0" 恒成立, 上方明明有空间
@@ -665,7 +744,6 @@ func (t *Tooltip) showNow(hEle int) {
 	// 不生效(见 fade 的说明), 所以必须在窗口已经显示出来之后把它钉在 255。
 	xui.SetWindowAlpha(t.win.Handle, 1)
 	t.shown = true
-	t.hWnd = hWnd
 	// 进场(shadcn tooltip: fade-in-0 + zoom-in-95 + slide-in-from-<side>-2, 150ms):
 	// 气泡从更靠近元素的位置(8px)滑到最终位置, 方向跟着 side 走。
 	dx, dy := int32(0), int32(0)
@@ -749,6 +827,15 @@ func (t *Tooltip) watchHost(hWnd int) {
 	w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {
 		if message == wapi.WM_DESTROY {
 			t.onHostDestroy(hWindow)
+		}
+		return 0
+	})
+	// 滚轮只产生 WM_MOUSEWHEEL, 不会有 MouseMove: 页面一滚, 被滚走的元素既收不到
+	// MouseLeave, 也不会走窗口级 hitTest, 气泡就一直停在原地(实测: 弹出提示后往下滚,
+	// 气泡仍挂在旧位置)。这里滚轮一动就收起当前那条 —— 与浏览器里 tooltip 一致。
+	w.AddEvent_MouseWheel(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
+		if t.shown || t.pending != nil {
+			t.Hide()
 		}
 		return 0
 	})
@@ -952,6 +1039,26 @@ func clampArrow(v, span int32) int32 {
 		v = hi
 	}
 	return v
+}
+
+// clippedByAncestor 报告 pt 是否落在元素的某个祖先之外 —— 也就是这一点虽然压在元素的
+// (未裁剪)矩形里, 但那一片已经被祖先裁掉了(典型: ScrollArea 的视口)。
+//
+// 为什么必须有这一步: `XEle_GetWndClientRect` 给的是元素**未裁剪**的矩形。页面滚到末尾
+// 再往上滚两下时, 页面顶部那个控件的矩形正好停在视口上方的标签栏/标题栏一带;只按元素
+// 矩形命中, 光标压着标题栏也会弹出它的提示(实测: 表单2 页 "切换运行时环境" 的 ComboBox)。
+func clippedByAncestor(hEle int, pt *xc.POINT) bool {
+	for h := xc.XWidget_GetParentEle(hEle); h != 0 && xc.XC_IsHXCGUI(h, xcc.XC_ELE); h = xc.XWidget_GetParentEle(h) {
+		var rc xc.RECT
+		xc.XEle_GetWndClientRect(h, &rc)
+		if rc.Right <= rc.Left || rc.Bottom <= rc.Top {
+			continue // 没尺寸的容器不参与裁剪判断
+		}
+		if pt.X < rc.Left || pt.X >= rc.Right || pt.Y < rc.Top || pt.Y >= rc.Bottom {
+			return true
+		}
+	}
+	return false
 }
 
 // widgetVisible 沿父元素链判断元素是否整体可见(隐藏页面里的元素 XWidget_IsShow 仍为 true,

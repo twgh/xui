@@ -182,6 +182,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Timeline | 时间轴:竖向 / 水平两取向;`WithTimelineMode` 控制内容在 start / end / alternate(竖向左右交替、水平上下交替)哪一侧;节点支持语义色(`WithTimelineItemColor`)/ 自定义色函数 / 自定义图标 / 加载态,`WithTimelineVariant(ui.TimelineOutlined)` 切空心节点;条目内置时间/标题/说明,也可直接组合 Label / Item / Card;首条不画上游线、末条不画下游线 |
 | Carousel | 轮播:整页滑动(300ms、循环首尾相接)、←/→ 键盘翻页、鼠标拖拽松手吸附;上/下张是内容外侧 48px 的圆形描边按钮,到边界禁用;幻灯片是纵向流容器,内容超出由视口裁剪;可自动播放与指定初始页 |
 | Resizable | 可调整分栏:面板按百分比分主轴空间、窗口缩放保持比例,拖动分隔条伸缩两侧(相邻到下限后挤压更远的);方向键每次 5%、Home/End 到边界、双击分隔条复位,分隔条可 Tab 聚焦 |
+| StatusBar | 窗口底部状态栏(自定扩展, 上游无 tsx):左/中/右三槽(可放任意控件) + 顶边 1px + 自绘条目(图标 / hover 过渡 / 点击 / 上方提示气泡 / 禁用 / 激活)+ 右下角尺寸抓手(按住拖动改宿主窗口大小)与可选实时 `W × H` 尺寸读数;`WithStatusBarGrip/SizeReadout/Height/MinWindowSize/Tooltip`、`SetGrip/SetSizeReadout`、`NewStatusBarSeparator`;中槽按整条居中、右槽条目靠尾, 抓手在最大化态不动作 |
 | ScrollArea | 滚动容器(原生 `LayoutFrame` 载体):内容比容器高时滚动、内容大小按子项自动撑开、滚动条自动显隐;`SetContentFill()` 切"铺满视口 + 面板吃剩余高度"形态 |
 | AspectRatio | 固定宽高比容器:高度 = 宽度 / ratio,宽度变化时自动重算并逐级重排 |
 | Tabs | 标签页(default / line 两变体):行内图标、单标签禁用、value 语义、`BindPanel` 绑面板;支持纵向堆叠与自动换行;键盘 = 整块一个 Tab 站点,←/→/↑/↓ 移动、Home/End 首末、Enter/空格切换 |

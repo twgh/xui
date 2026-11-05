@@ -234,6 +234,10 @@
       "files": ["taginput.go"],
       "deps": []
     },
+    "status-bar": {
+      "files": ["statusbar.go"],
+      "deps": ["tooltip"]
+    },
     "accordion": {
       "files": ["accordion.go", "textopt.go"],
       "deps": ["button", "collapsible", "separator"]

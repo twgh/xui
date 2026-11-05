@@ -278,6 +278,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | NavigationMenu | 自绘根列表 + **一个共享 popoverPanel(非激活)** | 所有菜单共用一个视口: 贴列表左下方、宽高随当前菜单内容变化, 切换时不重开窗口; 触发区/顶级链接是全自绘 Button; 内容页是 LayoutEle(链接行助手 `Link`/`LinkIn` + 任意控件); 悬停 200ms 打开、离开 150ms 收起、关闭后 300ms 内切其它触发区立即打开(第八节 137 的轮询同时负责链接 hover 与收起判定) | navigation-menu.tsx(radix-nova) |
 | Carousel | 根 Element + 裁切视口 + 每页一个 LayoutEle | 每页宽 = 视口宽 − gap(16), 过渡 300ms 用 `xui.Presence` 每帧重写各页矩形; 循环用"模总长"折回, 首尾相接、不需要克隆页(第八节 141); 拖拽走窗口级起手 + `SetCaptureEle` 跟手(第八节 140); 上/下张是内容外侧 48px 的圆形 Button | carousel.tsx(radix-nova, embla) |
 | Resizable | 分组 = LayoutEle(横向/纵向) + 面板 = LayoutEle + 分隔条 = 自绘 Element | 面板按百分比分配主轴空间, 像素宽按累计边界取整(每个手柄固定 4px); 分隔条画 1px `bg-border` 线 + 可选 4×24 抓手; 拖拽把鼠标捕获到**分组**(手柄会随布局移动, 不能当坐标原点), 键盘挂窗口级(同 152): 方向键 5%、Home/End 到边界、双击复位(第八节 157) | resizable.tsx(radix-nova) + react-resizable-panels v4 |
+| StatusBar | LayoutEle(整条 + 三槽) + 自绘 Element(条目/抓手) | 整条横向流式: 左 Weight1 / 中 Auto / 右 Weight1(开头一段 Weight 撑子把条目顶到行尾) / 抓手 Fixed16; 顶边 1px 按设备像素对齐(同 Separator), 条目自绘 + `xui.Hover` 过渡, 抓手 `SetCapture` + `GetCursorPos` 屏幕物理增量 ÷ 窗口 DPI 调 `Window.SetSize`; 尺寸读数挂宿主 `WM_SIZE`; 提示走 `Tooltip.BindTip(TipTop)` | 桌面状态栏通行形态(shadcn 无官方组件, 语义由本库定死) |
 
 非 Button 载体的组件(hover 态自管)用运行时提供的 `HoverTracker`(基于 `AddEvent_MouseStay/MouseLeave`,已确认存在)。
 
@@ -382,6 +383,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | avatar = 圆形 sm 24 / default 32 / lg 40; 图片居中裁剪, 无图 fallback bg-muted + muted-foreground(默认 14 / sm 12); AvatarBadge 在右下角(size 8/10/12 + 2px 背景色环 + primary 底), AvatarGroup 用 `-space-x-2`(负 8)叠放、组内头像带 2px 背景色环, 计数头像同尺寸 | avatar.tsx(radix-nova) |
 | command = 搜索行 h-9(36) + 下边框 + size-4 搜索图标(opacity-50) + 透明输入框; 条目 h-8(32) px-2 rounded-sm, 选中 bg-accent + accent-foreground; 分组标签 text-xs muted + p-1; 列表 max-h-300; 空状态 py-6 居中; 输入即过滤, ↑↓ 循环并跳过禁用, Home/End, Enter 选中, ESC 清空; 选中不自动关闭(CommandDialog 由 Dialog + Command 组合) | command.tsx(cmdk) |
 | **tag input**(shadcn 无官方组件, 语义由本库定死): 外壳 = Input 同款 h-8(32) 圆角壳 / 焦点环 / 校验环 / 禁用态;内部是 h-5(20) 的 Badge 胶囊(text-xs、secondary 底 + 右侧 ×)与等高的裸 Edit;胶囊排满一行换行, 外壳按行数自撑(行高 22 / 行距 4 / 上下内边距 5), 输入区不足 48 就整行挪到下一行;回车提交当前段, 输入中遇到分隔符(默认 `,` `，` 换行)立即把前面各段切成标签、最后一段留在输入框;trim 首尾空白、空串忽略、默认精确匹配去重(重复静默忽略), 到上限 / 校验器拒绝时输入文字保留不清空;输入框为空时 Backspace 删末个标签, 非空按原生删字符;点 × 删除对应标签(双击也要命中), 点空白 / 删完都把焦点交回输入框;禁用 = 整组 50% + Edit 关焦点与键盘;`OnChange([]string)` 只由交互触发, 程序化改值不广播;载体是"自绘外壳 + 一个 `SetRectEx` 定位的裸 Edit 子控件", 量高必须延迟到下一轮消息(见第八节 187) | 社区 tag input 通行语义(Enter / 分隔符提交、Backspace 删末个、× 删除) + 本库自定(去重 / 上限 / 校验 / 换行 / 回调边界) + 第八节 187 |
+| **status bar**(shadcn 无官方组件, 语义由本库定死): 窗口底部整宽横条 h-7(28) `bg-card` + 顶边 1px `bg-border`, 左右内边距 8、槽间距 2; **左/中/右三槽都返回 LayoutEle, 可放任意控件**, 左右槽各 Weight 1、中槽 Auto(右槽开头一段 Weight 撑子把条目顶到行尾) ⇒ 中槽按**整条**中心对齐(右下抓手占 16 会让它左偏半个抓手宽), 不是"左右剩余空间"的中心; 内置条目 h-5(20) rounded-sm text-xs, 行内图标 12 + gap 4 + 左右内边距 6, 静止透明底 + muted-foreground 字, hover 150ms 过渡到 bg-accent + foreground 字(`xui.Hover`/`Fade`)、按下叠一层 accent/50, 禁用 50% 字色且不响应 hover/点击, active = primary 实心底 + primary-foreground; 点击在 `LButtonUp` 触发, 程序化 `SetText`/`SetIcon` 不触发; 条目与抓手默认绑**朝上**的 Tooltip(可用 `WithStatusBarTooltip` 注入外部管理器), 提示文字为空即解绑; 槽间可用 `NewStatusBarSeparator` 画 12 高 1px 竖线; **尺寸条 = 右下角 16×16 的 NWSE 抓手 + 可选实时尺寸读数**: 抓手是贴窗口右下角的方块(外层套一个整条高的 `LayoutEle`, 用 `SetAlignV(Bottom)` 把它压到底; 条的右侧内边距在抓手启用时收到 0, 否则抓手会被 8 内边距推离窗口角), 线条在方块内再内缩 3; 按住抓手拖改**宿主窗口**大小(不做内容缩放/zoom), 拖动以屏幕**物理**坐标增量 ÷ 窗口 DPI 换算成逻辑像素、抓手上 `SetCapture` 跟手(抓手会随窗口缩放移动, 元素坐标不能当基准), **拖动期间抓手自己的气泡被压住、收手时立即收起**(被捕获的元素收不到 MouseLeave, 不压的话气泡会在缩放中反复冒出并停在旧位置, 见 DESIGN-PITFALLS 188), 最大化态与缩到下限(默认 320×240, 可配)都不动作; 读数是 `W × H` **逻辑像素**, 跟宿主 `WM_SIZE` 实时刷新; 抓手可 `WithStatusBarGrip(false)` / `SetGrip` 关掉, 读数可 `WithStatusBarSizeReadout` / `SetSizeReadout` 开关; 条目是自绘 Element, 不进 Tab 焦点链(同第八节 157) | 桌面状态栏通行形态; 三槽权重与中槽对齐口径、抓手 DPI 换算/下限、尺寸读数、点击与提示边界均由本库定死(无官方 tsx) + 第八节 157/185/186 |
 
 ### 变体/尺寸与上游的映射、已知差异
 
@@ -438,6 +440,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | DataTable(未做) | 行拖拽 | 原生 List 没有行拖拽; 排序/筛选/分页后"显示顺序"与原始行顺序是两回事, 拖拽要回写业务数据并定义跨页/筛选下的落点语义, 不是组件能单方面决定的 |
 | DataTable(排序口径) | 数字(允许 `¥$€£,` 与 `%`)按数值、英文与数字段按自然顺序(同 `localeCompare numeric:true`); **中文按 UTF-8 码位**, 不按拼音 | Go 侧没有浏览器中文拼音排序; 需要业务语义时用 `DataColumn.Compare` 自定义 |
 | Resizable | `NewResizableGroup(x,y,cx,cy,parent, WithResizableVertical/Disabled/OnResize)` + `AddPanel(WithResizableSize/Min/Max)` + `AddHandle(WithResizableGrip)`; `Sizes/SetSizes/OnResize/SetDisabled/Disabled`; 面板是流式容器, 内容直接放进去 | 对应 resizable.tsx 的 `PanelGroup/Panel/Handle`; 未做 `collapsible/collapsedSize`(Enter 折叠)、`preserve-pixel-size`、F6 在分隔条之间跳焦点、面板/分隔条级 disabled; 尺寸只支持百分比(上游还能写 px/rem); 面板是容器而非独立元素, 没有 `data-panel` 之类的 DOM 钩子 |
+| StatusBar | `NewStatusBar(x,y,cx,cy,parent, WithStatusBarHeight/Grip/SizeReadout/MinWindowSize/Tooltip)` + `Left/Center/Right/Bar/Grip/Tooltip/Height/GripEnabled` + `SetGrip/SetSizeReadout` + `AddLeft/AddCenter/AddRight`; `NewStatusBarItem(hParent,text, WithStatusBarItemIcon/Tooltip/OnClick/Disabled/Active/Width)` + `Text/SetText/SetIcon/SetTooltip/SetDisabled/SetActive/OnClick`、`NewStatusBarSeparator` | 本组件库自定扩展, 上游没有 status-bar; 抓手只改宿主窗口尺寸(浏览器式 zoom / 内容缩放不在组件边界内), 尺寸读数是逻辑像素; 三槽是流式容器而非 DOM children, 中槽按整条中心、右槽条目靠尾; 条目不参与 Tab 焦点链(见第八节 157) |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | chart 色板供你的应用取用(组件库不画图表); sidebar 令牌由 `ui.Sidebar` 使用; 机械转译新主题时两组一并填(运行时的主题测试有守卫) |
 
@@ -524,7 +527,7 @@ xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不�
   | `sheet.go` | 侧边面板(复用 Dialog 的模态基座) | dialog 的文件清单(模态分支) / drawer |
   | `menu_model.go` | 菜单条目模型与 `MenuOpt` 构造器 | menu / menubar |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`、`data-table → table + input + button + label + select`、`input-group → menu`(复合 addon 的 MenuButton);`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`、`data-table → table + input + button + label + select`、`input-group → menu`(复合 addon 的 MenuButton)、`status-bar → tooltip`(条目/抓手的悬停气泡);`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在组件目录里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update`(已装组件 + 已下发的文档)或 `xui update button`(只更新该组件及其依赖)。
 
@@ -778,6 +781,9 @@ xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不�
 - **185** 布局元素是"纯排版壳": 默认鼠标穿透, 要当命中区必须显式关掉
 - **186** 小图形折线用 `DrawLine`, 坐标会被截断到逻辑整数, 图形整体偏左/偏上
 - **187** 自绘 chips 容器随内容长高: 输入事件里同步改高度 + 逐级 `AdjustLayout` 会让兄弟项停在旧位置
+- **188** 被 `SetCapture` 的元素收不到 `MouseLeave`: 拖动结束后提示气泡不消失
+- **189** `XEle_GetWndClientRect` 给的是未裁剪矩形: 滚出视口的控件仍在视口外"命中"鼠标
+- **190** 滚轮只发 `WM_MOUSEWHEEL`: 提示气泡不会随页面滚动收起
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 
@@ -837,3 +843,4 @@ xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不�
 - 图表(见第八节 159): 纯自绘根 Element, 绘制全走 paint 回调里的 `*xui.Painter`(`Line`/`Text`/`FillRound`/`StrokeRound`/`FillRoundCorners`)与 `p.Draw` 的浮点几何(`FillPolygonF` 画扇形与面积带、`FillEllipseF`/`DrawEllipse` 画点与圆环); 悬停靠宿主窗口级 `AddEvent_MouseMove` + `xc.XEle_GetWndClientRect` 命中(ScrollArea 里的元素收不到元素级 MouseMove, 同 156); 隐藏页判定沿 `XWidget_GetParentEle` 链查 `XWidget_IsShow`; 曲线**自己采样**成分段折线(D2D 下曲线绘制是空实现); 提示卡与图例都在同一个 Paint 回调里画, 不建小窗
 - 侧边栏(见第八节 158): `wapi.GetCursorPos` + `wapi.ClientToScreen(hwnd, &pt)` + `xc.XEle_GetWndClientRectDPI`(物理客户区矩形) + `xc.XWnd_GetDPI` 换算动作钮命中; `Element.SetZOrder(0)`(构造期抬升 Z 序, `SetZOrderEx` 在窗口未显示时会崩); `Window.AddEvent_MouseMove/AddEvent_MouseLeave`(普通 Element 的悬停兜底); `XWidget_IsShow`; `Painter.TextF` + `xcc.TextFormatFlag_NoWrap|xcc.TextTrimming_EllipsisCharacter`(菜单项长文本省略); `xui.Hover` + `Presence`(宽度 200ms 过渡, 挂宿主窗口)
 - 自绘 chips 容器 + 裸 Edit 子控件(TagInput, 见第八节 187): `Element.SetRectEx(x,y,cx,cy,false,xcc.AdjustLayout_No)`(普通 Element 未开布局时给子控件定坐标, 布局趟不会覆盖)、`Edit.AddEvent_Edit_Changed/AddEvent_KeyDown/SetDefaultText/SetDefaultTextColor/SetCaretColor/MoveEnd`、`Element.AddEvent_MouseMove/AddEvent_MouseLeave`(显式 `EnableMouseThrough(false)` 后普通 Element 每次移动都触发, pPt 是元素客户区坐标)、`app.AfterFunc(0, ...)`(把量高推出当前输入/尺寸事件并合并同轮触发)
+- 状态栏(StatusBar, 语义见第四节): `xc.XEle_SetPadding`(左右内边距) + `xcc.Layout_Size_Weight/Auto` 三槽 + `EnableMouseThrough`(布局壳保持穿透, 见 185)、`xc.XEle_SetCapture` + `wapi.GetCursorPos`(尺寸抓手拖拽, 屏幕物理增量 ÷ `xc.XWnd_GetDPI`)、`xc.XWnd_GetRect/XWnd_GetClientRect`、`window.Window.SetSize`(底层 `XWnd_SetRect` 吃逻辑像素)、`Window.IsMaxWindow`、`Window.AddEvent_WindProc` + `wapi.WM_SIZE` + `xc.XC_CallUT`、`wapi.LoadImageW(0, wapi.IDC_SIZENWSE, wapi.IMAGE_CURSOR, ...)` + `Element.SetCursor`、`drawx.Draw.DrawLineF/SetLineWidthF`(1px 斜线避免整数截断, 见 186)、`Tooltip.BindTip(..., WithTipSide(TipTop))`、`app.AfterFunc(0, ...)`

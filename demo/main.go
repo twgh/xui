@@ -1,6 +1,6 @@
 // xui 组件演示: light/dark 一键换肤 + 全部组件。
 //
-// 布局: 窗口 → [标题栏行][内容区: 页签行 + 页面宿主], 页面与卡片全部走**流式布局**,
+// 布局: 窗口 → [标题栏行][内容区: 页签行 + 页面宿主][底部状态栏], 页面与卡片全部走**流式布局**,
 // 不写"算出来的绝对坐标" —— 窗口拉大/最大化时整页自适应:
 //   - 页面 = 铺满宿主的竖向流式容器; 隐藏的页会被布局跳过(实测 0x0), 所以不需要叠放定位;
 //   - 卡片 = 宽度铺满 + 高度按内容自撑(Auto); 表格/树这类"越高越好"的内容声明成撑满剩余高度;
@@ -353,6 +353,20 @@ func main() {
 	content := w.Content()
 	content.SetSpace(0)
 	buildPages(w.Handle, content.Handle)
+
+	// 窗口底部状态栏: 直接挂在窗口的流式布局末尾(内容区是 Weight 高, 状态栏 Fixed 高),
+	// 不写绝对坐标; 右下角抓手按住拖动改宿主窗口大小, 尺寸读数跟着刷新。
+	status := ui.NewStatusBar(0, 0, 0, 0, w.Handle,
+		ui.WithStatusBarSizeReadout(), ui.WithStatusBarTooltip(tip))
+	status.AddLeft("就绪", ui.WithStatusBarItemIcon(icons.IconCircleCheck),
+		ui.WithStatusBarItemTooltip("xui demo 已就绪"))
+	status.AddLeft("main", ui.WithStatusBarItemIcon(icons.IconGitBranch),
+		ui.WithStatusBarItemTooltip("当前分支"))
+	status.AddCenter("xui · shadcn 风格自绘组件", ui.WithStatusBarItemTooltip("窗口标题"))
+	status.AddRight("UTF-8", ui.WithStatusBarItemTooltip("文件编码"))
+	status.AddRight("Go", ui.WithStatusBarItemActive(), ui.WithStatusBarItemTooltip("语言模式"))
+	status.AddRight("Ln 1, Col 1", ui.WithStatusBarItemTooltip("光标位置"))
+	w.AdjustLayout()
 
 	w.Show(true)
 	a.Run()
@@ -1484,6 +1498,39 @@ func buildBase4Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 24, "开合状态互不影响, 与 single 模式的互斥行为对比。", m1.ContentStack(6).Handle))
 	m2 := acc2.AddItem("m-2", "多开示例二")
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 24, "同时展开多项时, 每一项的内容区独立做高度过渡。", m2.ContentStack(6).Handle))
+
+	// ---- 状态栏(StatusBar): 左中右槽 + 条目提示 + 尺寸抓手 ----
+	_, vst := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "状态栏", vst.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"StatusBar: 整宽横条 + 顶边 1px; 左/中/右三槽可放任意控件; 条目带 hover 过渡与上方气泡; 抓手拖动改窗口大小",
+		vst.Handle))
+
+	statusClick := ui.NewLabel(0, 0, 0, 20, "点击条目: -", vst.Handle).SetMuted()
+	xui.ItemFill(statusClick)
+	// 卡片里的样例关掉抓手: 抓手改的是宿主窗口, 演示页里只留窗口底部那条可拖。
+	sb := ui.NewStatusBar(0, 0, 0, 0, vst.Handle,
+		ui.WithStatusBarGrip(false), ui.WithStatusBarTooltip(tip))
+	xui.ItemFill(sb)
+	sb.AddLeft("就绪", ui.WithStatusBarItemIcon(icons.IconCircleCheck),
+		ui.WithStatusBarItemTooltip("构建完成"))
+	ui.NewStatusBarSeparator(sb.Left().Handle)
+	sb.AddLeft("main", ui.WithStatusBarItemIcon(icons.IconGitBranch),
+		ui.WithStatusBarItemTooltip("当前分支"),
+		ui.WithStatusBarItemOnClick(func() { statusClick.SetText("点击条目: main").Redraw() }))
+	sb.AddCenter("xui · 组件演示", ui.WithStatusBarItemTooltip("页面标题"))
+	sb.AddRight("UTF-8", ui.WithStatusBarItemTooltip("文件编码"))
+	sb.AddRight("Go", ui.WithStatusBarItemActive(), ui.WithStatusBarItemTooltip("语言模式"))
+	sb.AddRight("只读", ui.WithStatusBarItemDisabled(), ui.WithStatusBarItemTooltip("只读模式(禁用)"))
+
+	xui.ItemFill(hint(vst.Handle, "同一组条目换成小高度 / 带尺寸读数 / 无抓手"))
+	sb2 := ui.NewStatusBar(0, 0, 0, 24, vst.Handle,
+		ui.WithStatusBarGrip(false), ui.WithStatusBarSizeReadout(), ui.WithStatusBarTooltip(tip))
+	xui.ItemFill(sb2)
+	sb2.AddLeft("3 个问题", ui.WithStatusBarItemIcon(icons.IconInfo))
+	sb2.AddLeft("0 个警告")
+	sb2.AddCenter("Ctrl+K 打开命令面板")
+	sb2.AddRight("Ln 12, Col 34", ui.WithStatusBarItemTooltip("光标位置"))
 }
 
 // ===== 页 5: 表单1(文本输入 / 验证码 / 滑动条) =====

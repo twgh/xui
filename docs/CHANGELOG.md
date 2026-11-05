@@ -5,6 +5,36 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **调整 `status-bar` 尺寸抓手: 贴到窗口右下角, 并缩成 16×16 方块**(2026-11-05, 用户报障):
+  - **现象**: 右下角那三条斜线离窗口角还有一截(实测离右边 9 逻辑像素、离底 6), 得往右挪才"对上角"; 抓手跟整条一样高(28), hover 高亮在右端竖出一道高高的色块。
+  - **根因**: 抓手是条里的最后一个布局项, 条的右内边距 8 把它推离窗口边; 元素高度又直接用了整条高。
+  - **修法**: 抓手外面套一个整条高的 `LayoutEle` 容器并 `SetAlignV(Layout_Align_Bottom)`, 抓手本体改成 16×16 贴底; 条的右侧内边距在抓手启用时收到 0(`gripPadRight`), `SetGrip` 切换时同步改内边距并连容器一起显隐(只隐抓手会让中槽一直偏半个抓手宽)。抓手不再顶到条的上沿, 也就去掉了原来补画顶边那一步。
+  - **验收**: 探针读回条 `(8,0)-(392,28)`、抓手 `(376,12)-(392,28)` = 16×16 且右边/底边与条严丝合缝; 150% DPI 截图里三条斜线离窗口角约 3 逻辑像素。`go build ./...` / `go vet ./...` / `go test ./...` 全绿。
+
+- ✅ **修复 `Tooltip`: 弹出后滚动页面, 气泡不收起**(2026-11-05, 用户报障, 见 DESIGN 第八节 190):
+  - **现象**: 悬停控件弹出提示后直接滚轮翻页, 气泡留在原地, 而它描述的控件已经被滚走。
+  - **根因**: 内容位移不产生鼠标事件 —— 滚动期间没有 `MouseMove`, 元素级 `MouseLeave` 与窗口级 `hitTest` 都不触发, "按事件隐藏"的链路整体失效。
+  - **修法**: 宿主窗口(`watchHost`)挂一次 `AddEvent_MouseWheel`, 滚轮一到就收起当前气泡并取消排队中的延迟显示; 与浏览器 tooltip 的"滚动即消失"一致。
+  - **验收**: 150% DPI 亮色, 表单2 页用 `Tooltip.Show` 程序化弹出"切换运行时环境"(截图确认在屏), 在页面上滚 5 格后再截图 —— 气泡消失, 页面区域像素对比 2169 点变化证明确实滚动了。`go build ./...` / `go vet ./...` / `go test ./...` 全绿。
+
+- ✅ **修复 `Tooltip`: 滚出视口的控件会在视口外弹提示**(2026-11-05, 用户报障, 见 DESIGN 第八节 189):
+  - **现象**: 表单2 页滚到末尾再往上滚两下, 光标放到标签栏 / 标题栏一带, 直接弹出页面顶部那个默认尺寸 ComboBox 的提示("切换运行时环境"), 光标下面并没有该控件。
+  - **根因**: 窗口级命中测试(`hitTest`)只判"点在元素矩形内 + 可见", 而 `XEle_GetWndClientRect` 给的是**未裁剪**矩形 —— 滚出 ScrollArea 视口的控件坐标仍在内容位置上(正好落在标签栏那一带);滚动不影响 `XWidget_IsShow`, 原有的可见性判断挡不住。
+  - **修法**: 命中后沿父元素链补一次裁剪判定 `clippedByAncestor`(点必须同时落在每个有尺寸祖先的矩形内), 视口外的部分不再参与命中, 元素只在自己露出来的区域响应。
+  - **验收**: 探针(视口 (20,90)-(580,210) + 跨上沿的子元素 (40,50)-(240,130)): 点 (45,55) 判为裁剪、(45,95) 正常弹提示;注释掉该步则 (45,55) 会弹提示(复现报障)。`go build ./...` / `go vet ./...` / `go test ./...` 全绿。
+
+- ✅ **修复 `status-bar` 抓手: 拖完窗口大小后提示气泡不消失**(2026-11-05, 用户报障, 见 DESIGN 第八节 188):
+  - **现象**: 按住右下抓手拖动松手后, "拖动调整窗口大小"气泡停在拖动开始的位置一直挂着, 鼠标移出窗口也不再消失。
+  - **根因**: 抓手 `SetCapture` 之后持续收到 `MouseMove/MouseStay`, 拖动中提示被反复 `request`; `Tooltip.request` 对"已显示在同一个元素上"直接返回、不重新落位, 抓手随窗口缩放移动而气泡停在旧坐标;收手时既没有 `MouseLeave`, 光标又常在缩小后的窗口之外(没有窗口级 `hitTest`), 于是永久残留。
+  - **修法**: ① `Tooltip` 新增元素级临时压制 `suppress(hEle, on)`(压制期间 `request` 直接返回并立即 `Hide` 正在显示的那条, 元素销毁时清登记);抓手 `onDown` 起手压制、`endDrag` 解除压制并补 `HideTooltip`。② `request` 对"已显示在同一元素上"不再直接返回, 而是比对落位时记录的元素屏幕矩形, 元素动过就重新落位(只挪气泡窗 + 重画, 不重播进场) —— 拖窗口/窗口缩放/布局重排/滚动时提示都会跟着目标走, 不再僵在旧坐标。静止悬停只多两次矩形查询, 不做重量。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿;150% DPI 亮色实测: 抓手按住拖动(窗口 1620 → 1542 物理宽)松手后尺寸读数同步刷新、屏幕上无气泡残留。
+
+- ✅ **新增 `status-bar`: 窗口底部状态栏**(2026-11-05, HANDOFF 待办; 上游 shadcn 无 tsx, 交互语义由本库定死并写进 DESIGN 第四节末):
+  - **组件**: `components/statusbar.go` 单文件(registry key `status-bar`, deps `tooltip`)。整条 = `LayoutEle`(宽 Fill / 高 Fixed 28, 可 `WithStatusBarHeight`/构造 cy 覆盖), 左/中/右三槽各返回 `LayoutEle` 可放任意控件; `NewStatusBarItem` 自绘条目(图标 12 + text-xs + hover 150ms 过渡 + 按下 + 禁用 + active), `NewStatusBarSeparator` 画槽内 1px 竖线, `NewStatusBarGrip` 形态的右下 16 宽 NWSE 抓手 + 可选 `W × H` 读数。选项 `WithStatusBarGrip/SizeReadout/Height/MinWindowSize/Tooltip` + `SetGrip/SetSizeReadout` + 条目的 `WithStatusBarItemIcon/Tooltip/OnClick/Disabled/Active/Width`。
+  - **语义定死**: 左 Weight1 / 中 Auto / 右 Weight1, 右槽开头一段 Weight 撑子把条目顶到行尾 ⇒ 中槽按**整条**居中(右下抓手占 16 只让中心左偏半抓手宽, 不是"左右剩余空间"的中心); 左右内边距走元素 padding(不用子项外边距); 点击在 `LButtonUp` 触发且禁用态不响应, 程序化 `SetText/SetIcon` 不触发; 提示固定朝上(`TipTop`), 空串即解绑; 抓手拖动以**屏幕物理**增量 ÷ 窗口 DPI 换算成逻辑像素并 `SetCapture` 跟手(元素坐标会随窗口缩放漂), 最大化态与缩到下限(默认 320×240)都不动作, 读数跟宿主 `WM_SIZE` 刷新; 条目是自绘 Element, 不进 Tab 焦点链(同 157)。顶边 1px 按设备像素对齐, 抓手自己补画被它盖住的那一段。
+  - **验收**: `go test ./...` / `go vet ./...` / `go build ./...` 全绿; `xui add status-bar` 单组件闭包与 `add --all` 全量各两套(带 `replace` 到工作区、以及不带 `replace` 走 v0.9.0 运行时)编译通过; 150% DPI 亮/暗截图 —— 中槽实测居中(条 78..1526, 文字中心 801)、hover 底色 `#F5F5F5`、气泡朝上(卡片样例里盖住上方"点击条目"一行属预期)、点条目后回显"点击条目: main"、禁用条目 50% 字色且底色不变、窗口改尺寸后读数从 `1176 × 836` 变 `1056 × 636`、暗色下 `Go` active 转浅底深字、抓手三条斜线正常; `components/statusbar_test.go` 覆盖读数格式、下限夹取、选项落位(非法值忽略)与条目选项。
+  - **登记**: `registry.json` 加 `status-bar`(`files: ["statusbar.go"]`, `deps: ["tooltip"]`); demo 基础4 新增"状态栏"卡(28 默认 + 24 带读数两条样例)并在窗口底部挂一条真实状态栏(`XUI_HOME_PAGE` 0..20 不变); README 组件表、DESIGN 语义表 / 差异表 / 第九节 API 清单、HANDOFF 最近一批与待办同步。
+
 - ✅ **新增 `tag-input`: 可就地删除的 chips 输入**(2026-11-05, HANDOFF 待办首项; 本地 shadcn 参考实现没有对应 tsx, 交互语义由本库定死并写进 DESIGN 第四节末):
   - **组件**: `components/taginput.go` 单文件(registry key `tag-input`, 无 deps);外壳自绘胶囊 + 焦点环/校验环/禁用态, 内部一个 `SetRectEx` 定位的裸 `Edit` 只负责文字/光标/IME。回车提交、分隔符(默认 `,` / `，` / 换行)即时切段、空输入退格删末个、点 × 删除;胶囊排满换行、外壳按行数自撑。`WithTagInputTags/Max/AllowDuplicates/Separators/Validator/Disabled/Invalid/Placeholder` + `Tags/SetTags/AddTag/RemoveTag/Clear/Value/SetValue/Focus/SetMax/OnChange`。
   - **语义定死**: trim 首尾空白、空串忽略、默认精确匹配去重(重复静默忽略);到上限或被校验器拒绝时**输入文字原样保留**(不清空, 免得用户以为内容被吞);输入框非空时 Backspace 按原生删字符;双击 × 也要命中(只挂 `LButtonDown` 时连点会漏一半);`OnChange([]string)` 只由交互触发, `SetTags/AddTag/RemoveTag/Clear/SetValue` 等程序化改值不广播, 避免回调里再改值递归。
