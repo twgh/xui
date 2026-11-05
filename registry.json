@@ -230,6 +230,10 @@
       "files": ["inputotp.go"],
       "deps": []
     },
+    "tag-input": {
+      "files": ["taginput.go"],
+      "deps": []
+    },
     "accordion": {
       "files": ["accordion.go", "textopt.go"],
       "deps": ["button", "collapsible", "separator"]

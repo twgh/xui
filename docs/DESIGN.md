@@ -381,6 +381,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | hover card = 同 popover 的面板外观但默认 w-64(256) + p-4(16); 悬停 trigger 700ms 打开, 移出 trigger/卡片 300ms 关闭; 卡片可交互且**不抢焦点**(非激活窗口), 指针还在卡片上时关闭检查续期; 不做键盘聚焦打开 | hover-card.tsx(radix-nova) |
 | avatar = 圆形 sm 24 / default 32 / lg 40; 图片居中裁剪, 无图 fallback bg-muted + muted-foreground(默认 14 / sm 12); AvatarBadge 在右下角(size 8/10/12 + 2px 背景色环 + primary 底), AvatarGroup 用 `-space-x-2`(负 8)叠放、组内头像带 2px 背景色环, 计数头像同尺寸 | avatar.tsx(radix-nova) |
 | command = 搜索行 h-9(36) + 下边框 + size-4 搜索图标(opacity-50) + 透明输入框; 条目 h-8(32) px-2 rounded-sm, 选中 bg-accent + accent-foreground; 分组标签 text-xs muted + p-1; 列表 max-h-300; 空状态 py-6 居中; 输入即过滤, ↑↓ 循环并跳过禁用, Home/End, Enter 选中, ESC 清空; 选中不自动关闭(CommandDialog 由 Dialog + Command 组合) | command.tsx(cmdk) |
+| **tag input**(shadcn 无官方组件, 语义由本库定死): 外壳 = Input 同款 h-8(32) 圆角壳 / 焦点环 / 校验环 / 禁用态;内部是 h-5(20) 的 Badge 胶囊(text-xs、secondary 底 + 右侧 ×)与等高的裸 Edit;胶囊排满一行换行, 外壳按行数自撑(行高 22 / 行距 4 / 上下内边距 5), 输入区不足 48 就整行挪到下一行;回车提交当前段, 输入中遇到分隔符(默认 `,` `，` 换行)立即把前面各段切成标签、最后一段留在输入框;trim 首尾空白、空串忽略、默认精确匹配去重(重复静默忽略), 到上限 / 校验器拒绝时输入文字保留不清空;输入框为空时 Backspace 删末个标签, 非空按原生删字符;点 × 删除对应标签(双击也要命中), 点空白 / 删完都把焦点交回输入框;禁用 = 整组 50% + Edit 关焦点与键盘;`OnChange([]string)` 只由交互触发, 程序化改值不广播;载体是"自绘外壳 + 一个 `SetRectEx` 定位的裸 Edit 子控件", 量高必须延迟到下一轮消息(见第八节 187) | 社区 tag input 通行语义(Enter / 分隔符提交、Backspace 删末个、× 删除) + 本库自定(去重 / 上限 / 校验 / 换行 / 回调边界) + 第八节 187 |
 
 ### 变体/尺寸与上游的映射、已知差异
 
@@ -776,6 +777,7 @@ xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不�
 - **184** 标题栏按钮上双击会把窗口顶成最大化; 弹层里再开弹层会让弹层自己关掉
 - **185** 布局元素是"纯排版壳": 默认鼠标穿透, 要当命中区必须显式关掉
 - **186** 小图形折线用 `DrawLine`, 坐标会被截断到逻辑整数, 图形整体偏左/偏上
+- **187** 自绘 chips 容器随内容长高: 输入事件里同步改高度 + 逐级 `AdjustLayout` 会让兄弟项停在旧位置
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 
@@ -834,3 +836,4 @@ xui self-update --check  # 只比较当前与 @latest 的版本, 不安装(不�
 - 官方透明/异型窗口示例:`Advanced/WindowPartiallyTransparent`、`webview/WebViewPartiallyTransparent`
 - 图表(见第八节 159): 纯自绘根 Element, 绘制全走 paint 回调里的 `*xui.Painter`(`Line`/`Text`/`FillRound`/`StrokeRound`/`FillRoundCorners`)与 `p.Draw` 的浮点几何(`FillPolygonF` 画扇形与面积带、`FillEllipseF`/`DrawEllipse` 画点与圆环); 悬停靠宿主窗口级 `AddEvent_MouseMove` + `xc.XEle_GetWndClientRect` 命中(ScrollArea 里的元素收不到元素级 MouseMove, 同 156); 隐藏页判定沿 `XWidget_GetParentEle` 链查 `XWidget_IsShow`; 曲线**自己采样**成分段折线(D2D 下曲线绘制是空实现); 提示卡与图例都在同一个 Paint 回调里画, 不建小窗
 - 侧边栏(见第八节 158): `wapi.GetCursorPos` + `wapi.ClientToScreen(hwnd, &pt)` + `xc.XEle_GetWndClientRectDPI`(物理客户区矩形) + `xc.XWnd_GetDPI` 换算动作钮命中; `Element.SetZOrder(0)`(构造期抬升 Z 序, `SetZOrderEx` 在窗口未显示时会崩); `Window.AddEvent_MouseMove/AddEvent_MouseLeave`(普通 Element 的悬停兜底); `XWidget_IsShow`; `Painter.TextF` + `xcc.TextFormatFlag_NoWrap|xcc.TextTrimming_EllipsisCharacter`(菜单项长文本省略); `xui.Hover` + `Presence`(宽度 200ms 过渡, 挂宿主窗口)
+- 自绘 chips 容器 + 裸 Edit 子控件(TagInput, 见第八节 187): `Element.SetRectEx(x,y,cx,cy,false,xcc.AdjustLayout_No)`(普通 Element 未开布局时给子控件定坐标, 布局趟不会覆盖)、`Edit.AddEvent_Edit_Changed/AddEvent_KeyDown/SetDefaultText/SetDefaultTextColor/SetCaretColor/MoveEnd`、`Element.AddEvent_MouseMove/AddEvent_MouseLeave`(显式 `EnableMouseThrough(false)` 后普通 Element 每次移动都触发, pPt 是元素客户区坐标)、`app.AfterFunc(0, ...)`(把量高推出当前输入/尺寸事件并合并同轮触发)

@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **新增 `tag-input`: 可就地删除的 chips 输入**(2026-11-05, HANDOFF 待办首项; 本地 shadcn 参考实现没有对应 tsx, 交互语义由本库定死并写进 DESIGN 第四节末):
+  - **组件**: `components/taginput.go` 单文件(registry key `tag-input`, 无 deps);外壳自绘胶囊 + 焦点环/校验环/禁用态, 内部一个 `SetRectEx` 定位的裸 `Edit` 只负责文字/光标/IME。回车提交、分隔符(默认 `,` / `，` / 换行)即时切段、空输入退格删末个、点 × 删除;胶囊排满换行、外壳按行数自撑。`WithTagInputTags/Max/AllowDuplicates/Separators/Validator/Disabled/Invalid/Placeholder` + `Tags/SetTags/AddTag/RemoveTag/Clear/Value/SetValue/Focus/SetMax/OnChange`。
+  - **语义定死**: trim 首尾空白、空串忽略、默认精确匹配去重(重复静默忽略);到上限或被校验器拒绝时**输入文字原样保留**(不清空, 免得用户以为内容被吞);输入框非空时 Backspace 按原生删字符;双击 × 也要命中(只挂 `LButtonDown` 时连点会漏一半);`OnChange([]string)` 只由交互触发, `SetTags/AddTag/RemoveTag/Clear/SetValue` 等程序化改值不广播, 避免回调里再改值递归。
+  - **修复①(换行压住下一张卡)**: 输入 8 个标签后组件长到 3 行, 但"上限 3 个"提示与第二个 TagInput 仍停在旧位置, 胶囊直接压在下一张卡上。根因: 在 `XE_EDIT_CHANGED` / `XE_SIZE` 回调里同步 `SetHeight` + `LayoutItem_SetHeight` 重入布局趟, 且沿父链逐级 `AdjustLayout` 时中间层 `Weight` 把卡片/内容区临时排成 0 宽、兄弟位置不更新。修法: 量高走 `app.AfterFunc(0)` 合并同轮请求(同 Textarea / Alert), 只重排最近的 `LayoutFrame`/窗口;胶囊矩形与裸 Edit 定位仍立即更新(不碰自身高度)。验收: 亮色 150% DPI 截图 —— 8 标签 3 行, 提示/第二个输入框/禁用/校验卡依次下移无重叠;连按 6 次退格回到单行、兄弟项同步上移且无残影(见 DESIGN 第八节 187)。
+  - **hover 跟踪**: 首轮像素对比 hover 前后差 0, 诊断日志显示是测试点落在 × 命中区下方(元素内 y=29, 命中区 8..24), 事件本身正常;顺手把跟踪从窗口级 `MouseMove` 简化为普通 Element 的元素级 `AddEvent_MouseMove` + `MouseLeave`(每次移动都触发, pPt 就是元素客户区坐标, 不用换算窗口坐标、不用判祖先可见), 命中矩形与点击共用。验收: 正确坐标下 × 区域 1040 像素变化、最大通道差 100, `xui.HoverItem/Fade` 过渡正常。
+  - **验收**: `go test ./...` / `go vet ./...` / `go build ./...` 全绿;`xui add tag-input` 单组件闭包与 `add --all` 全量两套回归(带 `replace` 到工作区、以及不带 `replace` 走 v0.9.0 运行时)都编译通过;150% DPI 亮/暗截图 —— 回车新增 Design 并触发 OnChange、逗号一次切成 A/B、退格删末个、点 × 删除、焦点环、上限 3 / 禁用 / 校验失败三态、暗色胶囊配色均正常;`components/taginput_test.go` 覆盖多字节分隔符切分、去重/上限/校验器与 `Tags()` 副本。
+  - **登记**: `registry.json` 加 `tag-input`(`files: ["taginput.go"]`, `deps: []`); demo 表单1 右列新增"标签输入"卡(不新增页签, `XUI_HOME_PAGE` 0..20 不变); README 组件表、DESIGN 语义表 / 第八节索引 187 / 第九节 API 清单、DESIGN-PITFALLS 187 同步。
+
 - ✅ **Rating 补齐 Ant Design Rate 的 6 项特性**(2026-11-05, 用户需求"看看 rating.go 有没有值得添加的特性", 参照 [Ant Design Rate](https://ant.design/components/rate-cn) 与 `rc-rate` 源码; 第 6 项焦点回调按用户追加要求一并做):
   - **allowClear**: 默认开, 再次点击当前值归 0 并触发 `OnChange(0)`; `WithRatingAllowClear(false)` / `SetAllowClear` 可关。清除后用 `cleaned` 压住悬停预览(同 `rc-rate` 的 cleanedValue), 否则指针没动、MouseMove 会立刻把刚清掉的星又点亮, 画面与读数不一致。
   - **预览与文案**: `OnHoverChange(fn)`(离开/清除传 -1) + `WithRatingLabels([]string)` 在星星区右侧画 ceil(当前值或预览)-1 对应文案, 半星按 ceil 取上一档, 值为 0 不画; 文案宽用 `xui.TextWidth` 量一次并计入元素自然宽, 文案区单独铺 `Card` 底擦掉上一帧文字残影(透明元素重绘不擦底)。

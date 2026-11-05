@@ -1692,6 +1692,34 @@ func buildForm1Page(body *widget.LayoutEle) {
 	xui.ItemWidth(stVal, 40)
 	st.SetValue(3)
 	st.OnValuesChange(func(vals []float64) { stVal.SetText(strconv.Itoa(int(vals[0] + 0.5))).Redraw() })
+
+	// ---- 右列 3: 标签输入 ----
+	_, vt := autoCard(colR.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "标签输入", vt.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"TagInput: 回车成标签 / 逗号分隔 / 退格删末个 / 点 × 删除; 胶囊排满自动换行并撑高", vt.Handle))
+
+	tagVal := ui.NewLabel(0, 0, 0, 0, "标签: -", vt.Handle).SetMuted()
+	xui.ItemFill(tagVal)
+	tags := ui.NewTagInput(0, 0, 0, 0, vt.Handle,
+		ui.WithTagInputPlaceholder("输入后回车…"),
+		ui.WithTagInputTags("Go", "xcgui"))
+	xui.ItemFill(tags)
+	tagVal.SetText("标签: " + strings.Join(tags.Tags(), " / ")).Redraw()
+	tags.OnChange(func(v []string) {
+		tagVal.SetText("标签: " + strings.Join(v, " / ")).Redraw()
+	})
+
+	xui.ItemFill(hint(vt.Handle, "上限 3 个(达到上限后提交被忽略, 输入文字保留)"))
+	xui.ItemFill(ui.NewTagInput(0, 0, 0, 0, vt.Handle,
+		ui.WithTagInputMax(3), ui.WithTagInputTags("设计", "开发", "发布"),
+		ui.WithTagInputPlaceholder("已达上限")))
+
+	xui.ItemFill(hint(vt.Handle, "禁用 / 校验失败"))
+	xui.ItemFill(ui.NewTagInput(0, 0, 0, 0, vt.Handle,
+		ui.WithTagInputDisabled(), ui.WithTagInputTags("不可编辑")))
+	xui.ItemFill(ui.NewTagInput(0, 0, 0, 0, vt.Handle,
+		ui.WithTagInputInvalid(), ui.WithTagInputTags("待校验")))
 }
 
 // ===== 页 6: 表单2(选择控件 / 下拉框 / 独立 Select) =====
