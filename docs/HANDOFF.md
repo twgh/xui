@@ -11,7 +11,7 @@
 ## 当前状态(截至 2026-11-05)
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
-- **发布**: v0.9.0(2026-11-04, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
+- **发布**: v0.10.0(2026-11-05, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
 - **组件覆盖**: 经典 shadcn 组件已全覆盖(context-menu 在 `menu`, form 在 `field`); 完整清单见 README / DESIGN 第七节。未做: Direction / Typography / 长列表虚拟滚动。
 - **最近一批**: Steps 补齐状态/进度/可点/尺寸(四态 + `StepItem.Status/Disabled/Percent`、`WithStepsClickable/Size/Initial`、`SetItemPercent`); demo 导航2 拆为导航2(标签页/面包屑/分页)、导航3(步骤条/可折叠面板)、导航4(时间轴), 原导航菜单/侧边栏顺延为导航5/6(`XUI_HOME_PAGE` 0..20); Timeline 支持竖向/水平、start/end/alternate 与节点色/图标/加载/空心样式、Rating 星级评分、Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件; 新增 `tag-input`(shadcn 无官方组件, 交互语义由本库定死并写进 DESIGN 第四节末): 自绘 chips 外壳 + 裸 Edit, 回车/分隔符成标签、退格删末个、点 × 删除、换行自撑, 亮暗 DPI 截图与逐组件安装编译均已验收; 新增 `status-bar`(窗口底部状态栏: 左中右槽 + 尺寸抓手/读数 + 悬停提示, 自定语义已写进 DESIGN 第四节末), demo 基础4 加卡并在窗口底部挂真实状态栏。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。

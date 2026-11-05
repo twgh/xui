@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **v0.10.0 发布(2026-11-05)**: 新增 status-bar 状态栏, 并修掉 Tooltip 的跟随 / 裁剪命中 / 滚动收起与抓手拖动气泡残留, 走 minor(组件变更)。
+  - **顺序**: 组件与文档提交(`ca55bd7`)→ 版本示例 + `fallbackXuiVersion` 提交(`d9bc9e6`)→ 轻量 tag `v0.10.0` → `runtime` 抬到 v0.10.0(`a19c89d`, tag 之后)。
+  - **推送**: `git push origin main v0.10.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。
+  - **Release**: https://github.com/twgh/xui/releases/tag/v0.10.0 , 名称 `v0.10.0 — StatusBar 状态栏 / Tooltip 跟随与命中修复`; 本机 `gh` token 失效, 按 HANDOFF 用 `git credential fill` 取 token 后 `Invoke-RestMethod` 创建(name/body 用 `[IO.File]::ReadAllText(..., UTF8)` 读)。
+  - **下限回归**: 临时项目 `go mod edit -require=github.com/twgh/xui@v0.10.0` → 本地 registry `add --all` → `go mod tidy && go build -mod=mod ./ui` 通过(默认代理已收录新 tag, 不用 `GOPROXY=direct`)。
+
 - ✅ **调整 `status-bar` 尺寸抓手: 贴到窗口右下角, 并缩成 16×16 方块**(2026-11-05, 用户报障):
   - **现象**: 右下角那三条斜线离窗口角还有一截(实测离右边 9 逻辑像素、离底 6), 得往右挪才"对上角"; 抓手跟整条一样高(28), hover 高亮在右端竖出一道高高的色块。
   - **根因**: 抓手是条里的最后一个布局项, 条的右内边距 8 把它推离窗口边; 元素高度又直接用了整条高。
