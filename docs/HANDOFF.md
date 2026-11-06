@@ -8,10 +8,11 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-11-05)
+## 当前状态(截至 2026-11-06)
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
 - **发布**: v0.10.0(2026-11-05, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
+- **CLI 版本语义(2026-11-06 改)**: 设计文档与组件同源(都从数据源取), 所以 tag 只代表"CLI 代码 + 内嵌模板/资源"的变化; 升级提示与 `--check` 的依据是 `registry.json` 的 `cliChange`, 不再是 `@latest` tag。后台探测子进程与 `update-check.json` 缓存已删除。
 - **组件覆盖**: 经典 shadcn 组件已全覆盖(context-menu 在 `menu`, form 在 `field`); 完整清单见 README / DESIGN 第七节。未做: Direction / Typography / 长列表虚拟滚动。
 - **最近一批**: Steps 补齐状态/进度/可点/尺寸(四态 + `StepItem.Status/Disabled/Percent`、`WithStepsClickable/Size/Initial`、`SetItemPercent`); demo 导航2 拆为导航2(标签页/面包屑/分页)、导航3(步骤条/可折叠面板)、导航4(时间轴), 原导航菜单/侧边栏顺延为导航5/6(`XUI_HOME_PAGE` 0..20); Timeline 支持竖向/水平、start/end/alternate 与节点色/图标/加载/空心样式、Rating 星级评分、Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件; 新增 `tag-input`(shadcn 无官方组件, 交互语义由本库定死并写进 DESIGN 第四节末): 自绘 chips 外壳 + 裸 Edit, 回车/分隔符成标签、退格删末个、点 × 删除、换行自撑, 亮暗 DPI 截图与逐组件安装编译均已验收; 新增 `status-bar`(窗口底部状态栏: 左中右槽 + 尺寸抓手/读数 + 悬停提示, 自定语义已写进 DESIGN 第四节末), demo 基础4 加卡并在窗口底部挂真实状态栏。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。
@@ -61,7 +62,8 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 ├── icons_test.go                 解析器语法 + 资源完整性测试(go test ./...)
 ├── demo\                         演示应用(也是全组件编译测试目标)
 │                                 winres\ = 图标资源(winres.json + icon.ico) + xc res 生成的 rsrc_windows_*.syso
-├── registry.json                 组件清单(files + deps)
+├── registry.json                 组件清单(files + deps) + 两个版本声明: runtime(配套运行时) /
+│                                 cliChange(CLI 最后改动, 升级提示的唯一依据)
 ├── registry.schema.json          registry.json 的 JSON Schema(编辑器补全/校验)
 ├── .github\workflows\ci.yml      CI: vet/test/build(amd64+386) + 逐组件安装编译(Windows)
 ├── docs\DESIGN.md                知识库: 架构设计 + xcgui 踩坑索引(第八节)
@@ -93,7 +95,7 @@ cd D:\GOProject\src\ui\shadcn && pnpm dev    # http://localhost:5173
 
 # CLI 本地测试(默认源:直连→Gitee 镜像→GitCode 镜像→代理, 全不通才降级内嵌源码)
 go run ./cmd/xui list / init <目录> / add <组件...> / add --all / update [组件...]
-go run ./cmd/xui self-update --check   # 看 @latest 解析到哪个 tag(不安装)
+go run ./cmd/xui self-update --check   # 看 @latest 解析到哪个 tag + CLI 最后改动的 tag(不安装)
 #   注意: 本机 PATH 首选 D:\GOProject\src\ui\xui\xui.exe, GOBIN 是 D:\GOProject\bin\xui.exe
 #         self-update 升的是 GOBIN 那份, 会警告 PATH 里另有一份
 go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显式源失败退出
@@ -156,7 +158,10 @@ go mod tidy && go build -mod=mod ./ui
   - 顺序: 先打 tag 再改 `runtime`(写早了 `go get` 拉不到不存在的 tag, CI 直接红, 是刻意的)。
   - CI 的 `registry-closure` 用这个 tag 的运行时逐组件编译(不 replace 到工作区), 所以 `runtime` 落后 / 组件引用未发布符号都会红。
   - 抬完跑一次下限回归: `go mod edit -require=github.com/twgh/xui@<新 tag>` + `add --all` + `go build ./ui`(代理可能还没收录新 tag, 必要时 `GOPROXY=direct`)。
-- 只改组件源码不动运行时 → 不用打 tag(组件跟 `main` 下发); 改 CLI 行为才需要 tag(`go install ...@latest` 只认 tag)。版本号: **组件/运行时/API 变更走 minor, 只有 CLI 与文档变更走 patch**(v0.8.1 就是这么定的)。
+- **`registry.json` 的 `cliChange` 只在真的改了 CLI 时才抬成刚发的 tag** —— 它是升级提示的唯一依据(「CLI 最后一次改动在哪个 tag」)。**不算改动**: 只动组件、只动设计文档、机械抬 `fallbackXuiVersion` 或 `runtime`。顺序与 `runtime` 一样: 先打 tag, 同一批再改它(必须是个已发布的 `vX.Y.Z`, 否则 CLI 警告后当没有)。忘抬的后果只是少提示一次升级, 装组件与拿文档都不受影响 —— 不像 `runtime` 抬晚会编译红。
+  - **还没打 tag 就留着不动, 哪怕 CLI 已经改完了**:`cliChange` 只参与版本比较(不像 `runtime` 会被喂给 `go get`), 写一个不存在的 tag 不会让命令报错, 但会让提示变成空头支票 —— 用户 `xui self-update` 只装得到 `@latest`(上一个真 tag), 永远达不到那个版本号, 于是每条命令都被唠叨且无法解脱。提示是"装的版本低于 cliChange"这种**状态**比较而不是事件: 等 tag 真发出来再抬, 所有旧版本用户照样在下一条命令收到提示, 一个都不漏 —— 晚抬零代价, 早抬有死循环。
+- 只改组件源码或设计文档 → **不用打 tag**(两者都跟 `main` 下发, 文档同源见下条); 改 CLI 行为/内嵌模板/图标才需要 tag(`go install ...@latest` 只认 tag)。版本号: **组件/运行时/API 变更走 minor, 只有 CLI 变更走 patch**(v0.8.1 就是这么定的)。
+- **设计文档随数据源下发**: `xui init` / `add` 写进用户项目的 `DESIGN.md` / `DESIGN-PITFALLS.md` 取自数据源的 `docs/`(与组件同一个基址), 不再是 CLI 自带的那份 —— 组件批次改了文档里的编号, 用户不升级 CLI 也拿得到配套说明。**镜像同步要带上 `docs/`**(缺了就退回 CLI 自带版本并在 stderr 提示, 用户会拿到旧文档)。
 - 版本示例(`README` 里的 `@vX.Y.Z` 与 `XUI_REGISTRY=.../vX.Y.Z`)与 `fallbackXuiVersion` 随 tag 一起更新; notes 草稿写进 `.verify/` 给用户过目后才推送。
 - **GitHub Release**: 本机 `gh` 不可用(token / TLS), 用 PowerShell `Invoke-RestMethod` POST/PATCH; name 与 body 一律用 `[IO.File]::ReadAllText(path, [Text.Encoding]::UTF8)` 读文件后传 —— PS 5.1 把无 BOM 的 `.ps1` 当 ANSI 读, 脚本里直接写中文会乱码; 正文也别用 `Get-Content -Raw` 交给 `ConvertTo-Json`(会被当成对象写进发布页)。token 从 `git credential fill` 取, 用完立刻删临时文件。
 
@@ -167,6 +172,8 @@ go mod tidy && go build -mod=mod ./ui
 - `registry.json` 的 `files` 是 `components/` 下的**扁平文件名**;`theme.go` 永不进清单;用户的 ui 目录名是 `init`/`-p` 参数,不要硬编码 `ui`。
 - `registry.json` 的 `$schema` 指向仓库根的 `registry.schema.json`(编辑器补全/校验用, CLI 不读);改条目格式时两者同步, 否则 raw 链接会 404。
 - CLI 本体按 Go 模块版本锁(`go run ...@vX.Y.Z`),组件跟 `main`;`@latest` 可能被模块代理缓存拖旧,组件更新不受影响。
+- **升级提示没有后台进程也没有缓存文件**(以前的 `__update-check` 子进程 + `UserCacheDir/xui/update-check.json` 已删): 依据 `cliChange` 随 `registry.json` 一起到手, 所以 `version` / `info` 这类不拉数据源的命令不提示。改这套逻辑前想清楚"提示的依据必须在本次已经拿到的数据里", 别再把网络塞回前台。
+- 本地把数据源指到仓库根(`XUI_REGISTRY=D:\GOProject\src\ui\xui`)时文档也从这个目录的 `docs/` 读 —— 改完 DESIGN 立刻能在临时项目里验到, 不再需要重新构建 CLI。
 
 ## 关键设计决策(一句话版, 详见 DESIGN.md)
 

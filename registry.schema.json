@@ -17,6 +17,12 @@
       "description": "与本清单里的组件源码配套的运行时版本(github.com/twgh/xui 的已发布 tag), 同时是组件能编译通过的最低版本。组件从 main 现拉、运行时只能按 tag 取, 所以每次发布都要把它抬成刚发的那个 tag —— CLI 的 add/update/init 据此把项目 go.mod 的依赖一起抬上去。",
       "$comment": "发布流程: 打完 tag 后同一批把本字段改成那个 tag(哪怕这次只改了 CLI, 没有新运行时符号)。CI 用这个 tag 的运行时逐组件编译, 落后于最新 tag 就等于让用户少拿运行时的修复。"
     },
+    "cliChange": {
+      "type": "string",
+      "pattern": "^v\\d+\\.\\d+\\.\\d+$",
+      "description": "最近一次改动 CLI 的 tag —— 改的是命令行为或内嵌模板/资源(init 的项目骨架、下发的 AGENTS.md、图标)。组件与设计文档(DESIGN/DESIGN-PITFALLS)随数据源下发, 不需要换 CLI 就能拿到, 所以它们更新时不抬本字段;机械地抬 fallbackXuiVersion 也不算改动。CLI 的升级提示只比较装的版本与本字段, 不是最新 tag。",
+      "$comment": "发布流程: 只有这次 tag 真改了 cmd/xui 的行为或内嵌模板/资源, 才在同一批把它改成新 tag;没改就留着不动。忘抬的后果是少提示一次升级, 不影响装组件。"
+    },
     "components": {
       "type": "object",
       "minProperties": 1,

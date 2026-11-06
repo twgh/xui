@@ -252,8 +252,10 @@ go install github.com/twgh/xui/cmd/xui@latest
 
 二进制在 `$(go env GOPATH)/bin` (Windows 默认 `%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。
 
-升级重跑同一条命令, 或者用 CLI 自己: `xui self-update` (加 `--check` 只比较当前版本与 `@latest`)。`@latest` 偶尔被
+升级重跑同一条命令, 或者用 CLI 自己: `xui self-update` (加 `--check` 报"当前版本 / 最新 tag / CLI 最后改动的 tag", 不安装)。`@latest` 偶尔被
 模块代理缓存拖旧, 想立刻用某个版本就直接写 tag (`xui self-update v0.10.0`, 也支持 `main` / commit 短哈希)。
+
+**什么时候真的需要升级 CLI**: 组件与设计文档(`DESIGN.md` / `DESIGN-PITFALLS.md`)都随数据源下发, 发了新 tag 不等于 CLI 有变化 —— 提示与 `--check` 的依据是 `registry.json` 里 `cliChange`(CLI 最后一次改动在哪个 tag), 只有它高于你装的版本才会提示你升级。落后于最新 tag 但 `cliChange` 没变时, 不升级照样拿到最新组件与说明。
 
 ### 命令
 
@@ -279,7 +281,7 @@ xui view button         # 打印组件源码
 xui info                # 显示 CLI / 项目环境信息(组件目录不是 ui 时: xui info -p <目录>)
 xui version             # 只打印版本(同 -v / --version; 离线可用, 不拉数据源)
 xui self-update [版本]  # 升级 CLI 自己(默认 @latest; 也可 tag / main / commit 短哈希)
-xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本参数)
+xui self-update --check # 报当前版本 / 最新 tag / CLI 最后改动的 tag, 不安装(不接受版本参数)
 ```
 
 组件名统一是 shadcn 文档的 kebab-case(`navigation-menu` / `date-picker` / `scroll-area`), 但不区分大小写、也可省略连字符与下划线: `xui add navigationmenu`、`xui add datepicker` 与 `xui add navigation-menu`、`xui add date-picker` 等价(只有唯一的归一化结果才接受, 不会按前缀猜; 输错时会提示最接近的组件名)。
@@ -315,11 +317,11 @@ xui self-update --check # 只比较当前与 @latest, 不安装(不接受版本�
 
 | 命令 | JSON 形状(字段) |
 |---|---|
-| `list` / `search` | `source` `cli` `runtime`(数据源声明的配套运行时) `query` `offset` `limit` `total`(匹配数) `shown`(本次显示数) `components[]{name files[] deps[]}` |
-| `info` | `cli` `cwd` `go` `componentsDir` `componentsInitialized` `goFiles` `source` `updateCheckAt` `updateCheckLatest` |
+| `list` / `search` | `source` `cli` `runtime`(数据源声明的配套运行时) `cliChange`(CLI 最后改动的 tag;老数据源没这个字段就不出现) `query` `offset` `limit` `total`(匹配数) `shown`(本次显示数) `components[]{name files[] deps[]}` |
+| `info` | `cli` `cwd` `go` `componentsDir` `componentsInitialized` `goFiles` `source` `noticeDisabled`(升级提示被 `XUI_NO_UPDATE_CHECK` 关掉;依据 `cliChange` 要联网才拿得到, `info` 保持离线所以这里不报) |
 | `view` / `--view` | `source` `filter` `matched` `files[]{name component content}` |
 | `--diff` | `dir` `filter` `matched` `files[]{path file state diff}`, `state` = `missing` / `upgrade` / `edited` / `unknown` |
-| `self-update --check` | `current` `latest` `localBuild` `upgradable` `command`(下一步该跑什么, 已最新时为空串) |
+| `self-update --check` | `current` `latest` `cliChange`(判断依据;数据源没声明时等于 `latest`) `localBuild` `upgradable`(= 有 CLI 改动可升, 不只是"tag 更新") `command`(下一步该跑什么, 无需升级时为空串) |
 
 空的 `files` / `components` / `deps` 一律是 `[]` 而不是 `null`; 过滤值没命中时靠 `matched=false` 区分(这时 `files` 也是空, 但不是"没有差异")。
 

@@ -16,7 +16,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 )
 
 // 候选顺序是行为约定: 直连 → Gitee 镜像 → GitCode 镜像 → 加速代理。
@@ -1553,20 +1552,28 @@ func TestJSONFlagOnlyWhereItDoesSomething(t *testing.T) {
 	}
 }
 
-// --check 的 JSON 报告: command 是"下一步该跑什么", 已最新时为空串。
+// --check 的 JSON 报告: command 是"下一步该跑什么", 没什么可升时为空串;
+// cliChange 是判断依据(数据源没声明时退化成最新 tag)。
 func TestSelfUpdateCheckJSON(t *testing.T) {
 	cases := []struct {
-		current, newest  string
-		localBuild, upgr bool
-		command          string
+		current, newest, floor string
+		localBuild, upgr       bool
+		command                string
 	}{
-		{"v0.8.0", "v0.9.9", false, true, "xui self-update v0.9.9"},
-		{"v0.9.9", "v0.9.9", false, false, ""},
-		{"v0.9.9", "v0.8.0", false, false, ""}, // 本地比 tag 新(开发者常态)
-		{"(devel) abc123", "v0.9.9", true, false, "xui self-update"},
+		{"v0.8.0", "v0.9.9", "", false, true, "xui self-update v0.9.9"},
+		{"v0.9.9", "v0.9.9", "", false, false, ""},
+		{"v0.9.9", "v0.8.0", "", false, false, ""}, // 本地比 tag 新(开发者常态)
+		{"(devel) abc123", "v0.9.9", "", true, false, "xui self-update"},
+		// 最新 tag 只动了组件与设计文档: upgradable=false, command 为空
+		{"v0.8.0", "v0.10.0", "v0.8.0", false, false, ""},
+		// CLI 确实改过(哪怕改的是上个 tag): 该给出升级命令
+		{"v0.8.0", "v0.10.0", "v0.9.0", false, true, "xui self-update v0.10.0"},
 	}
 	for _, c := range cases {
 		stubSelfUpdate(t, filepath.Join(t.TempDir(), "bin"), c.newest, c.newest)
+		if c.floor != "" {
+			stubCLIFloor(t, c.floor)
+		}
 		var got checkJSON
 		out := captureOutput(t, func() {
 			if err := selfUpdateAt("/home/u/go/bin/xui", c.current, "", true, true); err != nil {
@@ -1576,9 +1583,13 @@ func TestSelfUpdateCheckJSON(t *testing.T) {
 		if err := json.Unmarshal([]byte(out), &got); err != nil {
 			t.Fatalf("current=%s 时不是合法 JSON: %v\n%s", c.current, err, out)
 		}
+		wantFloor := c.floor
+		if wantFloor == "" {
+			wantFloor = c.newest // 没声明就用最新 tag 当依据(退路)
+		}
 		if got.Current != c.current || got.Latest != c.newest || got.LocalBuild != c.localBuild ||
-			got.Upgradable != c.upgr || got.Command != c.command {
-			t.Errorf("%s vs %s: %+v", c.current, c.newest, got)
+			got.Upgradable != c.upgr || got.Command != c.command || got.CLIFloor != wantFloor {
+			t.Errorf("%s vs %s (CLI 改动 %q): %+v", c.current, c.newest, wantFloor, got)
 		}
 	}
 }
@@ -1887,6 +1898,37 @@ func TestEnsureRuntimeTidyFailureOnlyWarns(t *testing.T) {
 	}
 	if !strings.Contains(out, "运行时已升到 v0.8.0 (go.mod 已更新)") {
 		t.Errorf("go.mod 确实升级了, 这句不能少: %s", out)
+	}
+}
+
+// go.mod 里的运行时库与 CLI 二进制共用一个 import 路径, 两个版本号容易读成一个:
+// 运行时刚升到一个比 CLI 新的 tag 时要解释一句"不必为此升级 CLI", 其余情况闭嘴。
+// (测试里 displayVersion 恒为 (devel), 所以这个判断必须收参数而不是自己读构建信息。)
+func TestNoteVersionSplit(t *testing.T) {
+	cases := []struct {
+		name           string
+		current, floor string
+		want           string
+	}{
+		{"CLI 落后于运行时", "v0.10.0", "v0.12.0", "顺带说明"},
+		{"两个号相等", "v0.12.0", "v0.12.0", ""},
+		{"CLI 更新(代理滞后)", "v0.13.0", "v0.12.0", ""},
+		{"本地构建", "(devel) abc1234", "v0.12.0", ""},
+		{"运行时认不出", "v0.10.0", "latest", ""},
+	}
+	for _, c := range cases {
+		got := captureOutput(t, func() { noteVersionSplit(c.current, c.floor) })
+		if c.want == "" {
+			if got != "" {
+				t.Errorf("%s: 不该说话, 实为 %q", c.name, got)
+			}
+			continue
+		}
+		for _, want := range []string{c.want, runtimeModule, c.current, "随数据源下发"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: 输出缺少 %q, 实为 %q", c.name, want, got)
+			}
+		}
 	}
 }
 
@@ -2534,9 +2576,10 @@ func TestIsTempBuildPath(t *testing.T) {
 // 全换成桩; installErrs 依次决定前几次 go install 的成败。
 func stubSelfUpdate(t *testing.T, binDir, newest, nextVer string, installErrs ...error) *[]string {
 	t.Helper()
-	origInstall, origList, origBin, origVer := goInstall, goListLatest, goBinDir, readBinaryVersion
+	origInstall, origList, origBin, origVer, origFloor := goInstall, goListLatest, goBinDir, readBinaryVersion, registryCLIFloor
 	t.Cleanup(func() {
-		goInstall, goListLatest, goBinDir, readBinaryVersion = origInstall, origList, origBin, origVer
+		goInstall, goListLatest, goBinDir, readBinaryVersion, registryCLIFloor =
+			origInstall, origList, origBin, origVer, origFloor
 	})
 	var specs []string
 	step := 0
@@ -2561,23 +2604,46 @@ func stubSelfUpdate(t *testing.T, binDir, newest, nextVer string, installErrs ..
 		goBinDir = func() (string, error) { return binDir, nil }
 	}
 	readBinaryVersion = func(string) (string, error) { return nextVer, nil }
+	// 默认把"CLI 最后改动的 tag"当成最新 tag(即每次发版都改了 CLI), 旧的期望照用;
+	// 要测"tag 更新了但 CLI 没动"就用 stubCLIFloor 覆盖。
+	registryCLIFloor = func() string { return newest }
 	return &specs
 }
 
-// --check 只比较版本, 一次 go install 都不跑。
+// stubCLIFloor 覆盖数据源声明的"CLI 最后一次改动版本"(registry.json 的 cliChange)。
+// 必须在 stubSelfUpdate 之后调用(它会先把默认桩装上再被这里换掉)。
+func stubCLIFloor(t *testing.T, floor string) {
+	t.Helper()
+	orig := registryCLIFloor
+	t.Cleanup(func() { registryCLIFloor = orig })
+	registryCLIFloor = func() string { return floor }
+}
+
+// --check 只比较版本, 一次 go install 都不跑;判断依据是"CLI 最后改动的 tag", 不是最新 tag。
 func TestSelfUpdateCheckOnly(t *testing.T) {
 	cases := []struct {
-		name, current, newest, wantOut string
+		name, current, newest, floor, wantOut string
 	}{
-		{"可以升级", "v0.8.0", "v0.9.9", "可以升级: xui self-update v0.9.9"},
-		{"已是最新", "v0.9.9", "v0.9.9", "已是最新"},
-		{"本地构建", "(devel)", "v0.9.9", "不算发布版"},
+		{"可以升级", "v0.8.0", "v0.9.9", "", "可以升级: xui self-update v0.9.9"},
+		{"已是最新", "v0.9.9", "v0.9.9", "", "已是最新"},
+		{"本地构建", "(devel)", "v0.9.9", "", "不算发布版"},
 		// 本地比 @latest 高(还没发布 / 代理滞后): 既不是最新也没什么可升的, 但必须有结论行
-		{"本地更高", "v1.0.0", "v0.9.9", "不低于 @latest(v0.9.9)"},
+		{"本地更高", "v1.0.0", "v0.9.9", "", "不低于 @latest(v0.9.9)"},
+		// 发了新 tag 但只动了组件与设计文档: 它们随数据源下发, 不该让人白跑一次 go install
+		{"tag 新但 CLI 没变", "v0.8.0", "v0.9.9", "v0.8.0", "CLI 代码自 v0.8.0 起没变过, 无需升级"},
+		// 旧数据源/镜像没这个字段: 只能退回比 tag, 且要把"这是退路"说出来
+		{"数据源没声明", "v0.8.0", "v0.9.9", "-", "数据源没声明"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			specs := stubSelfUpdate(t, filepath.Join(t.TempDir(), "bin"), c.newest, c.newest)
+			if c.floor != "" {
+				if c.floor == "-" {
+					stubCLIFloor(t, "")
+				} else {
+					stubCLIFloor(t, c.floor)
+				}
+			}
 			out := captureOutput(t, func() {
 				if err := selfUpdateAt("/home/u/go/bin/xui", c.current, "", true, false); err != nil {
 					t.Errorf("不该失败: %v", err)
@@ -2707,24 +2773,25 @@ func TestSelfUpdateWithoutGoBin(t *testing.T) {
 	}
 }
 
-// 升级提示只看缓存: 有新版才提示, devel/损坏/已是最新/查不到都不唠叨。
+// 升级提示的依据是数据源声明的"CLI 最后一次改动在哪个 tag", 不是最新 tag:
+// 组件与设计文档随数据源下发, 只发了个组件批次的新 tag 不该唠叨用户升级 CLI。
 func TestUpdateNotice(t *testing.T) {
-	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	cases := []struct {
 		name    string
 		current string
-		cache   updateCheck
+		floor   string
 		want    string // "" = 不该提示
 	}{
-		{"有新版", "v0.8.0", updateCheck{CheckedAt: now, Latest: "v0.8.1"}, "xui 有新版 v0.8.0 → v0.8.1"},
-		{"已是最新", "v0.8.1", updateCheck{CheckedAt: now, Latest: "v0.8.1"}, ""},
-		{"本地比缓存新", "v0.9.0", updateCheck{CheckedAt: now, Latest: "v0.8.1"}, ""},
-		{"devel 不提示", "(devel) f7072ad+dirty", updateCheck{CheckedAt: now, Latest: "v0.8.1"}, ""},
-		{"没查到版本", "v0.8.0", updateCheck{CheckedAt: now}, ""},
-		{"缓存里是垃圾", "v0.8.0", updateCheck{CheckedAt: now, Latest: "latest"}, ""},
+		{"CLI 有改动", "v0.8.0", "v0.8.1", "xui CLI 有更新 (装的是 v0.8.0, 最后一次改动在 v0.8.1)"},
+		{"落后好几个 tag 但 CLI 没改", "v0.8.0", "v0.8.0", ""},
+		{"已是最新", "v0.8.1", "v0.8.1", ""},
+		{"本地比数据源新", "v0.9.0", "v0.8.1", ""},
+		{"devel 不提示", "(devel) f7072ad+dirty", "v0.8.1", ""},
+		{"数据源没声明", "v0.8.0", "", ""},
+		{"声明的是垃圾", "v0.8.0", "latest", ""},
 	}
 	for _, c := range cases {
-		got := updateNotice(c.current, c.cache, now)
+		got := updateNotice(c.current, c.floor)
 		if c.want == "" {
 			if got != "" {
 				t.Errorf("%s: 不该提示, 实为 %q", c.name, got)
@@ -2734,8 +2801,9 @@ func TestUpdateNotice(t *testing.T) {
 		if !strings.HasPrefix(got, c.want) {
 			t.Errorf("%s: %q, 期望以 %q 开头", c.name, got, c.want)
 		}
-		// 提示里要带上自查、升级与关闭的入口
-		for _, want := range []string{"self-update --check", "xui self-update", "XUI_NO_UPDATE_CHECK"} {
+		// 提示里要带上升级入口、关闭办法, 以及"不升级也不会少拿组件与文档"这句解释 ——
+		// 少了后者, 用户会以为不升级就在用过期的组件。
+		for _, want := range []string{"xui self-update", "XUI_NO_UPDATE_CHECK", "随数据源下发"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("%s: 提示缺少 %q: %q", c.name, want, got)
 			}
@@ -2743,61 +2811,91 @@ func TestUpdateNotice(t *testing.T) {
 	}
 }
 
-func TestShouldProbeUpdate(t *testing.T) {
-	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+// cliChange 与 runtime 一样是数据源里的自由文本: 认不出 vX.Y.Z 就当没有(宁可少提示一次,
+// 也不要拿"latest"这种字符串去比版本)。
+func TestParseRegistryCLIChange(t *testing.T) {
 	cases := []struct {
-		name  string
-		cache updateCheck
-		want  bool
+		name, body, want string
 	}{
-		{"从没查过", updateCheck{}, true},
-		{"23 小时前", updateCheck{CheckedAt: now.Add(-23 * time.Hour)}, false},
-		{"25 小时前", updateCheck{CheckedAt: now.Add(-25 * time.Hour)}, true},
-		{"时间戳在未来(时钟回跳)", updateCheck{CheckedAt: now.Add(time.Hour)}, true},
+		{"正常", `{"runtime":"v0.9.0","cliChange":"v0.8.1","components":{"button":{"files":["button.go"]}}}`, "v0.8.1"},
+		{"没有这个字段", `{"components":{"button":{"files":["button.go"]}}}`, ""},
+		{"不是 tag", `{"cliChange":"main","components":{"button":{"files":["button.go"]}}}`, ""},
 	}
 	for _, c := range cases {
-		if got := shouldProbeUpdate(c.cache, now); got != c.want {
-			t.Errorf("%s: %v, 期望 %v", c.name, got, c.want)
+		reg, err := parseRegistry("测试", []byte(c.body))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if reg.CLIChange != c.want {
+			t.Errorf("%s: CLIChange = %q, 期望 %q", c.name, reg.CLIChange, c.want)
 		}
 	}
 }
 
-// 缓存坏了要能退回"没查过", 而不是让每条命令崩在半路上。
-func TestUpdateCheckCacheRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nested", "update-check.json")
-	saveUpdateCheck(path, updateCheck{CheckedAt: time.Now(), Latest: "v0.8.1"})
-	got := loadUpdateCheck(path)
-	if !strings.Contains(string(mustJSON(t, path)), `"latest":"v0.8.1"`) {
-		t.Errorf("缓存内容不对: %s", mustJSON(t, path))
+// 文档与组件同源: 数据源里有 docs/ 就用那份(组件批次改的就是它), 没有才退回 CLI 自带的。
+func TestDocContentFollowsSource(t *testing.T) {
+	src := moduleRoot()
+	// 把仓库数据源原样拷进临时目录, 再改掉 docs/DESIGN.md: 下发内容应跟着变。
+	dir := t.TempDir()
+	for _, rel := range []string{"registry.json", "components/button.go", "docs/DESIGN.md"} {
+		data, err := os.ReadFile(filepath.Join(src, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dst := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if !strings.HasPrefix(got.Latest, "v0.8.1") || got.CheckedAt.IsZero() {
-		t.Errorf("读回不对: %+v", got)
-	}
-	if err := os.WriteFile(path, []byte("{ broken"), 0o644); err != nil {
+	s := &source{local: dir}
+	// 拷来的那份与仓库里的内容相同, 不改成两个样就看不出下发用的是哪一份。
+	marker := "\n数据源那一份\n"
+	if data, err := os.ReadFile(filepath.Join(dir, "docs", "DESIGN.md")); err != nil {
+		t.Fatal(err)
+	} else if err := os.WriteFile(filepath.Join(dir, "docs", "DESIGN.md"), append(data, marker...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if c := loadUpdateCheck(path); !c.CheckedAt.IsZero() || c.Latest != "" {
-		t.Errorf("坏缓存应退回空, 实为 %+v", c)
-	}
-	if c := loadUpdateCheck(filepath.Join(t.TempDir(), "missing.json")); !c.CheckedAt.IsZero() {
-		t.Errorf("缺失缓存应退回空, 实为 %+v", c)
-	}
-}
-
-func mustJSON(t *testing.T, path string) string {
-	t.Helper()
-	data, err := os.ReadFile(path)
+	got, err := docContent(s, "DESIGN.md", "ui")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(data)
-}
-
-// 缓存路径落在用户缓存目录下的 xui/ 里(拿不到就退 Temp), 不能污染项目目录。
-func TestUpdateCheckPath(t *testing.T) {
-	p := updateCheckPath()
-	if filepath.Base(p) != "update-check.json" || filepath.Base(filepath.Dir(p)) != "xui" {
-		t.Errorf("路径不对: %s", p)
+	if !strings.HasSuffix(string(got), marker) {
+		t.Error("DESIGN.md 应取自数据源那一份")
+	}
+	// 镜像/本地源没有 docs/ 目录: 不能报"读取失败"把文档交付整个停掉, 要退回 CLI 自带的版本。
+	if err := os.RemoveAll(filepath.Join(dir, "docs")); err != nil {
+		t.Fatal(err)
+	}
+	out := captureOutput(t, func() {
+		got, err = docContent(s, "DESIGN.md", "ui")
+	})
+	if err != nil {
+		t.Fatalf("数据源缺 docs/ 时应回退, 实为 %v", err)
+	}
+	if !strings.Contains(out, "CLI 自带的版本") {
+		t.Errorf("回退要说明用的是哪一份: %s", out)
+	}
+	if string(got) != string(mustRead(t, filepath.Join(src, "docs", "DESIGN.md"))) {
+		t.Error("回退后应是 CLI 自带的那一份")
+	}
+	// 代理限流时会回 200 + 一个页面: 那不能当成文档写进用户项目(基线会被它污染)。
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "DESIGN.md"), []byte("<html>rate limited</html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out = captureOutput(t, func() {
+		got, _ = docContent(s, "DESIGN.md", "ui")
+	})
+	if strings.HasPrefix(string(got), "<html>") {
+		t.Errorf("劫持页该被认出来: %s", got)
+	}
+	if !strings.Contains(out, "CLI 自带的版本") {
+		t.Errorf("劫持页回退要说明: %s", out)
 	}
 }
 

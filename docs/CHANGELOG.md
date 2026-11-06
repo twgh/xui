@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **CLI 升级提示改为"只在真改了 CLI 时才提示";设计文档与组件同源**(2026-11-06, 用户报障):
+  - **现象**: 组件批次一发 tag, 之后每条 `xui` 命令末尾都提示"xui 有新版 v0.9.0 → v0.10.0", 而 `cmd/xui` 那阵子一行没改 —— 用户以为自己错过了 CLI 的修复。
+  - **根因**: 提示的依据是模块 `@latest` 解析到的 tag, 但 tag 里装的东西远不止 CLI:`init` / `add` 写进用户项目的 `DESIGN.md` / `DESIGN-PITFALLS.md` 是从**已安装 CLI 自己的模块目录**读的, 项目模板与 `app.ico` 也随 tag 走。所以"tag 更新"确实带着内容更新, 只是提示语把它说成了"CLI 有新版";而且只要版本落后, 每条命令都重复提示一次。
+  - **修法**: ① 文档随数据源下发 —— `docContent` 改走 `src.read("docs/<name>")`(与组件同一个基址), 拉不通或代理回了非 markdown 页面才退回 CLI 自带的那份, 并在 stderr 说明用的是哪一份; ② `registry.json` 新增 `cliChange` = CLI 最后一次改动的 tag(校验同 `runtime`, 认不出 `vX.Y.Z` 就警告后忽略), 提示条件改成"装的版本低于 `cliChange`" —— 依据本来就随 registry.json 到手, 于是后台子进程 `__update-check`、`UserCacheDir/xui/update-check.json` 缓存与 24h TTL 整套删除; ③ `self-update --check` 报三行(当前 / 最新 tag / CLI 最后改动), `upgradable` 只在真有 CLI 改动时为真, 数据源没这个字段时退回比 tag 并说明是退路; ④ `info` 不再报"上次检查时间"(它离线, 拿不到依据), 改报 `noticeDisabled`;`list -j` 增加 `cliChange`; ⑤ 同源之后新增两处消歧: DESIGN 第五节删掉抄自 `--help` 的命令清单(只留三条入口 + 一句"清单以 `xui --help` 为准" —— 文档随 main 下发而二进制可能更旧, 抄一份就会跑到人前面), `ensureRuntime` 把运行时升到比 CLI 更新的 tag 时补一句 `noteVersionSplit`(go.mod 里的 `github.com/twgh/xui` 是运行时库, 与 CLI 二进制两个号, 不必为此升级 CLI)。
+  - **验收**: 端到端 —— 临时数据源目录里给 `docs/DESIGN.md` 追加标记, `xui init ui` 装出来的 `ui/DESIGN.md` 带该标记;再改标记后 `xui update DESIGN.md` 输出"更新 …(版本升级)"并跟上;删掉源里的 `docs/` 后 `xui add DESIGN.md` 退回 CLI 自带版本并打印"没能从数据源拉到 … 这次用 CLI 自带的版本";源里塞一个 `<html>` 页也认出来、不写进项目。`self-update --check` 对 Gitee 镜像(还没同步新字段)答"数据源没声明(只能按最新 tag 判断)", 对本地源答"CLI 最后改动: v0.10.0"。单测: `TestUpdateNotice` 改按 `cliChange` 判定(含"落后好几个 tag 但 CLI 没改"不许提示), 新增 `TestParseRegistryCLIChange` / `TestDocContentFollowsSource`,`TestSelfUpdateCheckOnly` 与 `TestSelfUpdateCheckJSON` 各加"tag 新但 CLI 没变"两例, 删除缓存/探测三项。`go build ./...` / `go vet ./...` / `go test ./...` 全绿; 改了 `registry.json` 按固定流程跑下限回归(临时项目 `add --all` + `go build ./ui`)通过。
+
 - ✅ **v0.10.0 发布(2026-11-05)**: 新增 status-bar 状态栏, 并修掉 Tooltip 的跟随 / 裁剪命中 / 滚动收起与抓手拖动气泡残留, 走 minor(组件变更)。
   - **顺序**: 组件与文档提交(`ca55bd7`)→ 版本示例 + `fallbackXuiVersion` 提交(`d9bc9e6`)→ 轻量 tag `v0.10.0` → `runtime` 抬到 v0.10.0(`a19c89d`, tag 之后)。
   - **推送**: `git push origin main v0.10.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。

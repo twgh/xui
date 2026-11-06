@@ -80,7 +80,11 @@ type entry struct {
 type registry struct {
 	// Runtime 是这批组件源码要求的最低运行时版本(github.com/twgh/xui 的已发布 tag)。
 	// 老数据源没这个字段, 所以是可选的。
-	Runtime    string           `json:"runtime,omitempty"`
+	Runtime string `json:"runtime,omitempty"`
+	// CLIChange 是最近一次改动 CLI 的 tag(命令行为 + 内嵌模板与资源; 机械抬 fallback 版本不算)。
+	// 组件与 DESIGN 文档随数据源下发, 不需要换 CLI 就能拿到, 所以"有没有更新 tag"不能拿来当
+	// 升级提示的依据 —— 只有这个字段高于用户装的版本才值得提示。老数据源没这个字段, 是可选的。
+	CLIChange  string           `json:"cliChange,omitempty"`
 	Components map[string]entry `json:"components"`
 }
 
@@ -293,6 +297,13 @@ func parseRegistry(desc string, data []byte) (*registry, error) {
 		warn("registry.json 的 runtime %q 不是 vX.Y.Z, 忽略 (%s)", r.Runtime, desc)
 		r.Runtime = ""
 	}
+	if r.CLIChange != "" && !isReleaseTag(r.CLIChange) {
+		warn("registry.json 的 cliChange %q 不是 vX.Y.Z, 忽略 (%s)", r.CLIChange, desc)
+		r.CLIChange = ""
+	}
+	// 升级提示在命令跑完后才决定(那时拿不到 reg), 所以在这里把数据源声明的值记下来。
+	// 一次进程只服务一个数据源, 后面候选换源/降级覆盖也是应该的。
+	cliChangeTag = r.CLIChange
 	return &r, nil
 }
 
@@ -336,8 +347,8 @@ func main() {
 	}
 	cmd := rest[0]
 	args := rest[1:]
-	// 命令正常跑完后提示"有新版"(只看缓存, 不等网络); fatal 走 os.Exit 不会触发这里,
-	// 所以失败的命令不唠叨。
+	// 命令正常跑完后提示"CLI 有更新"(依据来自这次已经拉取的数据源, 不额外联网);
+	// fatal 走 os.Exit 不会触发这里, 所以失败的命令不唠叨。
 	defer notifyAvailableUpdate(cmd)
 	// 版本: -v / --version / version 三种写法等价。放在命令分派之前, 且不碰数据源
 	// (离线可用) —— 排查问题时第一句话就是"你装的哪个版本"。
@@ -349,9 +360,6 @@ func main() {
 		return
 	}
 	switch cmd {
-	case updateCheckCmd:
-		// 内部命令(不在帮助里): 被后台派生出来查一次 @latest, 只写缓存, 什么都不打印。
-		runUpdateCheck()
 	case "init":
 		opts, err := parseInitArgs(args)
 		if err != nil {
@@ -451,6 +459,7 @@ type listJSON struct {
 	Source     string          `json:"source"`
 	CLI        string          `json:"cli"`
 	Runtime    string          `json:"runtime,omitempty"`
+	CLIChange  string          `json:"cliChange,omitempty"`
 	Query      string          `json:"query,omitempty"`
 	Offset     int             `json:"offset"`
 	Limit      int             `json:"limit,omitempty"`
@@ -468,8 +477,7 @@ type infoJSON struct {
 	ComponentsInitialized bool   `json:"componentsInitialized"`
 	GoFiles               int    `json:"goFiles"`
 	Source                string `json:"source"`
-	CheckedAt             string `json:"updateCheckAt,omitempty"`
-	CheckLatest           string `json:"updateCheckLatest,omitempty"`
+	NoticeDisabled        bool   `json:"noticeDisabled"`
 }
 
 // sourceFileJSON 是一个组件文件(content 是全文)。
@@ -509,6 +517,7 @@ type diffJSON struct {
 type checkJSON struct {
 	Current    string `json:"current"`
 	Latest     string `json:"latest"`
+	CLIFloor   string `json:"cliChange,omitempty"`
 	LocalBuild bool   `json:"localBuild"`
 	Upgradable bool   `json:"upgradable"`
 	Command    string `json:"command,omitempty"`
@@ -1095,15 +1104,17 @@ func usage() {
                              安装后没改过的文件直接替换, 改过的跳过(见 -o);
                              连没装过的组件一起装是 xui add 的事: 点名没装过的组件只提示,
                              update 不接 --all
-  xui add DESIGN.md          只要 CLI 下发的文档(DESIGN.md / DESIGN-PITFALLS.md / AGENTS.md
-  xui update DESIGN.md       不是组件, 不在 registry 里): add 可以单独拿/update 只刷已在目录
-                             里的那份; DESIGN.md 会连配套的 DESIGN-PITFALLS.md 一起给
+  xui add DESIGN.md          只要下发的文档(DESIGN.md / DESIGN-PITFALLS.md / AGENTS.md
+  xui update DESIGN.md       不是组件、不在 registry 里, 但前两份与组件同源, 从数据源取):
+                             add 可以单独拿 / update 只刷已在目录里的那份;
+                             DESIGN.md 会连配套的 DESIGN-PITFALLS.md 一起给
   xui list | xui search [词] 列出/搜索组件(位置参数就是搜索词, 等价于 -q 词)
   xui view <组件...>         打印组件源码
   xui info [-p 目录]         显示 CLI / 项目环境信息(组件目录不是 ui 时用 -p 指过去)
   xui version                只打印版本(同 -v / --version; 离线可用, 不拉数据源)
   xui self-update [版本]     升级 CLI 自己(默认 @latest; 也可给 tag / main / commit)
-                             --check 只比较当前与最新 tag, 不安装(不接版本参数)
+                             --check 报"当前版本 / 最新 tag / CLI 最后改动的 tag", 不安装
+                             (不接版本参数)
 
 选项:
   -n, --name <项目名>   init: 新建项目目录
@@ -1149,8 +1160,11 @@ func usage() {
                         再跑 go mod tidy 清掉 go.sum 里的旧版本条目
                         (--dry-run 或 --no-install 时只打印这两条命令, 不联网改依赖)
 
-升级提示: 每天最多后台查一次 @latest(结果写用户缓存目录, 前台不等网络), 命令正常跑完
-                        在 stderr 提示一句"有新版"(不污染被重定向的结果);
+升级提示: 依据是 registry.json 的 cliChange = CLI 最后一次改动的 tag(命令行为与内嵌模板/资源,
+                        光抬配套版本不算)。装的版本低于它, 命令跑完才在 stderr 提示一句
+                        "CLI 有更新"(不污染被重定向的结果);数据源没这个字段就只比 tag。
+                        组件与设计文档(DESIGN / DESIGN-PITFALLS)都随数据源下发, 换 tag 不
+                        必升级 CLI —— 所以只有真改了 CLI 才会唠叨。
                         -s/--silent 或 XUI_NO_UPDATE_CHECK=1 关闭。
 
 数据源(环境变量 XUI_REGISTRY, 不设 = 远程 main 分支):
@@ -1329,6 +1343,8 @@ func placeFile(dst, rel string, data []byte, inst *installation, overwrite, dryR
 // 第一次 init 那一刻文档就定版了, 之后 CLI 修了文档里的错也传不到已有项目。
 // theme.go 是明确给用户改的(改主题就在那里), 所以不纳入 —— 它存在就跳过, 一次都不覆写。
 func scaffoldUI(dir string, w writeOpts, dirAgents bool) error {
+	// 数据源在这里拉一次: 文档与基础组件同源, 不能再让下游各自拉一遍。
+	src, reg := loadRegistry()
 	// dry-run 与 install 同一条纪律: 不建目录、不写文件, 只说将做什么。
 	if !w.dryRun {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -1353,10 +1369,10 @@ func scaffoldUI(dir string, w writeOpts, dirAgents bool) error {
 		// 目录级 AGENTS.md 只有普通 init 要; init -n 写的是项目根那份(在 project_files 里)。
 		docs = append(docs, "AGENTS.md")
 	}
-	skipped := placeDocs(docs, dir, w, true)
+	skipped := placeDocs(src, docs, dir, w, true)
 
 	// 拷入全部基础组件, 开箱即用(window 是快速开始示例用的主窗口封装)
-	add(componentOptions{names: baseComponents, uiDir: dir, overwrite: w.overwrite, noInstall: w.noInstall, dryRun: w.dryRun})
+	addWith(src, reg, componentOptions{names: baseComponents, uiDir: dir, overwrite: w.overwrite, noInstall: w.noInstall, dryRun: w.dryRun})
 	reportSkipped(skipped, w.dryRun, false)
 	return nil
 }
@@ -1879,9 +1895,23 @@ func ensureRuntime(uiDir, floor string, dryRun, autoInstall bool) {
 		warn("go mod tidy 失败: %v (运行时已升到 %s; go.sum 里可能还留着 %s 的条目, 手动在 %s 跑一次 go mod tidy)",
 			err, floor, from, gmDir)
 		info("运行时已升到 %s (go.mod 已更新)", floor)
+		noteVersionSplit(displayVersion(), floor)
 		return
 	}
 	info("运行时已升到 %s (go.mod 与 go.sum 一起更新, 旧版本条目已清)", floor)
+	noteVersionSplit(displayVersion(), floor)
+}
+
+// noteVersionSplit 给"运行时刚升到一个比 CLI 更新的 tag"这一句配一句消歧说明: 同一个 import
+// 路径上挂着两个版本号(go.mod 里的运行时库 vs CLI 二进制), 用户很容易读成"CLI 没装新、
+// 这次没升干净"。两个号的关系不需要解释时(相等 / CLI 更新 / 本地构建)一句都不打。
+func noteVersionSplit(current, floor string) {
+	if !isReleaseTag(current) || !isReleaseTag(floor) || !versionBefore(current, floor) {
+		return
+	}
+	info("顺带说明: 刚升的是运行时库 %s(项目 import 的那份), 与 CLI 二进制是两回事(xui --version = %s) —— "+
+		"组件与设计文档随数据源下发, 不必跟着每个 tag 升级 CLI, 只有 CLI 自己改了才会提示你 xui self-update",
+		runtimeModule, current)
 }
 
 // ---------------------------------------------------------------- CLI 自我升级
@@ -1896,6 +1926,9 @@ var (
 	goListLatest      = newestTagViaGoList
 	goBinDir          = queryGoBinDir
 	readBinaryVersion = binaryVersion
+	// registryCLIFloor 取数据源声明的"CLI 最后一次改动在哪个 tag"(registry.json 的 cliChange):
+	// --check 要回答"最新 tag 里到底有没有 CLI 的改动", 光比版本号答不了。单测换成桩, 不联网。
+	registryCLIFloor = func() string { _, reg := loadRegistry(); return reg.CLIChange }
 )
 
 // semverOK 只问"能不能解析出三段数字"(伪版本/裸版本号都算)。
@@ -2060,12 +2093,20 @@ func selfUpdateAt(exe, current, target string, checkOnly, jsonMode bool) error {
 			return fmt.Errorf("查询最新版本失败: %w", err)
 		}
 		// 这几行就是 --check 的全部结果, 加 -s 也得打(否则命令等于什么都没查)。
+		floor := registryCLIFloor()
+		declared := isReleaseTag(floor)
+		if !declared {
+			// 旧数据源/镜像没声明 CLI 最后改动版本: 退化成"比 tag", 并把这一步说出来,
+			// 免得用户以为最新 tag 真的改了 CLI。
+			floor = newest
+		}
 		localBuild := !isReleaseTag(current)
-		upgradable := !localBuild && current != newest && versionBefore(current, newest)
+		upgradable := !localBuild && isReleaseTag(floor) && versionBefore(current, floor)
 		if jsonMode {
 			printJSON(checkJSON{
 				Current:    current,
 				Latest:     newest,
+				CLIFloor:   floor,
 				LocalBuild: localBuild,
 				Upgradable: upgradable,
 				Command:    checkCommand(newest, localBuild, upgradable),
@@ -2074,13 +2115,22 @@ func selfUpdateAt(exe, current, target string, checkOnly, jsonMode bool) error {
 		}
 		out("当前 CLI: %s", current)
 		out("最新 tag: %s", newest)
+		if declared {
+			out("CLI 最后改动: %s", floor)
+		} else {
+			out("CLI 最后改动: 数据源没声明(只能按最新 tag 判断)")
+		}
 		switch {
 		case localBuild:
 			out("本地构建(%s)不算发布版; 想装正式版: xui self-update", current)
-		case current == newest:
-			out("已是最新")
 		case upgradable:
 			out("可以升级: xui self-update %s", newest)
+		case current == newest:
+			out("已是最新")
+		case declared && versionBefore(current, newest):
+			// 落后于最新 tag, 但那个差值里没有 CLI 的改动: 组件与设计文档随数据源下发,
+			// 不换 CLI 一样拿得到, 所以这里明确说"无需升级", 别让人白跑一次 go install。
+			out("CLI 代码自 %s 起没变过, 无需升级 (最新 tag %s 只动组件与设计文档)", floor, newest)
 		default:
 			// 本地版本比 @latest 高(还没发布 / 代理滞后): 既不是最新, 也没什么可升的,
 			// 不能什么都不说 —— 用户看到的只是两行版本号, 得自己比。
@@ -2137,116 +2187,42 @@ func exeExt() string {
 
 // ---------------------------------------------------------------- 升级提示
 
-const (
-	// updateCheckTTL: 缓存的有效期。一天一次, 平时只读文件不联网。
-	updateCheckTTL = 24 * time.Hour
-	// updateCheckCmd 是内部命令名(不出现在帮助里): 被派生出来时只查版本、写缓存。
-	updateCheckCmd = "__update-check"
-	// updateCheckDisableEnv 非空就彻底关掉检查与提示(CI、离线机、隐私偏好)。
-	updateCheckDisableEnv = "XUI_NO_UPDATE_CHECK"
-)
+// updateCheckDisableEnv 非空就彻底关掉升级提示(CI、离线机、隐私偏好)。
+const updateCheckDisableEnv = "XUI_NO_UPDATE_CHECK"
 
-// updateCheck 是缓存文件的内容。CheckedAt 在"派生子进程"时就先写一次占位:
-// 子进程起不来或查失败时, 不至于让后面每一条命令都再派一个。
-type updateCheck struct {
-	CheckedAt time.Time `json:"checked_at"`
-	Latest    string    `json:"latest,omitempty"`
-}
+// cliChangeTag 记下本次数据源声明的"CLI 最后一次改动在哪个 tag"(registry.json 的 cliChange),
+// 由 parseRegistry 写入, 命令跑完后的提示只读它。
+//
+// 这里以前是一套"后台子进程 + 用户缓存目录里的 update-check.json + 24h TTL": 依据(@latest
+// 解析到哪个 tag)不在手头的数据里, 只能另开一次网络、还不能让前台等。现在依据跟着 registry.json
+// 一起来, 而每条内容命令本来就拉了它 —— 于是既不用额外联网, 也不会再"每次发版都唠叨一遍":
+// tag 变了不等于 CLI 变了, 组件与 DESIGN 文档都随数据源下发, 不换 CLI 照样拿得到最新的。
+var cliChangeTag string
 
-// updateCheckPath 是缓存位置(UserCacheDir/xui/update-check.json, 拿不到用户缓存目录就退 Temp)。
-func updateCheckPath() string {
-	base, err := os.UserCacheDir()
-	if err != nil || base == "" {
-		base = os.TempDir()
-	}
-	return filepath.Join(base, "xui", "update-check.json")
-}
-
-// loadUpdateCheck 读缓存; 文件缺失或损坏都当"从没查过"(下次命令会去查一次)。
-func loadUpdateCheck(path string) updateCheck {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return updateCheck{}
-	}
-	var got updateCheck
-	if json.Unmarshal(data, &got) != nil {
-		return updateCheck{}
-	}
-	return got
-}
-
-// saveUpdateCheck 写缓存; 写不了就算了(提示是锦上添花, 不该因此影响命令)。
-func saveUpdateCheck(path string, c updateCheck) {
-	if data, err := json.Marshal(c); err == nil {
-		_ = os.MkdirAll(filepath.Dir(path), 0o755)
-		_ = os.WriteFile(path, data, 0o644)
-	}
-}
-
-// updateNotice 只靠缓存决定提示语, 空串表示不提示。
+// updateNotice 只靠数据源声明的 CLI 改动版本决定提示语, 空串表示不提示。
 // 本地/devel 构建不提示: 那是开发者在仓库里跑的, 比 tag 落后是常态, nag 也没法 self-update。
-func updateNotice(current string, c updateCheck, now time.Time) string {
-	if !isReleaseTag(current) || !isReleaseTag(c.Latest) {
+func updateNotice(current, floor string) string {
+	if !isReleaseTag(current) || !isReleaseTag(floor) || !versionBefore(current, floor) {
 		return ""
 	}
-	if !versionBefore(current, c.Latest) {
-		return ""
-	}
-	return fmt.Sprintf("xui 有新版 %s → %s (先看: xui self-update --check; 升级: xui self-update; 关掉提示: 设 %s=1)",
-		current, c.Latest, updateCheckDisableEnv)
+	return fmt.Sprintf("xui CLI 有更新 (装的是 %s, 最后一次改动在 %s): xui self-update; 组件与设计文档随数据源下发, 不升级也拿得到 (关掉提示: 设 %s=1)",
+		current, floor, updateCheckDisableEnv)
 }
 
-// shouldProbeUpdate 判断要不要派后台查询: 没缓存/过期/时钟往回跳过。
-func shouldProbeUpdate(c updateCheck, now time.Time) bool {
-	if c.CheckedAt.IsZero() || now.Before(c.CheckedAt) {
-		return true
-	}
-	return now.Sub(c.CheckedAt) > updateCheckTTL
-}
-
-// notifyAvailableUpdate 在命令正常结束后按缓存提示可升级; 缓存过期时派一个后台子进程去查。
-// self-update 刚跑完不再提示(否则升级完立刻被唠叨一遍), -s 与禁用变量都闭嘴。
+// notifyAvailableUpdate 在命令正常结束后, 按这次加载的数据源声明的 CLI 改动版本提示。
+// 没拉过数据源的命令(version / info)没有依据, 自然不提示; self-update 刚跑完不再提示
+// (否则升级完立刻被唠叨一遍); -s 与禁用变量都闭嘴。
 func notifyAvailableUpdate(cmd string) {
-	if quiet || cmd == updateCheckCmd || cmd == "self-update" {
+	if quiet || cmd == "self-update" {
 		return
 	}
 	if os.Getenv(updateCheckDisableEnv) != "" {
 		return
 	}
-	path := updateCheckPath()
-	c := loadUpdateCheck(path)
-	if msg := updateNotice(displayVersion(), c, time.Now()); msg != "" {
+	if msg := updateNotice(displayVersion(), cliChangeTag); msg != "" {
 		// 走 stderr: `xui view button.go > button.go` 这类重定向里, 提示语混进正文就是坏代码。
 		warn("%s", msg)
 	}
-	if shouldProbeUpdate(c, time.Now()) {
-		saveUpdateCheck(path, updateCheck{CheckedAt: time.Now(), Latest: c.Latest})
-		probeUpdateAsync()
-	}
-}
-
-// probeUpdateAsync 派生 `xui __update-check` 在后台查版本写缓存。
-// 不 Start+Wait: 前台一条命令都不为网络买单, 提示用的永远是上一次的结果。
-func probeUpdateAsync() {
-	exe, err := os.Executable()
-	if err != nil || isTempBuildPath(exe) {
-		return // go run 的临时产物随时会被清掉, 派生它没意义
-	}
-	child := exec.Command(exe, updateCheckCmd)
-	child.Stdout, child.Stderr = nil, nil // 丢掉输出(也避免占着管道)
-	_ = child.Start()
-}
-
-// runUpdateCheck 查一次 @latest 解析到的版本并写缓存。查不到也记时间戳,
-// 断网时不至于每条命令都重试一轮。
-func runUpdateCheck() {
-	path := updateCheckPath()
-	latest, err := goListLatest()
-	if err != nil {
-		saveUpdateCheck(path, updateCheck{CheckedAt: time.Now()})
-		return
-	}
-	saveUpdateCheck(path, updateCheck{CheckedAt: time.Now(), Latest: latest})
 }
 
 // validateProjectName 只接受单级目录名(项目在当前目录下创建); 想换模块路径改 go.mod。
@@ -2319,8 +2295,9 @@ func isReleaseVersion(v string) bool {
 // baseComponents 是 init 默认装好的基础组件(window 是模板主窗口用的封装)。
 var baseComponents = []string{"button", "checkbox", "radio", "input", "label", "separator", "badge", "card", "window"}
 
-// cliDocs 是 CLI 自己下发的文档。它们**不在 registry.json 里**(不是组件), 内容由 CLI 带,
-// 所以跟 CLI 版本走、不跟 XUI_REGISTRY 钉的组件 tag 走。名字可以直接写在 add/update 后面:
+// cliDocs 是 CLI 下发的文档。它们**不在 registry.json 里**(不是组件), 但 DESIGN.md 与
+// DESIGN-PITFALLS.md 的内容随数据源走 —— 与组件同源才不会把最新组件配上旧说明(见 docContent);
+// AGENTS.md 由 CLI 内嵌模板渲染, 那部分才跟 CLI 版本走。名字可以直接写在 add/update 后面:
 //
 //	xui add DESIGN.md      # 只要文档(项目里没跑过 init 时补齐; 连带配套的 DESIGN-PITFALLS.md)
 //	xui update AGENTS.md   # 只刷这一份, 不动任何组件
@@ -2391,13 +2368,23 @@ func docTargetName(name string) string {
 	return ""
 }
 
-// docContent 取要下发的文档内容(DESIGN.md / DESIGN-PITFALLS.md 从模块根读, 与 init 同源)。
+// docContent 取要下发的文档内容。DESIGN.md / DESIGN-PITFALLS.md 与组件源码同源(数据源的 docs/
+// 下), 拉不通才用 CLI 自带的那份:
+//
+// 组件跟 main 分支下发, 每个批次都往这两份文档里加条目, 而 CLI 是按 tag 锁的 —— 只从本地读会把
+// "最新的组件 + 上个 tag 的说明"装进同一个项目, 而说明里的编号正是组件行为的依据(第八节索引)。
 //
 // 这两份不需要按目录名渲染: 它们的行文按"同目录裸文件名"写(见 AGENTS 的规矩), 本来就与
 // 目录叫什么无关;需要渲染的只有 AGENTS.md(它会写"-p <目录>"这类路径)。
-func docContent(name, uiDir string) ([]byte, error) {
+func docContent(src *source, name, uiDir string) ([]byte, error) {
 	switch name {
 	case "DESIGN.md", "DESIGN-PITFALLS.md":
+		// 首行是 markdown 标题才认: 镜像限流时代理会回 200 + 一个 HTML/JSON 页面, 那玩意
+		// 的 sha256 会被当成本地基线记进清单, 下次 update 就成了"用户改过、无法判断来源"。
+		if data, err := src.read("docs/" + name); err == nil && docIsMarkdown(data) {
+			return data, nil
+		}
+		warn("%s 没能从数据源拉到 (%s), 这次用 CLI 自带的版本", name, src.desc())
 		data, err := os.ReadFile(filepath.Join(moduleRoot(), "docs", name))
 		if err != nil {
 			return nil, fmt.Errorf("读取 %s 失败: %w", name, err)
@@ -2407,6 +2394,11 @@ func docContent(name, uiDir string) ([]byte, error) {
 		return []byte(renderUI(agentsDirTemplate, docUIDir(uiDir))), nil
 	}
 	return nil, fmt.Errorf("不是可指名的文档: %s", name)
+}
+
+// docIsMarkdown 粗检文档正文: 这两份都以一级标题开头。
+func docIsMarkdown(data []byte) bool {
+	return strings.HasPrefix(strings.TrimLeft(string(data), " \t\r\n"), "#")
 }
 
 // docUIDir 把 -p 传来的组件目录规范成 AGENTS.md 里该写的那个路径。
@@ -2435,12 +2427,13 @@ func docUIDir(uiDir string) string {
 }
 
 // placeDocs 把点名的文档写进组件目录(create=false 时只刷已存在的, 不新增)。返回被跳过的条数。
-func placeDocs(docs []string, uiDir string, w writeOpts, create bool) int {
+// src 就是组件那份数据源(文档同源, 见 docContent)。
+func placeDocs(src *source, docs []string, uiDir string, w writeOpts, create bool) int {
 	inst := loadManifest(uiDir)
 	skipped, changed := 0, false
 	for _, name := range docs {
 		dst := filepath.Join(uiDir, name)
-		data, err := docContent(name, uiDir)
+		data, err := docContent(src, name, uiDir)
 		if err != nil {
 			warn("%v", err)
 			continue
@@ -2486,8 +2479,13 @@ func existingDocs(uiDir string) []string {
 // add 拷贝组件(含依赖闭包); --view/--diff 只展示不写文件; 点名文档时只给文档
 // (DESIGN.md 会连配套的 DESIGN-PITFALLS.md 一起交付, 见 expandDocs)。
 func add(opts componentOptions) {
-	docs, comps := splitForWrite(opts)
 	src, reg := loadRegistry()
+	addWith(src, reg, opts)
+}
+
+// addWith 是 add 的内核, 数据源由调用方给(init 的 scaffoldUI 已经拉过一次, 不该再来一次)。
+func addWith(src *source, reg *registry, opts componentOptions) {
+	docs, comps := splitForWrite(opts)
 	names := comps
 	if opts.all {
 		names = allComponents(reg)
@@ -2502,7 +2500,7 @@ func add(opts componentOptions) {
 	case opts.diff:
 		requireMatched(diffFiles(src, reg, order, opts.uiDir, opts.diffFile, opts.json), opts.diffFile)
 	default:
-		skipped := placeDocs(expandDocs(docs), opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, true)
+		skipped := placeDocs(src, expandDocs(docs), opts.uiDir, writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}, true)
 		if len(order) > 0 {
 			skipped += install(src, reg, order, opts.uiDir, opts.overwrite, opts.dryRun)
 			// 组件是从 main 拉的, 运行时按 tag 走 —— 顺手把项目的依赖抬到与它配套的版本。
@@ -2517,8 +2515,13 @@ func add(opts componentOptions) {
 // --all 在这里会被解析器拒掉(update 不该顺手装新组件, 那是 add 的事);
 // 点名文档则只刷指定的那几份(已存在的才刷; DESIGN.md 的配套文件缺失时补上, 见函数内)。
 func update(opts componentOptions) {
-	docs, comps := splitForWrite(opts)
 	src, reg := loadRegistry()
+	updateWith(src, reg, opts)
+}
+
+// updateWith 是 update 的内核(数据源由调用方给, 与 addWith 同理)。
+func updateWith(src *source, reg *registry, opts componentOptions) {
+	docs, comps := splitForWrite(opts)
 	names := comps
 	if len(names) == 0 && len(docs) == 0 {
 		// 裸 update = "把这个目录里 CLI 给过的东西都刷新": 已装组件 + 已交付的文档。
@@ -2538,13 +2541,13 @@ func update(opts componentOptions) {
 	default:
 		w := writeOpts{overwrite: opts.overwrite, dryRun: opts.dryRun}
 		// create=false: update 只刷已经在目录里的东西, 不新增。
-		skipped := placeDocs(docs, opts.uiDir, w, false)
+		skipped := placeDocs(src, docs, opts.uiDir, w, false)
 		// 配套文件是 DESIGN.md 的一部分(第八节正文), 不算"update 顺手装新东西": 老项目里
 		// DESIGN.md 已在、DESIGN-PITFALLS.md 还没有时补上 —— 刷新后的 DESIGN.md 第八节是
 		// 索引, 缺配套文件就成了指向空处的说明书。
 		if companion := docCompanions["DESIGN.md"]; containsString(docs, "DESIGN.md") &&
 			!containsString(docs, companion) && fileExists(filepath.Join(opts.uiDir, "DESIGN.md")) {
-			skipped += placeDocs([]string{companion}, opts.uiDir, w, true)
+			skipped += placeDocs(src, []string{companion}, opts.uiDir, w, true)
 		}
 		// 裸 update 已按 installedComponents 筛过, 但显式点名绕过了它 —— 名字叫 update、
 		// 行为是 add(在空目录里 `xui update button` 会把 button 全套创建出来)。这里统一挡掉:
@@ -3090,8 +3093,9 @@ func infoCommand(uiDir string, jsonMode bool) {
 	if src == "" {
 		src = "默认(远程 main 分支)"
 	}
-	// 版本提示靠这个排查: 缓存里存着"上次查到的 @latest"与查的时间(一天一次)。
-	c := loadUpdateCheck(updateCheckPath())
+	// 升级提示的依据是数据源声明的 cliChange, 那要联网才拿得到 —— info 保持离线, 所以这里只报
+	// "提示被环境变量关了"这条本地就知道的状态。
+	disabled := os.Getenv(updateCheckDisableEnv) != ""
 	// 组件目录里有多少 .go: 目录读不到 = 还没 init。
 	n := 0
 	initialized := false
@@ -3104,16 +3108,11 @@ func infoCommand(uiDir string, jsonMode bool) {
 		}
 	}
 	if jsonMode {
-		j := infoJSON{
+		printJSON(infoJSON{
 			CLI: ver, CWD: wd, Go: runtime.Version(),
 			ComponentsDir: uiDir, ComponentsInitialized: initialized, GoFiles: n,
-			Source: src,
-		}
-		if !c.CheckedAt.IsZero() {
-			j.CheckedAt = c.CheckedAt.Format("2006-01-02 15:04")
-			j.CheckLatest = c.Latest
-		}
-		printJSON(j)
+			Source: src, NoticeDisabled: disabled,
+		})
 		return
 	}
 	out("xui: %s", ver)
@@ -3125,18 +3124,9 @@ func infoCommand(uiDir string, jsonMode bool) {
 		out("%s: 未初始化", uiDir)
 	}
 	out("数据源: %s", src)
-	if !c.CheckedAt.IsZero() {
-		out("上次版本检查: %s, 当时 @latest = %s (关掉: 设 %s=1)",
-			c.CheckedAt.Format("2006-01-02 15:04"), orNone(c.Latest), updateCheckDisableEnv)
+	if disabled {
+		out("升级提示: 已由 %s=1 关闭", updateCheckDisableEnv)
 	}
-}
-
-// orNone 给 info 用的空值占位。
-func orNone(s string) string {
-	if s == "" {
-		return "没查到(可能断网)"
-	}
-	return s
 }
 
 // diffFiles 把本地文件与 registry 内容做逐行 diff(不写本地); filter 非空时只比匹配的
@@ -3298,7 +3288,7 @@ func list(opts listOptions) {
 			items = append(items, componentJSON{Name: name, Files: files, Deps: deps})
 		}
 		printJSON(listJSON{
-			Source: src.desc(), CLI: displayVersion(), Runtime: reg.Runtime,
+			Source: src.desc(), CLI: displayVersion(), Runtime: reg.Runtime, CLIChange: reg.CLIChange,
 			Query: opts.query, Offset: opts.offset, Limit: opts.limit,
 			Total: len(matched), Shown: end - start, Components: items,
 		})
