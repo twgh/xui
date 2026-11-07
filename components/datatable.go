@@ -5,7 +5,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
@@ -81,8 +83,13 @@ type DataColumn struct {
 	// FilterOptions 该列的分面筛选项: 非空时工具栏多出一个按钮(tasks 的
 	// DataTableFacetedFilter)。列内多选是 OR、列间是 AND, 并与关键字同时生效。
 	FilterOptions []DataFilterOption
-	// ReadOnly 禁止双击编辑该列(见 WithDataTableEditing)。自绘列也能编辑 —— 编辑期间
-	// 该格的自绘内容会让位给输入框; 行操作列这类"画按钮"的列应该设成只读。
+	// EditOptions 非空时该列只能用这些固定值编辑: **单击**弹出选择菜单(当前值带勾),
+	// 不再出现文本输入框 —— 状态 / 优先级 / 角色这类枚举列用它。空 = 普通文本编辑;
+	// ReadOnly 优先(设了 ReadOnly 就只走普通点击)。
+	EditOptions []string
+	// ReadOnly 禁止编辑该列(见 WithDataTableEditing; 文本列双击、固定选项列单击)。
+	// 自绘列也能编辑 —— 编辑期间该格的自绘内容会让位给输入框; 行操作列这类
+	// "画按钮"的列应该设成只读。
 	ReadOnly bool
 }
 
@@ -184,8 +191,9 @@ func WithDataTableColumnToggle() DataTableOption {
 	return func(d *DataTable) { d.toggleOn = true }
 }
 
-// WithDataTableEditing 开启单元格编辑: **双击**单元格在原地弹出输入框, Enter / 失焦提交,
-// Esc 取消; 值没变不写回, 排序与筛选会按新值重算。
+// WithDataTableEditing 开启单元格编辑: 文本列**双击**在原地弹出输入框, Enter / 失焦提交,
+// Esc 取消; 配了 DataColumn.EditOptions 的固定选项列则**单击**弹选择菜单, 选中即提交。
+// 值没变不写回, 排序与筛选会按新值重算。
 //
 // 不可编辑的格子: 勾选列与 DataColumn.ReadOnly 列(自绘列可以编辑, 编辑期间该格
 // 暂停自绘)。写入前回调 OnCellEdit, 返回 false 即拒绝(单元格保持旧值)。
@@ -584,10 +592,11 @@ func (d *DataTable) buildTable() {
 		return 0
 	})
 
-	// 勾选模式下自己在按下时做命中测试: 原生 List 的单选高亮只表示"刚点过",
-	// 与勾选无关, 吞掉按下消息不让它改选中行(见 DESIGN 8.170)。
+	// 单击命中: 勾选列切勾选; 固定选项列弹选择菜单; 其余走行/单元格点击。
+	// 原生 List 的单选高亮只表示"刚点过", 勾选模式与固定选项列都要吞掉按下消息,
+	// 不让它改选中行(见 DESIGN 8.170)。
 	d.table.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-		if !d.selectOn || pPt == nil {
+		if pPt == nil {
 			return 0
 		}
 		var row, sub int32
@@ -598,12 +607,27 @@ func (d *DataTable) buildTable() {
 		if raw < 0 {
 			return 0
 		}
-		*pbHandled = true
-		if int(sub) == 0 { // 勾选列
+		if d.selectOn && sub == 0 { // 勾选列
+			*pbHandled = true
 			d.toggleRowSelected(raw)
 			return 0
 		}
-		if ci := d.colAt(sub); ci >= 0 && d.onCell != nil {
+		ci := d.colAt(sub)
+		// 固定选项列: 单击弹菜单(等左键松开后再弹, 避开这次点击的松开), 不再触发
+		// 行/单元格点击 —— 这一下就是"打开下拉"。
+		if d.editEnabled && ci >= 0 && !d.cols[ci].ReadOnly && len(d.cols[ci].EditOptions) > 0 {
+			d.commitCellEdit(true) // 上一格文本编辑先落盘
+			if rc, ok := d.cellRectFor(row, sub); ok {
+				*pbHandled = true
+				d.openEditOptionsMenuAfterRelease(raw, ci, d.cols[ci].EditOptions, rc)
+			}
+			return 0
+		}
+		if !d.selectOn {
+			return 0
+		}
+		*pbHandled = true
+		if ci >= 0 && d.onCell != nil {
 			d.onCell(raw, ci)
 		}
 		if d.onRow != nil {
@@ -645,7 +669,8 @@ func (d *DataTable) buildTable() {
 	})
 
 	if d.editEnabled {
-		// 双击才进编辑: 单击仍走 OnRowClick / OnCellClick(与 shadcn 的"点行选行"不冲突)。
+		// 文本列双击才进编辑: 单击仍走 OnRowClick / OnCellClick(与 shadcn 的"点行选行"
+		// 不冲突); 固定选项列的单击由 LButtonDown 接管为选择菜单。
 		d.table.AddEvent_LButtonDBClick(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 			if d.beginCellEdit(pPt) {
 				*pbHandled = true
@@ -1569,6 +1594,44 @@ func (d *DataTable) Editing() (row, col int, ok bool) {
 	return d.editRaw, d.editCol, true
 }
 
+// rowTopInView 返回第 row 行在 List 客户区里的顶边(逻辑像素)。top 是滚动为 0 时
+// 第一行顶边(表头高 + 原生内缩); 滚动条可以停在非整行位置, 必须减真实滚动偏移。
+func rowTopInView(t *Table, row, top, rh int32) int32 {
+	return top + row*rh - t.GetViewPosV()
+}
+
+// cellRectFor 返回 row / sub 的单元格矩形(相对 List 客户区)。行顶按真实滚动偏移算;
+// 首/末行被视口裁掉一部分时先滚到整行完整可见。表头矩形还没绘制过时 ok=false。
+func (d *DataTable) cellRectFor(row, sub int32) (xc.RECT, bool) {
+	if d.table == nil {
+		return xc.RECT{}, false
+	}
+	hdr, ok := d.table.HeaderCellRect(sub)
+	if !ok {
+		return xc.RECT{}, false
+	}
+	top := xc.XList_GetHeaderHeight(d.table.Handle) + tableInset
+	rh := d.table.RowHeight()
+	if rh <= 0 {
+		return xc.RECT{}, false
+	}
+	cellTop := rowTopInView(d.table, row, top, rh)
+	if cellTop < top || cellTop+rh > d.table.GetHeight() {
+		d.table.VisibleRow(row)
+		cellTop = rowTopInView(d.table, row, top, rh)
+	}
+	rc := xc.RECT{
+		Left:   hdr.Left + tableInset,
+		Top:    cellTop + 1,
+		Right:  hdr.Right - tableInset,
+		Bottom: cellTop + rh - 1,
+	}
+	if rc.Right-rc.Left < 24 || rc.Bottom-rc.Top < 16 {
+		return xc.RECT{}, false
+	}
+	return rc, true
+}
+
 // beginCellEdit 在 pt 命中的单元格上弹出编辑框。pt 是表格元素客户区坐标(逻辑像素)。
 func (d *DataTable) beginCellEdit(pt *xc.POINT) bool {
 	if !d.editEnabled || d.table == nil || pt == nil {
@@ -1589,29 +1652,12 @@ func (d *DataTable) beginCellEdit(pt *xc.POINT) bool {
 	if raw < 0 {
 		return false
 	}
-	hdr, ok := d.table.HeaderCellRect(sub)
+	if len(d.cols[ci].EditOptions) > 0 {
+		// 固定选项列由单击触发选择菜单; 双击不要再开文本编辑。
+		return false
+	}
+	cell, ok := d.cellRectFor(row, sub)
 	if !ok {
-		return false
-	}
-
-	// 单元格几何: 表头缓存与数据单元格同一坐标系, 但原生数据单元格比表头右移 tableInset。
-	// 行顶由点击位置对行高取模反推 —— 列表滚动后没有可靠的偏移 API, 取模不需要它。
-	top := xc.XList_GetHeaderHeight(d.table.Handle) + tableInset
-	if pt.Y < top {
-		return false
-	}
-	rh := d.table.RowHeight()
-	if rh <= 0 {
-		return false
-	}
-	cellTop := pt.Y - (pt.Y-top)%rh
-	cell := xc.RECT{
-		Left:   hdr.Left + tableInset,
-		Top:    cellTop + 1,
-		Right:  hdr.Right - tableInset,
-		Bottom: cellTop + rh - 1,
-	}
-	if cell.Right-cell.Left < 24 || cell.Bottom-cell.Top < 16 {
 		return false
 	}
 
@@ -1672,6 +1718,58 @@ func (d *DataTable) commitCellEdit(accept bool) {
 		return
 	}
 	d.setCellValue(raw, ci, next)
+}
+
+// openEditOptionsMenuAfterRelease 等鼠标左键松开后再弹固定选项菜单。
+// 单击/双击的按下都会紧跟一个松开消息; 菜单若立即弹出且向上翻到光标下, 这条松开会
+// 直接选中第一项。轮询 16ms 等键抬起, 抬起后再弹就不会被同一次点击"点掉"。
+func (d *DataTable) openEditOptionsMenuAfterRelease(raw, col int, options []string, rc xc.RECT) {
+	if d.table == nil {
+		return
+	}
+	if wapi.GetAsyncKeyState(0x01) < 0 { // VK_LBUTTON: 高位置位 = 仍按住
+		app.AfterFunc(16*time.Millisecond, func() {
+			d.openEditOptionsMenuAfterRelease(raw, col, options, rc)
+		})
+		return
+	}
+	// 再等一小段: 物理键已抬起时, WM_LBUTTONUP 可能还在消息队列里, 让这条松开
+	// 先被表格处理完, 菜单才不会被它点到。
+	app.AfterFunc(10*time.Millisecond, func() {
+		d.showEditOptionsMenu(raw, col, options, rc)
+	})
+}
+
+// showEditOptionsMenu 为固定选项列弹出选择菜单(当前值带勾), 选中即落盘。
+// 菜单锚定在单元格下方, 不跟鼠标走(同列头菜单, 见 DESIGN 174)。
+func (d *DataTable) showEditOptionsMenu(raw, col int, options []string, rc xc.RECT) {
+	if d.table == nil || !xc.XC_IsHELE(d.table.Handle) {
+		return
+	}
+	current := d.cellText(raw, col)
+	m := NewMenu()
+	m.Width(160)
+	for _, opt := range options {
+		opt := opt
+		m.Check(opt, opt == current, MenuOnCheck(func(on bool) {
+			if on {
+				d.applyFixedCellEdit(raw, col, opt)
+			}
+		}))
+	}
+	m.PopupAtElementRect(d.table.Handle, rc)
+}
+
+// applyFixedCellEdit 提交固定选项的编辑结果(走与文本编辑相同的 OnCellEdit 门控)。
+func (d *DataTable) applyFixedCellEdit(raw, col int, next string) {
+	old := d.cellText(raw, col)
+	if next == old {
+		return
+	}
+	if d.onEdit != nil && !d.onEdit(raw, col, old, next) {
+		return
+	}
+	d.setCellValue(raw, col, next)
 }
 
 // setCellValue 写回一个单元格并重算视图(排序 / 筛选 / 当前页都会跟着更新)。

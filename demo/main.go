@@ -4196,12 +4196,13 @@ func buildDataPage(body *widget.LayoutEle) {
 	_, v := stretchCard(colStretch(r.Handle, 3, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v.Handle))
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 40, "DataTable(tasks): 勾选 / 分面 / 列头菜单 / 视图; Shift 多列排序与跨页全选, 拖拽表头换列; "+
-		"双击单元格编辑(Enter / 失焦提交, Esc 取消, 状态与优先级只认枚举值)。", v.Handle).SetMuted().SetAutoWrap())
+		"文本列双击编辑(Enter / 失焦提交, Esc 取消); 状态 / 优先级单击弹固定选项菜单。", v.Handle).SetMuted().SetAutoWrap())
 	xui.ItemFillHeight(v) // 内容区占满卡片剩余高度
 	dt := ui.NewDataTable(0, 0, 0, 0, v.Handle, []ui.DataColumn{
 		{Title: "任务", Width: 92, Sortable: true, Render: taskIDCell},
 		{Title: "标题", Sortable: true, Render: taskTitleCell}, // Width<=0: 占满剩余宽度
 		{Title: "状态", Width: 104, Sortable: true, Render: taskStatusCell,
+			EditOptions: []string{"待办", "进行中", "已完成", "已取消"},
 			FilterOptions: []ui.DataFilterOption{ // 工具栏"状态"多选(列内 OR)
 				{Label: "待办", Icon: icons.IconCircleDashed},
 				{Label: "进行中", Icon: icons.IconTimer},
@@ -4209,6 +4210,7 @@ func buildDataPage(body *widget.LayoutEle) {
 				{Label: "已取消", Icon: icons.IconCircleX},
 			}},
 		{Title: "优先级", Width: 92, Sortable: true, Render: taskPriorityCell,
+			EditOptions: []string{"高", "中", "低"},
 			FilterOptions: []ui.DataFilterOption{
 				{Label: "高", Icon: icons.IconArrowUp},
 				{Label: "中", Icon: icons.IconArrowRight},
@@ -4321,7 +4323,7 @@ func buildDataPage2(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格 · 虚拟滚动", v.Handle))
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 40,
 		"DataTable(虚拟滚动): "+strconv.Itoa(dataVirtualRows)+" 行数据全部留在 Go 侧, 原生 List 只给可见行填文本; "+
-			"勾选 / 双击编辑 / 排序 / 筛选 / 列显隐与「数据」页的分页模式一致, 但页脚不翻页, 只显示总行数与勾选统计。"+
+			"勾选 / 文本列双击编辑, 状态 / 优先级单击选择 / 排序 / 筛选 / 列显隐与「数据」页的分页模式一致, 但页脚不翻页, 只显示总行数与勾选统计。"+
 			"拖动右侧滚动条或滚轮浏览(分页模式见「数据」页)。10 万数据占用约 21MB 内存。", v.Handle).SetMuted().SetAutoWrap())
 	xui.ItemFillHeight(v)
 
@@ -4329,6 +4331,7 @@ func buildDataPage2(body *widget.LayoutEle) {
 		{Title: "任务", Width: 100, Sortable: true, Render: taskIDCell, ReadOnly: true},
 		{Title: "标题", Sortable: true},
 		{Title: "状态", Width: 110, Sortable: true, Render: taskStatusCell,
+			EditOptions: []string{"待办", "进行中", "已完成", "已取消"},
 			FilterOptions: []ui.DataFilterOption{
 				{Label: "待办", Icon: icons.IconCircleDashed},
 				{Label: "进行中", Icon: icons.IconTimer},
@@ -4336,6 +4339,7 @@ func buildDataPage2(body *widget.LayoutEle) {
 				{Label: "已取消", Icon: icons.IconCircleX},
 			}},
 		{Title: "优先级", Width: 92, Sortable: true, Render: taskPriorityCell,
+			EditOptions: []string{"高", "中", "低"},
 			FilterOptions: []ui.DataFilterOption{
 				{Label: "高", Icon: icons.IconArrowUp},
 				{Label: "中", Icon: icons.IconArrowRight},
