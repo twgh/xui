@@ -4323,7 +4323,7 @@ func buildDataPage2(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格 · 虚拟滚动", v.Handle))
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 40,
 		"DataTable(虚拟滚动): "+strconv.Itoa(dataVirtualRows)+" 行数据全部留在 Go 侧, 原生 List 只给可见行填文本; "+
-			"勾选 / 文本列双击编辑, 状态 / 优先级单击选择 / 排序 / 筛选 / 列显隐与「数据」页的分页模式一致, 但页脚不翻页, 只显示总行数与勾选统计。"+
+			"勾选 / 文本列双击编辑, 状态 / 优先级单击选择, 金额只允许数值 / 排序 / 筛选 / 列显隐与「数据」页的分页模式一致, 但页脚不翻页, 只显示总行数与勾选统计。"+
 			"拖动右侧滚动条或滚轮浏览(分页模式见「数据」页)。10 万数据占用约 21MB 内存。", v.Handle).SetMuted().SetAutoWrap())
 	xui.ItemFillHeight(v)
 
@@ -4345,7 +4345,7 @@ func buildDataPage2(body *widget.LayoutEle) {
 				{Label: "中", Icon: icons.IconArrowRight},
 				{Label: "低", Icon: icons.IconArrowDown},
 			}},
-		{Title: "金额", Width: 130, Sortable: true, Align: ui.DataAlignRight},
+		{Title: "金额", Width: 130, Sortable: true, Align: ui.DataAlignRight, EditNumeric: true},
 		{Title: "操作", Width: 52, NoHide: true, Render: taskActionCell, ReadOnly: true},
 	}
 	dt := ui.NewDataTable(0, 0, 0, 0, v.Handle, cols,

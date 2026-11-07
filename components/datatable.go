@@ -87,6 +87,10 @@ type DataColumn struct {
 	// 不再出现文本输入框 —— 状态 / 优先级 / 角色这类枚举列用它。空 = 普通文本编辑;
 	// ReadOnly 优先(设了 ReadOnly 就只走普通点击)。
 	EditOptions []string
+	// EditNumeric 为 true 时该列按数值输入: 输入过程中过滤掉非数字字符(只留数字、
+	// 最多一个小数点与开头的负号), 提交时再校验一次(空 / 只有符号不落盘)。
+	// 金额 / 数量列用; 与 EditOptions 互斥(固定选项列优先)。
+	EditNumeric bool
 	// ReadOnly 禁止编辑该列(见 WithDataTableEditing; 文本列双击、固定选项列单击)。
 	// 自绘列也能编辑 —— 编辑期间该格的自绘内容会让位给输入框; 行操作列这类
 	// "画按钮"的列应该设成只读。
@@ -192,8 +196,9 @@ func WithDataTableColumnToggle() DataTableOption {
 }
 
 // WithDataTableEditing 开启单元格编辑: 文本列**双击**在原地弹出输入框, Enter / 失焦提交,
-// Esc 取消; 配了 DataColumn.EditOptions 的固定选项列则**单击**弹选择菜单, 选中即提交。
-// 值没变不写回, 排序与筛选会按新值重算。
+// Esc 取消; 配了 DataColumn.EditOptions 的固定选项列则**单击**弹选择菜单, 选中即提交;
+// DataColumn.EditNumeric 的数值列在输入时过滤非数字字符。值没变不写回, 排序与筛选会
+// 按新值重算。
 //
 // 不可编辑的格子: 勾选列与 DataColumn.ReadOnly 列(自绘列可以编辑, 编辑期间该格
 // 暂停自绘)。写入前回调 OnCellEdit, 返回 false 即拒绝(单元格保持旧值)。
@@ -293,14 +298,15 @@ type DataTable struct {
 
 	// 单元格编辑(见 WithDataTableEditing): 输入框在第一次双击时惰性创建,
 	// 父是表格所在窗口 —— 绝对定位, 不参与页面/表格的流式布局。
-	editEnabled bool
-	editing     bool
-	editor      *Input
-	editRaw     int   // 正在编辑的原始数据行
-	editCol     int   // 正在编辑的列(DataColumn 下标)
-	editRowT    int32 // 原生页内行号(编辑期间清空/恢复该格文本用)
-	editSub     int32 // 原生列号(含勾选列偏移)
-	onEdit      func(row, col int, old, next string) bool
+	editEnabled   bool
+	editing       bool
+	editor        *Input
+	editRaw       int   // 正在编辑的原始数据行
+	editCol       int   // 正在编辑的列(DataColumn 下标)
+	editRowT      int32 // 原生页内行号(编辑期间清空/恢复该格文本用)
+	editSub       int32 // 原生列号(含勾选列偏移)
+	editorSyncing bool  // 程序化写编辑框文本时抑制数值过滤, 防止递归/把原值洗掉
+	onEdit        func(row, col int, old, next string) bool
 }
 
 // NewDataTable 创建数据表格。cols 末列 Width<=0 时占满剩余宽度。
@@ -1689,7 +1695,9 @@ func (d *DataTable) beginCellEdit(pt *xc.POINT) bool {
 		d.table.SetCell(row, sub, "")
 		d.table.Redraw(false)
 	}
-	ed.SetValue(old)
+	d.editorSyncing = true
+	ed.SetValue(old) // 原值照原样显示, 不在这里做数值过滤(避免把带格式的旧值洗掉)
+	d.editorSyncing = false
 	ed.SelectAll()
 	ed.Show(true)
 	ed.SetFocus()
@@ -1714,10 +1722,53 @@ func (d *DataTable) commitCellEdit(accept bool) {
 	if !accept || next == old {
 		return
 	}
+	if ci >= 0 && ci < len(d.cols) && d.cols[ci].EditNumeric && !dataNumericOK(next) {
+		return
+	}
 	if d.onEdit != nil && !d.onEdit(raw, ci, old, next) {
 		return
 	}
 	d.setCellValue(raw, ci, next)
+}
+
+// dataNumericInput 过滤数值输入: 只留数字、最多一个小数点与开头的负号。
+// 用户输入 "abc12.3.4x" 得到 "12.34"; 负号只有首字符有效。
+func dataNumericInput(s string) string {
+	out := make([]rune, 0, len(s))
+	dot := false
+	for i, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			out = append(out, r)
+		case r == '-' && i == 0:
+			out = append(out, r)
+		case r == '.' && !dot:
+			dot = true
+			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
+// dataNumericOK 校验提交值: 至少一位数字, 只允许数字 / 一个小数点 / 开头负号。
+func dataNumericOK(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	dot, digit := false, false
+	for i, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			digit = true
+		case r == '-' && i == 0:
+		case r == '.' && !dot:
+			dot = true
+		default:
+			return false
+		}
+	}
+	return digit
 }
 
 // openEditOptionsMenuAfterRelease 等鼠标左键松开后再弹固定选项菜单。
@@ -1800,6 +1851,24 @@ func (d *DataTable) ensureEditor() *Input {
 		return nil
 	}
 	ed.Show(false)
+	// 数值列输入过滤: 非数字字符直接丢弃; 程序化写值(加载原值 / 回写过滤结果)
+	// 用 editorSyncing 挡掉, 避免递归, 也不把带格式的旧值洗掉。
+	ed.OnChange(func(text string) {
+		if d.editorSyncing || !d.editing {
+			return
+		}
+		if d.editCol < 0 || d.editCol >= len(d.cols) || !d.cols[d.editCol].EditNumeric {
+			return
+		}
+		clean := dataNumericInput(text)
+		if clean == text {
+			return
+		}
+		d.editorSyncing = true
+		ed.SetValue(clean)
+		ed.MoveEnd()
+		d.editorSyncing = false
+	})
 	ed.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
 		const (
 			vkReturn = 0x0D
