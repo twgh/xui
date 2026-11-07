@@ -11,7 +11,7 @@
 ## 当前状态(截至 2026-11-07)
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
-- **发布**: v0.10.0(2026-11-05, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
+- **发布**: v0.11.0(2026-11-07, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
 - **CLI 版本语义(2026-11-06 改)**: 设计文档与组件同源(都从数据源取), 所以 tag 只代表"CLI 代码 + 内嵌模板/资源"的变化; 升级提示与 `--check` 的依据是 `registry.json` 的 `cliChange`, 不再是 `@latest` tag。后台探测子进程与 `update-check.json` 缓存已删除。
 - **组件覆盖**: 经典 shadcn 组件已全覆盖(context-menu 在 `menu`, form 在 `field`); 完整清单见 README / DESIGN 第七节。未做: Direction / Typography。
 - **DataTable 双模式(2026-11-07 探针定案)**: 分页是默认, 虚拟滚动用 `WithDataTableVirtualScroll` 显式开启 —— 两种模式共用排序/筛选/勾选/编辑/列显隐; 分页只装当前页(默认 10, 推荐 20~50), 虚拟滚动一次展示全部筛选结果且页脚只留总行数(分页 API 不生效). 原生 List 的滚动绘制只跟可见行数有关, 两种模式同为 ~4ms/帧(1M 行也一样); 把全部行装进普通 List 时 1M 行会多占约 1GB 原生内存, 分页/虚拟滚动都不复制. 真正随行数增长的是 Go 侧排序/筛选(1M 行 sortID 约 157ms、数字自然比较约 1.6s、筛选约 85ms), 与表格载体无关; 50 万行以上建议 `DataColumn.Compare` 或后台排序/筛选. demo 新增「数据2」页(10 万行虚拟滚动表, `XUI_HOME_PAGE=20`, **首次进入才生成数据**)与「数据」页的分页表对照; 依据与原始数据在 `.verify/probe-longlist/`(临时, 未入库).

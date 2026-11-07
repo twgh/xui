@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **v0.11.0 发布(2026-11-07)**: DataTable 分页 / 虚拟滚动双模式与枚举 / 数值编辑，Tree 勾选，Label 自动折行，CLI 升级提示收敛到 `cliChange`，窗口拖动透明闪烁修复，走 minor(组件 / API 变更)。
+  - **顺序**: 组件与文档提交 → 版本示例 + `fallbackXuiVersion` 提交(`e9449f1`)→ 轻量 tag `v0.11.0` → `runtime` + `cliChange` 抬到 v0.11.0(`18f2bc5`, tag 之后)。
+  - **推送**: `git push origin main v0.11.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。
+  - **Release**: https://github.com/twgh/xui/releases/tag/v0.11.0 , 名称 `v0.11.0 — DataTable 虚拟滚动 / 类型化编辑 / Tree 勾选`; 用 `git credential fill` 取 token 后 `Invoke-RestMethod` 创建(name/body 用 `[IO.File]::ReadAllText(..., UTF8)` 读, 线上校验名称 / 正文与草稿一致)。
+  - **下限回归**: 临时项目 `go mod edit -require=github.com/twgh/xui@v0.11.0` → 本地 registry `add --all` → `go mod tidy && go build -mod=mod ./ui` 通过(默认代理已收录新 tag)。
+
 - ✅ **DataTable 金额列只允许数值输入**(2026-11-07, 用户建议):
   - **API**: `DataColumn.EditNumeric`: 输入过程中只保留数字 / 最多一个小数点 / 开头负号, 非数字字符直接丢弃; 提交时至少一位数字才落盘(空 / 只有符号不写回); 加载原值不经过过滤, 带格式的旧值不会被静默改写。
   - **实现**: 编辑器 `Input.OnChange` 里过滤并用 `editorSyncing` 防止递归; 提交 `commitCellEdit` 再做一次 `dataNumericOK` 校验。
