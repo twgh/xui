@@ -130,13 +130,24 @@ func WithDataTableNoSearch() DataTableOption {
 	return func(d *DataTable) { d.searchOn = false }
 }
 
-// WithDataTablePageSize 设置初始每页行数(默认 10)。
+// WithDataTablePageSize 设置初始每页行数(默认 10, 推荐 20~50)。
+// 表格体只装当前页; 排序/筛选仍按全部数据在 Go 侧计算。虚拟滚动模式忽略本选项。
 func WithDataTablePageSize(n int) DataTableOption {
 	return func(d *DataTable) {
 		if n > 0 {
 			d.pageSize = n
 		}
 	}
+}
+
+// WithDataTableVirtualScroll 在构造时切换为虚拟滚动模式: 一次展示全部筛选结果,
+// 用滚动代替翻页。
+//
+// 默认仍是分页。虚拟模式适合 10 万行以上的连续浏览: 原生 List 只给可见行填文本,
+// 行数据不复制进原生适配器; 页脚只保留总行数 / 勾选统计, 分页控件隐藏, SetPage /
+// PageCount / OnPageChange 不再生效。排序 / 筛选 / 勾选 / 编辑与分页模式语义一致。
+func WithDataTableVirtualScroll() DataTableOption {
+	return func(d *DataTable) { d.virtual = true }
 }
 
 // WithDataTablePageSizes 设置"每页行数"下拉的候选值(默认 10/20/30/40/50)。
@@ -198,11 +209,15 @@ func WithDataTableEditing() DataTableOption {
 //     第 x / y 页 + 首页/上一页/下一页/末页按钮, 到端点自动禁用;
 //   - 排序列与筛选条件变化都会回到第一页(autoResetPageIndex 语义)。
 //
+// 默认是分页模式; WithDataTableVirtualScroll 切换为虚拟滚动(一次展示全部筛选结果,
+// 页脚只留总行数 / 勾选统计, 分页 API 不生效)。两种模式共用上面的排序 / 筛选 /
+// 勾选 / 列显隐 / 编辑逻辑, 差别只在行映射与页脚。
+//
 // 排序与分页都在 Go 侧完成, **不启用原生 List 的 SetSort** —— 原生的适配器排序
 // 只认列数据本身的类型, 与单元格显示文本(格式化过的金额/日期)和自定义比较器
 // 对不上, 而且没法做"第三次点击回到原始顺序"。
 //
-// 表格行高/外观沿用 Table; cy 为 0 时按"工具栏 + 每页行数 + 页脚"自动配高。
+// 表格行高/外观沿用 Table; cy 为 0 时按"工具栏 + 每页行数(虚拟滚动为 10 行) + 页脚"自动配高。
 type DataTable struct {
 	*widget.LayoutEle
 
@@ -229,6 +244,10 @@ type DataTable struct {
 
 	filter     string
 	filterCols []int
+
+	// virtual 为 true = 虚拟滚动模式: 不分页, 全部筛选结果放在同一张可滚动表里。
+	// 默认 false(分页); 两种模式共用同一套排序/筛选/勾选/编辑逻辑, 差别只在行映射与页脚。
+	virtual bool
 
 	page      int // 0 起
 	pageSize  int
@@ -321,7 +340,7 @@ func NewDataTable(x, y, cx, cy int32, hParent int, cols []DataColumn, opts ...Da
 	// cy=0: 高度按"工具栏 + 每页行数 + 页脚"配好。必须把根元素的初始高度也设上 ——
 	// 根是 Auto 高时, 里面 Weight 高的表格不会撑出高度(整块塌成 0, 实测见 DESIGN 8.164)。
 	if cy <= 0 {
-		total := d.minBodyH() + dataTableFooterH + dataTableGap
+		total := d.initialBodyH() + dataTableFooterH + dataTableGap
 		if d.toolbarOn() {
 			total += dataTableToolbarH + dataTableGap
 		}
@@ -389,6 +408,7 @@ func (d *DataTable) buildToolbar() {
 			}
 			d.filter = text
 			d.apply(true)
+			d.updateToolbar()
 			if d.onFilter != nil {
 				d.onFilter(text)
 			}
@@ -510,7 +530,11 @@ func (d *DataTable) colAt(tcol int32) int {
 }
 
 func (d *DataTable) buildTable() {
-	d.table = NewTable(0, 0, 0, 0, d.Handle, d.tableColumns())
+	var opts []TableOption
+	if d.virtual {
+		opts = append(opts, withTableVirtual())
+	}
+	d.table = NewTable(0, 0, 0, 0, d.Handle, d.tableColumns(), opts...)
 	xui.ItemFill(d.table)
 	// 表格吃掉工具栏/页脚之间的剩余高度; 高度 Auto 的父级里 Weight 会退化成 0
 	// (DESIGN 8.55), cy=0 的情况由构造函数的"根初始高度"兜底(见 8.164)。
@@ -588,19 +612,36 @@ func (d *DataTable) buildTable() {
 		return 0
 	})
 
+	// 双击勾选框 = 两次点击: List 把第二次按下并进 LButtonDBClick(不再单独发
+	// LButtonDown), 这里补一次切换并吞掉消息, 否则只响应第一次(同 Tree 勾选框)。
+	d.table.AddEvent_LButtonDBClick(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		if !d.selectOn || pPt == nil {
+			return 0
+		}
+		var row, sub int32
+		if !d.table.HitTestOffset(pPt, &row, &sub) || sub != 0 {
+			return 0
+		}
+		raw := d.rawRow(row)
+		if raw < 0 {
+			return 0
+		}
+		*pbHandled = true // 别让这次双击落到单元格编辑 / 原生默认双击
+		d.toggleRowSelected(raw)
+		return 0
+	})
+
 	// 空状态 / 排序图标都画在表格元素上: List 的内容区由原生管理, 往里塞覆盖元素
 	// 会被原生布局摆到奇怪的位置(见 DESIGN 8.162)。
 	d.table.EnableEvent_XE_PAINT_END()
 	d.table.AddEvent_Paint_End(d.paintEmpty)
 
 	d.table.OnSelect(func(row int32) {
-		if row < 0 || d.onRow == nil {
+		raw := d.rawRow(row)
+		if raw < 0 || d.onRow == nil {
 			return
 		}
-		idx := d.page*d.pageSize + int(row)
-		if idx >= 0 && idx < len(d.view) {
-			d.onRow(d.view[idx])
-		}
+		d.onRow(raw)
 	})
 
 	if d.editEnabled {
@@ -611,8 +652,9 @@ func (d *DataTable) buildTable() {
 			}
 			return 0
 		})
-		// 滚轮会把行带走, 而编辑框是绝对定位的窗口子元素(不跟滚动): 先落盘再滚。
-		d.table.AddEvent_MouseWheel(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		// 滚动(滚轮 / 拖滚动条 / 键盘)会把行带走, 而编辑框是绝对定位的窗口子元素
+		// (不跟滚动): 先落盘再滚。挂 ScrollView 事件而不是只挂 MouseWheel。
+		d.table.AddEvent_ScrollView_Scroll_V(func(hEle int, pos int32, pbHandled *bool) int {
 			d.commitCellEdit(true)
 			return 0
 		})
@@ -630,6 +672,10 @@ func (d *DataTable) buildFooter() {
 
 	d.totalLabel = NewLabel(0, 0, 0, 20, "", f.Handle).SetMuted()
 	xui.ItemWeight(d.totalLabel, 1)
+	if d.virtual {
+		// 虚拟滚动没有页: 页脚只留总行数 / 勾选统计。
+		return
+	}
 
 	d.perPageLabel = NewLabel(0, 0, 36, 20, "每页", f.Handle).SetMuted()
 	xui.ItemWidth(d.perPageLabel, 36)
@@ -666,9 +712,32 @@ func newDataTableNav(parent int, icon string) *Button {
 	return b
 }
 
-// minBodyH 是表格体"(表头 + 每页行数)所需的最小高度。
+// 虚拟滚动没有"每页行数": 布局最小高度只保证表头 + 3 行, cy=0 的初始高度
+// 仍按 10 行配(和分页默认观感一致), 但不把 pageSize 当成最小高度 —— 否则
+// 高度小于 pageSize 行的容器会把页脚挤出可视区。
+const (
+	dataTableVirtualMinRows     int32 = 3
+	dataTableVirtualInitialRows int32 = 10
+)
+
+func dataTableBodyH(rows int32) int32 {
+	return tableHeaderH + tableInset*2 + rows*tableRowH
+}
+
+// minBodyH 是表格体的布局最小高度(分页 = 每页行数, 虚拟滚动 = 3 行)。
 func (d *DataTable) minBodyH() int32 {
-	return tableHeaderH + tableInset*2 + int32(d.pageSize)*tableRowH
+	if d.virtual {
+		return dataTableBodyH(dataTableVirtualMinRows)
+	}
+	return dataTableBodyH(int32(d.pageSize))
+}
+
+// initialBodyH 是 cy=0 时的初始表格体高度。
+func (d *DataTable) initialBodyH() int32 {
+	if d.virtual {
+		return dataTableBodyH(dataTableVirtualInitialRows)
+	}
+	return d.minBodyH()
 }
 
 func (d *DataTable) sizeItems() []SelectItem {
@@ -713,6 +782,7 @@ func (d *DataTable) SetFilter(s string) *DataTable {
 		d.search.Redraw(false)
 	}
 	d.apply(true)
+	d.updateToolbar() // "重置"按钮按筛选状态出现/收起(关键字筛选也要刷新)
 	if d.onFilter != nil {
 		d.onFilter(s)
 	}
@@ -815,14 +885,25 @@ func dataShiftDown() bool {
 	return wapi.GetAsyncKeyState(xcc.VK_Shift) < 0
 }
 
-// Page 返回当前页(0 起)。
+// Virtual 报告当前是否为虚拟滚动模式。
+func (d *DataTable) Virtual() bool { return d.virtual }
+
+// Page 返回当前页(0 起)。虚拟滚动模式恒为 0。
 func (d *DataTable) Page() int { return d.page }
 
-// PageCount 返回总页数(至少 1)。
-func (d *DataTable) PageCount() int { return dataPageCount(len(d.view), d.pageSize) }
+// PageCount 返回总页数(至少 1)。虚拟滚动模式恒为 1(没有页的概念)。
+func (d *DataTable) PageCount() int {
+	if d.virtual {
+		return 1
+	}
+	return dataPageCount(len(d.view), d.pageSize)
+}
 
-// SetPage 跳到指定页(越界自动夹取), 触发 OnPageChange。
+// SetPage 跳到指定页(越界自动夹取), 触发 OnPageChange。虚拟滚动模式下无操作。
 func (d *DataTable) SetPage(p int) *DataTable {
+	if d.virtual {
+		return d
+	}
 	d.page = p
 	d.clampPage()
 	d.render()
@@ -832,12 +913,12 @@ func (d *DataTable) SetPage(p int) *DataTable {
 	return d
 }
 
-// PageSize 返回每页行数。
+// PageSize 返回每页行数。虚拟滚动模式下该值不生效(仅保留配置, 初始高度按 10 行配)。
 func (d *DataTable) PageSize() int { return d.pageSize }
 
-// SetPageSize 修改每页行数, 回到第一页。
+// SetPageSize 修改每页行数, 回到第一页。虚拟滚动模式下无操作。
 func (d *DataTable) SetPageSize(n int) *DataTable {
-	if n <= 0 || n == d.pageSize {
+	if d.virtual || n <= 0 || n == d.pageSize {
 		return d
 	}
 	d.pageSize = n
@@ -1291,7 +1372,11 @@ func (d *DataTable) OnFacetChange(fn func(col int, values []string)) *DataTable 
 
 // pageSelection 统计当前页的(已勾选数, 行数) —— 表头全选的判断口径(TanStack 的
 // getIsAllPageRowsSelected: 全选只管当前页, 不是全部筛选结果)。
+// 虚拟滚动没有页,"当前页"就是全部筛选结果。
 func (d *DataTable) pageSelection() (sel, total int) {
+	if d.virtual {
+		return d.selectedInView(), len(d.view)
+	}
 	start, end := d.page*d.pageSize, d.page*d.pageSize+d.pageSize
 	if start > len(d.view) {
 		start = len(d.view)
@@ -1332,7 +1417,12 @@ func (d *DataTable) toggleRowSelected(raw int) {
 }
 
 // togglePageSelection 表头点击: 整页勾满则清空整页, 否则把整页勾上。
+// 虚拟滚动没有页, 等价于 Shift+点击(全部筛选结果)。
 func (d *DataTable) togglePageSelection() {
+	if d.virtual {
+		d.toggleFilteredSelection()
+		return
+	}
 	sel, total := d.pageSelection()
 	on := sel < total
 	start, end := d.page*d.pageSize, d.page*d.pageSize+d.pageSize
@@ -1393,6 +1483,14 @@ func (d *DataTable) compareFor(col int, a, b string) int {
 
 func (d *DataTable) apply(resetPage bool) {
 	d.view = dataTableViewKeys(d.rows, d.filter, d.filterCols, d.facet, d.sortKeys, d.compareFor)
+	if d.virtual {
+		d.page = 0
+		d.render()
+		if resetPage {
+			d.table.ScrollPosV(0) // 没有页: autoResetPageIndex 的等价语义是回到顶部
+		}
+		return
+	}
 	if resetPage {
 		d.page = 0
 	}
@@ -1410,9 +1508,13 @@ func (d *DataTable) clampPage() {
 	}
 }
 
-// rawRow 把表格行下标(当前页内)翻成原始数据行下标; 越界返回 -1。
+// rawRow 把表格行下标翻成原始数据行下标; 越界返回 -1。
+// 分页模式: row 是当前页内下标; 虚拟滚动模式: row 就是筛选结果下标。
 func (d *DataTable) rawRow(row int32) int {
-	i := d.page*d.pageSize + int(row)
+	i := int(row)
+	if !d.virtual {
+		i += d.page * d.pageSize
+	}
 	if row < 0 || i < 0 || i >= len(d.view) {
 		return -1
 	}
@@ -1429,6 +1531,24 @@ func (d *DataTable) cellText(raw, col int) string {
 		return ""
 	}
 	return row[col]
+}
+
+// virtualCellText 是 Table 虚表的可见行文本 provider。tcol 是**表格列**下标
+// (勾选列在前), 需要先翻回 DataColumn; 自绘列与勾选列写空串, 编辑中的格子也写空串
+// 让输入框底下不叠字。
+func (d *DataTable) virtualCellText(row, tcol int32) string {
+	raw := d.rawRow(row)
+	if raw < 0 {
+		return ""
+	}
+	if d.editing && raw == d.editRaw && tcol == d.editSub {
+		return ""
+	}
+	ci := d.colAt(tcol)
+	if ci < 0 || d.cols[ci].Render != nil {
+		return ""
+	}
+	return d.cellText(raw, ci)
 }
 
 // ===== 单元格编辑 =====
@@ -1515,9 +1635,14 @@ func (d *DataTable) beginCellEdit(pt *xc.POINT) bool {
 	d.editRowT, d.editSub = row, sub
 	old := d.cellText(raw, ci)
 	// 原生文本会从编辑框四周/下层透出来: 编辑期间先清掉这一格(提交时按原值恢复,
-	// 值真变了的话随后 render 会整页重建)。
-	d.table.SetCell(row, sub, "")
-	d.table.Redraw(false) // 让该格的自绘内容立刻消失
+	// 值真变了的话随后 render 会重建)。虚表没有适配器可写, 让 provider 返回空串后
+	// 重刷可见行; 分页模式仍走原生 SetCell。
+	if d.virtual {
+		d.table.refreshVirtual()
+	} else {
+		d.table.SetCell(row, sub, "")
+		d.table.Redraw(false)
+	}
 	ed.SetValue(old)
 	ed.SelectAll()
 	ed.Show(true)
@@ -1615,8 +1740,20 @@ func (d *DataTable) releaseEditor() {
 	}
 }
 
+// render 按模式刷新表格体:
+//   - 分页(默认): 只把当前页灌进原生 List, 原生内存锁在页大小;
+//   - 虚拟滚动: 只下发总行数 + 可见行文本 provider, 行数据不进原生适配器。
+//
+// 两条路径的滚动绘制成本相同(原生 List 本来就只画可见行), 差别在大数据时的构建/内存。
 func (d *DataTable) render() {
 	if d.table == nil {
+		return
+	}
+	if d.virtual {
+		// 行下标在排序/筛选后指向别的原始行, 清掉原生单选高亮(勾选状态与它无关)。
+		d.table.CancelSelectAll()
+		d.table.setVirtualRows(int32(len(d.view)), d.virtualCellText)
+		d.syncFooter()
 		return
 	}
 	d.table.Clear()
@@ -1663,6 +1800,9 @@ func (d *DataTable) syncFooter() {
 		}
 		d.totalLabel.SetText(text)
 		d.totalLabel.Redraw(false)
+	}
+	if d.virtual {
+		return // 没有页: 页脚只保留总行数 / 勾选统计
 	}
 	if d.pageLabel != nil {
 		d.pageLabel.SetText(fmt.Sprintf("第 %d / %d 页", d.page+1, pages))

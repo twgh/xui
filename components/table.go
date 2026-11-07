@@ -98,6 +98,12 @@ type Table struct {
 	// dragSwallowClick 在拖拽结束的那次松开上置位: 若原生仍补发一次表头点击,
 	// 调用方据此吞掉菜单(下一次按下会清掉, 不会误伤后续单击)。
 	dragSwallowClick bool
+
+	// 虚表模式(DataTable 的虚拟滚动): 行数据不进原生适配器, 只有可见行创建/复用时
+	// 才通过 virtualText 取文本。行数在 virtualRows, Rows() 已做分支。
+	virtual     bool
+	virtualRows int32
+	virtualText func(row, col int32) string
 }
 
 // HeaderCellRect 返回表头第 col 列的单元格矩形(元素客户区坐标)。只在表头画过之后有效;
@@ -126,6 +132,12 @@ func WithTableRowHeight(h int32) TableOption {
 			t.rowH = h
 		}
 	}
+}
+
+// withTableVirtual 启用原生虚表(仅 DataTable 的虚拟滚动模式使用): 行数由
+// setVirtualRows 提供, 行文本在可见行创建时按需填充, 不把数据复制进原生适配器。
+func withTableVirtual() TableOption {
+	return func(t *Table) { t.virtual = true }
 }
 
 // WithTableOnBackground 让表体底色跟随 Background 令牌(默认跟随 Card)。
@@ -165,6 +177,10 @@ func NewTable(x, y, cx, cy int32, hParent int, cols []TableColumn, opts ...Table
 	// 数据适配器: 表头与列表项各一个(List 不挂适配器就是空壳)
 	t.CreateAdapterHeader()
 	t.CreateAdapter(int32(len(cols)))
+	// 虚表必须在加列之前启用(官方示例的顺序), 否则列/模板按普通表初始化。
+	if t.virtual {
+		t.EnableVirtualTable(true)
+	}
 
 	// 几何: 表头高 / 行高 / 行间距 0(原生默认行间距 1px, shadcn 的行是紧贴的)
 	t.SetHeaderHeight(tableHeaderH)
@@ -270,10 +286,50 @@ func (t *Table) SetRow(row int32, cells ...string) *Table {
 }
 
 // CellText 读取单元格文本。
-func (t *Table) CellText(row, col int32) string { return t.GetItemText(row, col) }
+func (t *Table) CellText(row, col int32) string {
+	if t.virtual && t.virtualText != nil {
+		return t.virtualText(row, col)
+	}
+	return t.GetItemText(row, col)
+}
 
-// Rows 返回行数。
-func (t *Table) Rows() int32 { return t.GetCount_AD() }
+// Rows 返回行数。虚表模式下是外部提供的总行数(原生适配器里没有行数据)。
+func (t *Table) Rows() int32 {
+	if t.virtual {
+		return t.virtualRows
+	}
+	return t.GetCount_AD()
+}
+
+// setVirtualRows 更新虚表的总行数与可见行文本来源。行数不变时只刷新模板文本
+// (排序/筛选后复用同一批可见行)。
+func (t *Table) setVirtualRows(n int32, cellText func(row, col int32) string) *Table {
+	if !t.virtual {
+		return t
+	}
+	if n < 0 {
+		n = 0
+	}
+	if n != t.virtualRows {
+		t.virtualRows = n
+		t.SetVirtualRowCount(n)
+	}
+	t.virtualText = cellText
+	t.RefreshData()
+	t.relayout(false)
+	t.Redraw(false)
+	return t
+}
+
+// refreshVirtual 重新给当前可见行填文本(编辑期间清空格子 / 数据原地变化)。
+func (t *Table) refreshVirtual() *Table {
+	if !t.virtual {
+		return t
+	}
+	t.RefreshData()
+	t.Redraw(false)
+	return t
+}
 
 // Columns 返回列数。
 func (t *Table) Columns() int32 { return int32(len(t.cols)) }
@@ -309,6 +365,9 @@ func (t *Table) OnSelect(fn func(row int32)) *Table {
 
 // Refresh 重新加载全部行(批量改完数据后调用)。
 func (t *Table) Refresh() *Table {
+	if t.virtual {
+		return t.refreshVirtual()
+	}
 	t.relayout(false)
 	t.RefreshData()
 	t.Redraw(false)
@@ -360,6 +419,10 @@ func (t *Table) SetColumns(cols []TableColumn) *Table {
 		t.AddColumnText(t.colWidth(int32(i), w, t.sbWide), fmt.Sprintf("name%d", i+1), c.Title)
 	}
 	t.CreateAdapter(int32(len(cols)))
+	if t.virtual {
+		// DeleteColumnAll/重建适配器之后虚表行数要重新下发(否则滚动范围变 0)。
+		t.SetVirtualRowCount(t.virtualRows)
+	}
 	t.lastW = -1
 	t.applyTheme(xui.Current()) // 重设表头/单元格字体、边距与对齐
 	t.relayout(true)
@@ -472,6 +535,12 @@ func (t *Table) onTempCreate(hEle int, pItem *xc.List_Item_, nFlag int32, pbHand
 	th := xui.Current()
 	for i := range t.cols {
 		t.styleCell(pItem.Index, int32(i), th)
+		// 虚表没有数据适配器, 行文本只能在模板创建/复用时填。
+		if t.virtual && t.virtualText != nil && pItem.Index >= 0 && pItem.Index < t.virtualRows {
+			if h := t.GetTemplateObject(pItem.Index, int32(i), 1); h != 0 {
+				xc.XShapeText_SetText(h, t.virtualText(pItem.Index, int32(i)))
+			}
+		}
 	}
 	return 0
 }

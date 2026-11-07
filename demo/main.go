@@ -7,7 +7,7 @@
 //   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
 //
 // 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
-// 启动页 XUI_HOME_PAGE = 0..20 = 基础1..4 / 表单1..5 / 导航1..6 / 反馈1..3 / 图表 / 数据 / 图标。
+// 启动页 XUI_HOME_PAGE = 0..21 = 基础1..4 / 表单1..5 / 导航1..6 / 反馈1..3 / 图表 / 数据 / 数据2 / 图标。
 package main
 
 import (
@@ -51,6 +51,7 @@ const (
 	pageFeed3         // 反馈3: 侧边 Sheet / 底部 Drawer
 	pageCharts        // 图表: 柱状 / 折线 / 面积 / 饼环
 	pageData          // 数据: 数据表格(DataTable) / 树
+	pageData2         // 数据2: 虚拟滚动数据表格(10 万行)
 	pageIcons         // 图标: 图标总览
 	pageCount
 )
@@ -62,7 +63,7 @@ var pageTitles = [...]string{
 	"导航1", "导航2", "导航3", "导航4", "导航5", "导航6",
 	"反馈1", "反馈2", "反馈3",
 	"图表",
-	"数据", "图标",
+	"数据", "数据2", "图标",
 }
 
 // tabW 是页签的初始宽(也是换行模式下的单页最小宽)。页签行按窗口宽自适应,
@@ -75,6 +76,7 @@ var (
 	demoTreeSel int32
 
 	demoWindow      *ui.AppWindow
+	demoData2Load   func() // 「数据2」首次显示时才生成 10 万行(默认启动不占这份内存)
 	demoScreen      *ui.ScreenToaster
 	demoTray        *ui.TrayIcon
 	demoTrayButton  *ui.Button
@@ -589,6 +591,7 @@ func buildPages(hWindow, host int) {
 	// 数据页是"铺满型": 表格/树吃窗口剩余高度(整页内容由 Weight 自适应、永远装得下,
 	// 不需要滚动)。其余页是自撑型: 内容比窗口高时滚动。
 	pages[pageData].SetContentFill()
+	pages[pageData2].SetContentFill() // 同样铺满: 虚拟滚动表要跟随窗口长高
 
 	buildBase1Page(bodies[pageBase1])
 	buildBase2Page(bodies[pageBase2])
@@ -610,9 +613,15 @@ func buildPages(hWindow, host int) {
 	buildFeed3Page(bodies[pageFeed3], hWindow)
 	buildChartPage(bodies[pageCharts])
 	buildDataPage(bodies[pageData])
+	buildDataPage2(bodies[pageData2])
 	buildIconPage(bodies[pageIcons])
 
 	show := func(i int) {
+		// 「数据2」的 10 万行是演示数据, 首次进入该页才生成并灌入虚表。
+		if i == pageData2 && demoData2Load != nil {
+			demoData2Load()
+			demoData2Load = nil
+		}
 		for j, p := range pages {
 			p.Show(j == i)
 
@@ -4292,6 +4301,152 @@ func buildDataPage(body *widget.LayoutEle) {
 	})
 }
 
+// ===== 页 21: 数据2(虚拟滚动 DataTable) =====
+
+// 数据2 表的列下标, 与 buildDataPage2 的 DataColumn 顺序一致(勾选列由组件加在最左)。
+const (
+	vTaskColID = iota
+	vTaskColTitle
+	vTaskColStatus
+	vTaskColPriority
+	vTaskColAmount
+	vTaskColAction
+)
+
+const dataVirtualRows = 100000
+
+func buildDataPage2(body *widget.LayoutEle) {
+	r := rowStretch(body.Handle, gap)
+	_, v := stretchCard(colStretch(r.Handle, 1, gap).Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格 · 虚拟滚动", v.Handle))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 40,
+		"DataTable(虚拟滚动): "+strconv.Itoa(dataVirtualRows)+" 行数据全部留在 Go 侧, 原生 List 只给可见行填文本; "+
+			"勾选 / 双击编辑 / 排序 / 筛选 / 列显隐与「数据」页的分页模式一致, 但页脚不翻页, 只显示总行数与勾选统计。"+
+			"拖动右侧滚动条或滚轮浏览(分页模式见「数据」页)。10 万数据占用约 21MB 内存。", v.Handle).SetMuted().SetAutoWrap())
+	xui.ItemFillHeight(v)
+
+	cols := []ui.DataColumn{
+		{Title: "任务", Width: 100, Sortable: true, Render: taskIDCell, ReadOnly: true},
+		{Title: "标题", Sortable: true},
+		{Title: "状态", Width: 110, Sortable: true, Render: taskStatusCell,
+			FilterOptions: []ui.DataFilterOption{
+				{Label: "待办", Icon: icons.IconCircleDashed},
+				{Label: "进行中", Icon: icons.IconTimer},
+				{Label: "已完成", Icon: icons.IconCircleCheck},
+				{Label: "已取消", Icon: icons.IconCircleX},
+			}},
+		{Title: "优先级", Width: 92, Sortable: true, Render: taskPriorityCell,
+			FilterOptions: []ui.DataFilterOption{
+				{Label: "高", Icon: icons.IconArrowUp},
+				{Label: "中", Icon: icons.IconArrowRight},
+				{Label: "低", Icon: icons.IconArrowDown},
+			}},
+		{Title: "金额", Width: 130, Sortable: true, Align: ui.DataAlignRight},
+		{Title: "操作", Width: 52, NoHide: true, Render: taskActionCell, ReadOnly: true},
+	}
+	dt := ui.NewDataTable(0, 0, 0, 0, v.Handle, cols,
+		ui.WithDataTableVirtualScroll(),
+		ui.WithDataTableSelection(),
+		ui.WithDataTableColumnToggle(),
+		ui.WithDataTableEditing(),
+		ui.WithDataTableFilterColumns(vTaskColID, vTaskColTitle, vTaskColStatus, vTaskColPriority, vTaskColAmount))
+	xui.ItemFill(dt)
+	xui.ItemFillHeight(dt)
+
+	var rows [][]string
+	demoData2Load = func() {
+		rows = buildVirtualTaskRows(dataVirtualRows)
+		dt.SetRows(rows)
+		dt.AdjustLayout()
+	}
+	dt.OnRowClick(func(row int) {
+		fmt.Printf("虚拟表 行点击: %s\n", rows[row][vTaskColID])
+	})
+	dt.OnSelectionChange(func(sel []int) {
+		fmt.Printf("虚拟表 勾选: %d 行\n", len(sel))
+	})
+	dt.OnFilterChange(func(text string) {
+		fmt.Printf("虚拟表 筛选: %q → %d 行\n", text, dt.FilteredRows())
+	})
+	dt.OnFacetChange(func(col int, values []string) {
+		fmt.Printf("虚拟表 分面: 列 %d = %v → %d 行\n", col, values, dt.FilteredRows())
+	})
+	dt.OnCellClick(func(row, col int) {
+		if col == vTaskColAction {
+			showVirtualTaskMenu(xc.XWidget_GetHWINDOW(v.Handle), rows[row])
+		}
+	})
+	dt.OnCellEdit(func(row, col int, old, next string) bool {
+		next = strings.TrimSpace(next)
+		switch col {
+		case vTaskColTitle:
+			if next == "" {
+				return false
+			}
+		case vTaskColStatus:
+			switch next {
+			case "待办", "进行中", "已完成", "已取消":
+			default:
+				return false
+			}
+		case vTaskColPriority:
+			switch next {
+			case "高", "中", "低":
+			default:
+				return false
+			}
+		case vTaskColAmount:
+			if next == "" {
+				return false
+			}
+		default:
+			return false
+		}
+		rows[row][col] = next
+		fmt.Printf("虚拟表 编辑: %s 列 %d: %q → %q\n", rows[row][vTaskColID], col, old, next)
+		return true
+	})
+}
+
+// buildVirtualTaskRows 生成虚拟滚动演示数据(不依赖 demoTasks, 渲染回调只读单元格文本)。
+func buildVirtualTaskRows(n int) [][]string {
+	statuses := []string{"待办", "进行中", "已完成", "已取消"}
+	priorities := []string{"高", "中", "低"}
+	actions := []string{"同步", "压缩", "解析", "索引", "备份", "迁移", "校验", "清理"}
+	modules := []string{"云端同步", "离线缓存", "任务队列", "数据管道", "权限服务", "报表引擎"}
+	rows := make([][]string, n)
+	for i := 0; i < n; i++ {
+		id := "TASK-" + strconv.Itoa(900000-i)
+		title := actions[i%len(actions)] + modules[(i/len(actions))%len(modules)] + " #" + strconv.Itoa(i+1)
+		rows[i] = []string{
+			id,
+			title,
+			statuses[i%len(statuses)],
+			priorities[i%3],
+			strconv.Itoa((i*37)%1000000) + ".00",
+			"",
+		}
+	}
+	return rows
+}
+
+func showVirtualTaskMenu(hWindow int, row []string) {
+	m := ui.NewMenu()
+	m.Width(176)
+	m.Label(row[vTaskColID])
+	m.Item("查看", ui.MenuIcon(icons.IconEye), ui.MenuOnSelect(func() {
+		fmt.Printf("虚拟表 查看: %s\n", row[vTaskColID])
+	}))
+	m.Item("复制任务 ID", ui.MenuIcon(icons.IconCopy), ui.MenuOnSelect(func() {
+		fmt.Printf("虚拟表 复制: %s\n", row[vTaskColID])
+	}))
+	m.Separator()
+	m.Item("删除", ui.MenuDestructive(), ui.MenuIcon(icons.IconTrash), ui.MenuOnSelect(func() {
+		fmt.Printf("虚拟表 删除: %s\n", row[vTaskColID])
+	}))
+	m.PopupAtCursor(hWindow)
+}
+
 // ===== 数据页: tasks 风格任务表(对齐 shadcn data-table 的 tasks 示例) =====
 
 // 任务表的列下标, 与 buildDataPage 里的 DataColumn 顺序一致(勾选列由组件加在最左)。
@@ -4465,7 +4620,7 @@ func showTaskMenu(hWindow int, task demoTask) {
 	m.PopupAtCursor(hWindow)
 }
 
-// ===== 页 21: 图标(icons 资源子包) =====
+// ===== 页 22: 图标(icons 资源子包) =====
 // 网格是"一个格子一个自绘元素"(各自带 hover 态), 翻页只改格子里的名字 + 重绘,
 // 不销毁元素(见 DESIGN 第八节 44)。格子默认只画图标: 悬浮出提示气泡显示名字,
 // 点击把名字复制到剪贴板。
