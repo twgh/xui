@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复阴影窗口拖动改大小时整窗闪透明**(2026-11-07, 用户报障):
+  - **现象**: 在反馈2 页反复拖标题上沿改窗口大小, 拖动过程中窗口主体会闪现透明(露出背后的终端/桌面), 1~2 帧后恢复。
+  - **根因**: 主窗口是 `Window_Transparent_Shadow` 分层窗口, 尺寸变化后要重新提交整张分层表面; xcgui 把这趟提交排进下一次重绘, 提交前 DWM 合成到的是空层, 于是整窗透明一帧。窗口级 `WndProc` 的 `WM_SIZE` 回调早于 xcgui 内部尺寸处理, 在那里同步重绘只能减少(53 → 11 帧)不能根除(见 DESIGN 第八节 191)。
+  - **修法**: `NewAppWindow` 改在窗口 `AddEvent_Size`(事件总线在内部尺寸处理之后派发)里 `XWnd_Redraw(h, true)`, 每次尺寸变化都在同一消息内提交完整表面。
+  - **验收**: 150% DPI, 反馈2 页, `ffmpeg ddagrab`(Desktop Duplication, DWM 合成后的真实画面) 60fps 录屏逐帧统计窗口中部亮度 —— 顶边连续拖动 9.5s/698 帧: 修复前亮色 53 帧掉到 85(露出背后窗口), 修复后亮色 / 暗色均 0 帧; 最大化还原、底边拖动无透帧; `go build/vet/test` 全绿, 逐组件 `window` + `add --all` 编译通过。
+  - **登记**: DESIGN-PITFALLS 191 + DESIGN 第八节索引; `registry.json` 未变(window.go 已在清单), 无 CLI 改动, 不打 tag。
+
 - ✅ **抽出通用的 `Label.SetAutoWrap()`**(2026-11-07, 用户建议):
   - **动机**: demo 的自动折行说明需要量 `WrappedHeight`、改高度、逐级 `AdjustLayout`, 是用户写长说明时反复遇到的样板; 放在 demo 里不可复用。
   - **API**: `components/label.go` 新增 `SetAutoWrap()`: 宽度确定后量折行高度, 写回元素高度 + 布局项 Fixed, 逐级通知祖先重排; 宽度 / 文本 / 字体变化时重新量。`SetText` 保持原生返回签名并触发重量; `SetWrap` 仍是"只换行、调用方管高度"。

@@ -133,6 +133,14 @@ func NewAppWindow(title string, cx, cy int32, opts ...AppWindowOption) *AppWindo
 	w.EnableLayout(true)
 	w.buildCaption(cfg)
 	w.buildContent(cfg)
+	// 阴影窗口是 layered 窗口: 实时拖边框改大小时, 分层表面若等到下一趟定时重绘才更新,
+	// 中间会出现 1~2 帧整窗透明(露出背后的窗口, 见 DESIGN 第八节 191)。
+	// 窗口级 WndProc 的 WM_SIZE 早于 xcgui 内部完成尺寸处理, 在那里重绘拿到的还是旧表面;
+	// 事件总线的 Size 事件在内部处理之后派发, 此时同步重绘可保证每次尺寸变化都有一帧完整内容。
+	w.AddEvent_Size(func(hWindow int, nFlags uint, pPt *xc.SIZE, pbHandled *bool) int {
+		xc.XWnd_Redraw(hWindow, true)
+		return 0
+	})
 
 	// 窗口销毁时从主题注册表摘掉(句柄会被系统复用, 留着会让主题切换操作到别的窗口)
 	w.AddEvent_WindProc(func(hWindow int, message uint32, wParam, lParam uintptr, pbHandled *bool) int {

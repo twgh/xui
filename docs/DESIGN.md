@@ -761,6 +761,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **188** 被 `SetCapture` 的元素收不到 `MouseLeave`: 拖动结束后提示气泡不消失
 - **189** `XEle_GetWndClientRect` 给的是未裁剪矩形: 滚出视口的控件仍在视口外"命中"鼠标
 - **190** 滚轮只发 `WM_MOUSEWHEEL`: 提示气泡不会随页面滚动收起
+- **191** 阴影窗口实时拖边框改大小会闪 1~2 帧整窗透明: 在 Size 事件里同步重绘
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 
