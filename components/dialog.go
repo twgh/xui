@@ -30,10 +30,6 @@ const (
 	// dlgTextOver: 文本元素的上下外扩量。行盒按 CSS 的 leading-none/默认行高算,
 	// 但元素内文字是垂直居中且被裁在元素内, 需要外扩几个像素才放得下字形
 	dlgTextOver int32 = 3
-	// 原生 Button 载体绘制文字时会再内缩一圈: 量折行高度要用收窄后的宽度,
-	// 否则最后一行会被裁掉并出现省略号(同 alert.go, 见 DESIGN 第八节 90)
-	dlgTextInsetX int32 = 12
-	dlgTextPadY   int32 = 4
 )
 
 // AlertDialog 几何常量(对齐 alert-dialog.tsx (radix-nova), 单位逻辑像素):
@@ -958,16 +954,16 @@ func (d *Dialog) textHeight(l *Label, text string, width, lineH int32) int32 {
 	if l == nil || text == "" || width <= 0 || lineH <= 0 {
 		return 0
 	}
-	measureW := width - dlgTextInsetX
+	measureW := width - labelWrapInsetX
 	if measureW < lineH {
 		measureW = width
 	}
 	h := l.WrappedHeight(measureW)
 	// GetTextShowRect 的单行返回值比行盒略高(16px 字约 19), 容差内仍按单行算
-	if h <= lineH+dlgTextPadY {
+	if h <= lineH+labelWrapPadY {
 		return lineH
 	}
-	return (h+lineH-1)/lineH*lineH + dlgTextPadY
+	return (h+lineH-1)/lineH*lineH + labelWrapPadY
 }
 
 // scrollContentHeight 量可滚动内容的自然高度, 夹到 70vh / 面板可用高度以内。

@@ -22,10 +22,6 @@ const (
 	alertIconShift int32 = 2  // translate-y-0.5
 	alertLineH     int32 = 20 // text-sm 的默认行高 1.25rem
 	alertActionOff int32 = 8  // top-2 right-2
-	// 原生 Button 的文字排版区比元素窄/矮一圈(默认内边距): 量高时宽度要收一点,
-	// 多行高度也要补一点, 否则最后一行的字形会被裁掉并出现省略号(实测)。
-	alertTextInsetX int32 = 12
-	alertTextPadY   int32 = 4
 )
 
 // AlertVariant 提示条变体, 对应 shadcn alert.tsx 的 variant。
@@ -304,7 +300,7 @@ func (a *Alert) reflow() {
 	}
 	// 原生 Button 的文字排版区域比元素窄一圈(默认内边距), 直接按元素宽量会少数一行;
 	// 用收窄后的宽度量高。见 DESIGN 第八节 90。
-	measureW := w - alertTextInsetX
+	measureW := w - labelWrapInsetX
 	if measureW < alertLineH {
 		measureW = w
 	}
@@ -321,28 +317,7 @@ func (a *Alert) reflow() {
 	if !changedTitle && !changedDesc && !widthChanged {
 		return
 	}
-	xc.XEle_AdjustLayout(a.Handle)
-	for p := xc.XWidget_GetParentEle(a.Handle); p != 0; p = xc.XWidget_GetParentEle(p) {
-		if xc.XC_IsHXCGUI(p, xcc.XC_LAYOUT_FRAME) {
-			// ScrollArea 的框架自己会重排内容区并重算滚动范围。
-			xc.XEle_AdjustLayout(p)
-			break
-		}
-		if pp := xc.XWidget_GetParentEle(p); pp != 0 && xc.XC_IsHXCGUI(pp, xcc.XC_LAYOUT_FRAME) {
-			// p 是框架的内容区: 直接对内容区 AdjustLayout 会把 Alert 宽度打成 0(实测),
-			// 必须交给框架排。
-			xc.XEle_AdjustLayout(pp)
-			break
-		}
-		if xc.XC_IsHXCGUI(p, xcc.XC_ELE) {
-			xc.XEle_AdjustLayout(p)
-			continue
-		}
-		if xc.XC_IsHXCGUI(p, xcc.XC_WINDOW) {
-			xc.XWnd_AdjustLayout(p)
-		}
-		break
-	}
+	reflowAfterTextHeight(a.Handle)
 	a.Redraw(false)
 	a.text.Redraw(false)
 	a.title.Redraw(false)
@@ -362,7 +337,7 @@ func alertTextHeight(h int32) int32 {
 	if h <= alertLineH {
 		return alertLineH
 	}
-	return (h+alertLineH-1)/alertLineH*alertLineH + alertTextPadY
+	return (h+alertLineH-1)/alertLineH*alertLineH + labelWrapPadY
 }
 
 // setTextHeight 写回文本高度; 返回是否发生变化。0 = 文本隐藏, 保持原高度(隐藏项不参与布局)。

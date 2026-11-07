@@ -175,7 +175,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | FileDialog | 系统原生文件对话框:打开 / 多选 / 保存 / 选择文件夹;过滤器 = 名称 + 通配符,取消返回空串 / nil;不套 xui 主题 |
 | Table | 数据表格(原生 `List` 载体 + 自绘皮肤):表头/行边框/悬浮/选中/主题化细滚动条;列宽可"占满剩余宽度" |
 | DataTable | 在 Table 之上加排序 / 筛选 / 分页 / 勾选 / 列显隐 / 双击原地编辑;表头菜单排序(Shift+点多列排序)、表头可拖拽换列顺序、分面筛选、跨页全选(Shift+点表头复选框);列的行为由 `DataColumn` 的字段描述(排序/对齐/富渲染/隐藏/筛选项/只读) |
-| Tree | 树形视图(原生 `Tree` 载体 + 自绘皮肤):缩进参考线 / 旋转 chevron / 行悬浮选中;叶节点留空槽位使文字全树对齐 |
+| Tree | 树形视图(原生 `Tree` 载体 + 自绘皮肤):缩进参考线 / 旋转 chevron / 行悬浮选中;叶节点留空槽位使文字全树对齐;`WithTreeCheckable` 勾选模式:父节点半选 + 级联,勾选与原生单选解耦 |
 | Chart | 图表(纯自绘):柱/折/面积/饼/圆环/径向/雷达,堆叠、平滑、数据点、图例临时隐藏、悬停指示线与提示卡、Y 轴刻度按数据自动取整齐值、点击数据点回调 |
 | Pagination | 分页:上/下一页 + 页码 + 省略号折叠(>7 页),当前页描边态 |
 | Steps | 步骤条:横向(圆点在上)/ 竖向(圆点在左)两形态;已完成 / 进行中 / 未达 / 出错四态(`StepItem.Status` 可单步覆盖,错误步连接线变红);`StepItem.Icon` 给每步指定自定义图标(`icons.IconXxx` / path / 整段 SVG),代替序号与对勾、状态仍用颜色区分;默认点已完成步回退,`WithStepsClickable` 放开任意非禁用步、`StepItem.Disabled` 单步禁用;`StepItem.Percent` 在当前步圆点上画进度弧;`WithStepsSize(StepsSmall)` 小号、`WithStepsInitial` 偏移起始编号;Tab 聚焦后 ←/→ 移动焦点、Enter/空格激活;放进非 Card 底色的容器时用 `SetBackdrop` 跟随宿主底色 |
@@ -192,7 +192,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | ScreenPopup | 屏幕弹窗:固定在屏幕工作区右下角的**常驻**面板 —— 不是通知(默认不自动关闭、不堆叠),内容任意 xui 控件、高度自撑;默认不抢焦点,`WithScreenPopupFocusable(true)` 改为点击后键盘可用 |
 | Tray | 系统托盘:左键还原/前台化绑定窗口(可覆盖),右键弹 themed Menu,资源图标可直接用 `.syso` 里的 HICON;监听 `TaskbarCreated`,Explorer 重启后自动恢复图标。⚠️ 同一进程只应创建一个托盘图标(xcgui 的托盘 API 是全局状态) |
 | AppWindow | 主窗口封装:圆角阴影 + 自绘标题栏(最小化/最大化/关闭、双击最大化/还原、最大化图标自动切换)+ 主题化底色;`NewAppWindow("标题", 640, 480)` 后往 `Content()` 放内容,`AddCaptionButton` 加标题栏按钮 |
-| Label / Card / Badge / Separator | 静态展示组件:Badge 6 变体(含 ghost/link)、行内图标、加载指示器、自定义配色与点击回调,`cx` 传 0 按内容量宽、`SetText` 后自动重量;Card 有 `sm` 尺寸与卡片头(标题 + 说明 + 右上动作区)/ 说明 / 页脚;Separator 支持垂直 |
+| Label / Card / Badge / Separator | 静态展示组件:Label 的 `SetWrap` 只换行、`SetAutoWrap` 按宽度自动折行并让高度自撑(窗口缩放 / `SetText` 后重排);Badge 6 变体(含 ghost/link)、行内图标、加载指示器、自定义配色与点击回调,`cx` 传 0 按内容量宽、`SetText` 后自动重量;Card 有 `sm` 尺寸与卡片头(标题 + 说明 + 右上动作区)/ 说明 / 页脚;Separator 支持垂直 |
 
 交互类组件默认带齐 4 态: 正常 / hover / 按下 / 禁用, 外加键盘焦点环(静态展示与容器类组件没有按下态)。
 

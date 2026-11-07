@@ -4186,8 +4186,8 @@ func buildDataPage(body *widget.LayoutEle) {
 	// ---- 数据表格(整行占满剩余高度, 表格跟随窗口长高) ----
 	_, v := stretchCard(colStretch(r.Handle, 3, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "数据表格", v.Handle))
-	xui.ItemFill(desc(v.Handle, "DataTable(tasks): 勾选 / 分面 / 列头菜单 / 视图; Shift 多列排序与跨页全选, 拖拽表头换列; "+
-		"双击单元格编辑(Enter / 失焦提交, Esc 取消, 状态与优先级只认枚举值)。"))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 40, "DataTable(tasks): 勾选 / 分面 / 列头菜单 / 视图; Shift 多列排序与跨页全选, 拖拽表头换列; "+
+		"双击单元格编辑(Enter / 失焦提交, Esc 取消, 状态与优先级只认枚举值)。", v.Handle).SetMuted().SetAutoWrap())
 	xui.ItemFillHeight(v) // 内容区占满卡片剩余高度
 	dt := ui.NewDataTable(0, 0, 0, 0, v.Handle, []ui.DataColumn{
 		{Title: "任务", Width: 92, Sortable: true, Render: taskIDCell},
@@ -4277,15 +4277,18 @@ func buildDataPage(body *widget.LayoutEle) {
 	// ---- 树 ----
 	_, v2 := stretchCard(colStretch(r.Handle, 2, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "树形视图", v2.Handle))
-	xui.ItemFill(desc(v2.Handle, "原生 Tree 载体 + 全自绘皮肤: 缩进参考线 / 旋转 chevron / 行悬浮与选中 bg-accent。"+
-		"点击 chevron 或文字选中。"))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 40, "原生 Tree 载体 + 全自绘皮肤: 缩进参考线 / 旋转 chevron / 行悬浮与选中 bg-accent。"+
+		"勾选模式下父节点随后代显示全选 / 半选, 点父节点级联全部后代; 点复选框不改变选中行。", v2.Handle).SetMuted().SetAutoWrap())
 	xui.ItemFillHeight(v2)
-	demoTree = ui.NewTree(0, 0, 0, 0, v2.Handle)
+	demoTree = ui.NewTree(0, 0, 0, 0, v2.Handle, ui.WithTreeCheckable())
 	xui.ItemFill(demoTree)
 	xui.ItemFillHeight(demoTree)
 	demoTreeSel = buildDemoTree(demoTree)
 	demoTree.OnSelect(func(id int32) {
 		fmt.Printf("选中项: %s\n", demoTree.ItemText(id))
+	})
+	demoTree.OnCheckChange(func(id int32, checked bool) {
+		fmt.Printf("勾选: %s = %v (共 %d 项)\n", demoTree.ItemText(id), checked, len(demoTree.CheckedKeys()))
 	})
 }
 
@@ -4691,7 +4694,7 @@ func showIconPage(idx int) {
 func buildDemoTree(t *ui.Tree) int32 {
 	src := t.AddRoot("src")
 	comp := t.AddChild(src, "components")
-	t.AddChild(comp, "button.go")
+	button := t.AddChild(comp, "button.go")
 	t.AddChild(comp, "table.go")
 	treeItem := t.AddChild(comp, "tree.go")
 	demo := t.AddChild(src, "demo")
@@ -4702,7 +4705,10 @@ func buildDemoTree(t *ui.Tree) int32 {
 	t.AddChild(docs, "DESIGN-PITFALLS.md")
 	t.AddChild(docs, "HANDOFF.md")
 	t.AddChild(docs, "CHANGELOG.md")
-	t.AddRoot("README.md")
+	readme := t.AddRoot("README.md")
+	// 一棵勾选了一半的树: 叶子勾一个 → components / src 自动半选; 根级叶子单独全选
+	t.SetChecked(button, true)
+	t.SetChecked(readme, true)
 	t.Expand(comp, true)
 	t.Expand(src, true)
 	t.Select(treeItem)

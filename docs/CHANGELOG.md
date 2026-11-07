@@ -5,6 +5,26 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **抽出通用的 `Label.SetAutoWrap()`**(2026-11-07, 用户建议):
+  - **动机**: demo 的自动折行说明需要量 `WrappedHeight`、改高度、逐级 `AdjustLayout`, 是用户写长说明时反复遇到的样板; 放在 demo 里不可复用。
+  - **API**: `components/label.go` 新增 `SetAutoWrap()`: 宽度确定后量折行高度, 写回元素高度 + 布局项 Fixed, 逐级通知祖先重排; 宽度 / 文本 / 字体变化时重新量。`SetText` 保持原生返回签名并触发重量; `SetWrap` 仍是"只换行、调用方管高度"。
+  - **归一**: Alert / Dialog 原先各自复制的 12px 文字区 inset、4px 末行补高与祖先重排循环收进 label.go(`labelWrapInsetX/PadY`、`labelWrapHeight`、`reflowAfterTextHeight`), 行为不变, Alert 单测照旧。
+  - **验收**: demo 数据页两条长说明改用 `SetAutoWrap` 后默认 2 / 3 行、拖窄到 1021 宽重排为 3 / 4 行且完整; 探针确认 `SetText` 后高度按内容 20 → 64 → 20; `go vet/test/build` 全绿; 逐组件 `label/alert/dialog/empty/field` 与 `add --all` 编译通过; `components/label_test.go` 覆盖整行取整与末行补高。
+  - **登记**: README Label 行、DESIGN 组件解剖 / 差异表 / API 清单、HANDOFF 最近一批同步; `registry.json` 未变(label.go 已在清单, Alert/Dialog 已依赖 label), 无 CLI 改动, 不打 tag。
+
+- ✅ **demo 数据页两条长说明自动折行**(2026-11-07, 用户报障):
+  - **现象**: 数据表格 / 树形视图上方的说明只显示一行, 尾部是省略号, 后面的内容看不到。
+  - **根因**: demo 的 `desc()` 固定高度 36; 主题 14px 文字的行高 20, 36 连两行都放不下, 原生 Button 只排一行并用省略号去尾。
+  - **修法**: 数据页两条长说明改用 `Label.SetAutoWrap()`(抽取见上一条), 其它单行说明仍用 `desc()`。
+  - **验收**: 150% DPI 亮色数据页截图 —— 默认 1176 宽时左侧数据表格说明完整折成 2 行、右侧树说明折成 3 行, 均无省略号; 把窗口拖窄到 1021 宽后两条说明重新折成 3 / 4 行且仍完整, 树/表格在说明长高后继续正常铺满剩余高度。
+
+- ✅ **Tree 支持勾选模式(`WithTreeCheckable`)**(2026-11-07, HANDOFF 待办"tree 勾选与多选"):
+  - **组件**: `components/tree.go` 增加构造选项 `WithTreeCheckable()`(模板必须在建树前确定); 项模板在 chevron 槽后加 16px 占位, 复选框由 `XE_TREE_DRAWITEM` 自绘(16×16 / 圆角 4; 未选 = border-input 空心 + 暗色 input/30 底, 选中 = primary 底 + primary-foreground 勾, 半选 = primary 底 + 减号); 新增 `Checked/SetChecked/CheckedKeys/OnCheckChange`。
+  - **语义定死**: 状态按项 ID 存, 父节点由**直接子项**聚合(全勾 = 全选、有勾/有半选 = 半选); 点父节点级联全部后代, 半选父节点点一下落到全选; 点复选框在 `LButtonDown` 命中后 `*pbHandled=true` 吞消息, **不改变原生单选行**(复用 DESIGN 第八节 170 的做法); `CheckedKeys()` 返回前序快照(包含全选父节点, 半选父节点不包含); `OnCheckChange(id, checked)` 只回调被操作项, 级联变化用 `CheckedKeys()` 取完整集合。
+  - **修复(用户报障)**: ① 在复选框位置双击会把项展开/收起 —— 原生 Tree 把第二次点击的 `LButtonDBClick` 当展开动作; ② 只吞消息不切勾选时, 双击只响应第一次, 用户要的是"双击 = 两次点击"。修法: 注册 `AddEvent_LButtonDBClick`, 命中复选框时先 `*pbHandled=true` 吞掉原生展开, 再照常 `toggleChecked`(第一次 `LButtonDown` 已切过一次); 验收: 150% DPI 亮色双击 `components` 复选框 —— 从半选变成全不选(先级联全选、再级联取消), 节点始终保持展开、子项可见、原生选中行不变; 同位置再双击仍回到全不选(双击是两次切换, 不是一次), 单点一次才恢复全选。
+  - **验收**: `components/tree_test.go` 覆盖半选聚合与命中区不压 chevron/文字; 探针实测 —— 初始 `[]` → 勾 a 得 `[a c]`(r1 半选) → 勾 r1 得 `[r1 a c b]` → 删除未勾选的 b 后 r1 自动转全选 `[r1 a c]` → 清空 `[]`, 根级 r2 也在 `CheckedKeys` 里; 150% DPI 亮/暗截图 —— src/components 半选减号、button.go/README.md 全选、暗色下选中框转 primary 浅底深勾; 真实点击 table.go 勾选后选中行仍是 button.go, 点 components 级联全选/取消, 点 demo 的 chevron 只展开、不切勾选; `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 逐组件 install tree + `add --all` 均编译通过。
+  - **登记**: demo 数据页树改为勾选模式并预置半选/全选样例; README 组件表、DESIGN 第四节末语义表、HANDOFF 最近一批 / 待办、DESIGN-PITFALLS 170 同步; `registry.json` 的 tree 条目文件未变(仍是 `tree.go` + `scrollbar.go`), 无 CLI 改动, 不打 tag。
+
 - ✅ **CLI 升级提示改为"只在真改了 CLI 时才提示";设计文档与组件同源**(2026-11-06, 用户报障):
   - **现象**: 组件批次一发 tag, 之后每条 `xui` 命令末尾都提示"xui 有新版 v0.9.0 → v0.10.0", 而 `cmd/xui` 那阵子一行没改 —— 用户以为自己错过了 CLI 的修复。
   - **根因**: 提示的依据是模块 `@latest` 解析到的 tag, 但 tag 里装的东西远不止 CLI:`init` / `add` 写进用户项目的 `DESIGN.md` / `DESIGN-PITFALLS.md` 是从**已安装 CLI 自己的模块目录**读的, 项目模板与 `app.ico` 也随 tag 走。所以"tag 更新"确实带着内容更新, 只是提示语把它说成了"CLI 有新版";而且只要版本落后, 每条命令都重复提示一次。

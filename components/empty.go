@@ -223,7 +223,7 @@ func NewEmptyTitle(hParent int, text string) *Label {
 }
 
 // NewEmptyDescription 创建空状态描述: text-sm(14) + muted, 水平居中、宽度铺满。
-// 说明文字较长时用 SetWrap 并自行给足高度(Label 不会随折行自撑)。
+// 说明文字较长时对返回的 Label 调用 SetAutoWrap(), 高度会随折行自撑。
 func NewEmptyDescription(hParent int, text string) *Label {
 	l := NewLabel(0, 0, 0, emptyDescH, text, hParent).SetMuted().SetWrap().SetAlignCenter()
 	xui.ItemFill(l)

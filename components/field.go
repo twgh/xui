@@ -127,7 +127,7 @@ func (f *Field) Title(text string) *Label {
 }
 
 // Description 创建字段说明(text-sm, muted)。多条说明按 Field 的 gap 堆叠。
-// 说明文字较长时用 SetWrap 并自行给足高度(Label 不会随折行自撑)。
+// 说明文字较长时对返回的 Label 调用 SetAutoWrap(), 高度会随折行自撑。
 func (f *Field) Description(text string) *Label {
 	l := NewLabel(0, 0, 0, fieldTextH, text, f.Handle).SetMuted().SetWrap()
 	f.setChildWidth(l)
@@ -339,8 +339,8 @@ func (s *FieldSeparator) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 // FieldError 字段错误文本区: 一条或多条错误, 默认隐藏, SetErrors 后显示。
 //
 // 与 shadcn field.tsx 的 FieldError 对齐: text-sm destructive; 多条错误去重、
-// 左缩进 16 并用 "•" 作列表标记。上游按错误文案折行; 这里的单条错误保持单行
-// (超出省略号), 需要多行时用返回的 Labels 自行加高。
+// 左缩进 16 并用 "•" 作列表标记。默认单条错误保持单行(超出省略号); 需要多行时
+// 对 Labels() 返回的 Label 调用 SetAutoWrap(), 高度会随折行自撑。
 type FieldError struct {
 	*widget.LayoutEle
 	labels []*Label
