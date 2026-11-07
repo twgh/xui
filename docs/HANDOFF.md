@@ -28,9 +28,6 @@
 ## 待办
 
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)。
-- ⬜ **组件缺口(2026-11-04 盘点: 上游 registry index + 桌面 app 常用面比对; 经典 shadcn 组件已全覆盖 —— context-menu 在 `menu`, form 在 `field`)**:
-  - ⬜ **shadcn 聊天 / Agent 组件族** — 上游 index 新增 `bubble` / `message` / `message-scroller` / `attachment` / `marker` / `code-block` / `questionnaire` / `trace`, 本地参考实现**没有对应 tsx**, 属于要自定交互语义的扩展批次; 依赖滚动锚定、流式追加、复制/重新生成等操作语义, 单独立一批做。
-  - 每条新组件按硬规则走 kebab-case key + 逐组件单独安装编译回归; 交互语义定了补进 DESIGN 第四节末的表。
 - ⬜ **可选(不阻塞)**: 补齐本地 shadcn 参考实现中旧批次组件的 tsx 与 App.tsx 对照卡(alert / alert-dialog / aspect-ratio / breadcrumb / button-group / calendar / chart / context-menu / empty / field / item / sonner / toggle / toggle-group); 对应 Go 组件均已实现并验收, 仅用于逐像素视觉对照。calendar / chart / sonner 需要额外 npm 依赖。Data Table / Combobox 是组合模式, 无独立 tsx。
 
 ## 仓库结构
