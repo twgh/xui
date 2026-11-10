@@ -5,6 +5,19 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修 Combobox 打开时高亮永远落在第一项**(2026-11-10, 用户报障):
+  - **现象**: 选中 Nuxt.js(勾在第三项)后再次点开弹层, bg-accent 却在 Next.js(第一项); 无论选中哪一项, 打开时高亮都固定在第一条, 勾与高亮对不上。鼠标悬停本身正常 —— 移到第二/三项灰底会跟着走, 停留 2 秒不回弹。
+  - **根因**: `applyFilter()` 收尾无条件 `setActive(firstEnabled(0,1))`, 打开与清空搜索词都走这一条路径, 完全不看 `c.picked`。上一轮清掉跨开合残留的 `r.active` 之后, 只剩这一条"永远第一条"的初始高亮, 与选中项的勾分离就更显眼。
+  - **修法**: 新增 `rowOfPicked()`(当前选中值对应的可见可高亮行; 多选取数据顺序里第一个已选中的) 与 `initialActive()`: 搜索词为空时优先落在选中项, 有搜索词时落到第一条匹配项, 选中项被过滤掉/禁用/不存在或无匹配时按 `firstEnabled` 回落到第一条(无匹配则不高亮)。`applyFilter()` 收尾改调 `setActive(c.initialActive(), false)`。语义写进 DESIGN 第四节末。
+  - **依据**: 项目内 `Select` 已有"打开即把焦点放到选中项"(radix, DESIGN 第四节末 / `select.go` 的 `Open`), cmdk 也是用 `value` 驱动 `data-selected`; 过滤时仍高亮第一条匹配项, 保持"输入即过滤 + Enter 直接选中搜索结果"。
+  - **验收**: 新增 `TestComboboxInitialActiveFollowsPicked`(打开 / 输入 / 清空 / 选中项不在结果 / 无匹配 五种落点) 与 `TestComboboxInitialActiveMultiple`(多选取首个已选中), 连同上一轮两条共 6 条全绿; `go build ./...` / `go vet ./...` / `go test ./...` 全绿。demo 重编译后按报障步骤实测(XUI_HOME_PAGE=5): 选 Nuxt.js → 重开, 四条竖线扫描的灰底只剩 `[642, 664]` 一段且与勾同在第三项; 输入 `sve` 后高亮落到唯一匹配项 SvelteKit; 退格清空搜索词后回到 Nuxt.js。未改 `registry.json` 与组件闭包, 无需逐组件安装回归。
+
+- ✅ **修 Combobox 弹层重开后同时出现两条高亮**(2026-11-10, 用户报障):
+  - **现象**: 单选先选第一项, 再打开选第二项, 第三次点开弹层时两个条目都有 bg-accent 悬浮背景(截图里 Next.js 与 SvelteKit 同时带灰底, SvelteKit 另带选中勾)。
+  - **根因**: 弹层只 `popoverPanel.Hide()`, 行元素与 `comboboxRow.active` 跨开合保留; `applyFilter()` 收尾只把 `c.active` 置 -1 就调 `setActive(first)`, 而 `paintRow` 判的是 `r.active` —— 旧行的 true 没清, 新行又被点亮, 于是两条高亮并存。同理, 过滤时被隐藏的高亮行在清空搜索词后也会带着旧高亮重新出现。`Close()` 只 Hide、`setActive` 只清 `c.active` 指向的那一行, 都不构成兜底。
+  - **修法**: 加 `clearActive()` —— 遍历 `rows` 把 `r.active` 置 false 并 Redraw 变化的行, 再置 `c.active = -1`; 在 `applyFilter()` 收尾替换原来那句 `c.active = -1`, 并在 `Open()` 的 `ShowAt` 之前、`Close()` 里各调一次(失焦关闭走 `popoverPanel.Hide`, 不经过 `Combobox.Close`; 显示前清一次可避免 `ShowAt` 到 `applyFilter` 之间闪一帧旧高亮)。
+  - **验收**: 新增 `components/combobox_test.go` 两个纯状态机用例(重开弹层 / 过滤后清空搜索词); 把 `applyFilter` 临时改回旧写法实测两例都失败(`row 1 active = true` / `row 2 active = true`), 恢复修法后全绿; `go build ./...` / `go vet ./...` / `go test ./...` 全绿。demo 重编译后按报障步骤实测(选第一项 → 再打开选第二项 → 第三次打开), 150% DPI 截图按 x=800/900/1000/1100 四条竖线扫描, 高亮带只剩 `[597, 618]` 一段(第一项), SvelteKit 行只剩勾、底色纯白。未改 `registry.json` 与组件文件闭包, 无需逐组件安装回归。
+
 - ✅ **修对话组三处: 附件虚线框四角、Trace 折叠箭头不可点/悬浮不变色**(2026-11-10, 用户报障):
   - **现象**: ① Attachment 的 idle 虚线边框在四个圆角处没有线(四角像被切掉); ② TraceCollapsible 点右侧 chevron 没反应, 必须点整行才展开/收起; ③ 悬浮在 chevron 上时箭头不跟着变色。
   - **根因**: ① `chatDashedBorder` 只沿四条直边布点, 圆角段直接留空 —— 卡片圆角 12, 四角空白在浅色底上很显眼; ② 尾部 chevron 是 `NewTraceCollapsible` 在建好触发条后追加的子元素, 触发条的 `bindChild` 没有覆盖它, 图标自己吞掉了悬停/点击(同第八节 140/158 的子元素吞事件); ③ chevron 的颜色函数写死成 `t.MutedForeground`, 没接触发条的 `colorOf`(行内其它图标/标题都走 `colorOf` 的悬停淡入)。

@@ -376,6 +376,9 @@ func (c *Combobox) Open() *Combobox {
 	if c.panel == nil {
 		return c
 	}
+	// 失焦关闭走的是 popoverPanel.Hide(没经过 c.Close), 行元素一直留着;
+	// 显示前先清一次高亮, 免得旧行在 applyFilter 之前先画出来。
+	c.clearActive()
 	x, y := popupPosition(c.Handle, c.panel.cw, c.panel.ch, PopoverSideBottom, PopoverAlignStart, 4)
 	c.panel.ShowAt(c.Handle, x, y)
 	c.updateAnchorSide(y, c.panel.ch)
@@ -414,6 +417,9 @@ func (c *Combobox) Query() string {
 // Close 关闭弹层。
 func (c *Combobox) Close() *Combobox {
 	if c != nil && c.panel != nil {
+		// 关闭时就把高亮清掉: 弹层只是 Hide, 行元素留着, 下次 ShowAt 到
+		// applyFilter 之间若有重绘, 不会闪一帧上一次的高亮行。
+		c.clearActive()
 		c.panel.Hide()
 	}
 	return c
@@ -672,6 +678,34 @@ func (c *Combobox) firstEnabled(from int32, dir int32) int32 {
 	return -1
 }
 
+// rowOfPicked 返回当前选中值对应的可见可高亮行(多选取数据顺序里第一个已选中的),
+// 没有选中值或选中值不在当前结果里返回 -1。
+func (c *Combobox) rowOfPicked() int32 {
+	for i, r := range c.rows {
+		if r.kind != comboboxRowItem || !r.shown || r.item.Disabled {
+			continue
+		}
+		if c.picked[r.item.Value] {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+// initialActive 决定打开/过滤后的高亮落点:
+//   - 没有搜索词时优先落在当前选中项(同 Select 打开即定位选中项, 也对应 cmdk
+//     用 value 驱动的 data-selected), 避免"已选 Nuxt.js、灰底却在 Next.js"这种
+//     勾与高亮对不上的状态, 更不会让一次误按 Enter 把值改成第一项;
+//   - 有搜索词时落到第一条匹配项(输入即过滤, Enter 直接选中搜索结果)。
+func (c *Combobox) initialActive() int32 {
+	if strings.TrimSpace(c.query) == "" {
+		if i := c.rowOfPicked(); i >= 0 {
+			return i
+		}
+	}
+	return c.firstEnabled(0, 1)
+}
+
 // moveActive 按 dir 移动高亮(在**可见条目**之间循环, 跳过禁用与标签行)。
 func (c *Combobox) moveActive(dir int32) {
 	n := len(c.rows)
@@ -717,6 +751,22 @@ func (c *Combobox) setActive(idx int32, reveal bool) {
 	if reveal {
 		c.revealRow(idx)
 	}
+}
+
+// clearActive 清掉所有条目的高亮标记与键盘高亮下标。
+// 只把 c.active 置 -1 不够: paintRow 看的是 r.active, 旧行的 true 会残留,
+// 下一次 setActive 又点亮一行 —— 重开弹层或改搜索词时会同时出现两条 bg-accent。
+func (c *Combobox) clearActive() {
+	for _, r := range c.rows {
+		if !r.active {
+			continue
+		}
+		r.active = false
+		if r.ele != nil {
+			r.ele.Redraw(false)
+		}
+	}
+	c.active = -1
 }
 
 // revealRow 把高亮行滚进列表视口。
@@ -880,8 +930,8 @@ func (c *Combobox) applyFilter() {
 		c.stack.AdjustLayout()
 	}
 	c.resizePopup()
-	c.active = -1
-	c.setActive(c.firstEnabled(0, 1), false)
+	c.clearActive()
+	c.setActive(c.initialActive(), false)
 }
 
 // viewHeight 列表可视高度: 可见行总高, 上限 comboboxMaxList。
