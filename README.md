@@ -9,7 +9,7 @@
 
 ## 介绍
 
-为 [github.com/twgh/xcgui](https://github.com/twgh/xcgui) (炫彩界面库)提供一套 **shadcn-ui 风格**的自绘组件: 主题令牌、变体系统、copy-not-install 分发。
+为 [github.com/twgh/xcgui](https://github.com/twgh/xcgui) (炫彩界面库)提供一套 [**shadcn-ui 风格**](https://www.shadcn.com.cn/) 的自绘组件: 主题令牌、变体系统、copy-not-install 分发。
 
 ```
 ┌─────────────────────────────────────────────┐
