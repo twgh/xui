@@ -5,13 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
-- ✅ **registry 键名与 shadcn 文档路径对齐: `combobox` / `native-combobox`**(2026-11-07, 破坏性, 未发布):
+- ✅ **registry 键名与 shadcn 文档路径对齐: `combobox` / `native-combobox`**(2026-11-07, 破坏性, 已本地提交未推送):
   - **现象**: `xui add combobox` 装到的是原生 ComboBox 载体, 而 shadcn 文档的 Combobox(输入即过滤的建议列表)要敲 `combobox-search` —— 与"组件 key 与 shadcn 文档路径同名"的约定冲突。
   - **修法**: 键交换 —— `combobox-search` → `combobox`(combobox_search.go 闭包), 原 `combobox` → `native-combobox`(combobox.go 闭包, 与 `native-select` 同族), `native-select.deps` 跟着改。**文件名与 Go 类型名一律不动**: `.xui-manifest.json` 记的是文件名 → sha256, `installedComponents` 按 files 是否齐全判定, 改文件名会让老项目的"本地改过"判定失效; 改类型名破坏的是下游源码。跟随更新 `select_model.go` 注释、README 组件表补 `xui add` 名、CLI 归一化测试 fixture 换成 combobox / native-combobox 这对同族名。
   - **破坏点**: `xui add combobox` 含义翻转(老用户敲同一命令会装到自动补全); `combobox-search` / `comboboxsearch` 变成未知组件, 退出码 1, 且编辑距离超阈值不给候选。按"不留 legacy 别名"的约定没加兼容键。
   - **老项目不受影响(实测)**: 模拟只装过旧 `combobox` 的项目(本地仅 combobox.go / group.go / press.go / scrollbar.go / tooltip.go), 改名后 `xui update` 无参数只报这 5 个文件"已一致", 不会把自动补全那套误判成已安装; 手动改过 combobox.go 再 update, 仍正确报"本地已修改, 跳过"且改动保留。
   - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿(TestLookupComponent 覆盖精确名 `combobox` 不被 `native-combobox` 抢走); `xui list` 四个键的文件闭包正确; 临时项目逐组件 `combobox` / `native-combobox` / `native-select` / `select` 各自 `add` + `go build ./ui` 通过, `add --all` + `go build ./ui` 通过; `add combobox --dry-run` 出的是 combobox_search.go 闭包。
-  - **版本账**: `runtime` / `cliChange` 保持 v0.11.0(未打 tag; registry 属数据源、CLI 逻辑未改)。发布时按流程抬 `runtime`, `cliChange` 不抬, 发布说明第一条写含义翻转。
+  - **生效时机与版本账**: 数据源是 `main`, **本提交推送后 `xui add combobox` 的含义立刻翻转, 不等 tag** —— 推送前先备好告知。`runtime` / `cliChange` 保持 v0.11.0(registry 属数据源、CLI 逻辑未改); 配套 tag 发布时按流程抬 `runtime`, `cliChange` 不抬。
 
 - ✅ **v0.11.0 发布(2026-11-07)**: DataTable 分页 / 虚拟滚动双模式与枚举 / 数值编辑，Tree 勾选，Label 自动折行，CLI 升级提示收敛到 `cliChange`，窗口拖动透明闪烁修复，走 minor(组件 / API 变更)。
   - **顺序**: 组件与文档提交 → 版本示例 + `fallbackXuiVersion` 提交(`e9449f1`)→ 轻量 tag `v0.11.0` → `runtime` + `cliChange` 抬到 v0.11.0(`18f2bc5`, tag 之后)。
