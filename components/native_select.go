@@ -8,8 +8,8 @@ import "github.com/twgh/xcgui/xc"
 // (border-input、focus-visible 环、aria-invalid、sm 尺寸), 弹层完全是原生的;
 // value 语义按 <option value> / onChange(e.target.value) 走字符串。
 //
-// xui 侧承载"原生弹层"的就是 ComboBox(触发区自绘 + 原生弹窗, 见 combobox.go),
-// 所以本组件在其上做 value 字符串封装 —— 视觉/行为与 NewComboBox 完全一致,
+// xui 侧承载"原生弹层"的就是 NativeComboBox(触发区自绘 + 原生弹窗, 见 combobox.go),
+// 所以本组件在其上做 value 字符串封装 —— 视觉/行为与 NewNativeComboBox 完全一致,
 // 用法更贴近 shadcn 的受控 select。要富条目(图标/禁用/分组)用 Select。
 
 // NativeSelectOption 原生下拉框配置项。
@@ -17,7 +17,7 @@ type NativeSelectOption func(o *nativeSelectOpts)
 
 type nativeSelectOpts struct {
 	placeholder string
-	size        ComboBoxSize
+	size        NativeComboBoxSize
 	sizeSet     bool
 	invalid     bool
 	value       string
@@ -29,7 +29,7 @@ func WithNativeSelectPlaceholder(s string) NativeSelectOption {
 }
 
 // WithNativeSelectSize 设置触发区尺寸(sm = h-7 = 28, 同 native-select 的 data-size)。
-func WithNativeSelectSize(s ComboBoxSize) NativeSelectOption {
+func WithNativeSelectSize(s NativeComboBoxSize) NativeSelectOption {
 	return func(o *nativeSelectOpts) { o.size, o.sizeSet = s, true }
 }
 
@@ -43,9 +43,9 @@ func WithNativeSelectValue(v string) NativeSelectOption {
 	return func(o *nativeSelectOpts) { o.value = v }
 }
 
-// NativeSelect 原生下拉框(ComboBox 的 value 语义封装)。
+// NativeSelect 原生下拉框(NativeComboBox 的 value 语义封装)。
 type NativeSelect struct {
-	*ComboBox
+	*NativeComboBox
 }
 
 // NewNativeSelect 创建原生下拉框。values 即 <option> 列表; 语义对齐:
@@ -58,21 +58,21 @@ func NewNativeSelect(x, y, cx, cy int32, hParent int, values []string, opts ...N
 	for _, fn := range opts {
 		fn(&o)
 	}
-	copts := make([]ComboBoxOption, 0, 3)
+	copts := make([]NativeComboBoxOption, 0, 3)
 	if o.placeholder != "" {
-		copts = append(copts, WithComboPlaceholder(o.placeholder))
+		copts = append(copts, WithNativeComboBoxPlaceholder(o.placeholder))
 	}
 	if o.sizeSet {
-		copts = append(copts, WithComboSize(o.size))
+		copts = append(copts, WithNativeComboBoxSize(o.size))
 	}
 	if o.invalid {
-		copts = append(copts, WithComboInvalid())
+		copts = append(copts, WithNativeComboBoxInvalid())
 	}
-	c := NewComboBox(x, y, cx, cy, hParent, values, copts...)
+	c := NewNativeComboBox(x, y, cx, cy, hParent, values, copts...)
 	if c == nil {
 		return nil
 	}
-	n := &NativeSelect{ComboBox: c}
+	n := &NativeSelect{NativeComboBox: c}
 	if o.value != "" {
 		n.SetValue(o.value)
 	}
@@ -81,7 +81,7 @@ func NewNativeSelect(x, y, cx, cy int32, hParent int, values []string, opts ...N
 
 // Value 返回当前选中文本(同 e.target.value), 未选中返回空串。
 func (n *NativeSelect) Value() string {
-	if n == nil || n.ComboBox == nil {
+	if n == nil || n.NativeComboBox == nil {
 		return ""
 	}
 	i := n.Selected()
@@ -93,7 +93,7 @@ func (n *NativeSelect) Value() string {
 
 // SetValue 按文本选中 option; 没有匹配项时取消选中(同 value 不存在的 <select>)。
 func (n *NativeSelect) SetValue(v string) *NativeSelect {
-	if n == nil || n.ComboBox == nil {
+	if n == nil || n.NativeComboBox == nil {
 		return n
 	}
 	for i := int32(0); i < xc.XComboBox_GetCount(n.Handle); i++ {
@@ -108,7 +108,7 @@ func (n *NativeSelect) SetValue(v string) *NativeSelect {
 
 // OnValueChange 注册选中值变化回调(同 onChange(e.target.value); 未选中时值为空串)。
 func (n *NativeSelect) OnValueChange(fn func(value string)) *NativeSelect {
-	if n == nil || n.ComboBox == nil || fn == nil {
+	if n == nil || n.NativeComboBox == nil || fn == nil {
 		return n
 	}
 	n.OnChange(func(index int32) {

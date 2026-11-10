@@ -331,7 +331,7 @@ func (t *Tooltip) hitTest(hWnd int, pt *xc.POINT) {
 // HideTooltip 隐藏绑定在指定元素上的提示气泡(未绑定则无操作)。
 //
 // 为什么要主动隐藏: 元素自身弹层(如下拉列表)打开后是另一个窗口接管鼠标, 触发元素
-// 收不到 MouseLeave, 提示会一直挂着(实测 ComboBox 弹层)。这类组件应在弹层打开时
+// 收不到 MouseLeave, 提示会一直挂着(实测 NativeComboBox 弹层)。这类组件应在弹层打开时
 // 调用 HideTooltip(hEle)。
 var tooltipReg = map[int]*Tooltip{}
 
@@ -1046,7 +1046,7 @@ func clampArrow(v, span int32) int32 {
 //
 // 为什么必须有这一步: `XEle_GetWndClientRect` 给的是元素**未裁剪**的矩形。页面滚到末尾
 // 再往上滚两下时, 页面顶部那个控件的矩形正好停在视口上方的标签栏/标题栏一带;只按元素
-// 矩形命中, 光标压着标题栏也会弹出它的提示(实测: 表单2 页 "切换运行时环境" 的 ComboBox)。
+// 矩形命中, 光标压着标题栏也会弹出它的提示(实测: 表单2 页 "切换运行时环境" 的 NativeComboBox)。
 func clippedByAncestor(hEle int, pt *xc.POINT) bool {
 	for h := xc.XWidget_GetParentEle(hEle); h != 0 && xc.XC_IsHXCGUI(h, xcc.XC_ELE); h = xc.XWidget_GetParentEle(h) {
 		var rc xc.RECT

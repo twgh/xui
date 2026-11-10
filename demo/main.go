@@ -834,8 +834,8 @@ func buildBase1Page(body *widget.LayoutEle) {
 		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconSearch), ui.WithVariant(ui.ButtonOutline))
 
 	bg8 := ui.NewButtonGroup(rbg7.Handle)
-	combo := ui.NewComboBox(0, 0, 0, 0, bg8.Handle,
-		[]string{"开发环境", "测试环境", "预发环境"}, ui.WithComboPlaceholder("选择环境"))
+	combo := ui.NewNativeComboBox(0, 0, 0, 0, bg8.Handle,
+		[]string{"开发环境", "测试环境", "预发环境"}, ui.WithNativeComboBoxPlaceholder("选择环境"))
 	xui.ItemWidth(combo, 180)
 	ui.NewButton(0, 0, 0, 0, "", bg8.Handle,
 		ui.WithSize(ui.ButtonSizeIcon), ui.WithIcon(icons.IconSettings), ui.WithVariant(ui.ButtonOutline))
@@ -1895,17 +1895,17 @@ func buildForm2Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "原生 ComboBox 行为 + 自绘弹层(item-aligned 定位, 盖住触发区)", v4.Handle))
 
 	xui.ItemFill(hint(v4.Handle, "默认尺寸"))
-	combo := ui.NewComboBox(0, 0, 0, 0, v4.Handle,
+	combo := ui.NewNativeComboBox(0, 0, 0, 0, v4.Handle,
 		[]string{"开发环境", "测试环境", "预发环境", "灰度环境", "生产环境", "本地调试"},
-		ui.WithComboPlaceholder("选择环境"))
+		ui.WithNativeComboBoxPlaceholder("选择环境"))
 	xui.ItemFill(combo)
 	combo.SetSelected(1)
 	tip.Bind(combo.Handle, "切换运行时环境")
 
 	xui.ItemFill(hint(v4.Handle, "sm 尺寸"))
-	xui.ItemFill(ui.NewComboBox(0, 0, 0, 0, v4.Handle,
+	xui.ItemFill(ui.NewNativeComboBox(0, 0, 0, 0, v4.Handle,
 		[]string{"开发环境", "测试环境", "生产环境"},
-		ui.WithComboSize(ui.ComboSizeSm), ui.WithComboPlaceholder("sm 尺寸")))
+		ui.WithNativeComboBoxSize(ui.NativeComboBoxSizeSm), ui.WithNativeComboBoxPlaceholder("sm 尺寸")))
 
 	xui.ItemFill(hint(v4.Handle, "NativeSelect(shadcn 原生 <select> 对应物, value 字符串语义)"))
 	ns := ui.NewNativeSelect(0, 0, 0, 0, v4.Handle,
@@ -2084,7 +2084,7 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	fLang := ui.NewField(0, 0, 0, 0, grp2.Handle, ui.WithFieldOrientation(ui.FieldHorizontal))
 	xui.ItemFill(fLang)
 	fLang.Label("界面语言")
-	lang := ui.NewComboBox(0, 0, 0, 0, fLang.Handle, []string{"简体中文", "English", "日本語"})
+	lang := ui.NewNativeComboBox(0, 0, 0, 0, fLang.Handle, []string{"简体中文", "English", "日本語"})
 	xui.ItemWidth(lang, 160)
 	lang.SetSelected(0)
 
@@ -3473,7 +3473,7 @@ func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	tipKbd := mkTipBtn("快捷键", rt2)
 	tip.BindTip(tipKbd.Handle, "打开命令面板", ui.WithTipShortcut("Ctrl+K"))
 
-	xui.ItemFill(desc(v2.Handle, "键盘焦点进入也显示(鼠标点击产生的焦点不算); WithTipDelay 设延迟、移出后 300ms 内移到下一个元素跳过延迟。绑定的元素自身有弹层时(如 ComboBox), 弹层打开要主动 HideTooltip。"))
+	xui.ItemFill(desc(v2.Handle, "键盘焦点进入也显示(鼠标点击产生的焦点不算); WithTipDelay 设延迟、移出后 300ms 内移到下一个元素跳过延迟。绑定的元素自身有弹层时(如 NativeComboBox), 弹层打开要主动 HideTooltip。"))
 
 	// ---- 第二行: 警示对话框 + 对话框变体 ----
 	rDlg := row(body.Handle, 0, gap)

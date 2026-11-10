@@ -195,7 +195,7 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 先铺宿主底色(整元素): 透明元素重绘**不擦底**(见 DESIGN 第八节 28), 不铺的话
 	// ①键盘焦点环消失后灰环留在画布上;②未选态在暗色下是半透明令牌(dark:bg-input/30),
-	// 会透出上一个状态/比卡片更深的一块底色。组件按"放在 Card 上"设计(同 Table/ComboBox),
+	// 会透出上一个状态/比卡片更深的一块底色。组件按"放在 Card 上"设计(同 Table/NativeComboBox),
 	// 放在异色容器上时用 SetBackdrop 跟随。
 	host := c.backdropColor(t)
 	p.FillRound(&p.Rc, host, 0)

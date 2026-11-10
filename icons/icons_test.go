@@ -7,7 +7,7 @@ import "testing"
 //  2. "数字挨数字"的名字不会撞成同一个常量 —— 直接引用常量名本身就是这条断言的锚点:
 //     生成器的驼峰规则一改(或漏了分隔符), 这份文件就编译不过, 立刻会被发现。
 func TestConsts(t *testing.T) {
-	// 组件用的图标(ComboBox/菜单的箭头与勾选、Dialog 关闭、标题栏的 eye/moon/minus/x)
+	// 组件用的图标(NativeComboBox/菜单的箭头与勾选、Dialog 关闭、标题栏的 eye/moon/minus/x)
 	// + 名字里"数字挨数字"的几对。注意那几对在 lucide 里是**别名关系**(数据完全相同),
 	// 但常量必须是两个: arrow-down-0-1 → IconArrowDown0_1, arrow-down-01 → IconArrowDown01。
 	cases := map[string]string{

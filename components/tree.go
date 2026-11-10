@@ -90,7 +90,7 @@ const (
 type TreeOption func(*Tree)
 
 // WithTreeOnBackground 让滚动条等底色跟随 Background 令牌(默认跟随 Card)。
-// 组件默认按"放在 Card 上"设计(同 Table/ComboBox); 直接放在窗口背景上时用本选项。
+// 组件默认按"放在 Card 上"设计(同 Table/NativeComboBox); 直接放在窗口背景上时用本选项。
 func WithTreeOnBackground() TreeOption {
 	return func(t *Tree) { t.onBg = true }
 }

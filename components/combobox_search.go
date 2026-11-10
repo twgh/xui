@@ -23,7 +23,7 @@ const (
 )
 
 // Combobox 自动补全选择框 —— 对应 shadcn 文档的 **Combobox**(输入过滤 + 建议列表),
-// 与 ui.ComboBox(shadcn select 的原生下拉)不是同一个东西:
+// 与 ui.NativeComboBox(shadcn select 的原生下拉)不是同一个东西:
 //
 //   - 触发区是 outline 按钮(同 Select), 显示当前值/占位符, 右侧 chevrons-up-down;
 //   - 点开弹层 = 顶部搜索框(输入即过滤, 不区分大小写) + 建议列表 + 空状态;
@@ -979,7 +979,7 @@ func (c *Combobox) triggerText() string {
 	return picked[0].Text + " +" + strconv.Itoa(len(picked)-1)
 }
 
-// onPaint 触发区: 与 Select/ComboBox 同一套规则(border-input / focus-visible 环 /
+// onPaint 触发区: 与 Select/NativeComboBox 同一套规则(border-input / focus-visible 环 /
 // aria-invalid / 暗色 bg-input/30 悬停加深 / disabled)。
 func (c *Combobox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)

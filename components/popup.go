@@ -157,7 +157,7 @@ func screenRight(hTrigger int) int32 {
 // ===== 组件内建弹层的公共基座 =====
 //
 // 日期框 / 时间框这类组件需要一个"贴着触发区弹出的卡片", 原生控件里没有可直接复用的
-// 容器(ComboBox 的弹层是它私有的 ListBox 窗口, Menu 只装菜单项), 所以自建:
+// 容器(NativeComboBox 的弹层是它私有的 ListBox 窗口, Menu 只装菜单项), 所以自建:
 //
 //   - 窗口: Window_Transparent_Shadow —— 圆角、投影一次解决, 客户区自动收缩出
 //     阴影带(实测同 menu, 见 DESIGN 第八节 64); 背景必须垫 alpha=0 填充压掉

@@ -133,7 +133,7 @@ func WithSize(s ButtonSize) ButtonOption { return func(b *Button) { b.size = s }
 
 // WithButtonInvalid 设置校验失败态(对应 shadcn 的 aria-invalid):
 // border-destructive + ring-3 destructive/20(暗色 /40)。与 focus-visible 同时成立时红色优先。
-// 名字带 Button 前缀: 组件都在 package ui 里, Input/ComboBox 也有同名语义的选项。
+// 名字带 Button 前缀: 组件都在 package ui 里, Input/NativeComboBox 也有同名语义的选项。
 func WithButtonInvalid() ButtonOption { return func(b *Button) { b.invalid = true } }
 
 // WithIcon 让按钮绘制图标, 替代文字(要通常直接用 github.com/twgh/xui/icons 子包里

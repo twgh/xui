@@ -9,14 +9,14 @@ import (
 )
 
 // Select 独立下拉选择框, 对应 shadcn select.tsx(radix Select, item-aligned 定位):
-//   - 触发区: 与 ComboBox 同一套视觉(border-input / focus-visible 环 / sm 尺寸 /
+//   - 触发区: 与 NativeComboBox 同一套视觉(border-input / focus-visible 环 / sm 尺寸 /
 //     aria-invalid / 暗色 bg-input/30 悬停加深), 未选择时显示占位符;
 //   - 弹层: 自建阴影窗(popoverPanel) + ScrollArea, 条目是自绘按钮 —— 所以条目可以
 //     带图标、禁用态、分组标签与分隔线(原生 ComboBox 弹层做不到); item-aligned 定位:
 //     弹层盖住触发区、选中项正对触发区, 宽度 = max(触发区宽, min-w-36);
 //   - 键盘: ↑/↓/Home/End 移动高亮(焦点即高亮, bg-accent), Enter/空格 选中,
 //     ESC 关闭并把焦点还给触发区; 超出可视高度自动滚;
-//   - 与 ComboBox 的取舍: 弹层行为(定位/动画/关闭时机)全部自持, 不依赖原生弹窗。
+//   - 与 NativeComboBox 的取舍: 弹层行为(定位/动画/关闭时机)全部自持, 不依赖原生弹窗。
 type Select struct {
 	*widget.Button
 	groups        []SelectGroup
@@ -628,7 +628,7 @@ func (s *Select) naturalWidth() int32 {
 	return w
 }
 
-// onPaint 触发区: 与 ComboBox.onPaint 同一套规则(border-input / focus-visible 环 /
+// onPaint 触发区: 与 NativeComboBox.onPaint 同一套规则(border-input / focus-visible 环 /
 // aria-invalid / 暗色 bg-input/30 悬停加深 / disabled)。
 func (s *Select) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
@@ -641,7 +641,7 @@ func (s *Select) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	bg, border := t.Card, t.Input
 	if st.Disabled {
-		bg = t.Input.WithAlpha(128) // disabled:bg-input/50(同 ComboBox)
+		bg = t.Input.WithAlpha(128) // disabled:bg-input/50(同 NativeComboBox)
 		border = xui.None
 	}
 	radius := t.RadiusLg()
@@ -722,7 +722,7 @@ func (s *Select) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.TextF(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
 
-	// 右侧 chevron-down: text-muted-foreground(同 ComboBox)
+	// 右侧 chevron-down: text-muted-foreground(同 NativeComboBox)
 	icon := xc.RECT{
 		Left:   p.Rc.Right - 26,
 		Top:    p.Rc.Top + (p.H()-16)/2,

@@ -125,7 +125,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | 组件 | 说明 |
 |---|---|
 | Button | 6 变体(default/secondary/outline/ghost/destructive/link)× 8 尺寸档;图标按钮 / 图标+文字 / 内容对齐 / 胶囊 / 加载态;`cx` 传 0 按文字自动量宽 |
-| ButtonGroup | 按钮组:横向/纵向、首尾外角 + 相邻边直角、宽高按内容自撑;可混放 Button / Input / ComboBox |
+| ButtonGroup | 按钮组:横向/纵向、首尾外角 + 相邻边直角、宽高按内容自撑;可混放 Button / Input / NativeComboBox |
 | Alert | 提示条:图标 + 标题 + 描述 + 右上动作槽;两变体(default/destructive),高度按内容自撑、文字自动折行 |
 | Empty | 空状态容器:图标底板 + 标题 + 描述 + 动作区;三个槽位 `Header()` / `Content()` / `Body()`,不画边框 |
 | Field | 表单字段布局:Label / Title / Description / Content / 校验错误区,垂直或水平取向;横向时内容默认 240 宽(嵌套布局只认 Fixed 宽) |
@@ -154,7 +154,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Sidebar | 侧边栏:返回"面板 + 主内容区",分组/子菜单/徽章/动作钮/折叠(offcanvas/icon/none, Ctrl+B)/左右贴边;三种外观 sidebar/floating/inset |
 | Command | 命令面板:输入即过滤、↑↓ 循环跳过禁用、Enter/ESC;可放进 `ui.NewDialog` 组合成 ⌘K 弹窗 |
 | Combobox | "输入即过滤"的建议列表(= Popover + Command):单选选中即关,`WithComboboxMultiple` 多选保持打开;条目模型与 Select 共用;`xui add combobox` |
-| ComboBox | **注意**: 这是原生 ComboBox 载体(对应 shadcn 的 `select`),不是上面那个 Combobox;要"输入即过滤"用 Combobox;`xui add native-combobox` |
+| NativeComboBox | **注意**: 这是原生 ComboBox 载体(对应 shadcn 的 `select`),不是上面那个 Combobox;要"输入即过滤"用 Combobox;`xui add native-combobox` |
 | Input | 输入框:原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环;校验态、占位符、前缀/后缀/清除/密码切换/计数,以及步进器 `WithStepper`(−/+ 与 ↑/↓,失焦自动夹取吸附) |
 | Textarea | 文本域:Input 的多行预设 + **随内容自动长高**;要固定高度/滚动条用 `Input` + `WithMultiline` |
 | InputGroup | 输入组:输入框与附加件共用一层边框/焦点环,内层是"裸输入"(不画壳体);四向 addon 可放文本/图标/按钮/Kbd/下拉触发,一个 addon 放多个控件只整体外扩一次;`block-*` addon 存在时自动切成三段式 |

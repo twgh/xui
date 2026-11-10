@@ -141,7 +141,7 @@ func withTableVirtual() TableOption {
 }
 
 // WithTableOnBackground 让表体底色跟随 Background 令牌(默认跟随 Card)。
-// 组件默认按"放在 Card 上"设计(表体透明等价于 Card 色, 同 ComboBox); 直接把表格放在
+// 组件默认按"放在 Card 上"设计(表体透明等价于 Card 色, 同 NativeComboBox); 直接把表格放在
 // 窗口背景上时用本选项, 否则暗色下表格底色会比窗口底色亮一档。
 func WithTableOnBackground() TableOption {
 	return func(t *Table) { t.onBg = true }

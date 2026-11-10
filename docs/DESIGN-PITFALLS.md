@@ -35,7 +35,7 @@
 20. **SliderBar 的滑块几何**:pos→滑块按钮是 `[0, W - buttonW]` 线性映射(实测 pos=0/25/50/100 → 0/47/94/188, 宽 200 时)。自绘时直接读 `XEle_GetRect(thumb)` 拿滑块矩形,与拖动行为严格一致;滑块外扩 3px 的焦点环要画在**滑动条**的 paint 里(滑块自身客户区只有 12x12,画在自己回调里会被裁)。
 21. **原生滚动条要手动收敛**:弹层 ListBox 的滚动条默认是系统配色(与主题完全不搭)。做法已统一成 `scrollbar.go` 的 `styleScrollBar` + `showScrollBarOnHover`(五个载体构造时 `SetScrollBarSize(10)`), 规格逐条对齐 shadcn scroll-area.tsx: 轨道 `w-2.5`(10) + `p-px`(滑块内缩 1) → 滑块 8 逻辑像素宽、`rounded-full` 圆角 4。四个必须知道的坑:
     - **圆角只能设在背景对象上, 且每个状态要各自的 id**: bkmanager 的 id 版 `AddFill(nState, color, id)` + `GetObjectObj(id).SetRectRoundAngle(4,4,4,4)`。三个状态**共用一个 id 时只有第一次生效** —— hover(Stay) 找不到背景对象会回退默认绘制, 表现为"悬停时滑块变宽且圆角消失"(实测)。换色用 `BkObj.SetFillColor` 就地改, 不必重建背景对象。
-    - **配色分两套**(`containerScrollBarSkin` / `embedScrollBarSkin`): ScrollArea(容器型)= `bg-border`, 悬停不换色(radix 语义); 多行 Input / Table / Tree / ComboBox 弹层(嵌入式; 这几个在原版里就是浏览器原生滚动条)= 前景色淡化版, 悬停加深(对齐 Win11 Fluent 滚动条的观感)。颜色必须**展平成不透明**(`flatOn` 混到卡片色): 半透明的 Border(暗色是 10% 白)会与所在表面再合成一次 —— 同一个滑块在页面上是 #232323、卡片里是 #2f2f2f, 两个滚动条肉眼可见地不一致。
+    - **配色分两套**(`containerScrollBarSkin` / `embedScrollBarSkin`): ScrollArea(容器型)= `bg-border`, 悬停不换色(radix 语义); 多行 Input / Table / Tree / NativeComboBox 弹层(嵌入式; 这几个在原版里就是浏览器原生滚动条)= 前景色淡化版, 悬停加深(对齐 Win11 Fluent 滚动条的观感)。颜色必须**展平成不透明**(`flatOn` 混到卡片色): 半透明的 Border(暗色是 10% 白)会与所在表面再合成一次 —— 同一个滑块在页面上是 #232323、卡片里是 #2f2f2f, 两个滚动条肉眼可见地不一致。
     - **显隐用元素透明度, 不用 `Show(false)`**: 原生滚动条的显隐翻转会改变视口宽度(列宽/内容宽跳变)。`showScrollBarOnHover` 初始 `SetSubtreeAlpha(0)`, 在**窗口** MouseMove 里用 `XWnd_GetStayEle` 判定(返回鼠标停留元素): 落在宿主子树内 → 淡入; 落在滚动条子树内 → 滑块换悬停色; 用 `xui.Presence` 做 150ms 淡入淡出。⚠️ **元素级 `MouseStay/MouseLeave` 在这里不可靠**(实测: 鼠标移出多行 Edit 收不到 MouseLeave, 原生 List 不把悬停路由给滚动条), 窗口级 + GetStayEle 对五个载体一致。⚠️ 淡出到位那一帧 anim 不再重绘, 要用 Presence 的 done 回调补一次 `XEle_Redraw`, 否则屏幕上留一层淡残影。
     - 主题切换/重入时先 `ClearBkInfo` 再重加(否则累积超过炫彩 20 个背景对象上限); 滚动条销毁时(弹层每次弹出都新建)从 `thumbSkinReg` 里清掉句柄。
 22. **SliderBar 的滑块按钮在 hover 时会冒方块**:原生 Button 的四态会画边框/焦点矩形,`EnableBkTransparent(true)` + `EnableDrawBorder(false)` + `EnableDrawFocus(false)` 三件套只能压住一部分——Focus 态的方块三件套+`ClearBkInfo`+空 paint 回调都压不住, 最终结论见第 25 条(弃用原生按钮, 纯自绘)。
@@ -696,7 +696,7 @@ hover 背景底边正好贴住弹层底边、滚轮还能再滚一下。
     - 实测(150% DPI, 14px 主题字体, 文本"测试环境"): 原生 ComboBox 墨迹宽 **91 物理像素**; 同一字体句柄下 ShapeText 只有 **87**。逐字对比单字墨迹(测 20/20、国 19/18)证明**不是字号/字形缩放, 而是每个字多出约 1px 的 advance** —— xcgui 给原生 ComboBox 的中文默认加了字间距。
     - 触发区用 ShapeText 弹层、原生控件又带字间距, 结果就是"点开下拉瞬间文字突然变紧"。调条目左边距无法解决, 只会让左缘对齐而宽度仍不一致。
     - **`xc.XEdit_SetCharSpaceSize(comboHandle, 0, 0)` 对 ComboBox 句柄同样有效**(`EnableEdit(false)` 也生效): 触发区 91→**87**, 与条目/ShapeText 完全一致; 传 `-1,-1` 则收紧到 82(负间距)。
-    - 修法写在 `NewComboBox` 里(设完字体之后调用一次); 修后同一弹层内"触发区文字"与每个条目的左缘、墨迹宽度三个数全部相同(1336..1422)。
+    - 修法写在 `NewNativeComboBox` 里(设完字体之后调用一次); 修后同一弹层内"触发区文字"与每个条目的左缘、墨迹宽度三个数全部相同(1336..1422)。
 
 69. **ComboBox 弹层: 原生弹层能转异型透明窗, 但整窗 alpha 淡入不可靠 —— 已取消进场淡入**(`combobox.go`, 两次修正的结论):
     - **时机**: `XE_COMBOBOX_POPUP_LIST` 触发时弹层窗口**尚未显示**(实测 `IsWindowVisible=false`, 窗口矩形/客户区已就绪), 透明类型能在首帧前设好 —— 不会闪白。
@@ -1113,7 +1113,7 @@ hover 背景底边正好贴住弹层底边、滚轮还能再滚一下。
      - **修法**: 子菜单 Y 一律自己算 —— `rowBodyTop(父项 id)`: 该条目在**同组**内的行偏移 = 前面每个条目 28(`SetItemHeight`) + 每条分隔栏 4(原生槽高), 子菜单 Body 顶 = 父弹窗 Body 顶 + 该偏移(父内边距 4 与子菜单内边距 4 相抵 = radix SubContent 的 `align=start, alignOffset=-4`, 首项正好压在触发行上)。分组弹层顶记在 `Menu.groupTop`(键 = 分组 id, 0 = 顶级, 其余 = Sub 触发项 id), 支持任意层嵌套。再夹进工作区(radix `avoidCollisions`)。X 保留原生。
      - **注意**: `pInfo.NParentID` 是**父项 id**(不是父窗口句柄), 正好用来定位条目; 行偏移模型依赖 `SetItemHeight(28)` 与分隔栏槽高 4 这两处设置, 改它们要同步改 `menuRowH / menuSepH`。
 
-135. **ComboBox 自绘下拉的"屏幕边界"不能写死主屏**(`combobox.go` 的 `alignComboPopup`, 副屏实测):
+135. **NativeComboBox 自绘下拉的"屏幕边界"不能写死主屏**(`combobox.go` 的 `alignComboPopup`, 副屏实测):
      - **现象**: 窗口摆在主屏右上方的副屏(y 为负)上, 表单里的下拉框一点开, 弹层跑到几百物理像素之下, 完全盖不住触发区; 主屏上 item-aligned 正常。
      - **根因**: 边界取 `screenTop = 0` + `screenBottom = SM_CYSCREEN` —— 前者把"屏幕顶"当成虚拟屏原点(副屏上元素 y 本身是负的), item-aligned 算出的期望位置恒小于 0 → 恒被压到 y=0; 后者只有主屏高度, 底边同样夹错。
      - **修法**: 两端都换成 `xui.MonitorWorkArea(xc.XWnd_GetHWND(hWindow))`(见 132/133); 取不到时保留原兜底。顶边被夹时仍走原来的"滚动列表让选中项作为首项可见"。
@@ -1485,8 +1485,8 @@ hover 背景底边正好贴住弹层底边、滚轮还能再滚一下。
      - **实测**: 150% DPI 亮色, 抓手上按住拖动(窗口 1620 → 1542 物理宽)后松手, 尺寸读数同步刷新、屏幕上无气泡残留;非拖动状态的悬停气泡不受影响。
 
 189. **`XEle_GetWndClientRect` 给的是未裁剪矩形: 滚出视口的控件仍在视口外"命中"鼠标**(`tooltip.go` 的 `hitTest`):
-     - **现象**: 表单2 页滚到末尾再往上滚两下, 光标放到标签栏 / 标题栏一带, 直接弹出页面顶部那个默认尺寸 ComboBox 的提示("切换运行时环境"), 可光标下面根本没有那个控件。
-     - **根因**: 窗口级命中测试只判"点在元素矩形内 + `widgetVisible`"。而 `XEle_GetWndClientRect` 返回的是元素**未裁剪**的矩形 —— 滚出 ScrollArea 视口的控件坐标仍按内容位置算, 页面顶部那个 ComboBox 于是停在视口上沿之外(标签栏/标题栏那一片), 与光标重合;滚动不改 `XWidget_IsShow`, `widgetVisible` 挡不住它。
+     - **现象**: 表单2 页滚到末尾再往上滚两下, 光标放到标签栏 / 标题栏一带, 直接弹出页面顶部那个默认尺寸 NativeComboBox 的提示("切换运行时环境"), 可光标下面根本没有那个控件。
+     - **根因**: 窗口级命中测试只判"点在元素矩形内 + `widgetVisible`"。而 `XEle_GetWndClientRect` 返回的是元素**未裁剪**的矩形 —— 滚出 ScrollArea 视口的控件坐标仍按内容位置算, 页面顶部那个 NativeComboBox 于是停在视口上沿之外(标签栏/标题栏那一片), 与光标重合;滚动不改 `XWidget_IsShow`, `widgetVisible` 挡不住它。
      - **修法**: 命中后沿父元素链补一次裁剪判定(未导出的 `clippedByAncestor`): 点必须同时落在每个**有尺寸**祖先的矩形内, 否则跳过该元素。这样视口外的部分不再参与命中, 元素只在自己真正露出来的那部分响应。
      - **实测**: 探针(视口 frame (20,90)-(580,210), 子元素 (40,50)-(240,130) 跨过上沿): 点 (45,55) 判为裁剪、(45,95) 正常命中并弹提示;去掉这一步则 (45,55) 会弹提示, 与用户报障一致。`go test ./...` 全绿, 探针验证后删除。
 

@@ -11,7 +11,7 @@ import (
 	"github.com/twgh/xui/icons"
 )
 
-// ComboBox 自绘下拉选择框: 载体为原生 ComboBox(弹出、选择、键盘/滚动行为全部原生),
+// NativeComboBox 自绘下拉选择框: 载体为原生 ComboBox(弹出、选择、键盘/滚动行为全部原生),
 // 外壳、文字与右侧箭头自绘; 下拉列表是原生弹出窗口 + 原生 ListBox, 无法逐像素接管,
 // 因此只在弹出时做主题上色(见 stylePopup)。
 //
@@ -21,50 +21,50 @@ import (
 //   - 未选择时显示占位符(muted 色);
 //   - focus-visible: 边框变 Ring + ring-3 ring-ring/50(键盘焦点才显示);
 //   - 禁用 opacity-50。
-type ComboBox struct {
+type NativeComboBox struct {
 	*widget.ComboBox
 	placeholder string
 	cb          func(index int32)
-	size        ComboBoxSize
+	size        NativeComboBoxSize
 	invalid     bool // aria-invalid: 红色边框 + 红色 ring
 }
 
-// ComboBoxSize 触发区尺寸预设, 对应 shadcn select.tsx 的 size
+// NativeComboBoxSize 触发区尺寸预设, 对应 shadcn select.tsx 的 size
 // (data-[size=default]:h-8 / data-[size=sm]:h-7)。
-type ComboBoxSize int
+type NativeComboBoxSize int
 
 const (
-	ComboSizeDefault ComboBoxSize = iota // 高 32
-	ComboSizeSm                          // 高 28, 圆角 min(--radius-md, 10)
+	NativeComboBoxSizeDefault NativeComboBoxSize = iota // 高 32
+	NativeComboBoxSizeSm                                // 高 28, 圆角 min(--radius-md, 10)
 )
 
-// ComboBoxOption 下拉框配置项。
-type ComboBoxOption func(*ComboBox)
+// NativeComboBoxOption 下拉框配置项。
+type NativeComboBoxOption func(*NativeComboBox)
 
-// WithComboPlaceholder 设置未选择时的占位文本。
-func WithComboPlaceholder(s string) ComboBoxOption {
-	return func(c *ComboBox) { c.placeholder = s }
+// WithNativeComboBoxPlaceholder 设置未选择时的占位文本。
+func WithNativeComboBoxPlaceholder(s string) NativeComboBoxOption {
+	return func(c *NativeComboBox) { c.placeholder = s }
 }
 
-// WithComboSize 设置触发区尺寸预设(sm = h-7 = 28)。
-func WithComboSize(s ComboBoxSize) ComboBoxOption {
-	return func(c *ComboBox) { c.size = s }
+// WithNativeComboBoxSize 设置触发区尺寸预设(sm = h-7 = 28)。
+func WithNativeComboBoxSize(s NativeComboBoxSize) NativeComboBoxOption {
+	return func(c *NativeComboBox) { c.size = s }
 }
 
-// WithComboInvalid 设置校验失败态(对应 shadcn 的 aria-invalid):
+// WithNativeComboBoxInvalid 设置校验失败态(对应 shadcn 的 aria-invalid):
 // border-destructive + ring-3 destructive/20(暗色 /40)。
-func WithComboInvalid() ComboBoxOption {
-	return func(c *ComboBox) { c.invalid = true }
+func WithNativeComboBoxInvalid() NativeComboBoxOption {
+	return func(c *NativeComboBox) { c.invalid = true }
 }
 
-// NewComboBox 创建下拉框。cy 传 0 时使用默认高度 32; items 是初始选项。
-func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboBoxOption) *ComboBox {
-	c := &ComboBox{}
+// NewNativeComboBox 创建下拉框。cy 传 0 时使用默认高度 32; items 是初始选项。
+func NewNativeComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...NativeComboBoxOption) *NativeComboBox {
+	c := &NativeComboBox{}
 	for _, o := range opts { // 先应用配置: 尺寸预设决定默认高度
 		o(c)
 	}
 	if cy <= 0 {
-		if c.size == ComboSizeSm {
+		if c.size == NativeComboBoxSizeSm {
 			cy = 28
 		} else {
 			cy = 32
@@ -144,10 +144,10 @@ func NewComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...ComboB
 }
 
 // Selected 返回当前选中项索引, 未选中返回 -1。
-func (c *ComboBox) Selected() int32 { return c.GetSelItem() }
+func (c *NativeComboBox) Selected() int32 { return c.GetSelItem() }
 
-// SetInvalid 设置/清除校验失败态(见 WithComboInvalid)。
-func (c *ComboBox) SetInvalid(v bool) *ComboBox {
+// SetInvalid 设置/清除校验失败态(见 WithNativeComboBoxInvalid)。
+func (c *NativeComboBox) SetInvalid(v bool) *NativeComboBox {
 	if c.invalid == v {
 		return c
 	}
@@ -157,28 +157,28 @@ func (c *ComboBox) SetInvalid(v bool) *ComboBox {
 }
 
 // Invalid 返回当前是否处于校验失败态。
-func (c *ComboBox) Invalid() bool { return c.invalid }
+func (c *NativeComboBox) Invalid() bool { return c.invalid }
 
 // SetSelected 设置选中项。
-func (c *ComboBox) SetSelected(i int32) *ComboBox {
+func (c *NativeComboBox) SetSelected(i int32) *NativeComboBox {
 	c.SetSelItem(i)
 	c.Redraw(false)
 	return c
 }
 
 // ItemText 返回指定项文本。
-func (c *ComboBox) ItemText(i int32) string { return c.GetItemText(i, 0) }
+func (c *NativeComboBox) ItemText(i int32) string { return c.GetItemText(i, 0) }
 
 // AddItem 追加一个选项, 返回索引。
-func (c *ComboBox) AddItem(text string) int32 { return c.AddItemText(text) }
+func (c *NativeComboBox) AddItem(text string) int32 { return c.AddItemText(text) }
 
 // OnChange 注册选中项变化回调。
-func (c *ComboBox) OnChange(fn func(index int32)) *ComboBox {
+func (c *NativeComboBox) OnChange(fn func(index int32)) *NativeComboBox {
 	c.cb = fn
 	return c
 }
 
-func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
+func (c *NativeComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
 		return 0
@@ -196,7 +196,7 @@ func (c *ComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	// 圆角: default = rounded-lg(RadiusLg); sm = rounded-[min(--radius-md,10px)]
 	radius := t.RadiusLg()
-	if c.size == ComboSizeSm {
+	if c.size == NativeComboBoxSizeSm {
 		if md := t.RadiusMd(); md < 10 {
 			radius = md
 		} else {

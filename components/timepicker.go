@@ -234,7 +234,7 @@ func (t *TimePicker) newList(parent int, x, y int32, n int, sel func() int, onPi
 	if lb == nil {
 		return nil
 	}
-	// 原生 ListBox 必须先建数据适配器才能装数据(同 ComboBox)
+	// 原生 ListBox 必须先建数据适配器才能装数据(同 NativeComboBox)
 	lb.CreateAdapter()
 	for i := 0; i < n; i++ {
 		lb.AddItemText(fmt.Sprintf("%02d", i))

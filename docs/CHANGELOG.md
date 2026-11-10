@@ -5,6 +5,15 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Go 类型 `ComboBox` 一族改名 `NativeComboBox`**(2026-11-07, 破坏性, 已本地提交未推送):
+  - **现象**: `Combobox`(自动补全, = shadcn 文档名)与 `ComboBox`(原生载体)只差一个大写 B; 选项函数还有三对只差一个 box —— `WithComboPlaceholder/Size/Invalid` vs `WithComboboxPlaceholder/Size/Invalid`, 比类型名那对更容易敲错。
+  - **改哪一侧**: 改原生载体。`Combobox` 等于 shadcn 文档名与刚定的 registry 键 `combobox`, 不能动; 原生载体的键已是 `native-combobox`, 按键名→类型名的机械映射(`native-select`→`NativeSelect`)就该是 `NativeComboBox`, 且 `NativeSelect` 已立"Native* = 原生载体"这一族 —— 它本身就嵌着这个类型。
+  - **改名清单**: `ComboBox`→`NativeComboBox`、`NewComboBox`→`NewNativeComboBox`、`ComboBoxOption`→`NativeComboBoxOption`、`ComboBoxSize`→`NativeComboBoxSize`、`ComboSizeDefault/Sm`→`NativeComboBoxSizeDefault/Sm`、`WithComboPlaceholder/Size/Invalid`→`WithNativeComboBox*`。顺带修一处惯例不一致: 全仓库尺寸常量都跟类型同词干(`ButtonSizeSm` / `SelectSizeSm` / `ToggleSizeSm`), 只有这里是 `ComboBoxSize` 配 `ComboSizeSm`。`Combobox` 一侧一个字未动(它的尺寸用 `SelectSize`, 不受影响)。
+  - **没动的**: `*widget.ComboBox` 嵌入字段与 `widget.NewComboBox` / `xc.XComboBox_*` 原生 API; 文件名 `combobox.go` / `combobox_search.go`; 散文里"原生 ComboBox"一律保留(指 xcgui 控件), 只把指代 xui 组件的注释与文档改口径(README 2 处 + DESIGN 13 处 + DESIGN-PITFALLS 5 处, 以及各组件文件里的散文注释; DESIGN 第八节索引 135 与 PITFALLS 标题同步改)。机械改名一度误伤 `widget.NewComboBox`, 已修回并全库 grep 复核残留的 `ComboBox` 全部确指原生控件。
+  - **破坏点(实测)**: 类型定义在**拷给用户的组件源码**里、不在运行时模块, 所以 `xui update` 一拉, 用户自己写的 `ui.NewComboBox(...)` 直接编译不过 —— 临时项目实测退出码 1, 报 `undefined: ui.NewComboBox (but have NewCombobox)`; 换成 `ui.NewNativeComboBox` 退出码 0。**告知里要写明别顺着编译器提示改成 `NewCombobox`**(那是自动补全, 语义不同)。另: `NativeSelect` 的嵌入字段随之从 `n.ComboBox` 变成 `n.NativeComboBox`, 而 `n.ComboBox` 之后会 promoted 到 widget 层 —— 老代码若这么写会静默换语义。按约定不加兼容别名。下游 sitless / myapp 的应用代码(`ui/` 之外)grep 零调用, 只有拷过去的注释。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; demo 交叉编译出 exe 通过; 临时项目逐组件 `native-combobox` / `native-select` / `combobox` / `select` 各自 `add` + `go build ./ui` 通过, `add --all` + `go build ./ui` 通过。
+  - **推送**: 与下面的键名交换**同一次推送**, 告知里两条都要写; 数据源是 main, 推送即生效, 不等 tag。
+
 - ✅ **registry 键名与 shadcn 文档路径对齐: `combobox` / `native-combobox`**(2026-11-07, 破坏性, 已本地提交未推送):
   - **现象**: `xui add combobox` 装到的是原生 ComboBox 载体, 而 shadcn 文档的 Combobox(输入即过滤的建议列表)要敲 `combobox-search` —— 与"组件 key 与 shadcn 文档路径同名"的约定冲突。
   - **修法**: 键交换 —— `combobox-search` → `combobox`(combobox_search.go 闭包), 原 `combobox` → `native-combobox`(combobox.go 闭包, 与 `native-select` 同族), `native-select.deps` 跟着改。**文件名与 Go 类型名一律不动**: `.xui-manifest.json` 记的是文件名 → sha256, `installedComponents` 按 files 是否齐全判定, 改文件名会让老项目的"本地改过"判定失效; 改类型名破坏的是下游源码。跟随更新 `select_model.go` 注释、README 组件表补 `xui add` 名、CLI 归一化测试 fixture 换成 combobox / native-combobox 这对同族名。

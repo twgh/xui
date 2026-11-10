@@ -32,7 +32,7 @@ import (
 // 与 shadcn / radix ScrollArea 的差异(有意为之):
 //   - 滚动条"鼠标移入容器才显示, 离开淡出"(同 radix 的 type=hover); 隐藏用元素透明度
 //     而非 Show(false) —— 布局宽度始终保留, 内容不会跳变; 几何/配色统一到 scrollbar.go
-//     (轨道 10px + 滑块 8px 圆头 bg-border, 与 Table/Tree/ComboBox/多行 Input 同规格);
+//     (轨道 10px + 滑块 8px 圆头 bg-border, 与 Table/Tree/NativeComboBox/多行 Input 同规格);
 //   - 只做纵向: 内容区永远铺满视口宽, 没有横向滚动条。
 type ScrollArea struct {
 	*widget.LayoutFrame

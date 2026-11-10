@@ -16,7 +16,7 @@ import (
 //	滑块 = p-px 内缩 → 8 逻辑像素宽;
 //	滑块圆角 = rounded-full(8px 宽的两端全圆) → 半径 4。
 //
-// 各载体(ScrollArea/Table/Tree/ComboBox 弹层/多行 Input)构造时统一
+// 各载体(ScrollArea/Table/Tree/NativeComboBox 弹层/多行 Input)构造时统一
 // SetScrollBarSize(scrollBarW), 外观统一走 styleScrollBar, 显隐统一走
 // showScrollBarOnHover。
 const (
