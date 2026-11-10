@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修对话组三处: 附件虚线框四角、Trace 折叠箭头不可点/悬浮不变色**(2026-11-10, 用户报障):
+  - **现象**: ① Attachment 的 idle 虚线边框在四个圆角处没有线(四角像被切掉); ② TraceCollapsible 点右侧 chevron 没反应, 必须点整行才展开/收起; ③ 悬浮在 chevron 上时箭头不跟着变色。
+  - **根因**: ① `chatDashedBorder` 只沿四条直边布点, 圆角段直接留空 —— 卡片圆角 12, 四角空白在浅色底上很显眼; ② 尾部 chevron 是 `NewTraceCollapsible` 在建好触发条后追加的子元素, 触发条的 `bindChild` 没有覆盖它, 图标自己吞掉了悬停/点击(同第八节 140/158 的子元素吞事件); ③ chevron 的颜色函数写死成 `t.MutedForeground`, 没接触发条的 `colorOf`(行内其它图标/标题都走 `colorOf` 的悬停淡入)。
+  - **修法**: ① 虚线框改成"四边 + 四段 1/4 圆弧", 圆弧按弧长用 `DrawLineF` 分段画短划(每段 dash 4 / gap 3), 四角连续; ② 建好 chevron 后调 `trigger.bindChild(arrow.Handle)`, 悬停变前景色、松开左键与原整行点击走同一条 `Toggle`; ③ chevron 的 `SetColorFunc` 改用 `tc.trigger.colorOf`, 与行内图标/标题同一条配色(悬停淡入前景色、error 转红)。
+  - **验收**: `go build` / `go vet` / `go test ./components` 全绿, `add message` 与 `add --all` 安装编译回归通过; demo 重编译后 150% DPI 实测 —— idle 附件四角虚线连续(7× 放大确认右上角弧线上有 dash), 点 `Ran npm --version` 行尾 chevron 可展开(出现 `10.9.4`、chevron 转 90°)与再次收起, 无需点整行; 悬浮前后截图对比, 箭头像素由 muted 灰变为前景色近黑, 未悬停的上一行箭头保持灰色。
+
 - ✅ **新增上游消息/聊天组 5 个组件: `marker` / `message` / `bubble` / `trace` / `attachment`**(2026-11-10, HANDOFF 待办首项):
   - **组件**: 共享基件 `components/chat.go`(自绘单行文本与图标、按单词边界折行与量高、微光文字、虚线边框) + 五个组件: `marker`(default / border 底边 1px / separator 两侧横线居中); `message`(MessageGroup gap-8; 页眉 → 头像槽 + 内容列 → 页脚, `align=end` 整行镜像; Header/Content/AvatarSlot/Footer 按需创建, `SetMetaFlush` 对应 ghost 的 px-0); `bubble`(7 变体、宽度上限父级 80%、ghost 全宽、`AddReaction` 叠边胶囊 + 点击、`WithBubbleOnClick`); `trace`(4 状态 + 标题微光 + `TraceCollapsible` 折叠段, deps `collapsible`); `attachment`(5 状态 / 3 尺寸 / 横竖朝向 / 动作钮, deps `button`)。
   - **踩到的坑**: ① xcgui 的 DrawText 按字符折行, 英文单词会被拦腰截断 → 气泡自绘按空格断词、超长单词硬切(中文不受影响); ② 消息 `align=end` 时内容列是 Weight 宽, 里面的 Fill 子项拿到 0 宽(同 101)→ 按列实际宽度锁 Fixed 并在尺寸事件里重算; ③ 水平主轴 Fill 会独占整行, Trace 标题与附件内容改用 Weight; ④ 子元素吞掉点击, Trace 整行点击由子元素转发; ⑤ Marker separator 用子项窗口坐标画在元素本地画布 → 减去元素窗口原点; ⑥ Attachment 垂直朝向改媒体宽度后 Auto 根不重新长高 → 改完媒体调 `chatReflow`; ⑦ 系统字体没有彩色 emoji 字形, 反应条改成文字胶囊(差异写进 DESIGN 第七节); ⑧ 上游的页眉/页脚在 MessageContent 里, 天然与内容列对齐 —— 本实现页眉/页脚是正文行外的整宽行, 有头像时文字会跑到头像下方, end 消息的页眉也要右对齐 → `syncMetaIndent` 按"头像宽 + 行间距"给内侧让位并在 `reflowBody` 里随缩放更新。

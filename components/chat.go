@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"strings"
 
 	"github.com/twgh/xcgui/app"
@@ -409,37 +410,59 @@ func chatShimmerText(p *xui.Painter, text string, rc *xc.RECT, hFont int, base, 
 	}
 }
 
-// chatDashedBorder 画 1px 短划线圆角边框(只画四条直边, 圆角段留空)。
-// 圆角段很短, 留空后观感与 CSS border-dashed 一致, 也不需要沿弧线布点。
+// chatDashedBorder 画 1px 短划线圆角边框: 四条直边 + 四段 1/4 圆弧,
+// 圆角段沿弧线按弧长布点, 四角不会留空(同 CSS border-dashed 的观感)。
 func chatDashedBorder(p *xui.Painter, rc xc.RECT, radius int32, color xui.Color) {
 	if color.IsNone() || rc.Right <= rc.Left || rc.Bottom <= rc.Top {
 		return
 	}
 	d := p.Draw
-	d.SetLineWidth(1)
+	d.SetLineWidthF(1)
 	d.SetBrushColor(uint32(color))
-	const dash, gap = int32(4), int32(3)
-	r := radius
-	if r*2 >= rc.Right-rc.Left {
-		r = (rc.Right - rc.Left) / 3
+	const dash, gap = float32(4), float32(3)
+	r := float32(radius)
+	if r*2 >= float32(rc.Right-rc.Left) {
+		r = float32(rc.Right-rc.Left) / 3
 	}
-	if r*2 >= rc.Bottom-rc.Top {
-		r = (rc.Bottom - rc.Top) / 3
+	if r*2 >= float32(rc.Bottom-rc.Top) {
+		r = float32(rc.Bottom-rc.Top) / 3
 	}
-	for x := rc.Left + r; x < rc.Right-r; x += dash + gap {
-		x2 := x + dash
-		if x2 > rc.Right-r {
-			x2 = rc.Right - r
+	l, t := float32(rc.Left), float32(rc.Top)
+	rt, bt := float32(rc.Right), float32(rc.Bottom)
+
+	dashEdge := func(x1, y1, x2, y2 float32) {
+		dx, dy := x2-x1, y2-y1
+		length := float32(math.Hypot(float64(dx), float64(dy)))
+		for s := float32(0); s < length; s += dash + gap {
+			e := s + dash
+			if e > length {
+				e = length
+			}
+			d.DrawLineF(x1+dx*s/length, y1+dy*s/length, x1+dx*e/length, y1+dy*e/length)
 		}
-		d.DrawLine(x, rc.Top, x2, rc.Top)
-		d.DrawLine(x, rc.Bottom, x2, rc.Bottom)
 	}
-	for y := rc.Top + r; y < rc.Bottom-r; y += dash + gap {
-		y2 := y + dash
-		if y2 > rc.Bottom-r {
-			y2 = rc.Bottom - r
+	dashArc := func(cx, cy, a0, sweep float32) {
+		length := r * float32(math.Abs(float64(sweep)))
+		for s := float32(0); s < length; s += dash + gap {
+			e := s + dash
+			if e > length {
+				e = length
+			}
+			a1 := a0 + sweep*s/length
+			a2 := a0 + sweep*e/length
+			d.DrawLineF(
+				cx+r*float32(math.Cos(float64(a1))), cy+r*float32(math.Sin(float64(a1))),
+				cx+r*float32(math.Cos(float64(a2))), cy+r*float32(math.Sin(float64(a2))),
+			)
 		}
-		d.DrawLine(rc.Left, y, rc.Left, y2)
-		d.DrawLine(rc.Right, y, rc.Right, y2)
 	}
+
+	dashEdge(l+r, t, rt-r, t)
+	dashArc(rt-r, t+r, -math.Pi/2, math.Pi/2)
+	dashEdge(rt, t+r, rt, bt-r)
+	dashArc(rt-r, bt-r, 0, math.Pi/2)
+	dashEdge(rt-r, bt, l+r, bt)
+	dashArc(l+r, bt-r, math.Pi/2, math.Pi/2)
+	dashEdge(l, bt-r, l, t+r)
+	dashArc(l+r, t+r, math.Pi, math.Pi/2)
 }

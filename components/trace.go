@@ -321,10 +321,13 @@ func NewTraceCollapsible(x, y, cx, cy int32, hParent int, opts ...TraceCollapsib
 	if tc.trigger != nil {
 		tc.arrow = newChatIcon(tc.trigger.Handle, icons.IconChevronRight, traceIconSize)
 		if tc.arrow != nil {
-			tc.arrow.SetColorFunc(func(t *xui.Theme) xui.Color { return t.MutedForeground })
+			// 与行内图标/标题同一条配色: 悬停淡入前景色, error 转红。
+			tc.arrow.SetColorFunc(tc.trigger.colorOf)
 			if c.Open() {
 				tc.arrow.SetAngle(math.Pi / 2)
 			}
+			// 尾部 chevron 是后挂的子元素, 不转发的话点它会被图标吞掉。
+			tc.trigger.bindChild(tc.arrow.Handle)
 		}
 	}
 	c.OnOpenChange(func(open bool) {
