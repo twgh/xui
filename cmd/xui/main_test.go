@@ -1117,7 +1117,7 @@ func TestFilterComponents(t *testing.T) {
 func TestLookupComponent(t *testing.T) {
 	reg := &registry{Components: map[string]entry{
 		"radio": {}, "radio-group": {}, "input": {}, "input-group": {},
-		"navigation-menu": {}, "combobox-search": {}, "carousel": {},
+		"navigation-menu": {}, "combobox": {}, "native-combobox": {}, "carousel": {},
 	}}
 	cases := []struct{ in, want string }{
 		{"radio-group", "radio-group"},
@@ -1129,7 +1129,9 @@ func TestLookupComponent(t *testing.T) {
 		{"input", "input"},
 		{"navigation-menu", "navigation-menu"},
 		{"navigationmenu", "navigation-menu"},
-		{"comboboxsearch", "combobox-search"},
+		{"combobox", "combobox"},
+		{"native-combobox", "native-combobox"},
+		{"nativecombobox", "native-combobox"},
 		{"carousel", "carousel"},
 	}
 	for _, c := range cases {

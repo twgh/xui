@@ -4,7 +4,7 @@ package ui
 //
 // 单独成文件是因为 Combobox(自动补全) 与 Select(下拉选择) 用同一套条目模型:
 // 两者的弹层行高、分组标签高一致, 用户也可以把同一份 []SelectGroup 传给任意一个。
-// registry 里 select 与 combobox-search 都引用本文件。
+// registry 里 select 与 combobox 都引用本文件。
 
 // Select 系几何(逻辑像素), 对齐 select.tsx(radix-nova):
 // 条目 text-sm + py-1 = 28; label text-xs + py-1 = 24;

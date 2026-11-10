@@ -115,7 +115,7 @@
       "files": ["window.go"],
       "deps": ["button"]
     },
-    "combobox": {
+    "native-combobox": {
       "files": ["combobox.go", "scrollbar.go", "group.go"],
       "deps": ["tooltip"]
     },
@@ -213,13 +213,13 @@
     },
     "native-select": {
       "files": ["native_select.go"],
-      "deps": ["combobox"]
+      "deps": ["native-combobox"]
     },
     "select": {
       "files": ["select.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go", "textopt.go"],
       "deps": []
     },
-    "combobox-search": {
+    "combobox": {
       "files": ["combobox_search.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go", "label.go", "textopt.go"],
       "deps": []
     },
