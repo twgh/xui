@@ -8,11 +8,11 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-11-07)
+## 当前状态(截至 2026-11-10)
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
-- **发布**: v0.11.0(2026-11-07, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
-- **未推送的破坏性改动(两项, 同一次推送)**: ① registry 键名交换 —— `combobox` 现在指自动补全(= shadcn 文档的 Combobox), 原生载体改叫 `native-combobox`, `native-select.deps` 跟着改; ② Go 类型 `ComboBox` 一族改名 `NativeComboBox`(`NewNativeComboBox` / `NativeComboBoxSize` / `NativeComboBoxSizeDefault·Sm` / `WithNativeComboBoxPlaceholder·Size·Invalid`), 与 `NativeSelect` 同族, 顺带消掉 `WithCombo*` 与 `WithCombobox*` 只差一个 box 的三对撞名。⚠️ **数据源是 main, 推上去即刻生效, 不等 tag**: ①让 `xui add combobox` 装到另一个组件; ②更硬 —— 类型定义在拷给用户的组件源码里, `xui update` 一拉, 用户写的 `ui.NewComboBox(...)` **直接编译不过**(实测报 `undefined: ui.NewComboBox (but have NewCombobox)`, 告知里要写明"改成 `NewNativeComboBox`, 别顺着编译器提示改成 `NewCombobox`, 那是自动补全")。文件名未动, 老项目的安装/改动判定实测不受影响; 下游 sitless / myapp 应用代码零调用。配套 tag 发布时 `runtime` 照抬、`cliChange` 不抬(CLI 逻辑未改)。证据见 CHANGELOG。
+- **发布**: v0.12.0(2026-11-10, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取; 本次 `runtime` 抬到 v0.12.0、`cliChange` 保持 v0.11.0(CLI 行为未改)。发布记录见 CHANGELOG, notes 草稿在 `.verify/v0.12.0.md`。
+- **破坏性变更已随 v0.12.0 推送生效(两项)**: ① registry 键名交换 —— `combobox` 现在指自动补全(= shadcn 文档的 Combobox), 原生载体改叫 `native-combobox`, `native-select.deps` 跟着改; ② Go 类型 `ComboBox` 一族改名 `NativeComboBox`。数据源是 main, **推送当刻即生效, 不等 tag**: `xui add combobox` 装到另一个组件; `xui update` 后用户写的 `ui.NewComboBox(...)` 直接编译不过(要改成 `NewNativeComboBox`, 别顺着编译器提示改成 `NewCombobox`, 那是自动补全)。告知已写进 Release notes 首条, 迁移清单与实测证据见 CHANGELOG; 文件名未动, 老项目的安装/改动判定实测不受影响。
 - **CLI 版本语义(2026-11-06 改)**: 设计文档与组件同源(都从数据源取), 所以 tag 只代表"CLI 代码 + 内嵌模板/资源"的变化; 升级提示与 `--check` 的依据是 `registry.json` 的 `cliChange`, 不再是 `@latest` tag。后台探测子进程与 `update-check.json` 缓存已删除。
 - **组件覆盖**: 75 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 61 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 剩余可安装缺口见下面待办)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。完整清单见 README / DESIGN 第七节, 上游缺口见下面待办。
 - **DataTable 双模式(2026-11-07 探针定案)**: 分页是默认, 虚拟滚动用 `WithDataTableVirtualScroll` 显式开启 —— 两种模式共用排序/筛选/勾选/编辑/列显隐; 分页只装当前页(默认 10, 推荐 20~50), 虚拟滚动一次展示全部筛选结果且页脚只留总行数(分页 API 不生效). 原生 List 的滚动绘制只跟可见行数有关, 两种模式同为 ~4ms/帧(1M 行也一样); 把全部行装进普通 List 时 1M 行会多占约 1GB 原生内存, 分页/虚拟滚动都不复制. 真正随行数增长的是 Go 侧排序/筛选(1M 行 sortID 约 157ms、数字自然比较约 1.6s、筛选约 85ms), 与表格载体无关; 50 万行以上建议 `DataColumn.Compare` 或后台排序/筛选. demo 新增「数据2」页(10 万行虚拟滚动表, `XUI_HOME_PAGE=20`, **首次进入才生成数据**)与「数据」页的分页表对照; 依据与原始数据在 `.verify/probe-longlist/`(临时, 未入库).

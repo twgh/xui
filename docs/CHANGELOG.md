@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **v0.12.0 发布(2026-11-10)**: 新增消息/聊天组 5 个组件, 两项破坏性改名(registry 键名对齐 shadcn、Go 类型 `ComboBox` → `NativeComboBox`), 对话组三处与 Combobox 两处高亮修复; 有组件 / API 变更走 minor。
+  - **顺序**: 组件与文档提交 → 版本示例 + `fallbackXuiVersion` 提交(`1fee5ae`)→ 轻量 tag `v0.12.0`(指向 `1fee5ae`)→ `registry.runtime` 抬到 v0.12.0(`352cd1f`, tag 之后); `cliChange` 保持 v0.11.0(本次未改 CLI 命令行为 / 内嵌模板 / 资源, 机械抬 fallback 与 runtime 按约定不算 CLI 改动)。
+  - **推送**: `git push origin main v0.12.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。⚠️ 数据源是 main, **推送当刻两项破坏性改动即对用户生效**, 不等 tag; 告知写进 Release notes 首条(`xui add combobox` 含义翻转 + `ui.NewComboBox` 迁移), notes 草稿在 `.verify/v0.12.0.md`。
+  - **Release**: https://github.com/twgh/xui/releases/tag/v0.12.0 , 名称 `v0.12.0 — 消息/聊天组 5 组件 / Combobox 键名与类型改名 / 弹层高亮修复`; name/body 用 `[IO.File]::ReadAllText(..., UTF8)` 读文件后 POST(本机 curl 有 schannel TLS 握手问题, 改用 PowerShell `Invoke-RestMethod`); 线上校验名称、tag、正文与草稿一致(归一化后同为 3256 字符, 长度口径差异来自 UTF-16 计数与末尾换行)。
+  - **下限回归**: 临时项目 `go mod edit -require=github.com/twgh/xui@v0.12.0` → 本地 registry `add --all` → `go mod tidy && go build ./ui` 通过。默认 `goproxy.cn` 当时尚未收录新 tag(报 `INTERNAL_ERROR`), 且临时项目受 `go.work` 影响不能带 `-mod=mod` —— 改用 `GOWORK=off GOPROXY=direct` 后通过; CI 本次 push 的 `registry-closure` 亦为 success。
+  - **线上校验**: GitHub `main` 的 `registry.json` 为 `runtime=v0.12.0 / cliChange=v0.11.0`; README 两处版本示例已指向 v0.12.0; tag `refs/tags/v0.12.0` = `1fee5ae`。
+
 - ✅ **修 Combobox 打开时高亮永远落在第一项**(2026-11-10, 用户报障):
   - **现象**: 选中 Nuxt.js(勾在第三项)后再次点开弹层, bg-accent 却在 Next.js(第一项); 无论选中哪一项, 打开时高亮都固定在第一条, 勾与高亮对不上。鼠标悬停本身正常 —— 移到第二/三项灰底会跟着走, 停留 2 秒不回弹。
   - **根因**: `applyFilter()` 收尾无条件 `setActive(firstEnabled(0,1))`, 打开与清空搜索词都走这一条路径, 完全不看 `c.picked`。上一轮清掉跨开合残留的 `r.active` 之后, 只剩这一条"永远第一条"的初始高亮, 与选中项的勾分离就更显眼。
