@@ -12,8 +12,9 @@
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
 - **发布**: v0.11.0(2026-11-07, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取。
+- **未发布的破坏性改动**: registry 键名交换 —— `combobox` 现在指自动补全(= shadcn 文档的 Combobox), 原生 ComboBox 载体改叫 `native-combobox`, `native-select.deps` 跟着改; 文件名与 Go 类型名未动, 老项目的安装/改动判定实测不受影响。下次发布 `runtime` 照抬、`cliChange` 不抬(registry 是数据源, CLI 逻辑未改), **发布说明第一条写"`xui add combobox` 含义翻转"**。证据见 CHANGELOG。
 - **CLI 版本语义(2026-11-06 改)**: 设计文档与组件同源(都从数据源取), 所以 tag 只代表"CLI 代码 + 内嵌模板/资源"的变化; 升级提示与 `--check` 的依据是 `registry.json` 的 `cliChange`, 不再是 `@latest` tag。后台探测子进程与 `update-check.json` 缓存已删除。
-- **组件覆盖**: 经典 shadcn 组件已全覆盖(context-menu 在 `menu`, form 在 `field`); 完整清单见 README / DESIGN 第七节。未做: Direction / Typography。
+- **组件覆盖**: 70 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 56 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 其中 65 个可安装)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。完整清单见 README / DESIGN 第七节, 上游缺口见下面待办。
 - **DataTable 双模式(2026-11-07 探针定案)**: 分页是默认, 虚拟滚动用 `WithDataTableVirtualScroll` 显式开启 —— 两种模式共用排序/筛选/勾选/编辑/列显隐; 分页只装当前页(默认 10, 推荐 20~50), 虚拟滚动一次展示全部筛选结果且页脚只留总行数(分页 API 不生效). 原生 List 的滚动绘制只跟可见行数有关, 两种模式同为 ~4ms/帧(1M 行也一样); 把全部行装进普通 List 时 1M 行会多占约 1GB 原生内存, 分页/虚拟滚动都不复制. 真正随行数增长的是 Go 侧排序/筛选(1M 行 sortID 约 157ms、数字自然比较约 1.6s、筛选约 85ms), 与表格载体无关; 50 万行以上建议 `DataColumn.Compare` 或后台排序/筛选. demo 新增「数据2」页(10 万行虚拟滚动表, `XUI_HOME_PAGE=20`, **首次进入才生成数据**)与「数据」页的分页表对照; 依据与原始数据在 `.verify/probe-longlist/`(临时, 未入库).
 - **最近一批**: 修复阴影窗口拖动改大小时整窗闪 1~2 帧透明(`NewAppWindow` 改在 `AddEvent_Size` 里同步重绘, 见 DESIGN 191); Tree 支持勾选模式(`WithTreeCheckable`: chevron 后自绘复选框, 父节点半选, 点父节点级联全部后代; 勾选与原生单选解耦, `Checked/SetChecked/CheckedKeys/OnCheckChange`; demo 数据页树已改勾选模式), 自动折行抽成 `Label.SetAutoWrap()`(数据页两条长说明改用); Steps 补齐状态/进度/可点/尺寸(四态 + `StepItem.Status/Disabled/Percent`、`WithStepsClickable/Size/Initial`、`SetItemPercent`); demo 导航2 拆为导航2(标签页/面包屑/分页)、导航3(步骤条/可折叠面板)、导航4(时间轴), 原导航菜单/侧边栏顺延为导航5/6(`XUI_HOME_PAGE` 当前 0..21); Timeline 支持竖向/水平、start/end/alternate 与节点色/图标/加载/空心样式、Rating 星级评分、Steps 自定义图标(`StepItem.Icon`)、FileDialog 文件对话框、Steps 步骤条; 文档体积优化(2026-11-04)—— HANDOFF 的历史记录拆到 CHANGELOG, DESIGN 第八节正文拆到 DESIGN-PITFALLS.md、DESIGN 只留索引; CLI 的 `init` / `add DESIGN.md` 一起下发配套文件, 老项目 `update` 会补装缺失的配套文件; 新增 `tag-input`(shadcn 无官方组件, 交互语义由本库定死并写进 DESIGN 第四节末): 自绘 chips 外壳 + 裸 Edit, 回车/分隔符成标签、退格删末个、点 × 删除、换行自撑, 亮暗 DPI 截图与逐组件安装编译均已验收; 新增 `status-bar`(窗口底部状态栏: 左中右槽 + 尺寸抓手/读数 + 悬停提示, 自定语义已写进 DESIGN 第四节末), demo 基础4 加卡并在窗口底部挂真实状态栏。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。
@@ -27,6 +28,11 @@
 
 ## 待办
 
+- ⬜ **上游新增的消息/聊天组(推荐的下一步)**: 缺口数字见上面「组件覆盖」。本地参考实现没装这批 tsx, 上游源码可从 registry JSON 取; 语义对照后补进 DESIGN 第四节末的表, 每条走 kebab-case key + 逐组件安装编译回归。
+  - 先做 **Marker / Message / Bubble / Trace / Attachment**: 都是 `registry:ui`, npm 侧只依赖 `cn` / radix Slot, registry 依赖(Trace → collapsible、Attachment → button)已有 —— 零新依赖类, 纯布局 + 自绘; 一批做完加一页 demo 一次验收。
+  - 之后 **Questionnaire**(分步状态机, 上游靠 `@shadcn/react` 无头原语)、**Message Scroller**(滚动锚定 + 只在底部跟随; 上游明确不含虚拟化, 可用原生 List 虚拟滚动替代)。
+  - **Code Block** 只做降级版或不做: 全量对齐要 Go 侧 tokenizer(上游 Shiki 13 语法 + ANSI + Streamdown + 选区感知复制), 做了必须在 DESIGN 第七节声明部分对齐。**Direction** 不做(文字渲染只有 LTR)、**Typography** 不做(上游是纯样式文档页, 无可安装组件)。
+  - 侧栏 **AI Elements** 21 个(Chain of Thought / Reasoning / Tool 等)是 Vercel 自己的项目(elements.ai-sdk.dev), 不属 shadcn registry, **不在覆盖目标内**。
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)。
 - ⬜ **可选(不阻塞)**: 补齐本地 shadcn 参考实现中旧批次组件的 tsx 与 App.tsx 对照卡(alert / alert-dialog / aspect-ratio / breadcrumb / button-group / calendar / chart / context-menu / empty / field / item / sonner / toggle / toggle-group); 对应 Go 组件均已实现并验收, 仅用于逐像素视觉对照。calendar / chart / sonner 需要额外 npm 依赖。Data Table / Combobox 是组合模式, 无独立 tsx。
 
