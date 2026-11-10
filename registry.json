@@ -282,6 +282,26 @@
     "chart": {
       "files": ["chart.go", "d2dfill.go"],
       "deps": []
+    },
+    "message": {
+      "files": ["message.go", "chat.go"],
+      "deps": []
+    },
+    "bubble": {
+      "files": ["bubble.go", "chat.go"],
+      "deps": []
+    },
+    "marker": {
+      "files": ["marker.go", "chat.go"],
+      "deps": []
+    },
+    "trace": {
+      "files": ["trace.go", "chat.go"],
+      "deps": ["collapsible"]
+    },
+    "attachment": {
+      "files": ["attachment.go", "chat.go"],
+      "deps": ["button"]
     }
   }
 }

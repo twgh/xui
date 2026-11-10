@@ -7,7 +7,7 @@
 //   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
 //
 // 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
-// 启动页 XUI_HOME_PAGE = 0..21 = 基础1..4 / 表单1..5 / 导航1..6 / 反馈1..3 / 图表 / 数据 / 数据2 / 图标。
+// 启动页 XUI_HOME_PAGE = 0..22 = 基础1..4 / 表单1..5 / 导航1..6 / 反馈1..3 / 图表 / 数据 / 数据2 / 对话 / 图标。
 package main
 
 import (
@@ -52,6 +52,7 @@ const (
 	pageCharts        // 图表: 柱状 / 折线 / 面积 / 饼环
 	pageData          // 数据: 数据表格(DataTable) / 树
 	pageData2         // 数据2: 虚拟滚动数据表格(10 万行)
+	pageChat          // 对话: 消息 / 气泡 / 标记 / 轨迹 / 附件
 	pageIcons         // 图标: 图标总览
 	pageCount
 )
@@ -63,7 +64,7 @@ var pageTitles = [...]string{
 	"导航1", "导航2", "导航3", "导航4", "导航5", "导航6",
 	"反馈1", "反馈2", "反馈3",
 	"图表",
-	"数据", "数据2", "图标",
+	"数据", "数据2", "对话", "图标",
 }
 
 // tabW 是页签的初始宽(也是换行模式下的单页最小宽)。页签行按窗口宽自适应,
@@ -614,6 +615,7 @@ func buildPages(hWindow, host int) {
 	buildChartPage(bodies[pageCharts])
 	buildDataPage(bodies[pageData])
 	buildDataPage2(bodies[pageData2])
+	buildChatPage(bodies[pageChat])
 	buildIconPage(bodies[pageIcons])
 
 	show := func(i int) {

@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **新增上游消息/聊天组 5 个组件: `marker` / `message` / `bubble` / `trace` / `attachment`**(2026-11-10, HANDOFF 待办首项):
+  - **组件**: 共享基件 `components/chat.go`(自绘单行文本与图标、按单词边界折行与量高、微光文字、虚线边框) + 五个组件: `marker`(default / border 底边 1px / separator 两侧横线居中); `message`(MessageGroup gap-8; 页眉 → 头像槽 + 内容列 → 页脚, `align=end` 整行镜像; Header/Content/AvatarSlot/Footer 按需创建, `SetMetaFlush` 对应 ghost 的 px-0); `bubble`(7 变体、宽度上限父级 80%、ghost 全宽、`AddReaction` 叠边胶囊 + 点击、`WithBubbleOnClick`); `trace`(4 状态 + 标题微光 + `TraceCollapsible` 折叠段, deps `collapsible`); `attachment`(5 状态 / 3 尺寸 / 横竖朝向 / 动作钮, deps `button`)。
+  - **踩到的坑**: ① xcgui 的 DrawText 按字符折行, 英文单词会被拦腰截断 → 气泡自绘按空格断词、超长单词硬切(中文不受影响); ② 消息 `align=end` 时内容列是 Weight 宽, 里面的 Fill 子项拿到 0 宽(同 101)→ 按列实际宽度锁 Fixed 并在尺寸事件里重算; ③ 水平主轴 Fill 会独占整行, Trace 标题与附件内容改用 Weight; ④ 子元素吞掉点击, Trace 整行点击由子元素转发; ⑤ Marker separator 用子项窗口坐标画在元素本地画布 → 减去元素窗口原点; ⑥ Attachment 垂直朝向改媒体宽度后 Auto 根不重新长高 → 改完媒体调 `chatReflow`; ⑦ 系统字体没有彩色 emoji 字形, 反应条改成文字胶囊(差异写进 DESIGN 第七节); ⑧ 上游的页眉/页脚在 MessageContent 里, 天然与内容列对齐 —— 本实现页眉/页脚是正文行外的整宽行, 有头像时文字会跑到头像下方, end 消息的页眉也要右对齐 → `syncMetaIndent` 按"头像宽 + 行间距"给内侧让位并在 `reflowBody` 里随缩放更新。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 临时项目 `add marker` / `message` / `bubble` / `trace` / `attachment` 各自 `go build ./ui` 与 `add --all` 全部通过; 150% DPI 亮/暗截图验收 —— 消息左右对齐与头像槽、7 种气泡、反应胶囊点击、三种 marker、trace 四态与折叠展开(chevron 旋转、内容出现)、附件 5 状态 / 3 尺寸 / 竖排组均正常; demo 新增「对话」页(`XUI_HOME_PAGE=21`, 图标页顺延 22)。
+  - **登记**: `registry.json` 加 5 个 kebab-case key(每个的文件清单都带 `chat.go`; `trace` 另 deps `collapsible`, `attachment` 另 deps `button`), 总数 70 → 75; README 组件表、DESIGN 语义表 / 映射表 / 第六节 `chat.go` 与依赖 / 第七节差异、HANDOFF 覆盖数字与页索引同步。`runtime` / `cliChange` 保持 v0.11.0(无 CLI 改动, 未打新 tag)。
+
 - ✅ **Go 类型 `ComboBox` 一族改名 `NativeComboBox`**(2026-11-07, 破坏性, 已本地提交未推送):
   - **现象**: `Combobox`(自动补全, = shadcn 文档名)与 `ComboBox`(原生载体)只差一个大写 B; 选项函数还有三对只差一个 box —— `WithComboPlaceholder/Size/Invalid` vs `WithComboboxPlaceholder/Size/Invalid`, 比类型名那对更容易敲错。
   - **改哪一侧**: 改原生载体。`Combobox` 等于 shadcn 文档名与刚定的 registry 键 `combobox`, 不能动; 原生载体的键已是 `native-combobox`, 按键名→类型名的机械映射(`native-select`→`NativeSelect`)就该是 `NativeComboBox`, 且 `NativeSelect` 已立"Native* = 原生载体"这一族 —— 它本身就嵌着这个类型。
