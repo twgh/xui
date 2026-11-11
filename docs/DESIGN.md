@@ -532,6 +532,15 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 
 ## 七、组件覆盖与已知限制
 
+**覆盖边界**: 对齐 shadcn 官方 Components 侧栏的可安装组件; 侧栏 66 个名字里 63 个已提供, 下面这些条目**不在覆盖范围内**(范围决策, 不是遗漏):
+
+| 上游条目 | 不做的原因 |
+|---|---|
+| Code Block | 全量对齐要在 Go 侧实现 tokenizer(上游 Shiki 13 语法 + ANSI + Streamdown + 选区感知复制); 若以后提供降级版, 必须在本节声明与上游的部分对齐 |
+| Direction | 文字渲染只有 LTR, 没有 RTL 布局能力 |
+| Typography | 上游是纯样式文档页, 没有可安装组件, 不做或落成 Label 的标题/段落预设 |
+| AI Elements | 暂无需求 |
+
 组件与 shadcn 的对应关系见第四节。以下差异是 **xcgui 能力边界**导致的,改组件代码也补不上:
 
 | 差异 | 原因 |

@@ -12,7 +12,7 @@
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
 - **发布**: v0.12.0(2026-11-10, GitHub Release 已建)。
-- **组件覆盖**: 77 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 63 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 剩余可安装缺口见下面待办)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。完整清单见 README / DESIGN 第七节, 上游缺口见下面待办。
+- **组件覆盖**: 77 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 63 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 其余 3 个明确不做)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。上游可安装组件已全部覆盖; 剩余 3 项与侧栏 AI Elements 的不做理由见 DESIGN 第七节, 完整清单见 README / DESIGN 第七节。
 - **最近一批**: 新增上游 `questionnaire`(多步问卷): 每步一题(单选 / 多选 / 自由输入), 可选题显式 Skip、必答校验、进度文案、字母 / 数字快捷键、条件题 `SetItemDisabled`; 键盘 = ↑/↓ 选答案、←/→ 切题、Enter 继续、Ctrl+Enter 校验并继续/提交(输入框聚焦时快捷键让位); demo 新增「表单6」页(两卡: 上游英文三题问卷 + 跳过与条件题, `XUI_HOME_PAGE=9`, 后续页顺延, 当前 0..24), 亮暗 / 150% DPI 截图与真实点击验收。踩坑见 DESIGN 第八节 197(Show(false) 把布局项改成 Disable, 重新显示要重写尺寸), 语义写进第四节末, 差异写进第七节。
 - **上一批**: 新增上游 `message-scroller`(消息滚动容器): 滚动视口 + 悬浮按钮, 轮次锚定(`AddItem(id, true)`)、只在贴底时跟随、前置历史保持视口、`ScrollToMessage` 跳转、`ScrollState`/`CurrentAnchorID`/`VisibleMessageIDs` 与两个回调; demo 新增「对话2」页(`XUI_HOME_PAGE=23`, 图标页顺延到 24, 当前 0..24), 可发送消息并逐字流式回复。踩坑见 DESIGN 第八节 193/194, 同批修了 Bubble 流式 `SetText` 的两处(195/196), 并把 demo 的列 / 焦点 helper 收进运行时(`xui.VStack` / `xui.FocusElement`), demo 页面改为一页一文件(main.go 5153 → 651 行)。
 - **更早一批**: 上游消息/聊天组 5 个组件(`marker` / `message` / `bubble` / `trace` / `attachment`, 共享基件 `chat.go`), demo 新增「对话」页; 详见 CHANGELOG。
@@ -27,9 +27,6 @@
 
 ## 待办
 
-- ⬜ **上游剩余组件**: 消息/聊天组(`marker` / `message` / `bubble` / `trace` / `attachment`)、消息滚动容器(`message-scroller`)与多步问卷(`questionnaire`)均已完成。
-  - **Code Block** 只做降级版或不做: 全量对齐要 Go 侧 tokenizer(上游 Shiki 13 语法 + ANSI + Streamdown + 选区感知复制), 做了必须在 DESIGN 第七节声明部分对齐。**Direction** 不做(文字渲染只有 LTR)、**Typography** 不做(上游是纯样式文档页, 无可安装组件)。
-  - 侧栏 **AI Elements** 21 个(Chain of Thought / Reasoning / Tool 等)是 Vercel 自己的项目(elements.ai-sdk.dev), 不属 shadcn registry, **不在覆盖目标内**。
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)。
 - ⬜ **可选(不阻塞)**: 补齐本地 shadcn 参考实现中旧批次组件的 tsx 与 App.tsx 对照卡(alert / alert-dialog / aspect-ratio / breadcrumb / button-group / calendar / chart / context-menu / empty / field / item / sonner / toggle / toggle-group); 对应 Go 组件均已实现并验收, 仅用于逐像素视觉对照。calendar / chart / sonner 需要额外 npm 依赖。Data Table / Combobox 是组合模式, 无独立 tsx。
 
