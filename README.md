@@ -254,7 +254,7 @@ go install github.com/twgh/xui/cmd/xui@latest
 二进制在 `$(go env GOPATH)/bin` (Windows 默认 `%USERPROFILE%\go\bin\xui.exe`), 该目录不在 `PATH` 时把它加进去。
 
 升级重跑同一条命令, 或者用 CLI 自己: `xui self-update` (加 `--check` 报"当前版本 / 最新 tag / CLI 最后改动的 tag", 不安装)。`@latest` 偶尔被
-模块代理缓存拖旧, 想立刻用某个版本就直接写 tag (`xui self-update v0.12.0`, 也支持 `main` / commit 短哈希)。
+模块代理缓存拖旧, 想立刻用某个版本就直接写 tag (`xui self-update v0.13.0`, 也支持 `main` / commit 短哈希)。
 
 **什么时候真的需要升级 CLI**: 组件与设计文档(`DESIGN.md` / `DESIGN-PITFALLS.md`)都随数据源下发, 发了新 tag 不等于 CLI 有变化 —— 提示与 `--check` 的依据是 `registry.json` 里 `cliChange`(CLI 最后一次改动在哪个 tag), 只有它高于你装的版本才会提示你升级。落后于最新 tag 但 `cliChange` 没变时, 不升级照样拿到最新组件与说明。
 
@@ -357,7 +357,7 @@ xui self-update --check # 报当前版本 / 最新 tag / CLI 最后改动的 tag
 
 ```bash
 XUI_REGISTRY=D:\path\to\xui xui add dialog                    # 本地目录(离线)
-XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.12.0 xui add dialog  # 锁组件版本(换成实际 tag)
+XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/v0.13.0 xui add dialog  # 锁组件版本(换成实际 tag)
 XUI_REGISTRY=https://raw.githubusercontent.com/twgh/xui/main xui add dialog     # 只走直连(跳过镜像与代理)
 XUI_REGISTRY=https://gitee.com/twgh/xui/raw/main xui add dialog                # 只走 Gitee 镜像
 XUI_REGISTRY=https://api.gitcode.com/api/v5/repos/twgh/xui/contents xui add dialog  # 只走 GitCode 镜像
