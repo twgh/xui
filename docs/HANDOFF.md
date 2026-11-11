@@ -11,7 +11,7 @@
 ## 当前状态(截至 2026-11-11)
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
-- **发布**: v0.12.0(2026-11-10, GitHub Release 已建)。
+- **发布**: v0.13.0(2026-11-11, GitHub Release 已建)。本次 `runtime` 抬到 v0.13.0、`cliChange` 保持 v0.11.0(CLI 行为未改)。发布记录见 CHANGELOG, notes 草稿在 `.verify/v0.13.0.md`。
 - **组件覆盖**: 77 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 63 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 其余 3 个明确不做)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。上游可安装组件已全部覆盖; 剩余 3 项与侧栏 AI Elements 的不做理由见 DESIGN 第七节, 完整清单见 README / DESIGN 第七节。
 - **最近一批**: 新增上游 `questionnaire`(多步问卷): 每步一题(单选 / 多选 / 自由输入), 可选题显式 Skip、必答校验、进度文案、字母 / 数字快捷键、条件题 `SetItemDisabled`; 键盘 = ↑/↓ 选答案、←/→ 切题、Enter 继续、Ctrl+Enter 校验并继续/提交(输入框聚焦时快捷键让位); demo 新增「表单6」页(两卡: 上游英文三题问卷 + 跳过与条件题, `XUI_HOME_PAGE=9`, 后续页顺延, 当前 0..24), 亮暗 / 150% DPI 截图与真实点击验收。踩坑见 DESIGN 第八节 197(Show(false) 把布局项改成 Disable, 重新显示要重写尺寸), 语义写进第四节末, 差异写进第七节。
 - **上一批**: 新增上游 `message-scroller`(消息滚动容器): 滚动视口 + 悬浮按钮, 轮次锚定(`AddItem(id, true)`)、只在贴底时跟随、前置历史保持视口、`ScrollToMessage` 跳转、`ScrollState`/`CurrentAnchorID`/`VisibleMessageIDs` 与两个回调; demo 新增「对话2」页(`XUI_HOME_PAGE=23`, 图标页顺延到 24, 当前 0..24), 可发送消息并逐字流式回复。踩坑见 DESIGN 第八节 193/194, 同批修了 Bubble 流式 `SetText` 的两处(195/196), 并把 demo 的列 / 焦点 helper 收进运行时(`xui.VStack` / `xui.FocusElement`), demo 页面改为一页一文件(main.go 5153 → 651 行)。

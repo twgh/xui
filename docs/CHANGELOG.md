@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **v0.13.0 发布(2026-11-11)**: 新增上游 `message-scroller` / `questionnaire` 两个组件, 运行时补 `xui.VStack` / `xui.FocusElement`, 修复 Bubble 流式 `SetText`, demo 拆成一页一文件; 组件与运行时 API 变更走 minor, **无破坏性变更**。
+  - **顺序**: 组件与文档提交 → 版本示例 + `fallbackXuiVersion` 提交(`0255b9c`)→ 轻量 tag `v0.13.0`(指向 `0255b9c`)→ `registry.runtime` 抬到 v0.13.0(`7fd6fac`, tag 之后); `cliChange` 保持 `v0.11.0`(本次未改 CLI 命令行为 / 内嵌模板 / 资源, 机械抬 fallback 与 runtime 按约定不算 CLI 改动)。
+  - **推送**: `git push origin main v0.13.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。数据源是 main, 推送当刻新组件与设计文档即对用户生效, 不等 tag; 没有语义翻转或类型改名, 无需迁移。
+  - **Release**: https://github.com/twgh/xui/releases/tag/v0.13.0 , 名称 `v0.13.0 — 会话滚动容器 / 多步问卷 / 流式气泡修复`; name/body 用 `[IO.File]::ReadAllText(..., UTF8)` 读文件、转 UTF-8 字节 POST(本次 `gh auth token` 可取到 token; `git credential fill` 在 PowerShell 管道里报 "missing protocol field", 改用 gh 取), 线上校验名称、正文与 `.verify/v0.13.0.md` 逐字一致, `draft=false / prerelease=false`。
+  - **下限回归**: 临时项目 `go mod edit -require=github.com/twgh/xui@v0.13.0` → 本地 registry `add --all` → `go mod tidy && go build ./ui` 通过。踩到两个本地环境问题: ① PowerShell 里 `-require=...` 不带引号会被拆成 `-require=github` + `com/...`(报 `need path@version`), 参数要用单引号包住; ② `GOPROXY=direct` 时校验走 `sum.golang.org` 的 IPv6 超时, 加 `GOSUMDB=off` 后通过(仅临时项目, 不进仓库)。临时项目仍需 `GOWORK=off`, 否则受工作区 `go.work` 影响。
+  - **线上校验**: GitHub `main` 的 `registry.json` 为 `runtime=v0.13.0 / cliChange=v0.11.0`; README 两处版本示例(旧值零残留)与 `fallbackXuiVersion` 已指向 v0.13.0; tag `refs/tags/v0.13.0` = `0255b9c`; notes 草稿在 `.verify/v0.13.0.md`。
+  - **CI**: 本次 push 的 `Build & test` / `Registry closure` 均为 success(后者按 `runtime=v0.13.0` 的已发布 tag 取运行时逐组件编译)。
+
 - ✅ **新增上游 `questionnaire`(多步问卷)**(2026-11-11, HANDOFF 待办「Questionnaire」):
   - **组件**: `components/questionnaire.go` —— 根 = 进度 → 当前题 → 动作行, 题间 gap-16、选项间 gap-8; 选项行是自绘命中区(最小高 44 / 圆角边框 / 指示器 16 / 标题 14 medium + 描述 + 快捷键角标 20, 悬停与选中叠 muted, 校验失败红边 + 红色文案); 单选点行即换选、多选切换; 可选自由输入是原生 `Input`; 动作行 = Previous / Skip(仅可选题)/ Next / Submit(最后一题), 空文案回落默认。
   - **语义**: 对齐 `@shadcn/react` questionnaire 无头原语 —— 必答题未作答时 Next/Ctrl+Enter 触发校验并聚焦首项; 可选题必须显式 Skip(答案清空, 自由输入文字保留、再输入即恢复 answered); 字母 A-Z / 数字 1-9 快捷键每题独立分配、禁用项不占号、只选中不前进; ↑/↓ 在选项间移动(单选顺带选中、跳过禁用), ←/→ 切题, Enter 在已选/已填写时继续, Ctrl+Enter 随时校验并继续/提交, 输入框聚焦时快捷键让位; 提交只带"有答案且未被跳过"的题; 条件题 `SetItemDisabled` 整体退出进度/导航/校验/提交; `SetItem` 外部受控跳题不校验; `Answers` / `Status` / `Reset` / `OnSubmit` / `OnStatusChange` / `OnItemChange` 完整。
