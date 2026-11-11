@@ -7,7 +7,7 @@
 //   - 页面留白与间距一律用布局项外边距 / SetSpace 表达。
 //
 // 主题用环境变量 XUI_THEME=dark 启动即暗色, 运行中可用右上角按钮切换;
-// 启动页 XUI_HOME_PAGE = 0..23 = 基础1..4 / 表单1..5 / 导航1..6 / 反馈1..3 / 图表 / 数据 / 数据2 / 对话 / 对话2 / 图标。
+// 启动页 XUI_HOME_PAGE = 0..24 = 基础1..4 / 表单1..6 / 导航1..6 / 反馈1..3 / 图表 / 数据 / 数据2 / 对话 / 对话2 / 图标。
 package main
 
 import (
@@ -37,6 +37,7 @@ const (
 	pageForm3         // 表单3: 字段与分组(Field / FieldSet) / 文件对话框(FileDialog)
 	pageForm4         // 表单4: 日期与时间 / 月历 / 范围与预设
 	pageForm5         // 表单5: 单选组 / 复选框三态与校验
+	pageForm6         // 表单6: 多步问卷(Questionnaire)
 	pageNav1          // 导航1: 命令面板 / 下拉菜单 / 右键菜单
 	pageNav2          // 导航2: 标签页 / 面包屑 / 分页
 	pageNav3          // 导航3: 步骤条 / 可折叠面板
@@ -58,7 +59,7 @@ const (
 // pageTitles 的个数必须与 pageCount 一致(页签与页一一对应)。
 var pageTitles = [...]string{
 	"基础1", "基础2", "基础3", "基础4",
-	"表单1", "表单2", "表单3", "表单4", "表单5",
+	"表单1", "表单2", "表单3", "表单4", "表单5", "表单6",
 	"导航1", "导航2", "导航3", "导航4", "导航5", "导航6",
 	"反馈1", "反馈2", "反馈3",
 	"图表",
@@ -580,6 +581,7 @@ func buildPages(hWindow, host int) {
 	buildForm3Page(bodies[pageForm3], hWindow)
 	buildForm4Page(bodies[pageForm4])
 	buildForm5Page(bodies[pageForm5])
+	buildForm6Page(bodies[pageForm6])
 	buildNav1Page(bodies[pageNav1])
 	buildNav2Page(bodies[pageNav2])
 	buildNav3Page(bodies[pageNav3])

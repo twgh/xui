@@ -244,6 +244,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Input | embed Edit | 只画边框+焦点环, 原生光标/IME | BeautifyEdit 示例 |
 | Textarea | embed Edit | Input 的多行预设 + **随内容自动长高**(第八节 166): 上下内边距 8(py-2)、最小高 64(min-h-16); 行数取原生 Edit 的显示行数(含折行), 内容装得下, 不挂滚动条 | textarea.tsx(radix-nova) |
 | InputGroup | LayoutEle(外框 + 三行) + 裸 Input | 输入框与 addon 共用一层边框/焦点环: 内层是 `WithInputBare` 裸输入, 环/禁用/校验由容器画; addon 四向(inline-start/end、block-start/end), 内容可 Text/Icon/Button/IconButton/Kbd/Spinner/MenuButton/自定义; 复合 addon(多控件、下拉菜单、按钮尺寸档)见第八节 165 | input-group.tsx |
+| Questionnaire | LayoutEle(根 + 每题容器 + 选项行命中区) + 原生 Input + Button | 多步状态机: 每题一个 Fill/Auto 容器, 切题只 Show 当前题(隐藏会清掉布局声明, 重新显示要重写尺寸再逐级 reflow, 见第八节 197); 选项行是自绘 LayoutEle、必须关鼠标穿透(第八节 185), 指示器/快捷键角标/边框全在 paint 回调按 token 画; 动作行 = HStack + Weight 撑子靠右, 按钮显隐后要按文字恢复宽高; 键盘挂宿主窗口 KeyDown + 当前问卷焦点判定(同 152) | questionnaire.tsx(base-nova) + @shadcn/react headless 文档 |
 | Switch | 纯自绘 Element | 轨道+滑块, 尺寸预设; hover 过渡走运行时 `anim.go`(第八节 45); aria-invalid 红边 + 常驻红环, 空格切换, `SetDisabled` 关鼠标与键盘(第八节 146) | — |
 | Label/Separator/Badge | 纯 Element | paint;`Label.SetAutoWrap()` 按当前宽度量折行高度并自撑,宽度/文本/字体变化时重排(量高口径见第八节 90) | — |
 | Progress | 纯自绘 Element | h-1 圆角轨道 + 指示器(宽度 = value/max); max 可配, 不确定态短条往返, 指示器颜色可覆盖; `ProgressField` = 标题+百分比+条(第八节 145) | BeautifyProgressBar 配方移植成 token + progress 文档 |
@@ -394,6 +395,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **trace**: 列表竖向 gap-1(4)、宽铺满; 行 = [16 图标][标题(吃剩余宽、超宽省略号)][描述(text-xs muted/70)][尾图标], 行内 gap-2(8)、垂直居中; 状态 running = 标题微光扫过, error = 标题/图标 destructive, pending = 60% 不透明; 可点击行悬停文字转前景色(error 保持红), 松开左键回调; 行内子元素要转发悬停/点击(点标题时事件不会冒泡到行); TraceCollapsible = 触发行右侧 chevron 展开转 90°(200ms 高度过渡同 Collapsible), 内容左缩进 24、上间距 6 | trace.tsx + collapsible.tsx |
 | **attachment**: rounded-xl border bg-card; 水平 = [媒体][内容(吃剩余宽)][动作], 垂直 = 媒体全宽方形在上、内容与动作在下; 三档尺寸: 媒体 40/32/28、间距 8/10/6、内边距 8/6/4; **五状态**: done 常规、idle 虚线边框、uploading/processing 标题微光、error 红边框 + 媒体红底 + 描述红字; `WithAttachmentOnClick` 整块可点(悬停加深底色, 对应上游 AttachmentTrigger 覆盖层); 动作钮 = ghost icon-xs, 垂直时排在内容下方右侧 | attachment.tsx + button |
 | **message scroller**: 根 = 滚动视口 + 悬浮按钮(不占布局); 内容区竖向 gap-8(32, 可改); 条目 = 宽铺满/高自撑, `AddItem(id, scrollAnchor)` 注册; `autoScroll` 默认关, 开启后**只在贴底时**跟随, 任意上滚立即放手、回底重新跟随; 追加内容时若新增轮次(锚点)只有一个 → 把该轮第一个锚点顶到视口顶部、上方保留上一条 peek 64px(流式回复在下方长高时锚点保持不动); 贴底且一次追加多个轮次 → 直接贴底; 前置历史默认把"原第一条"滚回原视口位置; 首次落点 defaultScrollPosition = end(默认)/start/last-anchor; 边缘阈值 8px; 浮动按钮离底 16px 居中、200ms 滑入 / 400ms 滑出, 只在对应方向还能滚时出现, 点击 220ms 平滑滚到端点; `ScrollToMessage` 可对齐 start/center/end/nearest; `ScrollState` = {还能向上/还能向下}; `CurrentAnchorID` = 视口顶部所在轮次的锚点; 滚轮 60px/格 | @shadcn/react message-scroller(Provider/Root/Viewport/Content/Item/Button)+ message-scroller.tsx |
+| **questionnaire**: 根 = 进度(12/medium/muted)→ 当前题 → 动作行, 题间 gap-16、选项间 gap-8; 每一步只显示一道题(选项 + 可选自由输入), 切题 = 容器 Show/hide 并重排(见第八节 197); 选项行 = 自绘命中区(LayoutEle, 最小高 44, rounded-lg 边框, padding 12/10, 行内 gap 10), 指示器 16(单选圆 / 多选圆角方框, 选中 = primary 底 + 白点/白勾) + 标题 14 medium + 可选描述 14 muted + 快捷键角标 20(mono 10, 右对齐); 悬停叠 muted/50、选中叠 muted、选中边框 primary/40, 校验失败整组红边 + 下方红色错误文案; 单选点行即换选, 多选点击切换; 可选题显示 Skip, 必答题必须作答; 动作行 = Previous / Skip(仅可选题)/ Next / Submit(最后一题), 空文案回落默认; **↑/↓ 在选项间移动**(单选顺带选中, 跳过禁用项), **←/→ 切题**(不校验当前题), **Enter** 在已选/已填写时继续、未作答时触发校验, **Ctrl+Enter** 校验并继续/提交; 自由输入聚焦时字母/数字快捷键让位; 字母 A-Z / 数字 1-9 快捷键每题独立分配、禁用项不占号、选中不自动前进; 提交只带"有答案且未被跳过"的题(多选按定义顺序、自由输入追加末尾), 跳过的题从答案里排除; 条件题 `SetItemDisabled` 整体移出进度/导航/校验/提交, 进度文案默认 "Question X of Y"(可换); `SetItem` 外部受控跳题不校验 | questionnaire.tsx(base-nova) + @shadcn/react questionnaire 无头原语文档(code / examples) |
 
 ### 变体/尺寸与上游的映射、已知差异
 
@@ -522,7 +524,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
   | `menu_model.go` | 菜单条目模型与 `MenuOpt` 构造器 | menu / menubar |
   | `chat.go` | 会话组件的共享基件: 自绘单行文本/图标、按单词边界折行与量高、微光文字、虚线边框 | message / bubble / marker / trace / attachment |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`、`data-table → table + input + button + label + select`、`input-group → menu`(复合 addon 的 MenuButton)、`status-bar → tooltip`(条目/抓手的悬停气泡)、`trace → collapsible`(折叠段)、`attachment → button`(动作钮)、`message-scroller → button + scroll-area`(浮动按钮与滚动视口);`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`、`data-table → table + input + button + label + select`、`input-group → menu`(复合 addon 的 MenuButton)、`status-bar → tooltip`(条目/抓手的悬停气泡)、`trace → collapsible`(折叠段)、`attachment → button`(动作钮)、`message-scroller → button + scroll-area`(浮动按钮与滚动视口)、`questionnaire → button + input + label`(动作钮 / 自由输入 / 文案);`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在组件目录里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update`(已装组件 + 已下发的文档)或 `xui update button`(只更新该组件及其依赖)。
 
@@ -586,6 +588,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | MessageScroller 的浮动按钮是固定 outline 图标钮 | 上游 `MessageScrollerButton` 的 children/render 可换成任意内容; 这里方向/出现条件/过渡已内置, 样式改 `WithMessageScrollerButtonDirection` 或直接不用该方向, 没有自定义 render 槽 |
 | MessageScroller 的前置历史恒保持视口(没有 preserveScrollOnPrepend 开关) | 上游默认 true、可按 viewport 关掉; 桌面会话里"加载更早不跳动"始终是期望行为, 暂不提供关闭 |
 | MessageScroller 不做触摸 / 键盘滚动, 滚轮固定 60px/格 | 视口是原生 LayoutFrame, 不参与 Tab 焦点链(见第八节 157); 触摸板走系统滚轮消息; 60px = 原生 3 行步进(见第八节 193) |
+| Questionnaire 的键盘操作要先点一下选项 | 与"嵌套在布局容器里的控件无法 Tab 聚焦"同一条(第八节 157): 题容器与选项行嵌在布局里, Tab 到不了; ↑/↓、←/→、Enter、Ctrl+Enter 与字母/数字快捷键由宿主窗口 KeyDown + 当前问卷的焦点判定接管, 鼠标点过选项后生效; 自由输入聚焦时快捷键让位给文字输入 |
+| Questionnaire 的选项行是自绘指示器, 不是 Checkbox / Radio 控件 | 行要整块可点、指示器与多行文字垂直对齐、右侧还要放快捷键角标, 原生控件拼不出 44 高的整行命中区; 单选互斥、多选切换、禁用行与校验边框都在组件内实现 |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -792,6 +796,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **194** LayoutFrame 内容元素改高后总大小不更新: 内容与框架各 `AdjustLayout` 一次再读/滚
 - **195** 子元素改尺寸不会自动重排 Auto 高的祖先: 沿父链逐级 `AdjustLayout` 到滚动框架
 - **196** 同一折行高度内 `SetText` 不重绘: 写完文本立刻 `Redraw`, 再异步 reflow
+- **197** `Show(false)` 会把布局项类型重置为 `Layout_Size_Disable`: 重新显示要重写尺寸再逐级重排
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 

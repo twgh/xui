@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **新增上游 `questionnaire`(多步问卷)**(2026-11-11, HANDOFF 待办「Questionnaire」):
+  - **组件**: `components/questionnaire.go` —— 根 = 进度 → 当前题 → 动作行, 题间 gap-16、选项间 gap-8; 选项行是自绘命中区(最小高 44 / 圆角边框 / 指示器 16 / 标题 14 medium + 描述 + 快捷键角标 20, 悬停与选中叠 muted, 校验失败红边 + 红色文案); 单选点行即换选、多选切换; 可选自由输入是原生 `Input`; 动作行 = Previous / Skip(仅可选题)/ Next / Submit(最后一题), 空文案回落默认。
+  - **语义**: 对齐 `@shadcn/react` questionnaire 无头原语 —— 必答题未作答时 Next/Ctrl+Enter 触发校验并聚焦首项; 可选题必须显式 Skip(答案清空, 自由输入文字保留、再输入即恢复 answered); 字母 A-Z / 数字 1-9 快捷键每题独立分配、禁用项不占号、只选中不前进; ↑/↓ 在选项间移动(单选顺带选中、跳过禁用), ←/→ 切题, Enter 在已选/已填写时继续, Ctrl+Enter 随时校验并继续/提交, 输入框聚焦时快捷键让位; 提交只带"有答案且未被跳过"的题; 条件题 `SetItemDisabled` 整体退出进度/导航/校验/提交; `SetItem` 外部受控跳题不校验; `Answers` / `Status` / `Reset` / `OnSubmit` / `OnStatusChange` / `OnItemChange` 完整。
+  - **踩到的坑**: ① 选项行是 `LayoutEle`, 默认鼠标穿透, 必须 `EnableMouseThrough(false)` 才能点(第八节 185); ② 切题/重置时被 `Show(false)` 过的输入框、错误标签、动作按钮布局项类型变成 `Layout_Size_Disable`, `Show(true)` 不恢复 —— 重新显示要重写尺寸与声明再逐级 reflow(第八节 197), 错误标签在"校验失败 → 作答清错"时同理(不重写会让 Next 被顶回旧位置); ③ Auto 高的题容器在显隐切换后要沿祖先链重排(195); ④ 重排只改坐标不擦旧像素, 动作行随错误文案上移会留下按钮重影, 布局结束后要整窗重绘(102); ⑤ 绘制位置更新后命中区仍停在旧位置(点新位置没反应、点旧位置才触发), 隔一轮消息再排一次才重建命中映射(118 补充)。
+  - **登记**: `registry.json` 加 kebab-case key `questionnaire`(`files: questionnaire.go`, `deps: button + input + label`), 可安装名 76 → 77(shadcn 官方 62 → 63); README 组件表、DESIGN 技术路线 / 语义表 / 第六节依赖 / 第七节差异(键盘焦点、自绘指示器)、HANDOFF 覆盖数字与页索引同步。`runtime` / `cliChange` 不动(未打 tag)。
+  - **demo**: 新增「表单6」页(`XUI_HOME_PAGE=9`, 后续页顺延, 当前 0..24), 左卡上游英文三题问卷(单选带说明 / 多选 / 自由输入 / 字母快捷键 / 状态标签 / 重置), 右卡可选题 Skip + 开关启用的条件复查题 + 数字快捷键。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿(含 `questionnaire_test.go`: 快捷键分配与校验文案); 临时项目单独 `xui add questionnaire` + `go build ./ui` 通过(依赖闭包自动带 button / input / label), `add --all` 全量编译通过; demo 真实点击/键入 —— 快捷键选中、Enter 前进、必答校验红边与错误文案、作答后错误区收回且动作行随之上移(新位置可直接点, 无重影)、多选、Ctrl+Enter 与按钮两条提交路径(答案映射与跳过项排除)、重置恢复、条件题开关、Skip 到第 2 题后 Submit、输入框键入与快捷键让位; 150% DPI 亮/暗主题截图验收勾选、校验、动作按钮与进度。
+
 - ✅ **demo helper 上移运行时: `xui.VStack` / `xui.FocusElement`**(2026-11-11, 用户确认上移建议):
   - **`xui.VStack`**(`container.go`): 宽 Weight + 高 Auto 的列(卡片列), 构造里在列宽确定 / 变化时把 Fill 子项锁成 Fixed(与 Card 头部 `syncTitleWidth` 同一套实测语义), 避免 Weight 宽不下发给嵌套布局的 Fill 子项、列里的 InputGroup / Collapsible 变 0 宽(DESIGN 59/101/129); `VStackWeight` 的注释改为"高自撑的卡片列用 VStack", 两种列的选择不再靠用户自己拼。
   - **`xui.FocusElement`**(`focus.go`): 先用 `HostWindowOf` 沿父链找宿主窗口, 再 `XWnd_SetFocusEle`; 不再直接 `XC_hWindowFromHWND(XWidget_GetHWND(ele))`, 元素在 ScrollArea / 弹层容器里时不会因映射不到窗口而静默失败。

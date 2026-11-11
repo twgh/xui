@@ -139,6 +139,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Select | 自绘下拉(radix item-aligned 弹层):条目可带图标/禁用/分组;弹层盖住触发区、选中项正对触发区,键盘 ↑↓/Home/End/Enter/ESC |
 | InputOTP | 验证码输入:逐格输入、打进已填格替换并前进,Ctrl+V 分发粘贴;可限字符模式与分隔位,全满触发 `OnComplete` |
 | TagInput | 标签输入:回车成标签 / 逗号(含中文逗号、换行)分隔、空输入退格删末个、点 × 删除;胶囊排满自动换行并撑高;`WithTagInputMax` 限数量、`WithTagInputValidator` 校验、`WithTagInputAllowDuplicates` 允许重复, `OnChange` 只在交互时触发(程序化改值不广播) |
+| Questionnaire | 多步问卷:每步一道题(单选 / 多选 / 自由输入),可选题显式 Skip、必答题校验、进度文案、字母或数字快捷键;↑/↓ 在选项间移动(单选顺带选中)、←/→ 切题、Enter 继续、Ctrl+Enter 校验并继续/提交;`SetItemDisabled` 动态启用条件题(不参与进度/校验/提交),`Answers` / `Status` 取作答结果 |
 | Accordion | 手风琴:single 单开互斥(可全收)或多开;200ms 高度过渡。**注意**内容里的子项要 `xui.ItemFill` 声明宽度 |
 | Collapsible | 可折叠面板:任意控件绑作触发区,内容放进 `ContentStack()`;收起后不占布局 |
 | Popover | 弹出卡片:点击触发、点外部/ESC 关闭;内容里嵌了会自己弹窗的控件(如 ColorPicker)时要 `WithPopoverKeepOnBlur(true)`,否则本卡片会先失焦关掉 |

@@ -306,6 +306,10 @@
     "message-scroller": {
       "files": ["messagescroller.go"],
       "deps": ["button", "scroll-area"]
+    },
+    "questionnaire": {
+      "files": ["questionnaire.go"],
+      "deps": ["button", "input", "label"]
     }
   }
 }
