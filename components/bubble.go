@@ -191,6 +191,9 @@ func (b *Bubble) SetText(text string) *Bubble {
 		return nil
 	}
 	b.text = text
+	// 同一个折行高度内继续加字(流式回复)时尺寸不变, reflow 会提前返回,
+	// 不重绘的话界面停在最后一次改高时的文字(实测: 停在 "…as soon as the")。
+	b.Redraw(false)
 	b.scheduleReflow()
 	return b
 }
@@ -354,7 +357,33 @@ func (b *Bubble) reflow() {
 	b.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
 	b.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
 	// 气泡在 Message.Content() 里是 Fixed 宽: 改完要让父级重排(对齐到 start/end)。
-	xc.XEle_AdjustLayout(parent)
+	// 流式 SetText 时高度会反复变化, 只排直接父级时外层 Message / 滚动条目仍是旧高度
+	// (实测: 气泡从 36 长到 56, 条目停在 27), 必须一路排到滚动框架。
+	b.adjustAncestors()
+}
+
+// adjustAncestors 逐级重排祖先, 直到窗口或滚动框架。
+func (b *Bubble) adjustAncestors() {
+	for p := b.Handle; p != 0; p = xc.XWidget_GetParentEle(p) {
+		if xc.XC_IsHXCGUI(p, xcc.XC_LAYOUT_FRAME) {
+			// ScrollArea 的框架自己会重排内容区并重算滚动范围。
+			xc.XEle_AdjustLayout(p)
+			return
+		}
+		if pp := xc.XWidget_GetParentEle(p); pp != 0 && xc.XC_IsHXCGUI(pp, xcc.XC_LAYOUT_FRAME) {
+			// p 是框架的内容区: 直接排内容区会把子项宽度打成 0(实测), 交给框架排。
+			xc.XEle_AdjustLayout(pp)
+			return
+		}
+		if xc.XC_IsHXCGUI(p, xcc.XC_ELE) {
+			xc.XEle_AdjustLayout(p)
+			continue
+		}
+		if xc.XC_IsHXCGUI(p, xcc.XC_WINDOW) {
+			xc.XWnd_AdjustLayout(p)
+		}
+		return
+	}
 }
 
 // bubbleBg 返回当前变体的底色; hover 时换深一档(对应上游 /80、/5% 这类悬停色)。

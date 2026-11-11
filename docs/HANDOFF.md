@@ -8,15 +8,16 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威。
 
-## 当前状态(截至 2026-11-10)
+## 当前状态(截至 2026-11-11)
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
 - **发布**: v0.12.0(2026-11-10, GitHub Release 已建)。组件跟 `main` 下发, 运行时按 tag 取; 本次 `runtime` 抬到 v0.12.0、`cliChange` 保持 v0.11.0(CLI 行为未改)。发布记录见 CHANGELOG, notes 草稿在 `.verify/v0.12.0.md`。
 - **破坏性变更已随 v0.12.0 推送生效(两项)**: ① registry 键名交换 —— `combobox` 现在指自动补全(= shadcn 文档的 Combobox), 原生载体改叫 `native-combobox`, `native-select.deps` 跟着改; ② Go 类型 `ComboBox` 一族改名 `NativeComboBox`。数据源是 main, **推送当刻即生效, 不等 tag**: `xui add combobox` 装到另一个组件; `xui update` 后用户写的 `ui.NewComboBox(...)` 直接编译不过(要改成 `NewNativeComboBox`, 别顺着编译器提示改成 `NewCombobox`, 那是自动补全)。告知已写进 Release notes 首条, 迁移清单与实测证据见 CHANGELOG; 文件名未动, 老项目的安装/改动判定实测不受影响。
 - **CLI 版本语义(2026-11-06 改)**: 设计文档与组件同源(都从数据源取), 所以 tag 只代表"CLI 代码 + 内嵌模板/资源"的变化; 升级提示与 `--check` 的依据是 `registry.json` 的 `cliChange`, 不再是 `@latest` tag。后台探测子进程与 `update-check.json` 缓存已删除。
-- **组件覆盖**: 75 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 61 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 剩余可安装缺口见下面待办)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。完整清单见 README / DESIGN 第七节, 上游缺口见下面待办。
+- **组件覆盖**: 76 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 62 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 剩余可安装缺口见下面待办)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。完整清单见 README / DESIGN 第七节, 上游缺口见下面待办。
 - **DataTable 双模式(2026-11-07 探针定案)**: 分页是默认, 虚拟滚动用 `WithDataTableVirtualScroll` 显式开启 —— 两种模式共用排序/筛选/勾选/编辑/列显隐; 分页只装当前页(默认 10, 推荐 20~50), 虚拟滚动一次展示全部筛选结果且页脚只留总行数(分页 API 不生效). 原生 List 的滚动绘制只跟可见行数有关, 两种模式同为 ~4ms/帧(1M 行也一样); 把全部行装进普通 List 时 1M 行会多占约 1GB 原生内存, 分页/虚拟滚动都不复制. 真正随行数增长的是 Go 侧排序/筛选(1M 行 sortID 约 157ms、数字自然比较约 1.6s、筛选约 85ms), 与表格载体无关; 50 万行以上建议 `DataColumn.Compare` 或后台排序/筛选. demo 新增「数据2」页(10 万行虚拟滚动表, `XUI_HOME_PAGE=20`, **首次进入才生成数据**)与「数据」页的分页表对照; 依据与原始数据在 `.verify/probe-longlist/`(临时, 未入库).
-- **最近一批**: 新增上游消息/聊天组 5 个组件 —— `marker`(标记行: default / border / separator)、`message`(消息行/组: 页眉 → 头像 + 内容列 → 页脚, `align=end` 镜像)、`bubble`(文本气泡: 7 变体 + 叠边反应胶囊 + 整块点击)、`trace`(轨迹列表: 4 状态 + 可折叠段, 依赖 collapsible)、`attachment`(附件: 5 状态 / 3 尺寸 / 横竖朝向, 依赖 button); 共享基件 `chat.go`(自绘单行文本与图标、按单词边界折行、微光文字、虚线边框)。demo 新增「对话」页(`XUI_HOME_PAGE=21`, 图标页顺延到 22, 当前 0..22), 亮暗 DPI 截图 + 逐组件安装编译已验收; 语义写进 DESIGN 第四节末, 差异(文本气泡 / 文字反应胶囊 / AttachmentGroup 换行 / 垂直动作位)写进第七节。
+- **最近一批**: 新增上游 `message-scroller`(消息滚动容器): 滚动视口 + 悬浮按钮, 轮次锚定(`AddItem(id, true)`)、只在贴底时跟随、前置历史保持视口、`ScrollToMessage` 跳转、`ScrollState`/`CurrentAnchorID`/`VisibleMessageIDs` 与两个回调; demo 新增「对话2」页(`XUI_HOME_PAGE=22`, 图标页顺延到 23, 当前 0..23), 可发送消息并逐字流式回复。踩坑见 DESIGN 第八节 193/194(滚动单位吸附与事件行号、动态内容改高要重排框架), 语义写进第四节末, 差异写进第七节; 同批修了 Bubble 流式 `SetText` 的两处(祖先 Auto 高不传播 / 同高度不重绘, 见第八节 195/196)。
+- **上一批**: 新增上游消息/聊天组 5 个组件 —— `marker`(标记行: default / border / separator)、`message`(消息行/组: 页眉 → 头像 + 内容列 → 页脚, `align=end` 镜像)、`bubble`(文本气泡: 7 变体 + 叠边反应胶囊 + 整块点击)、`trace`(轨迹列表: 4 状态 + 可折叠段, 依赖 collapsible)、`attachment`(附件: 5 状态 / 3 尺寸 / 横竖朝向, 依赖 button); 共享基件 `chat.go`(自绘单行文本与图标、按单词边界折行、微光文字、虚线边框)。demo 新增「对话」页(`XUI_HOME_PAGE=21`, 图标页顺延到 22, 当时 0..22), 亮暗 DPI 截图 + 逐组件安装编译已验收; 语义写进 DESIGN 第四节末, 差异(文本气泡 / 文字反应胶囊 / AttachmentGroup 换行 / 垂直动作位)写进第七节。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 已知限制(不是待办, 是 xcgui 的能力边界)
@@ -28,8 +29,8 @@
 
 ## 待办
 
-- ⬜ **上游剩余组件**: 消息/聊天组已完成(`marker` / `message` / `bubble` / `trace` / `attachment`, 见「最近一批」)。
-  - **Questionnaire**(分步状态机, 上游靠 `@shadcn/react` 无头原语)、**Message Scroller**(滚动锚定 + 只在底部跟随; 上游明确不含虚拟化, 可用原生 List 虚拟滚动替代)。
+- ⬜ **上游剩余组件**: 消息/聊天组已完成(`marker` / `message` / `bubble` / `trace` / `attachment`), 消息滚动容器已完成(`message-scroller`, 见「最近一批」)。
+  - **Questionnaire**(分步状态机, 上游靠 `@shadcn/react` 无头原语)。
   - **Code Block** 只做降级版或不做: 全量对齐要 Go 侧 tokenizer(上游 Shiki 13 语法 + ANSI + Streamdown + 选区感知复制), 做了必须在 DESIGN 第七节声明部分对齐。**Direction** 不做(文字渲染只有 LTR)、**Typography** 不做(上游是纯样式文档页, 无可安装组件)。
   - 侧栏 **AI Elements** 21 个(Chain of Thought / Reasoning / Tool 等)是 Vercel 自己的项目(elements.ai-sdk.dev), 不属 shadcn registry, **不在覆盖目标内**。
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)。
@@ -51,7 +52,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 native_select select inputotp accordion
                                  popover hovercard avatar command
                                  sheet drawer menubar navigationmenu carousel resizable
-                                 sidebar screentoast tray statusbar
+│                                 sidebar screentoast tray statusbar messagescroller
 ├── icons\                        图标资源子包: lucide 预处理数据(2130 个) + 每图标一个
 │                                 IconXxx 常量 + Path/Has/Names/Count/Version
 ├── scripts\gen_icons.py          lucide-static SVG → icons\lucide_gen.go(名字表)
@@ -108,7 +109,7 @@ go test ./cmd/xui    # 候选顺序 / 数据源解析 / httptest 端到端 / 显
 # 暗色对照验收: 环境变量决定启动主题, 不用改代码
 #     XUI_THEME=dark  启动 demo 即暗色(cmd: set XUI_THEME=dark && demo\demo.exe)
 #     运行中仍可用右上角按钮切换(参考页 shadcn 同样支持按 d 键切换)
-# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..22 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/导航4/导航5/导航6/反馈1/反馈2/反馈3/图表/数据/数据2/对话/图标
+# 直接启动到指定页签(验收某一页时省得点): XUI_HOME_PAGE=0..23 = 基础1/基础2/基础3/基础4/表单1/表单2/表单3/表单4/表单5/导航1/导航2/导航3/导航4/导航5/导航6/反馈1/反馈2/反馈3/图表/数据/数据2/对话/对话2/图标
 #     XUI_ANIM_SCALE=5 把 hover / 弹层 / Collapsible 的过渡慢放 5 倍(抓中间帧用)
 
 # 全部测试(图标解析器语法 + 资源完整性 + 缓动曲线 + CLI 选路/数据源/端到端)

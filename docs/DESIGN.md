@@ -393,6 +393,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **marker**: 单行 min-h-4(16)、行内 gap-2(8)、text-sm(14) muted-foreground; default 透明; border 底部 1px + pb-2(8); separator 文字居中、两侧各一条 1px 横线(线长吃剩余宽、距文字 4); 行首可放 16px 弱化图标 | marker.tsx |
 | **trace**: 列表竖向 gap-1(4)、宽铺满; 行 = [16 图标][标题(吃剩余宽、超宽省略号)][描述(text-xs muted/70)][尾图标], 行内 gap-2(8)、垂直居中; 状态 running = 标题微光扫过, error = 标题/图标 destructive, pending = 60% 不透明; 可点击行悬停文字转前景色(error 保持红), 松开左键回调; 行内子元素要转发悬停/点击(点标题时事件不会冒泡到行); TraceCollapsible = 触发行右侧 chevron 展开转 90°(200ms 高度过渡同 Collapsible), 内容左缩进 24、上间距 6 | trace.tsx + collapsible.tsx |
 | **attachment**: rounded-xl border bg-card; 水平 = [媒体][内容(吃剩余宽)][动作], 垂直 = 媒体全宽方形在上、内容与动作在下; 三档尺寸: 媒体 40/32/28、间距 8/10/6、内边距 8/6/4; **五状态**: done 常规、idle 虚线边框、uploading/processing 标题微光、error 红边框 + 媒体红底 + 描述红字; `WithAttachmentOnClick` 整块可点(悬停加深底色, 对应上游 AttachmentTrigger 覆盖层); 动作钮 = ghost icon-xs, 垂直时排在内容下方右侧 | attachment.tsx + button |
+| **message scroller**: 根 = 滚动视口 + 悬浮按钮(不占布局); 内容区竖向 gap-8(32, 可改); 条目 = 宽铺满/高自撑, `AddItem(id, scrollAnchor)` 注册; `autoScroll` 默认关, 开启后**只在贴底时**跟随, 任意上滚立即放手、回底重新跟随; 追加内容时若新增轮次(锚点)只有一个 → 把该轮第一个锚点顶到视口顶部、上方保留上一条 peek 64px(流式回复在下方长高时锚点保持不动); 贴底且一次追加多个轮次 → 直接贴底; 前置历史默认把"原第一条"滚回原视口位置; 首次落点 defaultScrollPosition = end(默认)/start/last-anchor; 边缘阈值 8px; 浮动按钮离底 16px 居中、200ms 滑入 / 400ms 滑出, 只在对应方向还能滚时出现, 点击 220ms 平滑滚到端点; `ScrollToMessage` 可对齐 start/center/end/nearest; `ScrollState` = {还能向上/还能向下}; `CurrentAnchorID` = 视口顶部所在轮次的锚点; 滚轮 60px/格 | @shadcn/react message-scroller(Provider/Root/Viewport/Content/Item/Button)+ message-scroller.tsx |
 
 ### 变体/尺寸与上游的映射、已知差异
 
@@ -456,6 +457,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Marker | `NewMarker(x,y,cx,cy,parent, WithMarkerVariant/Icon)` + `Content(text)`; `NewMarkerIcon(parent, icon)` | 对应 marker.tsx 的 `Marker/MarkerIcon/MarkerContent`; 变体 `MarkerDefault/MarkerBorder/MarkerSeparator`; 内容是单行自绘文本(超宽省略号), separator 变体按文字量宽、两侧横线自动吃到剩余宽度 |
 | Trace | `NewTrace(x,y,cx,cy,parent)` + `NewTraceLine(x,y,cx,cy,parent, WithTraceStatus/Icon/Title/Description/TrailingIcon/OnClick)` + `Title()`; `NewTraceCollapsible(x,y,cx,cy,parent, WithTraceCollapsibleOpen/Trigger/OnOpen)` + `Trigger()/Content()/ContentStack(space)` | 对应 trace.tsx 的 `Trace/TraceLine/TraceIcon/TraceTitle/TraceDescription/TraceCollapsible`; 行宽铺满父级(上游 `w-fit`), 点击热区是整行; 状态 `TraceStatusNone/Running/Error/Pending`; 折叠段 = Collapsible + 触发行右侧 chevron(展开转 90°), 内容缩进 24 |
 | Attachment | `NewAttachment(x,y,cx,cy,parent, WithAttachmentState/Size/Orientation/Icon/Width/OnClick)` + `SetText(title,desc)` / `Title()/Description()/Media()/MediaSlot()/Actions()/Action(icon,fn)/SetState/State`; `NewAttachmentGroup(x,y,cx,cy,parent)` | 对应 attachment.tsx 的 `Attachment/AttachmentMedia/AttachmentContent/AttachmentTitle/AttachmentDescription/AttachmentActions/AttachmentAction/AttachmentTrigger/AttachmentGroup`; 水平朝向默认铺满父级(上游 `w-fit`), 横排多个时用 `WithAttachmentWidth` 收窄; 垂直朝向宽 96 / 有内容 120; 媒体只有图标块 —— 图片走 `MediaSlot()` 自己放(上游另有 image 变体) |
+| MessageScroller | `NewMessageScroller(x,y,cx,cy,parent, WithMessageScrollerAutoScroll/DefaultScrollPosition/EdgeThreshold/PreviousItemPeek/ScrollMargin/ButtonDirection)` + `AddItem/PrependItem/RemoveItem/Item/Content/ContentStack/SetViewPadding` + `ScrollToEnd/ScrollToStart/ScrollToMessage/ScrollToMessageAligned` + `ScrollState/CurrentAnchorID/VisibleMessageIDs` + `OnScrollStateChange/OnVisibilityChange/SetAutoScroll`; 条目 `ScrollAnchor(bool)` / `Remove()` | 对应 @shadcn/react 的 `MessageScroller.Provider/Root/Viewport/Content/Item/Button` 与三个 hook: Go 侧一个对象持有全部状态, `ScrollState` = `useMessageScrollerScrollable`, `OnVisibilityChange` = `useMessageScrollerVisibility`; 高度默认 Weight 1(与 ScrollArea 一致), 放在 Auto 高的父级里要显式 `LayoutItem_SetHeight(Fixed, h)`; 条目要用 `AddItem` 注册, 直接往 `Content()` 塞的元素不参与 id / 锚点跟踪 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
 | 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | chart 色板供你的应用取用(组件库不画图表); sidebar 令牌由 `ui.Sidebar` 使用; 机械转译新主题时两组一并填(运行时的主题测试有守卫) |
 
@@ -520,7 +522,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
   | `menu_model.go` | 菜单条目模型与 `MenuOpt` 构造器 | menu / menubar |
   | `chat.go` | 会话组件的共享基件: 自绘单行文本/图标、按单词边界折行与量高、微光文字、虚线边框 | message / bubble / marker / trace / attachment |
 
-- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`、`data-table → table + input + button + label + select`、`input-group → menu`(复合 addon 的 MenuButton)、`status-bar → tooltip`(条目/抓手的悬停气泡)、`trace → collapsible`(折叠段)、`attachment → button`(动作钮);`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
+- 组件依赖(registry 里的 `deps`):`card → label`、`dialog → button + label`、`alertdialog → dialog`、`combobox → tooltip`、`menu → tooltip`、`empty/field → label`、`item → label + separator`、`sheet → dialog`、`drawer → sheet`、`menubar → button`、`navigationmenu → button`、`carousel → button`、`data-table → table + input + button + label + select`、`input-group → menu`(复合 addon 的 MenuButton)、`status-bar → tooltip`(条目/抓手的悬停气泡)、`trace → collapsible`(折叠段)、`attachment → button`(动作钮)、`message-scroller → button + scroll-area`(浮动按钮与滚动视口);`add` 会自动补齐,不用手抄。`dialog` 的 `files` 还包含 `scrollarea.go` / `scrollbar.go`(可滚动内容用),`alertdialog` 共用 `dialog.go` 的面板/遮罩/模态栈。
 - 图标不在组件目录里:用 `github.com/twgh/xui/icons` 的常量(只是一条 SVG path 字符串,只把用到的打进二进制,体积增量 0)。
 - 升级:`xui update`(已装组件 + 已下发的文档)或 `xui update button`(只更新该组件及其依赖)。
 
@@ -580,6 +582,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Bubble 的反应条只接受文字, 不渲染 emoji | 自绘文字走系统字体, 常规字体没有彩色 emoji 字形(会画成方块或空白); 上游示例是 `<span>👍</span>`。需要图形化反应时用短文字或自绘图标 —— 胶囊的叠边/悬停/点击语义完整 |
 | AttachmentGroup 换行排列, 没有横向滚动吸附 | 上游是 `overflow-x-auto + snap-x` 的触摸横滑组; 桌面鼠标下横向滚动会把附件藏出视野, 这里改成 flex-wrap 全部可见(间距 12)。需要横排单行时自己放进横向流容器 |
 | Attachment 垂直朝向的动作钮排在内容下方右侧 | 上游用绝对定位压在媒体块右上角; 自绘布局里动作钮是普通子项, 压在媒体上会与图片/图标叠字, 改为随内容流排在右下 |
+| MessageScroller 没有 IntersectionObserver / MutationObserver / content-visibility / 底部渐隐遮罩 | 桌面端用条目矩形实测代替观察器(滚动时按需量测可见集), 视口裁剪由原生滚动视图完成; 遮罩渐变会与自绘内容/滚动条叠色, 不做 |
+| MessageScroller 的浮动按钮是固定 outline 图标钮 | 上游 `MessageScrollerButton` 的 children/render 可换成任意内容; 这里方向/出现条件/过渡已内置, 样式改 `WithMessageScrollerButtonDirection` 或直接不用该方向, 没有自定义 render 槽 |
+| MessageScroller 的前置历史恒保持视口(没有 preserveScrollOnPrepend 开关) | 上游默认 true、可按 viewport 关掉; 桌面会话里"加载更早不跳动"始终是期望行为, 暂不提供关闭 |
+| MessageScroller 不做触摸 / 键盘滚动, 滚轮固定 60px/格 | 视口是原生 LayoutFrame, 不参与 Tab 焦点链(见第八节 157); 触摸板走系统滚轮消息; 60px = 原生 3 行步进(见第八节 193) |
 
 其余与上游的细小差异(逐项语义、变体映射)已在第四节的两张表里列出。
 
@@ -782,6 +788,10 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **190** 滚轮只发 `WM_MOUSEWHEEL`: 提示气泡不会随页面滚动收起
 - **191** 阴影窗口实时拖边框改大小会闪 1~2 帧整窗透明: 在 Size 事件里同步重绘
 - **192** List 滚到非整行位置后双击编辑, 输入框会整体上移: 行顶要用真实滚动偏移算, 不能对点击坐标取模
+- **193** `ScrollPosYV` 按滚动单位向下吸附, 滚动事件的 pos 是行号: 像素锚点要 `SetLineSize(1,1)` + 自管滚轮
+- **194** LayoutFrame 内容元素改高后总大小不更新: 内容与框架各 `AdjustLayout` 一次再读/滚
+- **195** 子元素改尺寸不会自动重排 Auto 高的祖先: 沿父链逐级 `AdjustLayout` 到滚动框架
+- **196** 同一折行高度内 `SetText` 不重绘: 写完文本立刻 `Redraw`, 再异步 reflow
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 
@@ -804,6 +814,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - 按钮组(见第八节 86): `xc.XDraw_FillRoundRectEx/DrawRoundRectEx`(四角独立半径)、`xc.XEle_SetUserData/GetUserData`(组件角色标记)、`XWidget_GetParentEle` + `XEle_GetChildByIndex/GetChildCount`(首尾判定)、`XEle_GetHeight`(按按钮视觉高定文本/分隔条高度)
 - 布局读取/定位:`xc.XEle_GetRectLogic(hEle, *RECT)`(逻辑像素, 坐标相对父元素)、`xc.XEle_GetRect/GetWidth/GetHeight/GetPosition`、`window.AddEvent_Size(xc.WM_SIZE1)`(字号/尺寸变化后重算节流列宽等);`xc.XEle_SetPadding(hEle, l, t, r, b)`(元素级内边距, 已实测: Fill 子项按扣除 padding 后的宽度排版, 见 103)
 - 滚动容器(`LayoutFrame`, 见第八节 66):`widget.NewLayoutFrame`(布局盒子 + 滚动视图, 内容总大小自动撑开) + `XLayoutBox_*`(与 LayoutEle 同一套 EnableHorizon/AutoWrap/OverflowHide/Align/Space) + `XSView_SetTotalSize/GetTotalSize/SetScrollBarSize/EnableAutoShowScrollBar/ShowSBarH(V)/GetViewWidth/GetViewHeight/GetViewRect/GetViewPosH(V)/ScrollPosYV(像素)/ScrollPosV(行)/ScrollTop(Bottom)/GetScrollBarH(V)Obj`、`ScrollBar.ShowButton/SetSliderPadding/GetButtonSliderObj` + `AddEvent_Size(xc.XE_SIZE1)`(自愈补排)
+- 消息滚动(`messagescroller.go`, 见第八节 193/194): `XSView_SetLineSize(1,1)` 关滚动单位吸附 + `Element.AddEvent_MouseWheel` 自管 60px/格(`*pbHandled=true` 吞掉原生 3px 步进) + `AddEvent_ScrollView_Scroll_V`(回调 pos 是行号, 像素位移用 `GetViewPosV`) + `GetTotalSize/GetViewHeight` 量范围; 内容/尾部 spacer 改高后内容与框架各 `AdjustLayout` 一次; 子元素 `XEle_GetRect` 是内容坐标(滚动不改它); `XEle_InsertChild` 只能插入游离元素(先以 `hParent=0` 创建), `XEle_SetZOrder(0)` 是最底层 —— 叠加顺序靠创建顺序即可
+- 流式气泡(`bubble.go`, 见第八节 195/196): 气泡改尺寸后沿 `XWidget_GetParentEle` 链逐级 `XEle_AdjustLayout` 到滚动框架(遇到"框架内容区"交给 `XC_IsHXCGUI(p, XC_LAYOUT_FRAME)` 的父级排), 否则外层 Auto 高不更新; 同一折行高度内 `SetText` 也要 `Redraw(false)` 一次
 - `SliderBar.SetRange/SetPos/SetButtonWidth/SetButtonHeight/EnableHorizon/GetButtonObj`、`ProgressBar.SetRange/SetPos/EnableShowText/EnableStretch`、`TabBar.AddLabel/SetSelect/SetLabelWidth`、`ComboBox.CreateAdapter/AddItemText/SetSelItem/EnableEdit/EnableDrawButton/SetDefaultText/SetDropHeight/GetButtonRect`
 - 手动建列表(时间框弹层, 见第八节 72):`ListBox.CreateAdapter/AddItemText/SetItemHeightDefault/SetDrawItemBkFlags/GetItemText(i, 适配器列)/GetTemplateObject(i, 模板itemID)/SetSelectItem(不滚动)/GetCount_AD/AddEvent_ListBox_DrawItem/Temp_Create_End/Select/GetScrollBarVObj`;`XShapeText_SetTextColor(h, 0)` 让模板文字全透明、`XWidget_LayoutItem_SetMargin(h, l, t, r, b)`、`xc.XWidget_LayoutItem_SetWidth(…Fill)` 对项模板文字会算出 0 宽(勿用)
 - `XWnd_SetWindowPos(物理像素)`、`XC_hWindowFromHWnd`、`XEle_GetWndClientRect`、`XWnd_GetClientRect`、`wapi.ShowWindow/SetForegroundWindow/GetSystemMetrics/GetWindowLongPtrW`

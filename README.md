@@ -149,6 +149,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Marker | 会话标记行:状态提示 / 系统备注;default 透明、border 底边 1px、separator 两侧横线居中分隔;行首可放图标 |
 | Trace | 轨迹列表(推理过程 / 工具调用):图标 + 标题 + 描述 + 尾图标,状态 running 微光 / error 红 / pending 60%;`NewTraceCollapsible` 折叠更多内容(chevron 旋转) |
 | Attachment / AttachmentGroup | 文件附件:媒体 + 标题/描述 + 动作钮;5 状态(done / idle 虚线 / uploading·processing 微光 / error 红)、3 尺寸、横/竖两朝向;`AttachmentGroup` 自动换行,图片媒体自己放进 `MediaSlot()` |
+| MessageScroller | 会话滚动容器:轮次锚定(`AddItem(id, scrollAnchor)`)、只在贴底时跟随新内容(`WithMessageScrollerAutoScroll`)、前置历史保持视口不跳、`ScrollToMessage` 跳任意消息;浮动按钮只在对应方向还能滚时出现,点击平滑滚动;`OnScrollStateChange` / `OnVisibilityChange` 暴露可达状态与当前轮次;项与内容用 Message / Bubble 组合 |
 | Sheet | 侧边面板:标题/描述/内容/页脚与 Dialog 同一套;ESC / 点遮罩 / X 关闭,Tab 焦点陷阱,从贴边侧滑入,四边可选 |
 | Drawer | 底部抽屉:顶部抓手按住下拖过面板高 1/3 关闭、否则回弹;方向可改 top/left/right |
 | Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述折行 + 任意内容 + 页脚按钮;`WithDialogScroll` 内容区滚动而头部/页脚固定,`BindClose` 把任意控件变成关闭钮 |

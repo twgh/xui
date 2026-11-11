@@ -302,6 +302,10 @@
     "attachment": {
       "files": ["attachment.go", "chat.go"],
       "deps": ["button"]
+    },
+    "message-scroller": {
+      "files": ["messagescroller.go"],
+      "deps": ["button", "scroll-area"]
     }
   }
 }

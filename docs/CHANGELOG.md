@@ -5,6 +5,18 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复 Bubble 流式 `SetText` 不长高 / 同高度不重绘**(2026-11-11, message-scroller 验收发现, 第八节 195/196):
+  - **现象**: message-scroller demo 真实点击「发送」后, 回复气泡只显示到 "…as soon as the" 就停住; 探针确认空文本创建的气泡自身能从 36 长到 56, 但外层 Message / 滚动条目一直停在 27 高(气泡溢出条目)。
+  - **根因**: ① 气泡 reflow 只对直接父级 `AdjustLayout`, xcgui 不会因子元素改尺寸自动重算 Auto 高的祖先; ② `SetText` 只排 reflow, 宽高没变时 reflow 提前返回, 没有 `Redraw`, 同折行高度内新增的文字永远不显示。
+  - **修法**: `bubble.go` 改尺寸后沿父链逐级 `AdjustLayout` 到滚动框架(框架内容区交给框架排, 见 195); `SetText` 写完立刻 `Redraw(false)` 再异步 reflow(196); demo 的流式 tick 调整判断顺序, 把最后一个字符也写进去。
+  - **验收**: 探针: 逐级重排后条目高度随气泡同步(空泡 62 / 两行 82); demo 真实键入 "stream anchor check" 并点发送, 回复完整显示, 逐字长高期间 u7 锚点保持不动; `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 逐组件 `bubble` / `message-scroller` + `add --all` 安装编译通过。
+
+- ✅ **新增上游 `message-scroller`(消息滚动容器)**(2026-11-11, HANDOFF 待办「Message Scroller」):
+  - **组件**: `components/messagescroller.go` —— 根(纯 Element)= 滚动视口(`ScrollArea`)+ 悬浮按钮; `AddItem(id, scrollAnchor)` / `PrependItem` 注册条目, 条目宽铺满、高自撑。行为对齐 `@shadcn/react` 的 message-scroller: `autoScroll` 默认关, 开启后**只在贴底时跟随**新内容, 任意上滚立即放手、回底重新跟随; 追加新轮次(锚点)时把该轮第一个锚点顶到视口顶部、上方保留上一条 64px(流式回复在下方长高时锚点不动), 贴底一次追加多个轮次则直接贴底; 前置历史默认保持视口内容不跳; 首次落点 end/start/last-anchor; 浮动按钮只在对应方向还能滚时出现, 200ms 滑入 / 400ms 滑出, 点击 220ms 平滑滚到端点; `ScrollToMessage` 支持 start/center/end/nearest 对齐, `ScrollState` / `CurrentAnchorID` / `VisibleMessageIDs` + `OnScrollStateChange` / `OnVisibilityChange` 对应上游三个 hook。
+  - **踩到的坑**: ① `ScrollPosYV` 按滚动单位(默认 20px/行)向下吸附(388→380、996→980), 锚点差 0~19px; 把滚动单位设 1px 后滚轮又只剩 3px/格 → 关吸附 + 组件自己接管 `AddEvent_MouseWheel` 按 60px/格滚并吞消息(第八节 193); ② 内容/尾部 spacer 改高后只排内容元素不会更新框架总大小, 必须内容与框架各 `AdjustLayout` 一次(第八节 194); ③ `InsertChild` 只能插游离元素, 条目先以 `hParent=0` 创建再插入; ④ `SetZOrder(0)` 是放到最底层, 悬浮按钮靠"视口之后创建"压在上层; ⑤ 状态回调/可见性在滚动事件里同步改 Label 文本会被当次绘制吞掉 → 两者都合并到下一轮消息循环再发; ⑥ `ScrollState.end` 是"还能向下滚"(上游 Scrollable 语义), 不是"已在底部", 跟随/按钮判断统一按 `atEnd = !end`; ⑦ 平滑滚动用 `PresenceOnce` + 代次号(每次点击新键, 用户滚轮立即作废当前动画), 不用常驻 `Presence` 键。
+  - **登记**: `registry.json` 加 kebab-case key `message-scroller`(`files: messagescroller.go`, `deps: button + scroll-area`), 可安装名 75 → 76(shadcn 官方 61 → 62); README 组件表、DESIGN 语义表 / 映射表 / 第六节依赖 / 第七节差异、HANDOFF 覆盖数字与页索引同步。`runtime` / `cliChange` 不动(未打 tag)。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 临时项目单独 `xui add message-scroller` + `go build ./ui` 通过(依赖闭包自动带 button / scroll-area); demo 新增「对话2」页(`XUI_HOME_PAGE=22`, 图标页顺延 23): 发送 → 用户消息锚定到顶部、回复逐字流式长高时锚点保持, 滚到顶/底、跳到第 2 轮、载入更早历史(视口不动)均实测; 探针实测滚轮 60px/格、未贴底追加不跳、贴底追加跟随、前置历史前后 m0 的屏幕位置均为 -1352、浮动按钮 rect/alpha 进出场与点击后平滑滚动中间帧(336→408→505→567→602→624→634→636)、`ScrollPosYV` 1px 精确落位; 150% DPI 亮色截图验收布局与状态标签。虚拟化未做(上游也不含, 长会话请分页/虚表).
+
 - ✅ **v0.12.0 发布(2026-11-10)**: 新增消息/聊天组 5 个组件, 两项破坏性改名(registry 键名对齐 shadcn、Go 类型 `ComboBox` → `NativeComboBox`), 对话组三处与 Combobox 两处高亮修复; 有组件 / API 变更走 minor。
   - **顺序**: 组件与文档提交 → 版本示例 + `fallbackXuiVersion` 提交(`1fee5ae`)→ 轻量 tag `v0.12.0`(指向 `1fee5ae`)→ `registry.runtime` 抬到 v0.12.0(`352cd1f`, tag 之后); `cliChange` 保持 v0.11.0(本次未改 CLI 命令行为 / 内嵌模板 / 资源, 机械抬 fallback 与 runtime 按约定不算 CLI 改动)。
   - **推送**: `git push origin main v0.12.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。⚠️ 数据源是 main, **推送当刻两项破坏性改动即对用户生效**, 不等 tag; 告知写进 Release notes 首条(`xui add combobox` 含义翻转 + `ui.NewComboBox` 迁移), notes 草稿在 `.verify/v0.12.0.md`。
