@@ -34,8 +34,8 @@ type chatScrollerDemo struct {
 func buildChatScrollerPage(body *widget.LayoutEle) {
 	d := &chatScrollerDemo{seq: 6}
 	r := row(body.Handle, 0, gap)
-	left := col(r.Handle, 5, gap)
-	right := col(r.Handle, 4, gap)
+	left := xui.VStack(r.Handle, 5, gap)
+	right := xui.VStack(r.Handle, 4, gap)
 
 	// ---- 左列: 可交互会话 ----
 	_, v := autoCard(left.Handle, 10)

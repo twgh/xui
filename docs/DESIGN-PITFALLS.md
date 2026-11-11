@@ -78,12 +78,13 @@
     - 一行里**不声明宽度**的项会保持自身宽度, 但 LayoutEle 是"横向流 + 自动换行", 行内总宽超了会把
       后面的项顶到下一行(实测: 9 件超宽时 Input/分页被换行) —— 宽度该写还是得写;
     - 内部标签按创建时 cx 等分的自绘组件(如 Tabs)不能被布局拉伸, 用 Fixed 宽;Slider 这类元素比"可见宽度"外扩的组件, Fixed 宽 = 传入 cx + 2×外扩量。
-    - **容器骨架收进运行时**(`container.go`): app 真正反复手抄的只有三种骨架, 固定成入口 ——
+    - **容器骨架收进运行时**(`container.go`): app 真正反复手抄的骨架固定成入口 ——
       卡片内容区 `card.ContentStack(space)`(卡片是布局容器, 内容区是它的 Fill 子项 + 内边距外边距, 随卡片缩放)、横向行 `xui.HStack(parent, ht, space)`
-      (宽 Fill / 高 Fixed(ht) / 交叉轴居中)、等宽列 `xui.VStackWeight(parent, weight, space)`
+      (宽 Fill / 高 Fixed(ht) / 交叉轴居中)、卡片列 `xui.VStack(parent, weight, space)`
+      (宽 Weight / 高 Auto, 列宽变化时把 Fill 子项锁 Fixed)、整高列 `xui.VStackWeight(parent, weight, space)`
       (宽 Weight / 高 Fill);**布局项尺寸与"纵向溢出换列"都在构造里处理好**(所以列容器一律
       `EnableAutoWrap(false)`), app 代码只往里塞控件。其它组合(如"铺满父级的纵向区")用
-      `widget.NewLayoutEle` + `xui.Item*` 自己拼 —— 不要再造第四个骨架, 先把这一处的写法收进来。
+      `widget.NewLayoutEle` + `xui.Item*` 自己拼 —— 不要把样式糖继续塞进容器骨架。
 30. **ComboBox 原生弹层的样式接管路线**(实测踩坑, combobox.go 依赖):弹层 = 独立弹出窗口 + ListBox(本质 ListView), 只能拿到句柄做"半接管"——
     - **窗口 BkM 对这个弹层无效**: `XWnd_GetBkManager` 拿到的管理器加填充/描边完全不绘制(绿色实测), 弹层白底另有来源;
     - **`ClearBkInfo` 后元素回退"系统默认内容"(白底方角)**: 想要透明必须显式垫一层 alpha=0 的填充(`AddFill(state, 0, 0)`), 算"有内容"才不会回退;

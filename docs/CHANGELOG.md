@@ -5,6 +5,16 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **demo helper 上移运行时: `xui.VStack` / `xui.FocusElement`**(2026-11-11, 用户确认上移建议):
+  - **`xui.VStack`**(`container.go`): 宽 Weight + 高 Auto 的列(卡片列), 构造里在列宽确定 / 变化时把 Fill 子项锁成 Fixed(与 Card 头部 `syncTitleWidth` 同一套实测语义), 避免 Weight 宽不下发给嵌套布局的 Fill 子项、列里的 InputGroup / Collapsible 变 0 宽(DESIGN 59/101/129); `VStackWeight` 的注释改为"高自撑的卡片列用 VStack", 两种列的选择不再靠用户自己拼。
+  - **`xui.FocusElement`**(`focus.go`): 先用 `HostWindowOf` 沿父链找宿主窗口, 再 `XWnd_SetFocusEle`; 不再直接 `XC_hWindowFromHWND(XWidget_GetHWND(ele))`, 元素在 ScrollArea / 弹层容器里时不会因映射不到窗口而静默失败。
+  - **验收**: 探针: 列宽 444 → 544 时卡片 444 → 544、卡内输入框 412 → 512; ScrollArea 里的复选框 `FocusElement` 后 `XWnd_GetFocusEle` = 该元素且 `XEle_IsFocus` 为真; demo 全量替换 56 处 `col` → `xui.VStack`、2 处 `focusElement` → `xui.FocusElement`, `go build ./...` / `go vet ./...` / `go test ./...` 全绿。
+
+- ✅ **demo 主源码按页面拆分文件**(2026-11-11, main.go 5153 行过大):
+  - **拆分**: 一页一文件 —— `base1page.go`…`base4page.go` / `form1page.go`…`form5page.go` / `nav1page.go`…`nav6page.go` / `feed1page.go`…`feed3page.go` / `chartpage.go` / `datapage.go`(数据) / `datapage2.go`(数据2) / `iconpage.go`(对话两页原已独立); 两个数据页共用的任务表 helper 单独 `datatask.go`, `borderedBox` 归 main.go 的共享布局助手, 页专用 helper(弹出层与头像卡、轮播与分栏、choiceCard、可折叠、tray / Sheet / Drawer、虚拟表菜单与单元格、图标网格)随页文件走; 窗口骨架 / 主题 / 页签 / `row` / `colStretch` / `autoCard` / `newPage` 留在 main.go。
+  - **结果**: main.go 5153 → 651 行, 最大页面文件 539 行(图标)、483 行(反馈2); 纯搬移, 无行为与布局改动。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿, `gofmt -l demo/*.go` 无输出; `XUI_HOME_PAGE=0` 启动正常(24 项页签与基础1 页面渲染), 页面函数的跨文件引用由编译覆盖。
+
 - ✅ **修复 Bubble 流式 `SetText` 不长高 / 同高度不重绘**(2026-11-11, message-scroller 验收发现, 第八节 195/196):
   - **现象**: message-scroller demo 真实点击「发送」后, 回复气泡只显示到 "…as soon as the" 就停住; 探针确认空文本创建的气泡自身能从 36 长到 56, 但外层 Message / 滚动条目一直停在 27 高(气泡溢出条目)。
   - **根因**: ① 气泡 reflow 只对直接父级 `AdjustLayout`, xcgui 不会因子元素改尺寸自动重算 Auto 高的祖先; ② `SetText` 只排 reflow, 宽高没变时 reflow 提前返回, 没有 `Redraw`, 同折行高度内新增的文字永远不显示。

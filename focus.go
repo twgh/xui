@@ -48,6 +48,22 @@ func HostWindowOf(hEle int) int {
 	return 0
 }
 
+// FocusElement 把键盘焦点移到元素上, 元素没有焦点能力时返回 false。
+//
+// 不能直接用 `XWnd_SetFocusEle(XC_hWindowFromHWnd(XWidget_GetHWND(ele)), ele)`:
+// 元素在 ScrollArea / 弹层容器里时那个 HWND 不是 xcgui 窗口(见 HostWindowOf), 这里沿父链
+// 找到真正的宿主窗口再设焦点。
+func FocusElement(hEle int) bool {
+	if hEle == 0 {
+		return false
+	}
+	hWindow := HostWindowOf(hEle)
+	if hWindow == 0 {
+		return false
+	}
+	return xc.XWnd_SetFocusEle(hWindow, hEle)
+}
+
 // AttachWindow 组件构造时调用, 为组件所在窗口挂接全局服务:
 //   - 登记窗口随主题切换重绘;
 //   - 挂 Tab 键钩子, Tab 后获得的焦点标记为键盘来源。

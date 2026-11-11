@@ -16,7 +16,7 @@
 - **CLI 版本语义(2026-11-06 改)**: 设计文档与组件同源(都从数据源取), 所以 tag 只代表"CLI 代码 + 内嵌模板/资源"的变化; 升级提示与 `--check` 的依据是 `registry.json` 的 `cliChange`, 不再是 `@latest` tag。后台探测子进程与 `update-check.json` 缓存已删除。
 - **组件覆盖**: 76 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 62 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 剩余可安装缺口见下面待办)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。完整清单见 README / DESIGN 第七节, 上游缺口见下面待办。
 - **DataTable 双模式(2026-11-07 探针定案)**: 分页是默认, 虚拟滚动用 `WithDataTableVirtualScroll` 显式开启 —— 两种模式共用排序/筛选/勾选/编辑/列显隐; 分页只装当前页(默认 10, 推荐 20~50), 虚拟滚动一次展示全部筛选结果且页脚只留总行数(分页 API 不生效). 原生 List 的滚动绘制只跟可见行数有关, 两种模式同为 ~4ms/帧(1M 行也一样); 把全部行装进普通 List 时 1M 行会多占约 1GB 原生内存, 分页/虚拟滚动都不复制. 真正随行数增长的是 Go 侧排序/筛选(1M 行 sortID 约 157ms、数字自然比较约 1.6s、筛选约 85ms), 与表格载体无关; 50 万行以上建议 `DataColumn.Compare` 或后台排序/筛选. demo 新增「数据2」页(10 万行虚拟滚动表, `XUI_HOME_PAGE=20`, **首次进入才生成数据**)与「数据」页的分页表对照; 依据与原始数据在 `.verify/probe-longlist/`(临时, 未入库).
-- **最近一批**: 新增上游 `message-scroller`(消息滚动容器): 滚动视口 + 悬浮按钮, 轮次锚定(`AddItem(id, true)`)、只在贴底时跟随、前置历史保持视口、`ScrollToMessage` 跳转、`ScrollState`/`CurrentAnchorID`/`VisibleMessageIDs` 与两个回调; demo 新增「对话2」页(`XUI_HOME_PAGE=22`, 图标页顺延到 23, 当前 0..23), 可发送消息并逐字流式回复。踩坑见 DESIGN 第八节 193/194(滚动单位吸附与事件行号、动态内容改高要重排框架), 语义写进第四节末, 差异写进第七节; 同批修了 Bubble 流式 `SetText` 的两处(祖先 Auto 高不传播 / 同高度不重绘, 见第八节 195/196)。
+- **最近一批**: 新增上游 `message-scroller`(消息滚动容器): 滚动视口 + 悬浮按钮, 轮次锚定(`AddItem(id, true)`)、只在贴底时跟随、前置历史保持视口、`ScrollToMessage` 跳转、`ScrollState`/`CurrentAnchorID`/`VisibleMessageIDs` 与两个回调; demo 新增「对话2」页(`XUI_HOME_PAGE=22`, 图标页顺延到 23, 当前 0..23), 可发送消息并逐字流式回复。踩坑见 DESIGN 第八节 193/194(滚动单位吸附与事件行号、动态内容改高要重排框架), 语义写进第四节末, 差异写进第七节; 同批修了 Bubble 流式 `SetText` 的两处(祖先 Auto 高不传播 / 同高度不重绘, 见第八节 195/196); 并把 demo 的列 / 焦点 helper 收进运行时(`xui.VStack` / `xui.FocusElement`), demo 页面改为一页一文件(main.go 5153 → 651 行)。
 - **上一批**: 新增上游消息/聊天组 5 个组件 —— `marker`(标记行: default / border / separator)、`message`(消息行/组: 页眉 → 头像 + 内容列 → 页脚, `align=end` 镜像)、`bubble`(文本气泡: 7 变体 + 叠边反应胶囊 + 整块点击)、`trace`(轨迹列表: 4 状态 + 可折叠段, 依赖 collapsible)、`attachment`(附件: 5 状态 / 3 尺寸 / 横竖朝向, 依赖 button); 共享基件 `chat.go`(自绘单行文本与图标、按单词边界折行、微光文字、虚线边框)。demo 新增「对话」页(`XUI_HOME_PAGE=21`, 图标页顺延到 22, 当时 0..22), 亮暗 DPI 截图 + 逐组件安装编译已验收; 语义写进 DESIGN 第四节末, 差异(文本气泡 / 文字反应胶囊 / AttachmentGroup 换行 / 垂直动作位)写进第七节。
 - **历史记录**: 按时间记录的完成 / 修复条目(含现象、根因、验收)全部在 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -62,7 +62,7 @@ D:\GOProject\src\ui\xui\          ← 本仓库(模块 github.com/twgh/xui)
 │                                 assets\app.ico = init -n 生成项目用的默认图标
 │                                 winres.go = 生成 winres/ + `xc res make` (缺 xc 自动 go install)
 ├── icons_test.go                 解析器语法 + 资源完整性测试(go test ./...)
-├── demo\                         演示应用(也是全组件编译测试目标)
+├── demo\                         演示应用(也是全组件编译测试目标; 页面一页一个文件)
 │                                 winres\ = 图标资源(winres.json + icon.ico) + xc res 生成的 rsrc_windows_*.syso
 ├── registry.json                 组件清单(files + deps) + 两个版本声明: runtime(配套运行时) /
 │                                 cliChange(CLI 最后改动, 升级提示的唯一依据)

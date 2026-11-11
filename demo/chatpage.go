@@ -13,8 +13,8 @@ import (
 
 func buildChatPage(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
-	left := col(r.Handle, 5, gap)
-	right := col(r.Handle, 4, gap)
+	left := xui.VStack(r.Handle, 5, gap)
+	right := xui.VStack(r.Handle, 4, gap)
 
 	// ---- 左列: 一段完整会话 ----
 	_, v := autoCard(left.Handle, 10)
