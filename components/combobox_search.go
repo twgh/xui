@@ -22,6 +22,23 @@ const (
 	comboboxEmptyH  int32 = 40
 )
 
+// chips 几何(逻辑像素), 对齐 base-nova combobox:
+// chip 高 21(h-[calc(--spacing(5.25))])、text-xs(12)、rounded-sm、px-1.5(6),
+// 容器 gap-1(4) 且在有 chip 时左右内边距收到 4(has-data-[slot=combobox-chip]:px-1)。
+// 上游是多行换行(min-h-8 + flex-wrap), 本库触发区高度固定, 放不下的折叠成 "+N"。
+const (
+	comboboxChipH    int32 = 21
+	comboboxChipsPad int32 = 4 // 有 chip 时容器左右内边距(has-data-[slot=combobox-chip]:px-1)
+	comboboxChipPad  int32 = 6
+	comboboxChipGap  int32 = 4
+	comboboxChipXSz  int32 = 12
+	comboboxChipXHit int32 = 16
+	comboboxChipTrk  int32 = 30 // 右侧箭头/清除钮的预留宽
+	comboboxClearSz  int32 = 24
+	// comboboxClearHoverKey 是清除钮的 hover 过渡键: chip 用下标, 这里取一个大偏移避免相撞。
+	comboboxClearHoverKey int32 = 1000
+)
+
 // Combobox 自动补全选择框 —— 对应 shadcn 文档的 **Combobox**(输入过滤 + 建议列表),
 // 与 ui.NativeComboBox(shadcn select 的原生下拉)不是同一个东西:
 //
@@ -31,7 +48,13 @@ const (
 //   - 键盘: 搜索框里 ↑/↓ 循环移动高亮(跳过禁用)、Home/End 首末、Enter 选中、
 //     ESC 关闭; 鼠标悬停即高亮, 点击选中;
 //   - 单选选中即关闭; `WithComboboxMultiple` 多选时点击切换并保持打开,
-//     触发区显示 "首个值 +N"。
+//     触发区默认显示 "首个值 +N", `WithComboboxChips` 改为 chips 展示
+//     (每个 chip 带移除钮, 放不下的折叠成 "+N"; 搜索框为空时退格删末尾);
+//   - `WithComboboxClear` 有选中值时在触发区右侧显示清除钮(替代箭头), 点击清空;
+//   - 过滤后默认自动高亮第一条匹配项; `WithComboboxAutoHighlight(false)` 关闭
+//     (同上游 base combobox 的默认: 打字不移动高亮, 需 ↓/悬停才出现);
+//   - 条目显示与搜索用 Text, 为空时回落到 Value(对应上游 itemToStringLabel;
+//     Value 是程序侧值, 对应 itemToStringValue)。
 //
 // 弹层复用 popoverPanel(阴影窗 + 卡片 body + 失焦/ESC 关闭 + 工作区夹取),
 // 数据模型与 Select 共用 SelectItem / SelectGroup。
@@ -41,6 +64,9 @@ type Combobox struct {
 	rows              []*comboboxRow
 	picked            map[string]bool
 	multiple          bool
+	chips             bool
+	clear             bool
+	autoHighlight     bool
 	placeholder       string
 	searchPlaceholder string
 	emptyText         string
@@ -60,7 +86,25 @@ type Combobox struct {
 	dying   bool
 	lastTop bool // 弹层当前在触发区上方(过滤 resize 时保持同侧, 见 updateAnchorSide)
 
+	// 触发区 chips / 清除钮: 命中块在每次绘制时按当前尺寸重算, 悬停与点击共用。
+	chipHits    []comboboxChipHit
+	hoverChip   int32
+	clearHit    xc.RECT
+	hasClearHit bool
+	hoverClear  bool
+	hitsW       int32
+	hitsH       int32
+
 	changes []func(items []SelectItem)
+}
+
+// comboboxChipHit 是触发区里一个 chip 的矩形与移除钮命中块(value 为空 = 溢出 "+N" 标记)。
+type comboboxChipHit struct {
+	value string
+	label string
+	chip  xc.RECT
+	x     xc.RECT // 移除钮命中块(hasX 为 false 时无效)
+	hasX  bool
 }
 
 // comboboxRowKind 弹层里的一行: 条目或分组标签。
@@ -129,6 +173,26 @@ func WithComboboxMultiple() ComboboxOption {
 	return func(c *Combobox) { c.multiple = true }
 }
 
+// WithComboboxChips 多选模式的触发区用 chips 展示已选项(默认 "首个值 +N")。
+// 每个 chip 可点击右侧 × 单独移除, 搜索框为空时退格移除最后一个; 宽度不够的
+// 折叠成 "+N"(上游是容器换行长高, 本库触发区高度固定)。
+func WithComboboxChips() ComboboxOption {
+	return func(c *Combobox) { c.chips = true }
+}
+
+// WithComboboxClear 有选中值时在触发区右侧显示清除钮(替代下拉箭头), 点击清空全部选中值
+// (单选/多选都生效, 触发 OnChange)。没有选中值时仍显示箭头。
+func WithComboboxClear() ComboboxOption {
+	return func(c *Combobox) { c.clear = true }
+}
+
+// WithComboboxAutoHighlight 过滤后是否自动高亮第一条匹配项。默认 true(本库既有语义,
+// 打完字直接 Enter 即选首条); 传 false 对齐上游 base combobox 的默认 —— 打字不移动高亮,
+// 按 ↓ 或悬停才出现。
+func WithComboboxAutoHighlight(on bool) ComboboxOption {
+	return func(c *Combobox) { c.autoHighlight = on }
+}
+
 // WithComboboxSize 设置触发区尺寸预设(sm = h-7 = 28)。
 func WithComboboxSize(s SelectSize) ComboboxOption {
 	return func(c *Combobox) { c.size = s }
@@ -150,9 +214,11 @@ func NewCombobox(x, y, cx, cy int32, hParent int, opts ...ComboboxOption) *Combo
 	c := &Combobox{
 		picked:            map[string]bool{},
 		active:            -1,
+		autoHighlight:     true,
 		placeholder:       "请选择...",
 		searchPlaceholder: "搜索...",
 		emptyText:         "没有找到结果。",
+		hoverChip:         -1,
 	}
 	for _, o := range opts {
 		o(c)
@@ -180,12 +246,32 @@ func NewCombobox(x, y, cx, cy int32, hParent int, opts ...ComboboxOption) *Combo
 			return 0
 		}
 		xui.NotePointerPress()
+		// 清除钮 / chip 的 × 优先于"打开弹层": 两者都在触发区内部, 命中后只改值不开层。
+		if c.clearHitAt(pPt.X, pPt.Y) {
+			c.clearPicked()
+			return 0
+		}
+		if v, ok := c.chipRemoveAt(pPt.X, pPt.Y); ok {
+			c.removePicked(v)
+			return 0
+		}
 		// 弹层开着时点触发区: 弹层先因失焦关闭(更新了 lastClose), 这里不再重开 ——
 		// 否则会出现"点两次才关掉"(同 Select / DatePicker)。
 		if c.panel != nil && (c.panel.IsOpen() || c.panel.RecentlyClosed()) {
 			return 0
 		}
 		c.Open()
+		return 0
+	})
+	btn.AddEvent_MouseMove(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		c.hoverTrigger(pPt.X, pPt.Y)
+		return 0
+	})
+	btn.AddEvent_MouseLeave(func(hEle, hEleStay int, pbHandled *bool) int {
+		if c.hoverChip != -1 || c.hoverClear {
+			c.hoverChip, c.hoverClear = -1, false
+			c.Redraw(false)
+		}
 		return 0
 	})
 	btn.AddEvent_Destroy(func(hEle int, pbHandled *bool) int {
@@ -222,6 +308,7 @@ func (c *Combobox) SetGroups(groups []SelectGroup) *Combobox {
 		c.panel, c.scroll, c.stack, c.edit, c.empty = nil, nil, nil, nil, nil
 	}
 	c.syncPicked()
+	c.invalidateTriggerHits()
 	c.Redraw(false)
 	return c
 }
@@ -247,10 +334,22 @@ func (c *Combobox) Values() []string {
 		return nil
 	}
 	var out []string
+	for _, it := range c.pickedItems() {
+		out = append(out, it.Value)
+	}
+	return out
+}
+
+// pickedItems 按数据顺序返回已选中条目(触发区文字 / chips / OnChange 共用)。
+func (c *Combobox) pickedItems() []SelectItem {
+	if c == nil {
+		return nil
+	}
+	var out []SelectItem
 	for _, g := range c.groups {
 		for _, it := range g.Items {
 			if c.picked[it.Value] {
-				out = append(out, it.Value)
+				out = append(out, it)
 			}
 		}
 	}
@@ -280,6 +379,7 @@ func (c *Combobox) SetValue(v string) *Combobox {
 		c.picked[v] = true
 	}
 	c.syncPicked()
+	c.invalidateTriggerHits()
 	c.Redraw(false)
 	c.refreshRows()
 	return c
@@ -295,6 +395,7 @@ func (c *Combobox) SetValues(vs ...string) *Combobox {
 		c.picked[v] = true
 	}
 	c.syncPicked()
+	c.invalidateTriggerHits()
 	c.Redraw(false)
 	c.refreshRows()
 	return c
@@ -659,6 +760,14 @@ func (c *Combobox) onSearchKeyDown(hEle int, wParam, lParam uintptr, pbHandled *
 			c.chooseRow(c.rows[c.active])
 		}
 		*pbHandled = true
+	case xcc.VK_Backspace:
+		// 对齐 base combobox chips: 搜索词为空时退格移除最后一个已选项。
+		if c.multiple && c.chips && strings.TrimSpace(c.query) == "" {
+			if picked := c.pickedItems(); len(picked) > 0 {
+				c.removePicked(picked[len(picked)-1].Value)
+				*pbHandled = true
+			}
+		}
 	case xcc.VK_Esc:
 		c.Close()
 		c.SetFocus()
@@ -696,12 +805,17 @@ func (c *Combobox) rowOfPicked() int32 {
 //   - 没有搜索词时优先落在当前选中项(同 Select 打开即定位选中项, 也对应 cmdk
 //     用 value 驱动的 data-selected), 避免"已选 Nuxt.js、灰底却在 Next.js"这种
 //     勾与高亮对不上的状态, 更不会让一次误按 Enter 把值改成第一项;
-//   - 有搜索词时落到第一条匹配项(输入即过滤, Enter 直接选中搜索结果)。
+//   - 有搜索词且 autoHighlight 开着时落到第一条匹配项(输入即过滤, Enter 直接选中);
+//     关掉(对齐上游 base combobox 默认)则不高亮, 由 ↓/Home/End 或悬停点亮。
 func (c *Combobox) initialActive() int32 {
 	if strings.TrimSpace(c.query) == "" {
 		if i := c.rowOfPicked(); i >= 0 {
 			return i
 		}
+		return c.firstEnabled(0, 1)
+	}
+	if !c.autoHighlight {
+		return -1
 	}
 	return c.firstEnabled(0, 1)
 }
@@ -831,6 +945,8 @@ func (c *Combobox) chooseRow(r *comboboxRow) {
 	} else {
 		c.picked = map[string]bool{r.item.Value: true}
 	}
+	c.hoverChip = -1
+	c.invalidateTriggerHits()
 	c.Redraw(false)
 	if c.edit != nil {
 		c.edit.Redraw(false)
@@ -847,17 +963,36 @@ func (c *Combobox) notify() {
 	if len(c.changes) == 0 {
 		return
 	}
-	var items []SelectItem
-	for _, g := range c.groups {
-		for _, it := range g.Items {
-			if c.picked[it.Value] {
-				items = append(items, it)
-			}
-		}
-	}
+	items := c.pickedItems()
 	for _, fn := range c.changes {
 		fn(items)
 	}
+}
+
+// removePicked 移除一个选中值并通知(触发区 chips 的 × / 搜索框退格用)。
+func (c *Combobox) removePicked(v string) {
+	if c == nil || !c.picked[v] {
+		return
+	}
+	delete(c.picked, v)
+	c.hoverChip = -1
+	c.invalidateTriggerHits()
+	c.Redraw(false)
+	c.refreshRows()
+	c.notify()
+}
+
+// clearPicked 清空全部选中值并通知(清除钮用; SetValue/SetValues 仍不触发 OnChange)。
+func (c *Combobox) clearPicked() {
+	if c == nil || len(c.picked) == 0 {
+		return
+	}
+	c.picked = map[string]bool{}
+	c.hoverChip = -1
+	c.invalidateTriggerHits()
+	c.Redraw(false)
+	c.refreshRows()
+	c.notify()
 }
 
 // refreshRows 数据外的状态变化(SetValue/SetValues/多选勾选)后刷新条目勾选。
@@ -897,7 +1032,8 @@ func (c *Combobox) applyFilter() {
 		if r.kind == comboboxRowLabel {
 			continue
 		}
-		match := q == "" || strings.Contains(strings.ToLower(r.item.Text), q) ||
+		label := strings.ToLower(selectItemLabel(r.item))
+		match := q == "" || strings.Contains(label, q) ||
 			strings.Contains(strings.ToLower(r.item.Value), q)
 		r.shown = match
 		if match {
@@ -994,15 +1130,24 @@ func (c *Combobox) resizePopup() {
 
 // ===== 触发区绘制 =====
 
-// naturalWidth 量出 w-fit 触发区宽: pl-2.5 + 内容 + gap-1.5 + 箭头 + pr-2。
+// naturalWidth 量出 w-fit 触发区宽: pl-2.5 + 内容 + gap-1.5 + 箭头 + pr-2;
+// chips 模式按 chip 宽累加(容器内距 4 + gap 4 + 右侧预留 30)。
 func (c *Combobox) naturalWidth() int32 {
 	t := xui.Current()
-	f := xui.FontHandle(t.FontDefault)
 	w := int32(10 + 6 + 18 + 8)
-	if text := c.triggerText(); text != "" {
-		w += xui.TextWidth(text, f)
+	if picked := c.pickedItems(); c.multiple && c.chips && len(picked) > 0 {
+		f := comboboxChipFont(t)
+		w = comboboxChipsPad + comboboxChipTrk
+		for i, it := range picked {
+			if i > 0 {
+				w += comboboxChipGap
+			}
+			w += comboboxChipWidth(selectItemLabel(it), f, true)
+		}
+	} else if text := c.triggerText(); text != "" {
+		w += xui.TextWidth(text, xui.FontHandle(t.FontDefault))
 	} else if c.placeholder != "" {
-		w += xui.TextWidth(c.placeholder, f)
+		w += xui.TextWidth(c.placeholder, xui.FontHandle(t.FontDefault))
 	}
 	if w < 100 {
 		w = 100
@@ -1012,21 +1157,14 @@ func (c *Combobox) naturalWidth() int32 {
 
 // triggerText 触发区显示的文字: 多选 "首个值 +N", 单选选中项, 否则空(显示占位符)。
 func (c *Combobox) triggerText() string {
-	var picked []SelectItem
-	for _, g := range c.groups {
-		for _, it := range g.Items {
-			if c.picked[it.Value] {
-				picked = append(picked, it)
-			}
-		}
-	}
+	picked := c.pickedItems()
 	if len(picked) == 0 {
 		return ""
 	}
 	if len(picked) == 1 {
-		return picked[0].Text
+		return selectItemLabel(picked[0])
 	}
-	return picked[0].Text + " +" + strconv.Itoa(len(picked)-1)
+	return selectItemLabel(picked[0]) + " +" + strconv.Itoa(len(picked)-1)
 }
 
 // onPaint 触发区: 与 Select/NativeComboBox 同一套规则(border-input / focus-visible 环 /
@@ -1083,36 +1221,284 @@ func (c *Combobox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 
 	fore := t.Foreground
-	text := c.triggerText()
-	if text == "" {
-		fore = t.MutedForeground
-		text = c.placeholder
+	picked := c.pickedItems()
+	showChips := c.multiple && c.chips && len(picked) > 0
+	if showChips {
+		c.chipHits = c.layoutChips(t, p.Rc, picked)
+		c.hitsW, c.hitsH = p.W(), p.H()
+		c.paintChips(p, t, hEle, bg, fore, st.Disabled)
+	} else {
+		c.chipHits = nil
+		text := c.triggerText()
+		if text == "" {
+			fore = t.MutedForeground
+			text = c.placeholder
+		}
+		if st.Disabled {
+			fore = fore.Mix(t.Card, 0.5) // disabled:opacity-50 的文字预混
+		}
+		if f := xui.FontHandle(t.FontDefault); f != 0 {
+			p.Draw.SetFont(f)
+		}
+		if text != "" {
+			dy := textVDy(text)
+			rc := xc.RECTF{
+				Left:   float32(p.Rc.Left + 10), // pl-2.5
+				Top:    float32(p.Rc.Top) - dy,
+				Right:  float32(p.Rc.Right - 30),
+				Bottom: float32(p.Rc.Bottom) - dy,
+			}
+			p.TextF(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		}
 	}
-	if st.Disabled {
-		fore = fore.Mix(t.Card, 0.5) // disabled:opacity-50 的文字预混
+	// 右侧: 有选中值且开了 WithComboboxClear 时画清除钮(上游 base combobox 的
+	// ComboboxClear, 只在该有值时渲染), 并让位隐藏下拉箭头; 否则画 chevrons-up-down。
+	if c.clear && len(picked) > 0 {
+		rc := comboboxClearRect(p.Rc)
+		c.clearHit, c.hasClearHit = rc, true
+		hv := xui.HoverItem(hEle, comboboxClearHoverKey, !st.Disabled && c.hoverClear)
+		if hv > 0 && !st.Disabled {
+			hr := comboboxButtonRadius(t)
+			hover := t.Muted
+			if t.IsDark() {
+				hover = t.Muted.ScaleAlpha(0.5) // dark:hover:bg-muted/50(ghost 按钮)
+			}
+			p.FillRound(&rc, hover.ScaleAlpha(hv), hr)
+		}
+		col := xui.Fade(t.MutedForeground, t.Foreground, hv)
+		if st.Disabled {
+			col = col.Mix(t.Card, 0.5)
+		}
+		glyph := comboboxCenterRect(rc, comboboxChipXSz)
+		p.Icon(icons.IconX, &glyph, col, 2)
+	} else {
+		c.clearHit, c.hasClearHit = xc.RECT{}, false
+		icon := xc.RECT{
+			Left:   p.Rc.Right - 26,
+			Top:    p.Rc.Top + (p.H()-16)/2,
+			Right:  p.Rc.Right - 10,
+			Bottom: p.Rc.Top + (p.H()-16)/2 + 16,
+		}
+		p.Icon(icons.IconChevronsUpDown, &icon, t.MutedForeground, 2)
 	}
+	return 0
+}
+
+// comboboxChipFont 是 chip 的字体(text-xs = 12; 上游 font-medium, xcgui 只有常规/粗体)。
+func comboboxChipFont(t *xui.Theme) int {
+	return xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: 12})
+}
+
+// comboboxChipWidth 返回一个 chip 的宽度: 左右 px-1.5 + 文字 + (移除钮: gap 4 + 16 命中块 + 2 右距)。
+func comboboxChipWidth(label string, f int, remove bool) int32 {
+	w := comboboxChipPad*2 + xui.TextWidth(label, f)
+	if remove {
+		w += comboboxChipGap + comboboxChipXHit + 2
+	}
+	return w
+}
+
+// layoutChips 按触发区矩形排 chip; 放不下的折叠成 "+N"(value 为空, 无移除钮)。
+// 布局是纯计算: 绘制时算一次存 chipHits 供绘制/命中复用, 命中块失效时按当前尺寸补算。
+func (c *Combobox) layoutChips(t *xui.Theme, rc xc.RECT, picked []SelectItem) []comboboxChipHit {
+	f := comboboxChipFont(t)
+	h := comboboxChipH
+	y := rc.Top + (rc.Bottom-rc.Top-h)/2
+	right := rc.Right - comboboxChipTrk
+	x := rc.Left + comboboxChipsPad
+	hits := make([]comboboxChipHit, 0, len(picked))
+	for i, it := range picked {
+		label := selectItemLabel(it)
+		cw := comboboxChipWidth(label, f, true)
+		// 后面还有条目时要给 "+N" 标记留位置(按最坏位数预留, 免得差一位让标记压到箭头)。
+		need := cw
+		if rest := len(picked) - i; rest > 1 {
+			need += comboboxChipGap + comboboxChipWidth("+"+strconv.Itoa(rest), f, false)
+		}
+		if x+need > right {
+			break
+		}
+		hit := comboboxChipHit{
+			value: it.Value, label: label, hasX: true,
+			chip: xc.RECT{Left: x, Top: y, Right: x + cw, Bottom: y + h},
+		}
+		hit.x = xc.RECT{
+			Left:   hit.chip.Right - 2 - comboboxChipXHit,
+			Top:    hit.chip.Top + (h-comboboxChipXHit)/2,
+			Right:  hit.chip.Right - 2,
+			Bottom: hit.chip.Top + (h-comboboxChipXHit)/2 + comboboxChipXHit,
+		}
+		hits = append(hits, hit)
+		x = hit.chip.Right + comboboxChipGap
+	}
+	if hidden := len(picked) - len(hits); hidden > 0 {
+		label := "+" + strconv.Itoa(hidden)
+		cw := comboboxChipWidth(label, f, false)
+		if x+cw > right {
+			cw = right - x
+		}
+		if cw > 0 {
+			hits = append(hits, comboboxChipHit{
+				label: label,
+				chip:  xc.RECT{Left: x, Top: y, Right: x + cw, Bottom: y + h},
+			})
+		}
+	}
+	return hits
+}
+
+// paintChips 画触发区 chips: bg-muted + rounded-sm + text-xs; × 默认半透明, 悬停到全色。
+func (c *Combobox) paintChips(p *xui.Painter, t *xui.Theme, hEle int, bg, fore xui.Color, disabled bool) {
+	f := comboboxChipFont(t)
+	if f != 0 {
+		p.Draw.SetFont(f) // p.TextF 之外还要给原生绘制留回默认字体(见函数尾)
+	}
+	chipBg := t.Muted
+	xBase := fore.ScaleAlpha(0.5) // × 的 opacity-50
+	if disabled {
+		chipBg = chipBg.Mix(bg, 0.5)
+		fore = fore.Mix(bg, 0.5)
+		xBase = xBase.Mix(bg, 0.5)
+	}
+	for i, hit := range c.chipHits {
+		hv := xui.HoverItem(hEle, int32(i), !disabled && c.hoverChip == int32(i))
+		p.FillRound(&hit.chip, chipBg, t.RadiusSm())
+		tr := xc.RECT{
+			Left:   hit.chip.Left + comboboxChipPad,
+			Top:    hit.chip.Top,
+			Right:  hit.chip.Right - comboboxChipPad,
+			Bottom: hit.chip.Bottom,
+		}
+		if hit.hasX {
+			tr.Right = hit.x.Left - 4
+		}
+		if hit.label != "" && tr.Right > tr.Left {
+			dy := textVDy(hit.label)
+			trf := xc.RECTF{
+				Left:   float32(tr.Left),
+				Top:    float32(tr.Top) - dy,
+				Right:  float32(tr.Right),
+				Bottom: float32(tr.Bottom) - dy,
+			}
+			p.TextF(hit.label, &trf, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		}
+		if hit.hasX {
+			glyph := comboboxCenterRect(hit.x, comboboxChipXSz)
+			p.Icon(icons.IconX, &glyph, xui.Fade(xBase, fore, hv), 2)
+		}
+	}
+	// 画笔字体是接着这个 hDraw 用的, 不还原会把原生绘制也带成 12px(同 TagInput)。
 	if f := xui.FontHandle(t.FontDefault); f != 0 {
 		p.Draw.SetFont(f)
 	}
-	if text != "" {
-		dy := textVDy(text)
-		rc := xc.RECTF{
-			Left:   float32(p.Rc.Left + 10), // pl-2.5
-			Top:    float32(p.Rc.Top) - dy,
-			Right:  float32(p.Rc.Right - 30),
-			Bottom: float32(p.Rc.Bottom) - dy,
+}
+
+// comboboxClearRect 是清除钮的命中块(24×24, 中心与箭头一致)。
+func comboboxClearRect(rc xc.RECT) xc.RECT {
+	h := comboboxClearSz
+	y := rc.Top + (rc.Bottom-rc.Top-h)/2
+	return xc.RECT{Left: rc.Right - 6 - h, Top: y, Right: rc.Right - 6, Bottom: y + h}
+}
+
+// comboboxButtonRadius 是 icon-xs 尺寸按钮的圆角: min(--radius-md, 10)。
+func comboboxButtonRadius(t *xui.Theme) int32 {
+	if md := t.RadiusMd(); md < 10 {
+		return md
+	}
+	return 10
+}
+
+// comboboxCenterRect 返回 rc 中心处边长 sz 的正方形。
+func comboboxCenterRect(rc xc.RECT, sz int32) xc.RECT {
+	cx, cy := (rc.Left+rc.Right)/2, (rc.Top+rc.Bottom)/2
+	return xc.RECT{Left: cx - sz/2, Top: cy - sz/2, Right: cx - sz/2 + sz, Bottom: cy - sz/2 + sz}
+}
+
+// ===== 触发区 chips / 清除钮命中 =====
+
+// invalidateTriggerHits 使上次绘制缓存的命中块失效(选值变化后由下一次绘制/命中补算)。
+func (c *Combobox) invalidateTriggerHits() {
+	c.chipHits = nil
+	c.clearHit, c.hasClearHit = xc.RECT{}, false
+	c.hoverChip = -1
+	c.hitsW, c.hitsH = 0, 0
+}
+
+// ensureTriggerHits 在命中块缺失/尺寸变化时按当前客户区重算。
+func (c *Combobox) ensureTriggerHits() {
+	if c == nil || c.Button == nil {
+		return
+	}
+	var rc xc.RECT
+	xc.XEle_GetClientRect(c.Handle, &rc)
+	w, h := rc.Right-rc.Left, rc.Bottom-rc.Top
+	if w <= 0 || h <= 0 {
+		return
+	}
+	if (len(c.chipHits) > 0 || c.hasClearHit) && w == c.hitsW && h == c.hitsH {
+		return
+	}
+	c.hitsW, c.hitsH = w, h
+	t := xui.Current()
+	if c.multiple && c.chips && len(c.picked) > 0 {
+		c.chipHits = c.layoutChips(t, rc, c.pickedItems())
+	} else {
+		c.chipHits = nil
+	}
+	if c.clear && len(c.picked) > 0 {
+		c.clearHit, c.hasClearHit = comboboxClearRect(rc), true
+	} else {
+		c.clearHit, c.hasClearHit = xc.RECT{}, false
+	}
+}
+
+// chipRemoveAt 返回命中的 chip 移除钮对应的值(fallback 会先补算命中块)。
+func (c *Combobox) chipRemoveAt(x, y int32) (string, bool) {
+	if c == nil || !c.multiple || !c.chips {
+		return "", false
+	}
+	c.ensureTriggerHits()
+	for _, hit := range c.chipHits {
+		if hit.hasX && inRect(hit.x, x, y) {
+			return hit.value, true
 		}
-		p.TextF(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
-	// 右侧 chevrons-up-down(combobox 用上下双箭头, 区别于 select 的单下箭头)
-	icon := xc.RECT{
-		Left:   p.Rc.Right - 26,
-		Top:    p.Rc.Top + (p.H()-16)/2,
-		Right:  p.Rc.Right - 10,
-		Bottom: p.Rc.Top + (p.H()-16)/2 + 16,
+	return "", false
+}
+
+// clearHitAt 返回是否命中清除钮。
+func (c *Combobox) clearHitAt(x, y int32) bool {
+	if c == nil || !c.clear || len(c.picked) == 0 {
+		return false
 	}
-	p.Icon(icons.IconChevronsUpDown, &icon, t.MutedForeground, 2)
-	return 0
+	c.ensureTriggerHits()
+	return c.hasClearHit && inRect(c.clearHit, x, y)
+}
+
+// hoverTrigger 更新指针下的 chip × / 清除钮, 变化时重绘(HoverItem 会平滑过渡)。
+func (c *Combobox) hoverTrigger(x, y int32) {
+	if c == nil || !c.IsEnable() {
+		return
+	}
+	idx := int32(-1)
+	clear := c.clearHitAt(x, y)
+	if !clear && c.multiple && c.chips && len(c.picked) > 0 {
+		c.ensureTriggerHits()
+		for i, hit := range c.chipHits {
+			if hit.hasX && inRect(hit.x, x, y) {
+				idx = int32(i)
+				break
+			}
+		}
+	}
+	if idx != c.hoverChip || clear != c.hoverClear {
+		c.hoverChip, c.hoverClear = idx, clear
+		c.Redraw(false)
+	}
+}
+
+func inRect(rc xc.RECT, x, y int32) bool {
+	return x >= rc.Left && x < rc.Right && y >= rc.Top && y < rc.Bottom
 }
 
 // paintRow 自绘条目: 高亮 bg-accent、前置图标、选中勾(单选右侧 / 多选左侧)、禁用变淡。
@@ -1143,24 +1529,25 @@ func (c *Combobox) paintRow(r *comboboxRow, hEle int, hDraw int) {
 		}
 		x += 24
 	}
+	label := selectItemLabel(r.item)
 	if r.item.Icon != "" {
 		rc := xc.RECT{Left: x, Top: (p.Rc.Top + p.Rc.Bottom - 16) / 2,
 			Right: x + 16, Bottom: (p.Rc.Top + p.Rc.Bottom + 16) / 2}
 		p.Icon(r.item.Icon, &rc, fore, 2)
 		x += 16
-		if r.item.Text != "" {
+		if label != "" {
 			x += 8 // gap-2
 		}
 	}
-	if r.item.Text != "" {
-		dy := textVDy(r.item.Text)
+	if label != "" {
+		dy := textVDy(label)
 		rc := xc.RECTF{
 			Left:   float32(x),
 			Top:    float32(p.Rc.Top) - dy,
 			Right:  float32(p.Rc.Right - 24),
 			Bottom: float32(p.Rc.Bottom) - dy,
 		}
-		p.TextF(r.item.Text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
+		p.TextF(label, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
 	if !c.multiple && c.picked[r.item.Value] && !r.item.Disabled {
 		rc := xc.RECT{

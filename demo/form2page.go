@@ -217,6 +217,33 @@ func buildForm2Page(body *widget.LayoutEle) {
 	xui.ItemFill(cbMulti)
 	cbMulti.SetValues("ts")
 
+	xui.ItemFill(hint(vc.Handle, "多选 chips(每个可点 × 移除, 退格删末尾, 放不下折叠 +N)"))
+	cbChips := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxMultiple(), ui.WithComboboxChips(), ui.WithComboboxPlaceholder("Select frameworks..."),
+		ui.WithComboboxItems([]ui.SelectItem{
+			{Value: "ts", Text: "TypeScript"}, {Value: "go", Text: "Golang"},
+			{Value: "rs", Text: "Rust"}, {Value: "py", Text: "Python"}, {Value: "c", Text: "C"}, {Value: "html", Text: "HTML"},
+		}))
+	xui.ItemFill(cbChips)
+	cbChips.SetValues("ts", "go", "rs", "py")
+
+	xui.ItemFill(hint(vc.Handle, "清除钮(有值时替代箭头, 点击清空) + autoHighlight"))
+	xui.ItemFill(ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxClear(), ui.WithComboboxAutoHighlight(true),
+		ui.WithComboboxPlaceholder("Select framework..."),
+		ui.WithComboboxItems([]ui.SelectItem{
+			{Value: "next", Text: "Next.js"}, {Value: "svelte", Text: "SvelteKit"},
+			{Value: "nuxt", Text: "Nuxt.js"},
+		})).SetValue("svelte"))
+
+	xui.ItemFill(hint(vc.Handle, "autoHighlight 关闭(打字不自动高亮, ↓ 或悬停才点亮)"))
+	xui.ItemFill(ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxAutoHighlight(false), ui.WithComboboxPlaceholder("Select framework..."),
+		ui.WithComboboxItems([]ui.SelectItem{
+			{Value: "next", Text: "Next.js"}, {Value: "svelte", Text: "SvelteKit"},
+			{Value: "nuxt", Text: "Nuxt.js"},
+		})))
+
 	xui.ItemFill(hint(vc.Handle, "校验失败 / 禁用"))
 	bad := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
 		ui.WithComboboxInvalid(), ui.WithComboboxPlaceholder("必选项未选择"))

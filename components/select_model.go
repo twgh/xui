@@ -39,3 +39,13 @@ type SelectGroup struct {
 	Label string
 	Items []SelectItem
 }
+
+// selectItemLabel 返回条目用于显示与搜索的文字: Text 优先, 为空时回落到 Value。
+// 对应上游 base combobox 的 itemToStringLabel; 上游的 itemToStringValue 对应本库的
+// SelectItem.Value(程序侧值)。两者分工与 shadcn 的 { value, label } 对象一致。
+func selectItemLabel(it SelectItem) string {
+	if it.Text != "" {
+		return it.Text
+	}
+	return it.Value
+}

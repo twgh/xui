@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Combobox 对齐上游 base 新增细节: chips / 清除钮 / autoHighlight**(2026-11-14, 参 shadcn base combobox 文档):
+  - **chips 多选**: `WithComboboxChips`(需配 `WithComboboxMultiple`)把触发区从"首个值 +N"换成 chips —— 几何对齐 base-nova(`bg-muted` / 高 21 / `text-xs` 12 / `rounded-sm` / `px-1.5`, 容器 gap 4、有 chip 时左右内距 4);每枚右侧 × 单独移除(× 半透明, 悬停过渡到全色),搜索框为空时退格删末尾;上游容器是多行换行、触发区会长高,本库触发区高度固定(布局链 32/28),放不下的合并成 `+N` 标记(标记不可移除, 点击照常开弹层)。
+  - **清除钮**: `WithComboboxClear` —— 有选中值时在触发区右侧画 X(ghost 按钮的 hover 底 + 图标提亮),并像上游一样**隐藏下拉箭头**;点击清空全部选中值并触发 `OnChange`(单选/多选都生效);无值时仍显示箭头。命中块与 chip × 都在触发区 `LButtonUp` 里优先于"打开弹层"处理。
+  - **autoHighlight**: `WithComboboxAutoHighlight(bool)` —— 过滤后是否自动高亮第一条匹配项。**默认保持 true**(本库既有语义: 打完字 Enter 直接选首条);传 false 对齐上游 base 默认(打字不移动高亮,需 ↓/Home/End 或悬停才点亮)。打开/清空搜索词时仍定位选中项。
+  - **itemToStringValue ≈ Text/Value**: `SelectItem.Text` 是显示/搜索标签(空时回落到 `Value`), `Value` 是程序侧值 —— 对应上游 `itemToStringLabel` / `itemToStringValue`;`triggerText` / chips / 条目绘制 / 过滤统一走回落,只填 Value 的条目不再显示空文本。
+  - **验收**: 新增 `TestComboboxAutoHighlightOff`(过滤不高亮 → ↓ 落首条 → 再过滤清空 → 清空搜索词回选中项),既有高亮用例显式开 autoHighlight;`go build ./...` / `go vet ./...` / `go test ./...` 全绿。demo 表单2 自动补全卡新增 chips / 清除钮 / autoHighlight 关闭三例;150% DPI 亮暗截图 + 真实点击实测:Golang chip 的 × 移除、清除钮清空后恢复箭头、chips 弹层里退格删末尾(Python/Rust 各一次)、autoHighlight 关闭时输入 `n` 无高亮、↓ 后 Next.js 行出现 bg-accent、Enter 选中关闭;chip × 悬停墨迹由 127 → 5(近黑)。临时探针实测窄宽:260 宽 `TypeScript × Golang × +4`、160 宽 `+6`、110 宽 `+3`,长标签单条也折叠为 `+N` 且清除钮让位正常。
+  - **登记**: 无新增文件、无 `registry.json` 改动(仍为 combobox_search.go 闭包);`runtime` / `cliChange` 不动(未打 tag)。
+
 - ✅ **v0.13.0 发布(2026-11-11)**: 新增上游 `message-scroller` / `questionnaire` 两个组件, 运行时补 `xui.VStack` / `xui.FocusElement`, 修复 Bubble 流式 `SetText`, demo 拆成一页一文件; 组件与运行时 API 变更走 minor, **无破坏性变更**。
   - **顺序**: 组件与文档提交 → 版本示例 + `fallbackXuiVersion` 提交(`0255b9c`)→ 轻量 tag `v0.13.0`(指向 `0255b9c`)→ `registry.runtime` 抬到 v0.13.0(`7fd6fac`, tag 之后); `cliChange` 保持 `v0.11.0`(本次未改 CLI 命令行为 / 内嵌模板 / 资源, 机械抬 fallback 与 runtime 按约定不算 CLI 改动)。
   - **推送**: `git push origin main v0.13.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。数据源是 main, 推送当刻新组件与设计文档即对用户生效, 不等 tag; 没有语义翻转或类型改名, 无需迁移。

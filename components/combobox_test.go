@@ -59,7 +59,7 @@ func TestComboboxApplyFilterClearsHiddenActive(t *testing.T) {
 		{Value: "c", Text: "Nuxt.js"},
 	}}}
 	c := &Combobox{
-		groups: groups, rows: comboboxTestRows(groups),
+		groups: groups, rows: comboboxTestRows(groups), autoHighlight: true,
 		picked: map[string]bool{}, built: true, active: -1,
 	}
 
@@ -74,7 +74,7 @@ func TestComboboxApplyFilterClearsHiddenActive(t *testing.T) {
 }
 
 // 打开/清空搜索词时高亮落在当前选中项(同 Select 打开即定位选中项),
-// 输入搜索词后落到第一条匹配项, 选中项被过滤掉则回落到第一条。
+// 输入搜索词后落到第一条匹配项(autoHighlight 开), 选中项被过滤掉则回落到第一条。
 func TestComboboxInitialActiveFollowsPicked(t *testing.T) {
 	groups := []SelectGroup{{Items: []SelectItem{
 		{Value: "a", Text: "Next.js"},
@@ -83,7 +83,7 @@ func TestComboboxInitialActiveFollowsPicked(t *testing.T) {
 	}}}
 	newC := func() *Combobox {
 		return &Combobox{
-			groups: groups, rows: comboboxTestRows(groups),
+			groups: groups, rows: comboboxTestRows(groups), autoHighlight: true,
 			picked: map[string]bool{"c": true}, built: true, active: -1,
 		}
 	}
@@ -107,6 +107,38 @@ func TestComboboxInitialActiveFollowsPicked(t *testing.T) {
 	c.query = "zzz" // 无匹配: 一条高亮都不该有
 	c.applyFilter()
 	assertOnlyRowActive(t, c, -1)
+}
+
+// autoHighlight 关闭(对齐上游 base combobox 默认): 输入过滤后不自动点亮任何行,
+// 由 ↓/Home/End 或悬停点亮; 清空搜索词仍回到选中项。
+func TestComboboxAutoHighlightOff(t *testing.T) {
+	groups := []SelectGroup{{Items: []SelectItem{
+		{Value: "a", Text: "Next.js"},
+		{Value: "b", Text: "SvelteKit"},
+		{Value: "c", Text: "Nuxt.js"},
+	}}}
+	c := &Combobox{
+		groups: groups, rows: comboboxTestRows(groups),
+		picked: map[string]bool{"c": true}, built: true, active: -1,
+	}
+
+	c.applyFilter() // 打开仍定位选中项(与 autoHighlight 无关)
+	assertOnlyRowActive(t, c, 2)
+
+	c.query = "svelte"
+	c.applyFilter()
+	assertOnlyRowActive(t, c, -1)
+
+	c.moveActive(1) // ↓ 才落到第一条匹配项
+	assertOnlyRowActive(t, c, 1)
+
+	c.query = "next"
+	c.applyFilter() // 重新过滤: 高亮再次清空
+	assertOnlyRowActive(t, c, -1)
+
+	c.query = ""
+	c.applyFilter()
+	assertOnlyRowActive(t, c, 2)
 }
 
 func TestComboboxInitialActiveMultiple(t *testing.T) {
