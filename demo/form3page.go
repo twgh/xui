@@ -44,17 +44,18 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	nameErr := ui.NewFieldError(0, 0, 0, 0, fName.Handle,
 		"用户名至少 3 个字符", "不能包含空格", "用户名至少 3 个字符")
 	xui.ItemFill(nameErr)
+	// AttachError: 错误区与字段的校验态同一处驱动 —— Field.SetErrors 写文案并置 invalid,
+	// 清空文案自动恢复(不用再手动 SetInvalid)。
+	fName.AttachError(nameErr)
 
 	toggleInvalid := ui.NewButton(0, 0, 0, 0, "切换校验状态", vf.Handle,
 		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
 	xui.ItemWidth(toggleInvalid, 120)
 	toggleInvalid.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-		invalid := !fName.Invalid()
-		fName.SetInvalid(invalid) // 已 Attach 的输入框随字段一起变
-		if invalid {
-			nameErr.SetErrors("用户名至少 3 个字符", "不能包含空格")
+		if fName.Invalid() {
+			fName.SetErrors()
 		} else {
-			nameErr.SetErrors()
+			fName.SetErrors("用户名至少 3 个字符", "不能包含空格")
 		}
 		return 0
 	})

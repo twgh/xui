@@ -75,6 +75,33 @@ func WithAvatarBadge(icon string) AvatarOption {
 	return func(a *Avatar) { a.badge = true; a.badgeIcon = icon }
 }
 
+// WithAvatarBadgeColor 指定徽标底色(默认主色)。对应上游示例里直接写
+// `className="bg-green-600 dark:bg-green-800"` 的用法; 图标色会自动按对比度挑。
+func WithAvatarBadgeColor(c xui.Color) AvatarOption {
+	return func(a *Avatar) { a.badgeColor = func(*xui.Theme) xui.Color { return c } }
+}
+
+// WithAvatarBadgeColorFunc 用主题函数给徽标上色(切主题时实时重算, 同其他组件的
+// `SetColorFunc` 形态)。
+func WithAvatarBadgeColorFunc(fn func(*xui.Theme) xui.Color) AvatarOption {
+	return func(a *Avatar) { a.badgeColor = fn }
+}
+
+// WithAvatarBadgeIconColor 指定徽标图标色(默认按徽标底色的对比度自动挑)。
+func WithAvatarBadgeIconColor(c xui.Color) AvatarOption {
+	return func(a *Avatar) { a.badgeIconColor = func(*xui.Theme) xui.Color { return c } }
+}
+
+// WithAvatarBadgeSize 覆盖徽标直径(默认跟随尺寸档: sm 8 / default 10 / lg 12)。
+// 头像直径被 cx/cy 放大时, 徽标仍按"档位比例 × 实际半径"等比缩放。
+func WithAvatarBadgeSize(d int32) AvatarOption {
+	return func(a *Avatar) {
+		if d > 0 {
+			a.badgeSize = d
+		}
+	}
+}
+
 // Avatar 圆形头像, 对应 shadcn avatar.tsx:
 //   - 尺寸 sm 24 / default 32 / lg 40, rounded-full;
 //   - 有图时居中裁剪成圆形; 无图/加载失败时显示 fallback 文字(bg-muted + muted-foreground);
@@ -90,6 +117,10 @@ type Avatar struct {
 	ring      bool
 	badge     bool
 	badgeIcon string
+
+	badgeColor     func(*xui.Theme) xui.Color // 徽标底色(nil = Primary)
+	badgeIconColor func(*xui.Theme) xui.Color // 徽标图标色(nil = 按对比度挑)
+	badgeSize      int32                      // 徽标直径覆盖(0 = 跟随尺寸档)
 
 	imagePath string
 	imageData image.Image
@@ -170,6 +201,39 @@ func (a *Avatar) SetBadge(on bool, icon string) *Avatar {
 	return a
 }
 
+// SetBadgeColor 运行时改徽标底色; 传 nil 恢复主题主色。
+func (a *Avatar) SetBadgeColor(c func(*xui.Theme) xui.Color) *Avatar {
+	if a == nil {
+		return a
+	}
+	a.badgeColor = c
+	a.Redraw(false)
+	return a
+}
+
+// SetBadgeIconColor 运行时改徽标图标色; 传 nil 恢复"按底色对比度自动挑"。
+func (a *Avatar) SetBadgeIconColor(c func(*xui.Theme) xui.Color) *Avatar {
+	if a == nil {
+		return a
+	}
+	a.badgeIconColor = c
+	a.Redraw(false)
+	return a
+}
+
+// SetBadgeSize 运行时改徽标直径(<=0 恢复跟随尺寸档)。
+func (a *Avatar) SetBadgeSize(d int32) *Avatar {
+	if a == nil {
+		return a
+	}
+	if d < 0 {
+		d = 0
+	}
+	a.badgeSize = d
+	a.Redraw(true)
+	return a
+}
+
 // syncImage 重新生成圆形图片句柄(失败时回落 fallback)。
 func (a *Avatar) syncImage() {
 	a.releaseImage()
@@ -241,9 +305,13 @@ func (a *Avatar) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 }
 
 func (a *Avatar) paintBadge(p *xui.Painter, t *xui.Theme) {
+	base := a.size.px()
 	d := a.size.badgeD()
-	if w := p.Rc.Right - p.Rc.Left; w > 0 && w != a.size.px() {
-		d = w * d / a.size.px()
+	if a.badgeSize > 0 {
+		d = a.badgeSize
+	}
+	if w := p.Rc.Right - p.Rc.Left; w > 0 && w != base {
+		d = w * d / base
 		if d < 6 {
 			d = 6
 		}
@@ -259,12 +327,47 @@ func (a *Avatar) paintBadge(p *xui.Painter, t *xui.Theme) {
 	p.Draw.SetBrushColor(uint32(t.Background))
 	p.Draw.FillEllipse(&badge)
 	inner := insetRect(badge, ring)
-	p.Draw.SetBrushColor(uint32(t.Primary))
+	fill := t.Primary
+	if a.badgeColor != nil {
+		fill = a.badgeColor(t)
+	}
+	p.Draw.SetBrushColor(uint32(fill))
 	p.Draw.FillEllipse(&inner)
 	if a.badgeIcon != "" {
+		ic := t.PrimaryForeground
+		if a.badgeColor != nil {
+			// 自定义底色时按亮度挑对比色(同 chart 对比色口径, 但局部实现:
+			// avatar 单组件安装拿不到 chart.go)
+			ic = avatarContrastText(t, fill)
+		}
+		if a.badgeIconColor != nil {
+			ic = a.badgeIconColor(t)
+		}
 		ir := insetRect(inner, 1)
-		p.Icon(a.badgeIcon, &ir, t.PrimaryForeground, 2)
+		p.Icon(a.badgeIcon, &ir, ic, 2)
 	}
+}
+
+// avatarContrastText 在 Foreground / Background 之间挑一个与底色对比更高的文字色。
+func avatarContrastText(t *xui.Theme, bg xui.Color) xui.Color {
+	lb := avatarLum(bg)
+	if avatarAbs(avatarLum(t.Foreground)-lb) >= avatarAbs(avatarLum(t.Background)-lb) {
+		return t.Foreground
+	}
+	return t.Background
+}
+
+// avatarLum 返回颜色的 0..1 感知亮度(加权近似, 只用于挑对比色)。
+func avatarLum(c xui.Color) float64 {
+	r, g, b, _ := c.RGBA()
+	return (0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)) / 255
+}
+
+func avatarAbs(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func insetRect(rc xc.RECT, n int32) xc.RECT {

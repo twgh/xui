@@ -34,11 +34,11 @@
 | 16 | Alert | `alert` | 已核查 | 结论见第七节;2 项可实现 |
 | 17 | Table | `table` | 已核查 | 结论见第七节;3 项可实现 |
 | 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现;官方是组合模式,差异见 DESIGN 第七节 |
-| 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现;本批开合控制最完整 |
-| 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现 |
-| 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现;Form 亦收敛在此;本地无 `field.tsx` |
-| 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现;11 个官方示例仅缺 Custom Input |
-| 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现 |
+| 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现,PO1 alignOffset 已落地(见第十节);本批开合控制最完整 |
+| 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min 已落地(见第十节) |
+| 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL4 错误区同源已落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
+| 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现,IG1 addon 聚焦已落地(见第十节);11 个官方示例仅缺 Custom Input |
+| 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1 徽标配色与尺寸已落地(见第十节) |
 | 24 | Accordion | `accordion` | 待核查 | 下一轮起点 |
 | 25 | Slider | `slider` | 待核查 | |
 | 26 | Alert Dialog | `alert-dialog` | 待核查 | |
@@ -494,7 +494,9 @@
 
 ## 十、实现进度(已落地条目)
 
-第一批按「高优先、小改动」选的跨组件一致性条目,已全部落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表):
+按「高优先、小改动」选的跨组件一致性条目,分两批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。
+
+**第一批**:
 
 | # | 组件 | 落地内容 |
 |---|---|---|
@@ -515,4 +517,14 @@
 | RG1 | Radio / RadioGroup | 条目与组级 `readOnly`(组级还原上一个被接受的值;方向键仍搬焦点) |
 | RG2 | RadioGroup | `OnValueChangeVeto(func(string) bool)` |
 
-**下一批建议**(沿用第八节的顺序建议): PO1 `alignOffset` → IG1 addon 聚焦输入框 → FL4 Field 与 FieldError 绑定 → AV1 徽标配色 → PR1 progress `min`; 随后 PO2 / PO3 / PR2 / PR3 / FL1 / FL2 / IG2 / AV2 / AV3 / AV4。I3 / S9 / L3 / RG3 / FL3 是同一套 Field 校验基础设施, 必须同批设计。
+**第二批**(同样是跨组件一致性小改动, 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| PO1 | Popover | `popupPositionOffset` 支持交叉轴偏移;`WithPopoverAlignOffset(px)`(= Base UI Positioner 的 `alignOffset`, 上下方位正数向右、左右方位正数向下) |
+| IG1 | Input Group | 点 inline addon 的文字/图标/空白区聚焦输入框(`InputGroupAddon.onClick` 的 `querySelector('input').focus()`);按钮子项保持自己的点击语义 |
+| FL4 | Field | `Field.AttachError(*FieldError)` + `Field.SetErrors(...)`: 写文案自动置 invalid, 清空自动恢复;`FieldError.SetErrors` 也会沿父链把所在字段切到校验态;新增 `HasErrors()` / `Errors()` |
+| AV1 | Avatar | `WithAvatarBadgeColor` / `WithAvatarBadgeColorFunc` / `WithAvatarBadgeIconColor` / `WithAvatarBadgeSize` + 运行时 `SetBadgeColor/SetBadgeIconColor/SetBadgeSize`;自定义底色时图标色按亮度自动挑 |
+| PR1 | Progress | `WithProgressMin` / `SetMin` / `Min()` + `ProgressField` 同款;百分比改 `(value−min)/(max−min)`, 支持负值域 |
+
+**下一批建议**: PO2 / PO3 / PR2 / PR3 / FL1 / FL2 / IG2 / AV2 / AV3 / AV4(按台账里的先后);I3 / S9 / L3 / RG3 / FL3 是同一套 Field 校验基础设施, 必须同批设计。

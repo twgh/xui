@@ -283,6 +283,18 @@ func (g *InputGroup) Addon(align InputGroupAlign, build ...func(*InputGroupAddon
 	if g.disabled {
 		g.SetDisabled(true)
 	}
+	// 点 addon 的文字/图标/空白区把焦点交给输入框(input-group.tsx 的 InputGroupAddon.onClick
+	// 在非按钮区域 querySelector('input').focus()); 按钮子项是独立命中目标, 事件不会冒泡到这里,
+	// 它们保持自己的点击语义。布局元素默认鼠标穿透, 要接鼠标必须显式关掉(见 DESIGN 185)。
+	if align == InputGroupInlineStart || align == InputGroupInlineEnd {
+		l.EnableMouseThrough(false)
+		l.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+			if !g.disabled {
+				g.Focus()
+			}
+			return 0
+		})
+	}
 	return a
 }
 

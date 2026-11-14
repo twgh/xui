@@ -181,6 +181,11 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 		pg.SetValue(it.val)
 	}
 
+	xui.ItemFill(hint(v4.Handle, "下限 min(值域 -50~50: 0 在中间)"))
+	pMin := ui.NewProgress(0, 0, 0, 0, v4.Handle, ui.WithProgressMin(-50), ui.WithProgressMax(50))
+	xui.ItemFill(pMin)
+	pMin.SetValue(12)
+
 	xui.ItemFill(hint(v4.Handle, "带标题与数值(ProgressField, 对应文档 Labels 示例)"))
 	pf := ui.NewProgressField(0, 0, 0, 0, v4.Handle,
 		ui.WithProgressFieldTitle("上传进度"), ui.WithProgressFieldValue(66))

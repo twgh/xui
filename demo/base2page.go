@@ -156,6 +156,19 @@ func buildAvatarCard(parent int) {
 	ui.NewAvatar(0, 0, 0, 0, avRow.Handle, "AB", ui.WithAvatarSize(ui.AvatarSizeSm), ui.WithAvatarRing())
 	ui.NewAvatar(0, 0, 0, 0, avRow.Handle, "L", ui.WithAvatarSize(ui.AvatarSizeLg), ui.WithAvatarBadge(""))
 
+	xui.ItemFill(hint(vav.Handle, "徽标自定义底色 / 图标色 / 直径(上游 Badge 的 className 写法)"))
+	avBadgeRow := xui.HStack(vav.Handle, 40, 14)
+	ui.NewAvatar(0, 0, 0, 0, avBadgeRow.Handle, "ON", ui.WithAvatarBadge(""),
+		ui.WithAvatarBadgeColor(xui.Hex("#16a34a"))) // bg-green-600
+	ui.NewAvatar(0, 0, 0, 0, avBadgeRow.Handle, "OF", ui.WithAvatarBadge(""),
+		ui.WithAvatarBadgeColor(xui.Hex("#dc2626"))) // bg-red-600
+	ui.NewAvatar(0, 0, 0, 0, avBadgeRow.Handle, "ID", ui.WithAvatarBadge(icons.IconCheck),
+		ui.WithAvatarBadgeColorFunc(func(t *xui.Theme) xui.Color { return t.Chart4 }),
+		ui.WithAvatarBadgeSize(14))
+	ui.NewAvatar(0, 0, 0, 0, avBadgeRow.Handle, "AW", ui.WithAvatarSize(ui.AvatarSizeLg),
+		ui.WithAvatarBadge(icons.IconCheck), ui.WithAvatarBadgeColor(xui.Hex("#eab308")),
+		ui.WithAvatarBadgeIconColor(xui.Hex("#1f2937")))
+
 	xui.ItemFill(hint(vav.Handle, "叠放组(-space-x-2) + 计数"))
 	grp := ui.NewAvatarGroup(vav.Handle)
 	grp.Add("A")

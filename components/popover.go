@@ -67,6 +67,13 @@ func WithPopoverAlign(a PopoverAlign) PopoverOption {
 	return func(p *Popover) { p.align = a }
 }
 
+// WithPopoverAlignOffset 在 align 之上再沿交叉轴平移若干像素(对应 radix 的 alignOffset,
+// 默认 0)。上下方位正数向右、左右方位正数向下; 与 align 组合使用,
+// 例如 align=start + alignOffset=-8 把卡片往触发区左缘外侧挪一点。
+func WithPopoverAlignOffset(px int32) PopoverOption {
+	return func(p *Popover) { p.alignOffset = px }
+}
+
 // WithPopoverOnOpenChange 注册开关状态回调。
 func WithPopoverOnOpenChange(fn func(open bool)) PopoverOption {
 	return func(p *Popover) { p.changes = append(p.changes, fn) }
@@ -102,12 +109,13 @@ type Popover struct {
 	trigger int
 	build   func(content int)
 
-	width   int32
-	height  int32
-	padding int32
-	gap     int32
-	side    PopoverSide
-	align   PopoverAlign
+	width       int32
+	height      int32
+	padding     int32
+	gap         int32
+	side        PopoverSide
+	align       PopoverAlign
+	alignOffset int32
 
 	panel      *popoverPanel
 	content    *widget.LayoutEle
@@ -319,7 +327,7 @@ func (p *Popover) notify(open bool) {
 
 // placement 计算弹层左上角(屏幕逻辑像素, 与 popoverPanel.ShowAt 同口径), 并处理翻转与工作区夹取。
 func (p *Popover) placement() (int32, int32) {
-	return popupPosition(p.trigger, p.width, p.panel.ch, p.side, p.align, p.gap)
+	return popupPositionOffset(p.trigger, p.width, p.panel.ch, p.side, p.align, p.gap, p.alignOffset)
 }
 
 // PopoverHeader 弹层标题区: 纵向流, 间距 4(gap-1)。

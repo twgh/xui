@@ -34,6 +34,15 @@ const (
 // popupPosition 计算锚定弹层的位置: 先按 side/align 摆放, 放不下翻到对侧,
 // 最后夹进显示器工作区。hTrigger 只用来取触发元素与宿主窗口。
 func popupPosition(hTrigger int, w, h int32, side PopoverSide, align PopoverAlign, gap int32) (int32, int32) {
+	return popupPositionOffset(hTrigger, w, h, side, align, gap, 0)
+}
+
+// popupPositionOffset 同 popupPosition, 额外支持交叉轴偏移(radix 的 alignOffset)。
+//
+// alignOffset 带符号沿**交叉轴**平移: 上下方位(x 轴)正数向右、左右方位(y 轴)
+// 正数向下 —— 口径同 Floating UI 的 `alignmentAxis`(radix 把它直传给 offset 中间件)。
+// 偏移在摆放之后、夹进工作区之前应用, 所以贴边时仍会被夹回来。
+func popupPositionOffset(hTrigger int, w, h int32, side PopoverSide, align PopoverAlign, gap, alignOffset int32) (int32, int32) {
 	var rc, wr xc.RECT
 	xc.XEle_GetWndClientRect(hTrigger, &rc)
 	hWnd := xc.XWidget_GetHWINDOW(hTrigger)
@@ -52,6 +61,14 @@ func popupPosition(hTrigger int, w, h int32, side PopoverSide, align PopoverAlig
 	aR := wr.Left + rc.Right
 	aB := wr.Top + rc.Bottom
 	x, y := popupPlaceIn(hTrigger, w, h, aL, aT, aR, aB, side, align, gap)
+	if alignOffset != 0 {
+		switch side {
+		case PopoverSideTop, PopoverSideBottom:
+			x += alignOffset
+		default:
+			y += alignOffset
+		}
+	}
 
 	if wa, ok := xui.MonitorWorkArea(xc.XWnd_GetHWND(hWnd)); ok {
 		waL := int32(float64(wa.Left)/sc + 0.5)

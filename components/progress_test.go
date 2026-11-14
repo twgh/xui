@@ -29,3 +29,27 @@ func TestProgressIndeterminate(t *testing.T) {
 		t.Fatal("new progress must not be indeterminate")
 	}
 }
+
+func TestProgressMin(t *testing.T) {
+	// 负值域: 0 落在中间, 百分比按 (v-min)/(max-min) 算
+	p := &Progress{value: 0, min: -50, max: 50}
+	if got := p.Percent(); got != 50 {
+		t.Fatalf("Percent(-50..50, 0) = %v, want 50", got)
+	}
+	if got := p.Min(); got != -50 {
+		t.Fatalf("Min = %v, want -50", got)
+	}
+	p.value = -50
+	if got := p.Percent(); got != 0 {
+		t.Fatalf("下限百分比 = %v, want 0", got)
+	}
+	p.value = 50
+	if got := p.Percent(); got != 100 {
+		t.Fatalf("上限百分比 = %v, want 100", got)
+	}
+	// 值域塌成 0 时不除零
+	z := &Progress{value: 5, min: 5, max: 5}
+	if got := z.Percent(); got != 0 {
+		t.Fatalf("空值域 Percent = %v, want 0", got)
+	}
+}

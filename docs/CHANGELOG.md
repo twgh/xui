@@ -5,6 +5,15 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查清单第二批: Popover / Input Group / Field / Avatar / Progress 补齐**(2026-11-14, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的实现顺序建议):
+  - **Popover(PO1)**: `popupPosition` 拆出 `popupPositionOffset`, 支持 radix 的 `alignOffset` —— 在 align 之上沿交叉轴平移(上下方位正数向右、左右方位正数向下, 口径同 Floating UI 的 `alignmentAxis`), 偏移在摆放之后、夹进显示器工作区之前应用, 贴边仍会被夹回; 新增 `WithPopoverAlignOffset(px)`。
+  - **Input Group(IG1)**: 点 inline addon 的文字/图标/空白区聚焦输入框(对应上游 `InputGroupAddon.onClick` 的 `querySelector('input').focus()`)。布局元素默认鼠标穿透, 这里显式 `EnableMouseThrough(false)` 后挂 `LButtonUp`(DESIGN 185); 按钮是独立命中目标, 事件不会冒泡到 addon, 点击语义不变。
+  - **Field(FL4)**: `Field.AttachError(*FieldError)` + `Field.SetErrors(...)` 让错误区与校验态同源 —— 写文案自动置 `invalid`, 传空自动清除并恢复标签/控件配色; 反过来 `FieldError.SetErrors` 也会沿父链找回所在字段(错误区放字段直属或 `Content()` 里都行)。新增 `FieldError.HasErrors()` 与 `Field.Errors()`。demo 表单3 的用户名卡改用它, 切换按钮只剩一句 `fName.SetErrors(...)`。
+  - **Avatar(AV1)**: 徽标底色/图标色/直径可覆盖 —— `WithAvatarBadgeColor` / `WithAvatarBadgeColorFunc`(主题函数, 切主题实时重算) / `WithAvatarBadgeIconColor` / `WithAvatarBadgeSize`, 运行时 `SetBadgeColor/SetBadgeIconColor/SetBadgeSize`; 自定义底色时图标色按底色亮度在 Foreground / Background 之间自动挑(局部实现, 不让 avatar 单组件安装去依赖 chart.go)。
+  - **Progress(PR1)**: `WithProgressMin` / `SetMin` / `Min()`, 百分比与指示器宽度改按 `(value−min)/(max−min)` 算, 支持负值域(如 -50~50); `ProgressField` 同款(`WithProgressFieldMin`)且默认数值文本改读 `Percent()`。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 新增 `TestProgressMin`(负值域 / 端点 / 空值域不除零); 临时项目 `add popover` / `add input-group` / `add field` / `add avatar` / `add progress` 与 `add --all` 后 `go build ./ui` 均通过; demo 150% DPI 实测 —— `align start −8` 弹层左缘确实比触发区左缘再左 8px(亮/暗)、点输入组前置 `@` 图标后插入符出现在输入框内、字段错误一键清除/恢复(标签红↔黑、错误块显隐时 Auto 高链跟着收放)、四个徽标(绿点/红点/Chart4 勾/黄底深勾)与默认主色徽标并存、`-50~50` 的进度条填充实测 62.0%(12 的值), 与 `24/100`、`150/200` 两条对照一致。
+  - **登记**: 无新增组件文件、无 `registry.json` 改动; `runtime` / `cliChange` 不动(未打 tag)。
+
 - ✅ **组件特性核查清单第一批落地: Card / Dialog / Label / Select / Menu / Input / Switch / RadioGroup 的语义补齐**(2026-11-14, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的「未实现但可实现」清单):
   - **Card**: `WithCardSpacing(px)` / `SetSpacing(px)` 支持 `--card-spacing` 任意值(16/20/24/32), 一次同步内容区左右内距、上下外边距与页脚内距(`Card.Padding` 字段单独改不会下发, 一直是易错点); 新增 `CardFooter.SetPadding(px)`; **有页脚时内容区底部内距归 0**(上游 `has-data-[slot=card-footer]:pb-0`), 内容与页脚之间不再多出一整段内距。
   - **Dialog**: `OnOpenChange(func(bool))` 统一 Show / Hide / SetOpen / ESC / 点遮罩 / 关闭钮 / Close 全部路径(同一状态不重复通知), `SetOpen(bool)` 作受控入口; `WithDialogDismissOutside(bool)` 与 `WithDialogEscClose(bool)` 分别开关遮罩 / ESC 关闭(前者等价于 Base UI 的 `disablePointerDismissal` 取反); `OnClosing(func() bool)` 可否决关闭("未保存内容"拦下 ESC / 遮罩 / X), 程序化 `Hide` / `SetOpen(false)` 不经过否决; `WithDialogInitialFocus` / `WithDialogFinalFocus` 指定打开与关闭后的焦点(未指定时关闭仍还焦点给下层模态)。Sheet / Drawer 的滑出与拖拽关闭同样走这套回调与焦点还原。

@@ -22,6 +22,7 @@ import (
 type Progress struct {
 	*widget.ProgressBar
 	value         float64
+	min           float64
 	max           float64
 	indeterminate bool
 	indicator     func(*xui.Theme) xui.Color // 指示器颜色解析器(nil = Primary)
@@ -43,6 +44,12 @@ func WithProgressMax(max float64) ProgressOption {
 			p.max = max
 		}
 	}
+}
+
+// WithProgressMin 设置下限(对应 Base UI Progress Root 的 min, 默认 0):
+// 百分比按 (value-min)/(max-min) 算, 值域可以是负数(如 -50 ~ 50)。
+func WithProgressMin(min float64) ProgressOption {
+	return func(p *Progress) { p.min = min }
 }
 
 // WithProgressIndeterminate 初始为不确定态(radix 的 value=null): 不显示具体百分比,
@@ -77,8 +84,8 @@ func NewProgress(x, y, cx, cy int32, hParent int, opts ...ProgressOption) *Progr
 	for _, o := range opts {
 		o(p)
 	}
-	if p.max <= 0 {
-		p.max = 100
+	if p.max <= p.min {
+		p.max = p.min + 100
 	}
 	pb := widget.NewProgressBar(x, y, cx, cy, hParent)
 	if pb == nil {
@@ -98,24 +105,36 @@ func NewProgress(x, y, cx, cy int32, hParent int, opts ...ProgressOption) *Progr
 	return p
 }
 
-// Value 返回当前进度(0 ~ Max)。
+// Value 返回当前进度(Min ~ Max)。
 func (p *Progress) Value() float64 { return p.value }
+
+// Min 返回下限(默认 0)。
+func (p *Progress) Min() float64 { return p.min }
 
 // Max 返回最大值(默认 100)。
 func (p *Progress) Max() float64 { return p.max }
 
 // Percent 返回百分比(0~100), 不确定态时返回 0。
 func (p *Progress) Percent() float64 {
-	if p.indeterminate || p.max <= 0 {
+	if p.indeterminate {
 		return 0
 	}
-	return p.value / p.max * 100
+	return p.percentOf(p.value)
 }
 
-// SetValue 设置进度, v 会被夹取到 0 ~ Max。
+// percentOf 把绝对值换算成 0~100 的百分比(值域 min..max)。
+func (p *Progress) percentOf(v float64) float64 {
+	span := p.max - p.min
+	if span <= 0 {
+		return 0
+	}
+	return (v - p.min) / span * 100
+}
+
+// SetValue 设置进度, v 会被夹取到 Min ~ Max。
 func (p *Progress) SetValue(v float64) *Progress {
-	if v < 0 {
-		v = 0
+	if v < p.min {
+		v = p.min
 	} else if v > p.max {
 		v = p.max
 	}
@@ -130,8 +149,8 @@ func (p *Progress) SetValue(v float64) *Progress {
 
 // SetMax 设置最大值(对应 radix 的 max): **value 保持绝对值不变**, 百分比按新上限重算。
 func (p *Progress) SetMax(max float64) *Progress {
-	if max <= 0 {
-		max = 1
+	if max <= p.min {
+		max = p.min + 1
 	}
 	if max == p.max {
 		return p
@@ -139,6 +158,24 @@ func (p *Progress) SetMax(max float64) *Progress {
 	p.max = max
 	if p.value > max {
 		p.value = max
+	}
+	p.syncPos()
+	p.Redraw(false)
+	return p
+}
+
+// SetMin 设置下限(对应 Base UI 的 min): value 保持绝对值不变, 低于新下限时抬到下限,
+// 百分比按新值域重算。
+func (p *Progress) SetMin(min float64) *Progress {
+	if min == p.min {
+		return p
+	}
+	p.min = min
+	if p.max <= min {
+		p.max = min + 1
+	}
+	if p.value < min {
+		p.value = min
 	}
 	p.syncPos()
 	p.Redraw(false)
@@ -186,7 +223,7 @@ func (p *Progress) OnChange(fn func(v float64)) *Progress {
 }
 
 func (p *Progress) syncPos() {
-	pos := int32(p.value/p.max*float64(progressRange) + 0.5)
+	pos := int32(p.percentOf(p.value)/100*float64(progressRange) + 0.5)
 	if pos < 0 {
 		pos = 0
 	} else if pos > progressRange {
@@ -237,7 +274,7 @@ func (p *Progress) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		f := 1 - math.Abs(2*phase-1)
 		left = pt.Rc.Left + int32(math.Round(f*float64(trackW-barW)))
 	} else {
-		barW = int32(float64(trackW) * p.value / p.max)
+		barW = int32(float64(trackW) * p.percentOf(p.value) / 100)
 		if barW <= 0 {
 			return 0
 		}
@@ -273,6 +310,7 @@ type ProgressField struct {
 	format        func(v, max float64) string
 	titleText     string
 	initial       float64
+	min           float64
 	max           float64
 	indeterminate bool
 	indicator     func(*xui.Theme) xui.Color
@@ -294,6 +332,11 @@ func WithProgressFieldValue(v float64) ProgressFieldOption {
 // WithProgressFieldMax 设置最大值(默认 100)。
 func WithProgressFieldMax(max float64) ProgressFieldOption {
 	return func(pf *ProgressField) { pf.max = max }
+}
+
+// WithProgressFieldMin 设置下限(默认 0), 语义同 WithProgressMin。
+func WithProgressFieldMin(min float64) ProgressFieldOption {
+	return func(pf *ProgressField) { pf.min = min }
 }
 
 // WithProgressFieldFormat 自定义右侧数值文本(默认四舍五入到整数百分比, 如 "66%")。
@@ -321,8 +364,8 @@ func NewProgressField(x, y, cx, cy int32, hParent int, opts ...ProgressFieldOpti
 	for _, o := range opts {
 		o(pf)
 	}
-	if pf.max <= 0 {
-		pf.max = 100
+	if pf.max <= pf.min {
+		pf.max = pf.min + 100
 	}
 	if pf.titleText == "" {
 		pf.titleText = "Progress"
@@ -356,6 +399,9 @@ func NewProgressField(x, y, cx, cy int32, hParent int, opts ...ProgressFieldOpti
 		xcc.TextFormatFlag_NoWrap | xcc.TextTrimming_EllipsisCharacter)
 
 	barOpts := []ProgressOption{WithProgressMax(pf.max)}
+	if pf.min != 0 {
+		barOpts = append(barOpts, WithProgressMin(pf.min))
+	}
 	if pf.indeterminate {
 		barOpts = append(barOpts, WithProgressIndeterminate())
 	}
@@ -426,7 +472,7 @@ func (pf *ProgressField) syncValueText(v, max float64) {
 	} else if pf.format != nil {
 		text = pf.format(v, max)
 	} else {
-		text = fmt.Sprintf("%.0f%%", v/max*100)
+		text = fmt.Sprintf("%.0f%%", pf.bar.Percent())
 	}
 	if pf.value.GetText() != text {
 		pf.value.SetText(text).Redraw()

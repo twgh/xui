@@ -15,7 +15,7 @@ func buildPopoverCard(body *widget.LayoutEle) {
 	_, vpop := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "弹出层", vpop.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Popover: 点击触发、外部/ESC 关闭; HoverCard: 悬停预览且不抢焦点", vpop.Handle))
+		"Popover: 点击触发、外部/ESC 关闭, side/align/alignOffset 可调; HoverCard: 悬停预览且不抢焦点", vpop.Handle))
 
 	popRow := xui.HStack(vpop.Handle, 36, 12)
 	popBtn := ui.NewButton(0, 0, 0, 0, "打开 Popover", popRow.Handle,
@@ -32,6 +32,19 @@ func buildPopoverCard(body *widget.LayoutEle) {
 		ui.NewButton(0, 0, 72, 0, "保存", btns.Handle)
 		ui.NewButton(0, 0, 72, 0, "取消", btns.Handle, ui.WithVariant(ui.ButtonOutline))
 	}))
+
+	// align=start 再往左挪 8px: 卡片贴触发区左缘外侧, 演示 alignOffset(radix 的交叉轴偏移)
+	popOffBtn := ui.NewButton(0, 0, 0, 0, "align start −8", popRow.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonHasPopup(),
+		ui.WithButtonTrailingIcon(icons.IconChevronDown))
+	xui.ItemWidth(popOffBtn, 130)
+	ui.NewPopover(popOffBtn.Handle,
+		ui.WithPopoverAlign(ui.PopoverAlignStart), ui.WithPopoverAlignOffset(-8),
+		ui.WithPopoverContent(func(c int) {
+			h := ui.PopoverHeader(c)
+			ui.PopoverTitle(h.Handle, "alignOffset = -8")
+			ui.PopoverDescription(h.Handle, "对齐触发区左缘后再向左偏移 8px。")
+		}))
 
 	hoverBtn := ui.NewButton(0, 0, 0, 0, "悬停 @xui 查看资料", vpop.Handle, ui.WithVariant(ui.ButtonLink))
 	xui.ItemWidth(hoverBtn, 160)

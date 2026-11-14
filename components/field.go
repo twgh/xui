@@ -109,7 +109,22 @@ type Field struct {
 	texts        []*Label
 	content      *widget.LayoutEle
 	controls     []FieldControl
+	errors       []*FieldError
 	origDisabled map[FieldControl]bool
+}
+
+// fieldReg 记录"字段句柄 → Field", 供 FieldError 沿父链找回所属字段。
+// 与 tooltipReg 同一种用法: 只在 UI 线程读写, 元素销毁时摘除。
+var fieldReg = map[int]*Field{}
+
+// findFieldOf 沿父链找最近的字段容器(没有则返回 nil)。
+func findFieldOf(hEle int) *Field {
+	for h := hEle; h != 0; h = xc.XWidget_GetParentEle(h) {
+		if f, ok := fieldReg[h]; ok {
+			return f
+		}
+	}
+	return nil
 }
 
 // NewField 创建字段容器。宽铺满、高自撑; cy 仅作初始高度。
@@ -130,6 +145,11 @@ func NewField(x, y, cx, cy int32, hParent int, opts ...FieldOption) *Field {
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
 	f.applyOrientation()
 	xui.AttachWindow(ele.Handle)
+	fieldReg[ele.Handle] = f
+	ele.AddEvent_Destroy(func(hEle int, pbHandled *bool) int {
+		delete(fieldReg, hEle)
+		return 0
+	})
 	return f
 }
 
@@ -304,6 +324,62 @@ func (f *Field) SetInvalid(invalid bool) *Field {
 // Invalid 返回当前校验失败态。
 func (f *Field) Invalid() bool {
 	return f != nil && f.invalid
+}
+
+// AttachError 把错误文本区接进字段(对应上游 FieldError 与 data-invalid 同源):
+// 之后 Field.SetErrors 会同时更新这些区域, 反过来它们自己 SetErrors 也会把字段切到
+// 校验失败态。错误区可以放在字段直属下, 也可以放进 Content() 里(沿父链能找到字段)。
+func (f *Field) AttachError(errs ...*FieldError) *Field {
+	if f == nil {
+		return f
+	}
+	for _, e := range errs {
+		if e == nil || f.hasError(e) {
+			continue
+		}
+		f.errors = append(f.errors, e)
+		if e.HasErrors() {
+			f.SetInvalid(true)
+		}
+	}
+	return f
+}
+
+func (f *Field) hasError(e *FieldError) bool {
+	for _, it := range f.errors {
+		if it == e {
+			return true
+		}
+	}
+	return false
+}
+
+// SetErrors 设置字段错误: 文案同步到已 AttachError 的错误区, 并按"有没有错误"切换
+// 校验失败态(空 = 清除错误、标签与已接控件恢复正常配色)。多条错误由错误区负责去重
+// 与列表化。
+func (f *Field) SetErrors(messages ...string) *Field {
+	if f == nil {
+		return f
+	}
+	n := 0
+	for _, m := range messages {
+		if m != "" {
+			n++
+		}
+	}
+	for _, e := range f.errors {
+		e.SetErrors(messages...)
+	}
+	f.SetInvalid(n > 0)
+	return f
+}
+
+// Errors 返回已接的错误文本区(未 AttachError 时为空)。
+func (f *Field) Errors() []*FieldError {
+	if f == nil {
+		return nil
+	}
+	return f.errors
 }
 
 func (f *Field) newText(text string) *Label {
@@ -485,6 +561,7 @@ func (s *FieldSeparator) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 type FieldError struct {
 	*widget.LayoutEle
 	labels []*Label
+	msgs   []string // 去重后的当前错误文案(空 = 隐藏)
 }
 
 // NewFieldError 创建错误区。messages 为空时保持隐藏。
@@ -544,12 +621,22 @@ func (e *FieldError) SetErrors(messages ...string) *FieldError {
 		l.SetText(text)
 		l.Show(true)
 	}
+	e.msgs = msgs
 	e.Show(len(msgs) > 0)
 	// 隐藏时也要重排: FieldError 所在 Field/卡片是 Auto 高, 只 Show(false) 不会让
 	// 祖先收回错误区腾出的高度(实测会留下与错误区等高的空洞), 必须逐级 AdjustLayout。
 	adjustFieldAncestors(e.Handle)
 	e.Redraw(false)
+	// 所在的字段跟着切校验态(上游 FieldError 与 data-invalid 同源, 不需要调用方各写一遍)
+	if f := findFieldOf(e.Handle); f != nil {
+		f.SetInvalid(len(msgs) > 0)
+	}
 	return e
+}
+
+// HasErrors 报告当前是否挂着错误文案。
+func (e *FieldError) HasErrors() bool {
+	return e != nil && len(e.msgs) > 0
 }
 
 // Labels 返回错误文本 Label 列表(尚未创建的不存在), 供自定义字号/高度。
