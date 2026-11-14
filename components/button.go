@@ -14,6 +14,7 @@ package ui
 import (
 	"math"
 
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -102,17 +103,22 @@ type Button struct {
 	*widget.Button
 	variant      ButtonVariant
 	size         ButtonSize
-	icon         string      // 非空时绘制图标替代文字
-	leadingIcon  string      // 文字前的行内图标(data-icon=inline-start)
-	trailingIcon string      // 文字后的行内图标(data-icon=inline-end)
-	iconSize     int32       // 图标绘制边长(逻辑像素); 0 = 按尺寸预设
-	align        ButtonAlign // 内容水平对齐(默认居中)
-	invalid      bool        // aria-invalid: 表单校验失败态(红色边框 + 红色 ring)
-	rounded      bool        // rounded-full(胶囊)
-	expanded     bool        // aria-expanded: 弹层触发区展开态
-	hasPopup     bool        // aria-haspopup: 按下不整体下沉(菜单/下拉触发区)
-	loading      bool        // 加载态: 行内/纯图标位置绘制持续旋转的 loader
-	autoWidth    bool        // cx 传 0 时为 true: 宽度按文字/图标量出
+	icon         string                     // 非空时绘制图标替代文字
+	leadingIcon  string                     // 文字前的行内图标(data-icon=inline-start)
+	trailingIcon string                     // 文字后的行内图标(data-icon=inline-end)
+	iconSize     int32                      // 图标绘制边长(逻辑像素); 0 = 按尺寸预设
+	align        ButtonAlign                // 内容水平对齐(默认居中)
+	invalid      bool                       // aria-invalid: 表单校验失败态(红色边框 + 红色 ring)
+	rounded      bool                       // rounded-full(胶囊)
+	expanded     bool                       // aria-expanded: 弹层触发区展开态
+	hasPopup     bool                       // aria-haspopup: 按下不整体下沉(菜单/下拉触发区)
+	loading      bool                       // 加载态: 行内/纯图标位置绘制持续旋转的 loader
+	loadingAtEnd bool                       // 加载指示器放在 inline-end(默认 inline-start)
+	loadingIcon  string                     // 加载图标(空 = lucide loader-circle)
+	loadingColor func(*xui.Theme) xui.Color // 加载图标颜色(空 = 跟随文字色)
+	linkURL      string                     // 非空 = 外部链接按钮, 点击用系统默认程序打开
+	autoWidth    bool                       // cx 传 0 时为 true: 宽度按文字/图标量出
+	autoHeight   bool                       // cy 传 0 时为 true: SetSize 时跟随预设高度
 	// fontPx 覆盖尺寸档预设的字号(0 = 用预设)。Menubar 的触发区要 text-sm(14)
 	// 但高度仍是 sm 档的 28, 单靠 size 预设表达不了这种组合。
 	fontPx int32
@@ -181,11 +187,28 @@ func WithButtonHasPopup() ButtonOption { return func(b *Button) { b.hasPopup = t
 // 交互由调用方决定(对应 shadcn 示例里的 disabled + LoaderCircleIcon animate-spin)。
 func WithButtonLoading() ButtonOption { return func(b *Button) { b.loading = true } }
 
+// WithButtonLoadingAtEnd 把加载指示器放到 inline-end(有尾随图标时替换它),
+// 对应文档里给 Spinner 加 data-icon="inline-end" 的写法。该选项同时开启加载态。
+func WithButtonLoadingAtEnd() ButtonOption {
+	return func(b *Button) { b.loadingAtEnd, b.loading = true, true }
+}
+
+// WithButtonLoadingIcon 替换加载图标(默认 lucide loader-circle)。传空串恢复默认。
+func WithButtonLoadingIcon(path string) ButtonOption {
+	return func(b *Button) { b.loadingIcon = path }
+}
+
+// WithButtonLoadingColorFunc 指定加载图标颜色(每次绘制实时取主题令牌)。
+// 默认跟随按钮文字色, 所以 primary 按钮上的 spinner 自动是 primary-foreground。
+func WithButtonLoadingColorFunc(fn func(*xui.Theme) xui.Color) ButtonOption {
+	return func(b *Button) { b.loadingColor = fn }
+}
+
 // NewButton 创建自绘按钮。cy 传 0 时按尺寸预设自适应高度;
 // cx 传 0 时按文字/行内图标的量测宽度自适应(纯图标按钮用方形预设)。
 func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOption) *Button {
-	b := &Button{size: ButtonSizeDefault, autoWidth: cx <= 0}
-	autoW, autoH := cx <= 0, cy <= 0
+	b := &Button{size: ButtonSizeDefault, autoWidth: cx <= 0, autoHeight: cy <= 0}
+	autoW, autoH := b.autoWidth, b.autoHeight
 	sp := buttonSpecs[b.size]
 	if autoH {
 		cy = sp.height
@@ -215,6 +238,7 @@ func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOptio
 
 	// 灭掉原生外观, 交给 onPaint
 	b.EnableBkTransparent(true)
+	b.refreshCursor()
 	b.SetTextColor(0) // 文字颜色绘制时按主题实时设置
 	b.SetTextAlign(xcc.TextAlignFlag_Center | xcc.TextAlignFlag_Vcenter)
 	b.AddEvent_Paint(b.onPaint)
@@ -226,11 +250,78 @@ func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOptio
 	return b
 }
 
+// NewLinkButton 外部链接按钮(文档 "As Link" 的桌面等价物): ButtonLink 样式 +
+// 手型光标, 点击用系统默认程序打开 url。其余选项与 NewButton 相同; url 传空串
+// 时只显示成链接样式(便于先绑定后设值)。
+func NewLinkButton(x, y, cx, cy int32, text, url string, hParent int, opts ...ButtonOption) *Button {
+	opts = append([]ButtonOption{WithVariant(ButtonLink)}, opts...)
+	b := NewButton(x, y, cx, cy, text, hParent, opts...)
+	if b == nil {
+		return nil
+	}
+	b.linkURL = url
+	b.refreshCursor()
+	b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		if b.linkURL != "" {
+			wapi.ShellExecuteW(0, "open", b.linkURL, "", "", xcc.SW_SHOWNORMAL)
+		}
+		return 0
+	})
+	return b
+}
+
+// SetLinkURL 更新链接按钮的目标地址(空串 = 不响应点击)。
+func (b *Button) SetLinkURL(url string) *Button {
+	if b == nil {
+		return b
+	}
+	b.linkURL = url
+	b.refreshCursor()
+	return b
+}
+
+// LinkURL 返回链接按钮的目标地址(普通按钮为空串)。
+func (b *Button) LinkURL() string { return b.linkURL }
+
 // SetVariant 切换按钮变体。
 func (b *Button) SetVariant(v ButtonVariant) *Button {
 	b.variant = v
+	b.refreshCursor()
 	b.Redraw(false)
 	return b
+}
+
+func (b *Button) SetSize(s ButtonSize) *Button {
+	if b == nil || b.size == s {
+		return b
+	}
+	b.size = s
+	sp := buttonSpecs[s]
+	b.SetHeight(sp.height + pressShift)
+	if sp.width > 0 && b.icon != "" {
+		b.SetWidth(sp.width)
+	} else if b.autoWidth {
+		b.SetWidth(b.naturalWidth(xui.Current()))
+	}
+	reflowAfterResize(b.Handle)
+	b.Redraw(false)
+	return b
+}
+
+// refreshCursor 按"是否链接 / 是否禁用 / 全局 pointer 开关"刷新鼠标指针。
+func (b *Button) refreshCursor() {
+	if b == nil {
+		return
+	}
+	if b.Disabled() {
+		b.SetCursor(controlCursor(true))
+		return
+	}
+	if b.linkURL != "" || b.variant == ButtonLink {
+		b.SetCursor(linkCursor())
+		return
+	}
+	b.SetCursor(controlCursor(false))
 }
 
 // SetInvalid 设置/清除校验失败态(见 WithButtonInvalid)。
@@ -245,6 +336,32 @@ func (b *Button) SetInvalid(v bool) *Button {
 
 // Invalid 返回当前是否处于校验失败态。
 func (b *Button) Invalid() bool { return b.invalid }
+
+// SetDisabled 设置禁用态(disabled:opacity-50, 不可点击/聚焦, 指针 not-allowed)。
+// 运行时切换加载态等需要禁用交互时用它, 比直接 Enable(false) 多管焦点与光标。
+func (b *Button) SetDisabled(v bool) *Button {
+	if b == nil {
+		return b
+	}
+	b.Enable(!v)
+	b.EnableFocus(!v)
+	b.EnableSwitchFocus(!v)
+	b.refreshCursor()
+	b.Redraw(false)
+	return b
+}
+
+// Disabled 返回按钮是否禁用。
+func (b *Button) Disabled() bool { return b == nil || !b.IsEnable() }
+
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (b *Button) SetFieldState(invalid, disabled bool) {
+	b.SetInvalid(invalid)
+	b.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (b *Button) FieldDisabled() bool { return b.Disabled() }
 
 // Spec 返回当前尺寸规格。
 func (b *Button) Spec() buttonSpec { return buttonSpecs[b.size] }
@@ -290,10 +407,7 @@ func (b *Button) naturalWidth(t *xui.Theme) int32 {
 	}
 	tw := xui.TextWidth(text, b.fontHandle(t))
 	isz := b.inlineIconSize()
-	lead, trail := b.leadingIcon, b.trailingIcon
-	if b.loading {
-		lead = icons.IconLoaderCircle
-	}
+	lead, trail := b.slotIcons()
 	content := int32(0)
 	add := func(w int32) {
 		if content > 0 {
@@ -395,6 +509,61 @@ func (b *Button) SetLoading(v bool) *Button {
 
 // Loading 返回是否处于加载态。
 func (b *Button) Loading() bool { return b.loading }
+
+// SetLoadingAtEnd 切换加载指示器的位置(见 WithButtonLoadingAtEnd)。
+func (b *Button) SetLoadingAtEnd(v bool) *Button {
+	if b.loadingAtEnd == v {
+		return b
+	}
+	b.loadingAtEnd = v
+	if b.autoWidth {
+		b.SetWidth(b.naturalWidth(xui.Current()))
+	}
+	b.Redraw(false)
+	return b
+}
+
+// SetLoadingIcon 替换加载图标(空串恢复 lucide loader-circle)。
+func (b *Button) SetLoadingIcon(path string) *Button {
+	if b.loadingIcon == path {
+		return b
+	}
+	b.loadingIcon = path
+	if b.autoWidth {
+		b.SetWidth(b.naturalWidth(xui.Current()))
+	}
+	b.Redraw(false)
+	return b
+}
+
+// SetLoadingColorFunc 指定加载图标颜色(传 nil 恢复跟随文字色)。
+func (b *Button) SetLoadingColorFunc(fn func(*xui.Theme) xui.Color) *Button {
+	b.loadingColor = fn
+	b.Redraw(false)
+	return b
+}
+
+// loaderPath 返回加载图标 path(默认 lucide loader-circle)。
+func (b *Button) loaderPath() string {
+	if b.loadingIcon != "" {
+		return b.loadingIcon
+	}
+	return icons.IconLoaderCircle
+}
+
+// slotIcons 返回行内前置/尾随图标, 加载态时把 loader 放到对应槽位
+// (默认 inline-start, WithButtonLoadingAtEnd 放 inline-end)。
+func (b *Button) slotIcons() (lead, trail string) {
+	lead, trail = b.leadingIcon, b.trailingIcon
+	if b.loading {
+		if b.loadingAtEnd {
+			trail = b.loaderPath()
+		} else {
+			lead = b.loaderPath()
+		}
+	}
+	return lead, trail
+}
 
 // SetIcon 设置/替换按钮图标(path 同 WithIcon)。
 // 传空串恢复文字绘制。用于图标按钮的状态切换(如 icons.IconEye / icons.IconEyeOff、
@@ -661,11 +830,14 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			Right:  midX + iconSize/2,
 			Bottom: midY + iconSize/2,
 		}
-		path, angle := b.icon, 0.0
+		path, angle, color := b.icon, 0.0, fore
 		if b.loading {
-			path, angle = icons.IconLoaderCircle, phase*2*math.Pi
+			path, angle = b.loaderPath(), phase*2*math.Pi
+			if b.loadingColor != nil {
+				color = b.loadingColor(t)
+			}
 		}
-		p.IconRotatedOffset(path, &iconRc, fore, 2, angle, 0, contentDy)
+		p.IconRotatedOffset(path, &iconRc, color, 2, angle, 0, contentDy)
 		return 0
 	}
 
@@ -677,11 +849,9 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	text := b.GetText()
 
-	// 加载态占据行内前置图标的位置(有文字时是 spinner+文字, 无文字时是居中 spinner)。
-	lead, trail := b.leadingIcon, b.trailingIcon
-	if b.loading {
-		lead = icons.IconLoaderCircle
-	}
+	// 加载态占据行内前置图标的位置(默认; WithButtonLoadingAtEnd 时占尾随槽位)。
+	// 有文字时是 spinner+文字, 无文字时是居中 spinner。
+	lead, trail := b.slotIcons()
 
 	// 无行内图标: 文字直接在整块壳体里居中(与旧行为一致)。
 	if lead == "" && trail == "" {
@@ -747,21 +917,30 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		x = (textRc.Left+textRc.Right)/2 - content/2
 	}
 	cy := (textRc.Top + textRc.Bottom) / 2
-	drawIcon := func(path string, left int32, angle float64) {
+	drawIcon := func(path string, left int32, angle float64, color xui.Color) {
 		rc := xc.RECT{
 			Left:   left,
 			Top:    cy - isz/2,
 			Right:  left + isz,
 			Bottom: cy + isz/2,
 		}
-		p.IconRotatedOffset(path, &rc, fore, 2, angle, 0, contentDy)
+		p.IconRotatedOffset(path, &rc, color, 2, angle, 0, contentDy)
 	}
-	leadAngle := 0.0
+	leadAngle, trailAngle := 0.0, 0.0
+	leadColor, trailColor := fore, fore
 	if b.loading {
-		leadAngle = phase * 2 * math.Pi
+		lc := fore
+		if b.loadingColor != nil {
+			lc = b.loadingColor(t)
+		}
+		if b.loadingAtEnd {
+			trailAngle, trailColor = phase*2*math.Pi, lc
+		} else {
+			leadAngle, leadColor = phase*2*math.Pi, lc
+		}
 	}
 	if lead != "" {
-		drawIcon(lead, x, leadAngle)
+		drawIcon(lead, x, leadAngle, leadColor)
 		x += isz
 		if text != "" || trail != "" {
 			x += gap
@@ -789,7 +968,7 @@ func (b *Button) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		if b.align == ButtonAlignBetween && (lead != "" || text != "") {
 			tx = textRc.Right - sp.iconPadX - isz
 		}
-		drawIcon(trail, tx, 0)
+		drawIcon(trail, tx, trailAngle, trailColor)
 	}
 	if b.variant == ButtonLink && text != "" && !st.Disabled && (st.Hover || st.Pressed) && tw > 0 {
 		y := int32(math.Round(float64(cy) - float64(textVDy(text)) + float64(textDy) + float64(b.Spec().font)*0.3 + 4))

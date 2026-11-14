@@ -414,6 +414,14 @@ func (s *Slider) SetDisabled(v bool) *Slider {
 // Disabled 返回是否禁用。
 func (s *Slider) Disabled() bool { return s.disabled }
 
+// SetFieldState 实现 FieldControl: 滑块没有校验失败态, 只级联禁用。
+func (s *Slider) SetFieldState(_, disabled bool) {
+	s.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (s *Slider) FieldDisabled() bool { return s == nil || s.Disabled() }
+
 // OnChange 注册值变化回调(v 为**第一个**滑块的值), 拖动过程中会连续触发。
 // 多滑块请用 OnValuesChange。为兼容旧 API 保留单值签名。
 func (s *Slider) OnChange(fn func(v float64)) *Slider {

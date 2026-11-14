@@ -112,17 +112,17 @@ type TagInput struct {
 	validator   func(string) bool
 	changeFns   []func([]string)
 
-	chips        []tagInputChip // 每次 measure 重算, 供绘制与命中复用
-	inputRc      xc.RECT        // 裸 Edit 的位置
-	measuredW    int32          // 上次 measure 的宽
-	neededH      int32          // 按当前标签数算出的目标高度
-	lastEditRc   xc.RECT
-	editApplied  bool
-	relayouting  bool
-	fitPending   bool // 量高已排进下一轮 UI 消息, 合并同轮触发
-	suppress     bool // 程序化 SetText 期间屏蔽 Edit_Changed
-	hoverClose   int  // 当前悬停的 × 索引, -1 = 无
-	pressClose   int  // 按下的 × 索引, -1 = 无
+	chips       []tagInputChip // 每次 measure 重算, 供绘制与命中复用
+	inputRc     xc.RECT        // 裸 Edit 的位置
+	measuredW   int32          // 上次 measure 的宽
+	neededH     int32          // 按当前标签数算出的目标高度
+	lastEditRc  xc.RECT
+	editApplied bool
+	relayouting bool
+	fitPending  bool // 量高已排进下一轮 UI 消息, 合并同轮触发
+	suppress    bool // 程序化 SetText 期间屏蔽 Edit_Changed
+	hoverClose  int  // 当前悬停的 × 索引, -1 = 无
+	pressClose  int  // 按下的 × 索引, -1 = 无
 }
 
 // NewTagInput 创建标签输入框。cy 传 0 使用默认高度 32(会随标签行数自撑);
@@ -316,6 +316,15 @@ func (t *TagInput) SetDisabled(v bool) *TagInput {
 
 // Disabled 返回是否禁用。
 func (t *TagInput) Disabled() bool { return t != nil && t.disabled }
+
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (t *TagInput) SetFieldState(invalid, disabled bool) {
+	t.SetInvalid(invalid)
+	t.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (t *TagInput) FieldDisabled() bool { return t == nil || t.Disabled() }
 
 // SetInvalid 设置/清除校验失败态。
 func (t *TagInput) SetInvalid(v bool) *TagInput {

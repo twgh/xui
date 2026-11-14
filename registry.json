@@ -4,7 +4,7 @@
   "cliChange": "v0.11.0",
   "components": {
     "button": {
-      "files": ["button.go", "group.go", "textopt.go", "press.go"],
+      "files": ["button.go", "group.go", "textopt.go", "press.go", "cursor.go"],
       "deps": []
     },
     "button-group": {
@@ -12,7 +12,7 @@
       "deps": ["button"]
     },
     "checkbox": {
-      "files": ["checkbox.go"],
+      "files": ["checkbox.go", "checkboxgroup.go", "cursor.go"],
       "deps": []
     },
     "color-picker": {
@@ -24,11 +24,11 @@
       "deps": []
     },
     "radio": {
-      "files": ["radio.go"],
+      "files": ["radio.go", "cursor.go"],
       "deps": []
     },
     "radio-group": {
-      "files": ["radio.go", "radiogroup.go"],
+      "files": ["radio.go", "radiogroup.go", "cursor.go"],
       "deps": []
     },
     "input": {
@@ -72,7 +72,7 @@
       "deps": ["label"]
     },
     "switch": {
-      "files": ["switch.go"],
+      "files": ["switch.go", "cursor.go"],
       "deps": []
     },
     "progress": {
@@ -224,7 +224,7 @@
       "deps": []
     },
     "input-group": {
-      "files": ["inputgroup.go", "input.go", "scrollbar.go", "group.go", "button.go", "kbd.go", "spinner.go", "textopt.go", "press.go"],
+      "files": ["inputgroup.go", "input.go", "scrollbar.go", "group.go", "button.go", "kbd.go", "spinner.go", "textopt.go", "press.go", "cursor.go"],
       "deps": ["menu"]
     },
     "input-otp": {
@@ -276,7 +276,7 @@
       "deps": ["button"]
     },
     "sidebar": {
-      "files": ["sidebar.go", "scrollarea.go", "scrollbar.go", "tooltip.go", "button.go", "group.go", "textopt.go", "press.go"],
+      "files": ["sidebar.go", "scrollarea.go", "scrollbar.go", "tooltip.go", "button.go", "group.go", "textopt.go", "press.go", "cursor.go"],
       "deps": []
     },
     "chart": {

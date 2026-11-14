@@ -1539,3 +1539,9 @@ hover 背景底边正好贴住弹层底边、滚轮还能再滚一下。
      - **根因**: 元素 `Show(false)` 后, 布局项类型变成 `Layout_Size_Disable`(实测 `XWidget_LayoutItem_GetWidth/GetHeight` 返回 `(5,0)`, 5 = Disable); `Show(true)` 只改显隐标志, 不会把声明恢复成原来的 Fill / Fixed / Auto, 后续布局趟继续跳过它。
      - **修法**: 重新显示时按原值重写关键尺寸与布局声明 —— 输入框 Fill 宽 + Fixed 高(`SetHeight` 同步元素高)、错误标签 Fill + Auto、按钮 `SetHeight` + `FitWidth` + Fixed 宽高、行 Fill + Auto; 对本元素与 Auto 高的祖先各重排一次(祖先链见 195)。只 `Show(true)` + `AdjustLayout` 不够。
      - **实测**: 探针在三题问卷上 `SetItem` 切到最后题再 `Reset`: 隐藏过的输入框高度声明为 (5,0), Next 按钮宽高为 (5,0); 按上述重写后输入框回到 (0,32)、按钮回到 (0,54)/(0,33); demo 从第 3 题重置回第 1 题, 输入框与 Next 正常显示, 后续切题 Previous / Skip 也按题正确出现。
+
+198. **原生 Check 按钮的勾选在通知到达时已经落地: 只读/否决必须回滚状态**(`checkbox.go` 的 `AddEvent_Button_Check` / `revertUserChange`):
+     - **现象**: 给复选框设置只读, 或在 `OnCheckedChange` 里返回 false 拒绝这次切换, 点击后勾选还是变了; 回调里读到的已经是新状态, 界面也停在新勾选上。不额外 `Redraw` 时, 按钮元素还停在按下态的底色。
+     - **根因**: 载体是原生 `Button_Type_Check`, 点击时 xcgui **先改控件的勾选位再派发 `XE_BUTTON_CHECK`**; 事件参数 `bCheck` 是新值, 事件本身没有"取消"能力。`Enable(false)` 不能当只读 —— 它会连焦点、键盘与指针一起关掉, 与 Base UI `readOnly`(仍可聚焦、保留键盘可达性)不一致。
+     - **修法**: 组件自己持有只读/否决状态; 鼠标路径在 `Button_Check` 里发现与预期不符就 `SetCheck(!bCheck)` 回滚(不确定态在点击后会丢失, 回滚时一并恢复), 再 `Redraw(false)`; 键盘空格路径先问否决回调再写状态, 不产生需要回滚的中间态; `OnCheckedChange` 返回 false 表示否决, 回滚后不调用 `OnChange`。程序化 `SetChecked` 不经过否决(同受控组件 setState 语义)。
+     - **实测**: demo 表单5 的"只读(点击不切换)"与"否决取消(试试点掉)"点击后勾选保持不变; "全选"父项半选联动照常, 组值与 OnChange 只在放行时更新; 亮/暗主题与 150% DPI 下指示器均无残留底色。

@@ -21,8 +21,17 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	fMail := ui.NewField(0, 0, 0, 0, vf.Handle)
 	xui.ItemFill(fMail)
 	fMail.Label("邮箱地址")
-	xui.ItemFill(ui.NewInput(0, 0, 0, 0, fMail.Handle, ui.WithPlaceholder("m@example.com")))
+	mail := ui.NewInput(0, 0, 0, 0, fMail.Handle, ui.WithPlaceholder("m@example.com"))
+	xui.ItemFill(mail)
 	fMail.Description("用于接收登录链接与安全通知。")
+	fMail.Attach(mail)
+	mailDisBtn := ui.NewButton(0, 0, 0, 0, "禁用 / 启用字段", vf.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+	xui.ItemWidth(mailDisBtn, 120)
+	mailDisBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		fMail.SetDisabled(!fMail.Disabled())
+		return 0
+	})
 
 	fName := ui.NewField(0, 0, 0, 0, vf.Handle, ui.WithFieldInvalid())
 	xui.ItemFill(fName)
@@ -31,6 +40,7 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(name)
 	name.SetValue("ab")
 	fName.Description("3-20 个字符, 支持字母、数字与下划线。")
+	fName.Attach(name)
 	nameErr := ui.NewFieldError(0, 0, 0, 0, fName.Handle,
 		"用户名至少 3 个字符", "不能包含空格", "用户名至少 3 个字符")
 	xui.ItemFill(nameErr)
@@ -40,8 +50,7 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemWidth(toggleInvalid, 120)
 	toggleInvalid.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		invalid := !fName.Invalid()
-		fName.SetInvalid(invalid)
-		name.SetInvalid(invalid)
+		fName.SetInvalid(invalid) // 已 Attach 的输入框随字段一起变
 		if invalid {
 			nameErr.SetErrors("用户名至少 3 个字符", "不能包含空格")
 		} else {
@@ -59,6 +68,16 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	displayName := ui.NewInput(0, 0, 0, 0, fDisplay.Handle)
 	xui.ItemFill(displayName)
 	displayName.SetValue("twgh")
+	fDisplay.Attach(displayName)
+
+	fDisabled := ui.NewField(0, 0, 0, 0, vf.Handle, ui.WithFieldDisabled())
+	xui.ItemFill(fDisabled)
+	fDisabled.Label("禁用字段(标签与控件一起变淡)")
+	fDisabledInput := ui.NewInput(0, 0, 0, 0, fDisabled.Handle)
+	xui.ItemFill(fDisabledInput)
+	fDisabledInput.SetValue("不可编辑")
+	fDisabled.Description("整块字段由 Field.SetDisabled 统一管理。")
+	fDisabled.Attach(fDisabledInput)
 
 	_, vf2 := autoCard(xui.VStack(rField.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "分组与横排(FieldSet / FieldGroup)", vf2.Handle))
@@ -74,12 +93,13 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	fMailNotify := ui.NewField(0, 0, 0, 0, grp.Handle, ui.WithFieldOrientation(ui.FieldHorizontal))
 	xui.ItemFill(fMailNotify)
 	fMailNotify.Label("邮件通知")
-	ui.NewSwitch(0, 0, fMailNotify.Handle, ui.WithSwitchChecked(true))
+	mailSwitch := ui.NewSwitch(0, 0, fMailNotify.Handle, ui.WithSwitchChecked(true))
+	fMailNotify.Attach(mailSwitch)
 
 	fPushNotify := ui.NewField(0, 0, 0, 0, grp.Handle, ui.WithFieldOrientation(ui.FieldHorizontal))
 	xui.ItemFill(fPushNotify)
 	fPushNotify.Label("推送通知")
-	ui.NewSwitch(0, 0, fPushNotify.Handle)
+	fPushNotify.Attach(ui.NewSwitch(0, 0, fPushNotify.Handle))
 
 	ui.NewFieldSeparator(0, 0, 0, 0, grp.Handle, "或")
 
@@ -87,6 +107,7 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(fUpdates)
 	cbUpdates := ui.NewCheckbox(0, 0, 0, 0, "", fUpdates.Handle)
 	xui.ItemWidth(cbUpdates, 24) // 只剩指示器, 标题/说明放进 FieldContent(同上游 checkbox 字段写法)
+	fUpdates.Attach(cbUpdates)
 	updContent := fUpdates.Content()
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "接收产品更新", updContent.Handle).SetMedium())
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "每月一封, 随时可退订。", updContent.Handle).SetMuted())
@@ -100,6 +121,7 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	lang := ui.NewNativeComboBox(0, 0, 0, 0, fLang.Handle, []string{"简体中文", "English", "日本語"})
 	xui.ItemWidth(lang, 160)
 	lang.SetSelected(0)
+	fLang.Attach(lang)
 
 	// ---- 文件对话框(系统原生, 不套主题) ----
 	_, vfd := autoCard(body.Handle, 10)

@@ -20,8 +20,15 @@ type Checkbox struct {
 	BoxSize       int32 // 指示器边长(逻辑像素), shadcn 为 size-4
 	invalid       bool
 	indeterminate bool
-	backdrop      func(t *xui.Theme) xui.Color
-	changes       []func(checked bool)
+	readOnly      bool // 用户不可改, 程序化 SetChecked 仍生效(对应 Base UI 的 readOnly)
+	// autoWidth: cx 传 0 创建的复选框, 换文字后用 FitWidth 重新量宽。
+	autoWidth bool
+	// focusRingProxy: 由外层标签/选择卡片代理 focus-visible 环时置 true,
+	// 本控件不再画自己的环(对应 checkbox.tsx 的 group-has-[:focus-visible]/field-label:ring-0)。
+	focusRingProxy bool
+	backdrop       func(t *xui.Theme) xui.Color
+	changes        []func(checked bool)
+	vetoes         []func(checked bool) bool
 }
 
 // CheckboxOption 复选框配置项。
@@ -39,22 +46,64 @@ func WithCheckboxIndeterminate() CheckboxOption {
 	return func(c *Checkbox) { c.indeterminate = true }
 }
 
-// NewCheckbox 创建复选框。cy 传 0 时使用默认行高 24。
+// WithCheckboxChecked 初始选中的非受控写法(对应 Base UI 的 defaultChecked)。
+// 受控写法用 SetChecked + OnChange; 两者等价, 这个选项只是构造时少写一行。
+func WithCheckboxChecked(v bool) CheckboxOption {
+	return func(c *Checkbox) {
+		if v {
+			c.SetCheck(true)
+		}
+	}
+}
+
+// WithCheckboxReadOnly 用户不可勾选/取消, 但保留焦点与键盘可达性
+// (对应 Base UI 的 readOnly; 程序化 SetChecked 仍然生效)。
+func WithCheckboxReadOnly() CheckboxOption {
+	return func(c *Checkbox) { c.readOnly = true }
+}
+
+// WithCheckboxDisabled 初始即禁用(不可点击/聚焦, 整体 50% 透明)。
+func WithCheckboxDisabled() CheckboxOption {
+	return func(c *Checkbox) { c.SetDisabled(true) }
+}
+
+// checkboxIndicatorW / checkboxIndicatorH 是纯指示器(无文字)复选框的默认元素尺寸:
+// 16 的方框外再留 after:-inset-x-3 after:-inset-y-2 的点击热区, 约 40×32。
+const (
+	checkboxIndicatorW int32 = 40
+	checkboxIndicatorH int32 = 32
+)
+
+// NewCheckbox 创建复选框。cy 传 0 时: 有文字用行高 24, 纯指示器用 32(点击热区);
+// cx 传 0 时按文字量宽, 纯指示器用 40。
 func NewCheckbox(x, y, cx, cy int32, text string, hParent int, opts ...CheckboxOption) *Checkbox {
+	autoW := cx <= 0
 	if cy <= 0 {
-		cy = 24
+		if text == "" {
+			cy = checkboxIndicatorH
+		} else {
+			cy = 24
+		}
+	}
+	if autoW {
+		if text == "" {
+			cx = checkboxIndicatorW
+		} else {
+			cx = checkboxNaturalWidth(xui.Current(), text, 16)
+		}
 	}
 	btn := widget.NewButton(x, y, cx, cy, text, hParent)
 	if btn == nil {
 		return nil
 	}
-	c := &Checkbox{Button: btn, BoxSize: 16}
+	c := &Checkbox{Button: btn, BoxSize: 16, autoWidth: autoW}
 	for _, o := range opts {
 		o(c)
 	}
 	btn.SetTypeEx(xcc.Button_Type_Check)
 	btn.SetTextAlign(xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter)
 	btn.EnableBkTransparent(true)
+	btn.SetCursor(controlCursor(!btn.IsEnable()))
 	btn.AddEvent_Paint(c.onPaint)
 	xui.AttachWindow(c.Handle)
 	c.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
@@ -63,7 +112,14 @@ func NewCheckbox(x, y, cx, cy int32, text string, hParent int, opts ...CheckboxO
 	})
 	// 原生勾选不会自动失效重绘; 鼠标点击经 XE_BUTTON_CHECK 补重绘并通知监听者。
 	// 不确定态只是显示态: 用户点击后按 Radix 语义落到"选中"。
+	//
+	// 原生勾选在通知到达时**已经发生**, 事件没有"否决"能力: readOnly 与
+	// OnCheckedChange 返回 false 都要在这里把状态回滚(见 DESIGN 第八节 198)。
 	c.AddEvent_Button_Check(func(hEle int, bCheck bool, pbHandled *bool) int {
+		if c.readOnly || !c.allowChange(bCheck) {
+			c.revertUserChange(bCheck)
+			return 0
+		}
 		if bCheck {
 			c.indeterminate = false
 		}
@@ -72,11 +128,13 @@ func NewCheckbox(x, y, cx, cy int32, text string, hParent int, opts ...CheckboxO
 		return 0
 	})
 	// 原生 Check 按钮不处理空格(实测 KeyDown 能收到、状态不变), Radix 的
-	// role=checkbox 用空格切换, 键盘激活自己补。
+	// role=checkbox 用空格切换, 键盘激活自己补。readOnly 时吞掉空格但不改状态。
 	c.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
 		const vkSpace = 0x20
 		if wParam == vkSpace && c.IsEnable() {
-			c.toggleNotify()
+			if !c.readOnly {
+				c.toggleNotify()
+			}
 			*pbHandled = true
 		}
 		return 0
@@ -84,11 +142,78 @@ func NewCheckbox(x, y, cx, cy int32, text string, hParent int, opts ...CheckboxO
 	return c
 }
 
+// checkboxNaturalWidth 量出复选框的自适应宽度: 左内边距 + 指示器 + 间距 + 文字宽。
+func checkboxNaturalWidth(t *xui.Theme, text string, box int32) int32 {
+	if text == "" {
+		return checkboxIndicatorW
+	}
+	const (
+		left  int32 = 4
+		gap   int32 = 8
+		right int32 = 4
+	)
+	return left + box + gap + xui.TextWidth(text, xui.FontHandle(t.FontDefault)) + right
+}
+
 // Checked 返回选中状态(不确定态返回 false)。
 func (c *Checkbox) Checked() bool { return c.IsCheck() }
 
 // Indeterminate 返回是否处于不确定态。
 func (c *Checkbox) Indeterminate() bool { return c.indeterminate }
+
+// ReadOnly 返回用户是否被禁止改选。
+func (c *Checkbox) ReadOnly() bool { return c.readOnly }
+
+// SetReadOnly 设置只读: 用户点击/空格不再切换, 但焦点与 Tab 可达性保留;
+// 程序化 SetChecked / SetIndeterminate 仍然生效(同 Base UI 的 readOnly)。
+func (c *Checkbox) SetReadOnly(v bool) *Checkbox {
+	if c.readOnly == v {
+		return c
+	}
+	c.readOnly = v
+	c.Redraw(false)
+	return c
+}
+
+// SetDisabled 设置禁用态: 不可点击、不可聚焦, 鼠标指针变 not-allowed,
+// 绘制按 disabled:opacity-50 各图层乘 50%。
+func (c *Checkbox) SetDisabled(v bool) *Checkbox {
+	if c == nil {
+		return c
+	}
+	c.Enable(!v)
+	c.EnableFocus(!v)
+	c.EnableSwitchFocus(!v)
+	c.SetCursor(controlCursor(v))
+	c.Redraw(false)
+	return c
+}
+
+// Disabled 返回是否禁用。
+func (c *Checkbox) Disabled() bool { return c == nil || !c.IsEnable() }
+
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (c *Checkbox) SetFieldState(invalid, disabled bool) {
+	c.SetInvalid(invalid)
+	c.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl: 供 Field 在重新启用时恢复控件自己的禁用态。
+func (c *Checkbox) FieldDisabled() bool { return c.Disabled() }
+
+// SetFocusRingProxy 声明键盘焦点环由外层包裹元素(选择卡片 / FieldLabel)代理,
+// 本控件不再画自己的环。对应 checkbox.tsx 的 group-has-[:focus-visible]/field-label:ring-0。
+func (c *Checkbox) SetFocusRingProxy(v bool) *Checkbox {
+	if c.focusRingProxy == v {
+		return c
+	}
+	c.focusRingProxy = v
+	c.Redraw(false)
+	return c
+}
+
+// FocusRingProxy 返回是否由外层代理键盘焦点环。
+func (c *Checkbox) FocusRingProxy() bool { return c.focusRingProxy }
 
 // SetChecked 设置选中状态(立即重绘; 原生勾选不会自动失效重绘)。
 // 同时清除不确定态。
@@ -135,13 +260,52 @@ func (c *Checkbox) OnChange(fn func(checked bool)) *Checkbox {
 	return c
 }
 
+// OnCheckedChange 注册"可否决"的选中变化回调(对应 Base UI 的 onCheckedChange):
+// 在状态落地**之前**调用, 任一回调返回 false 即取消本次切换; 全部放行后状态
+// 照常写入并继续触发 OnChange。鼠标、空格与 Toggle 走同一条路径。
+// 程序化 SetChecked 不触发否决(同受控组件的 setState 语义)。
+func (c *Checkbox) OnCheckedChange(fn func(checked bool) bool) *Checkbox {
+	if fn != nil {
+		c.vetoes = append(c.vetoes, fn)
+	}
+	return c
+}
+
+func (c *Checkbox) allowChange(next bool) bool {
+	for _, fn := range c.vetoes {
+		if !fn(next) {
+			return false
+		}
+	}
+	return true
+}
+
+// revertUserChange 回滚原生 Check 按钮已经写下的状态(否决/只读路径)。
+// 不确定态在点击后会丢失, 回滚时要一并恢复。
+func (c *Checkbox) revertUserChange(nativeChecked bool) {
+	prevInd := c.indeterminate
+	c.SetCheck(!nativeChecked)
+	c.indeterminate = prevInd
+	c.Redraw(false)
+}
+
 // Toggle 切换选中状态并触发 OnChange(与鼠标点击/空格等价), 供"整块区域可点"的
-// 字段卡片使用; 禁用时为空操作。不确定态点击后落到选中(同鼠标路径)。
+// 字段卡片使用; 禁用或只读时为空操作。不确定态点击后落到选中(同鼠标路径)。
 func (c *Checkbox) Toggle() *Checkbox {
-	if c == nil || !c.IsEnable() {
+	if c == nil || !c.IsEnable() || c.readOnly {
 		return c
 	}
 	c.toggleNotify()
+	return c
+}
+
+// FitWidth 按当前文字重新量宽(仅 cx 传 0 创建的复选框)。
+func (c *Checkbox) FitWidth() *Checkbox {
+	if c == nil || !c.autoWidth {
+		return c
+	}
+	c.SetWidth(checkboxNaturalWidth(xui.Current(), c.GetText(), c.BoxSize))
+	c.Redraw(false)
 	return c
 }
 
@@ -170,16 +334,21 @@ func (c *Checkbox) notifyChange(checked bool) {
 	}
 }
 
-// toggleNotify 供键盘路径使用: 写状态并触发与鼠标点击相同的回调。
+// toggleNotify 供键盘路径使用: 先问否决回调, 放行后写状态并触发与鼠标点击相同的回调。
 func (c *Checkbox) toggleNotify() {
+	next := !c.IsCheck()
+	if c.indeterminate {
+		next = true
+	}
+	if !c.allowChange(next) {
+		return
+	}
 	if c.indeterminate {
 		c.indeterminate = false
-		c.SetCheck(true)
-	} else {
-		c.SetCheck(!c.IsCheck())
 	}
+	c.SetCheck(next)
 	c.Redraw(false)
-	c.notifyChange(c.IsCheck())
+	c.notifyChange(next)
 }
 
 func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
@@ -200,20 +369,26 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	host := c.backdropColor(t)
 	p.FillRound(&p.Rc, host, 0)
 
-	// 指示器(逻辑像素, 框架按 DPI 变换渲染)
+	// 指示器(逻辑像素, 框架按 DPI 变换渲染)。有文字时贴左(4), 纯指示器在元素
+	// 内居中 —— 后者默认元素 40×32, 正好给 after:-inset-x-3/-inset-y-2 的点击热区留白。
 	size := c.BoxSize
 	gap := int32(8)
+	boxLeft := int32(4)
+	if c.GetText() == "" {
+		boxLeft = (p.W() - size) / 2
+	}
 	box := xc.RECT{
-		Left:   4,
+		Left:   boxLeft,
 		Top:    (p.H() - size) / 2,
-		Right:  4 + size,
+		Right:  boxLeft + size,
 		Bottom: (p.H()-size)/2 + size,
 	}
 
+	disabled := st.Disabled || !c.IsEnable()
 	// aria-invalid 的 ring 常驻(不要求焦点); focus-visible:ring-3 ring-ring/50 只在键盘焦点时画。
 	// 两者同时成立时红色优先(变体顺序里 aria-invalid 在 focus-visible 之后)。
-	invalid := c.invalid && !st.Disabled
-	focusRing := st.Focused && !st.Disabled && xui.FocusedByKeyboard()
+	invalid := c.invalid && !disabled
+	focusRing := st.Focused && !disabled && !c.focusRingProxy && xui.FocusedByKeyboard()
 	if invalid || focusRing {
 		halo := box
 		halo.Left -= 3
@@ -240,39 +415,44 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	//   选中/不确定 = bg-primary + border-primary, 勾/减号 = text-primary-foreground;
 	//   禁用 = disabled:opacity-50 —— 组级透明, 每个图层各自再乘 50%(给颜色加 alpha 走
 	//   画家混合, 与"整组半透明合成"等价; 见语义汇总表)。
-	const disabledAlpha = 0.5
-	var fill, border, glyph xui.Color
-	switch {
-	case active:
-		fill, border, glyph = t.Primary, t.Primary, t.PrimaryForeground
-	default:
-		border = t.Input
+	//
+	// transition-colors: 选中/取消用运行时过渡值插值(键 1 = 选中态), 不要在组件里
+	// 起定时器。纯指示器的首帧会从 0 淡入一次, 与浏览器首次挂载不过渡略有出入,
+	// 但交互后的表现与 tailwind 一致。
+	stateT := xui.HoverItem(hEle, 1, active)
+	uncheckedFill := xui.None
+	if t.IsDark() {
+		uncheckedFill = t.Input.ScaleAlpha(0.30)
+	}
+	uncheckedBorder := t.Input
+	if focusRing && !invalid {
+		uncheckedBorder = t.Ring // focus-visible:border-ring
+	}
+	if invalid {
+		uncheckedBorder = t.Destructive
 		if t.IsDark() {
-			fill = t.Input.ScaleAlpha(0.30)
-		}
-		// focus-visible:border-ring; 选中态由 data-checked 的 border-primary 覆盖。
-		if focusRing && !invalid {
-			border = t.Ring
-		}
-		if invalid {
-			border = t.Destructive
-			if t.IsDark() {
-				border = t.Destructive.WithAlpha(128) // dark:aria-invalid:border-destructive/50
-			}
+			uncheckedBorder = t.Destructive.WithAlpha(128) // dark:aria-invalid:border-destructive/50
 		}
 	}
-	if st.Disabled {
+	const disabledAlpha = 0.5
+	fill := xui.Fade(uncheckedFill, t.Primary, stateT)
+	border := xui.Fade(uncheckedBorder, t.Primary, stateT)
+	if disabled {
 		fill = fill.ScaleAlpha(disabledAlpha) // None 乘完仍是 None(亮色未选态即无填充)
 		border = border.ScaleAlpha(disabledAlpha)
-		glyph = glyph.ScaleAlpha(disabledAlpha)
 	}
 
 	if !fill.IsNone() {
 		p.FillRound(&box, fill, 4)
 	}
 	p.StrokeRound(&box, border, 4, 1)
-	if active {
-		if c.indeterminate {
+	if stateT > 0.001 {
+		alpha := byte(stateT * 255)
+		if disabled {
+			alpha = byte(float64(alpha) * disabledAlpha)
+		}
+		glyph := t.PrimaryForeground.WithAlpha(alpha)
+		if c.indeterminate && active {
 			// 勾号/减号内缩 1px, 避免线帽被指示器边缘裁掉
 			drawMinus(p.Draw, box, glyph, 2)
 		} else {
@@ -291,7 +471,7 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.Draw.SetFont(f)
 	}
 	fore := t.Foreground
-	if st.Disabled {
+	if disabled {
 		fore = t.MutedForeground
 	}
 	p.Text(c.GetText(), &textRC, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)

@@ -159,6 +159,18 @@ func (c *NativeComboBox) SetInvalid(v bool) *NativeComboBox {
 // Invalid 返回当前是否处于校验失败态。
 func (c *NativeComboBox) Invalid() bool { return c.invalid }
 
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (c *NativeComboBox) SetFieldState(invalid, disabled bool) {
+	c.SetInvalid(invalid)
+	c.Enable(!disabled)
+	c.EnableFocus(!disabled)
+	c.EnableSwitchFocus(!disabled)
+	c.Redraw(false)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (c *NativeComboBox) FieldDisabled() bool { return c == nil || !c.IsEnable() }
+
 // SetSelected 设置选中项。
 func (c *NativeComboBox) SetSelected(i int32) *NativeComboBox {
 	c.SetSelItem(i)

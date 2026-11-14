@@ -290,6 +290,15 @@ func (o *InputOTP) SetDisabled(v bool) *InputOTP {
 // Disabled 返回是否禁用。
 func (o *InputOTP) Disabled() bool { return o.disabled }
 
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (o *InputOTP) SetFieldState(invalid, disabled bool) {
+	o.SetInvalid(invalid)
+	o.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (o *InputOTP) FieldDisabled() bool { return o == nil || o.Disabled() }
+
 // OnChange 注册值变化回调(键入/退格/粘贴触发; SetValue 不触发)。
 func (o *InputOTP) OnChange(fn func(value string)) *InputOTP {
 	o.changes = append(o.changes, fn)

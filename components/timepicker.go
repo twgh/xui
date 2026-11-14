@@ -37,12 +37,12 @@ type TimePicker struct {
 
 // 时间弹层几何(逻辑像素): 两列 64 宽、8 项可见(28×8), p-3 内边距、两列间 8px。
 const (
-	tpColW   int32 = 64
-	tpListH  int32 = 224
-	tpPad    int32 = 12
-	tpGap    int32 = 8
-	tpItemH  int32 = 28
-	tpGapY   int32 = 4 // 弹层与触发区的垂直间距(sideOffset)
+	tpColW  int32 = 64
+	tpListH int32 = 224
+	tpPad   int32 = 12
+	tpGap   int32 = 8
+	tpItemH int32 = 28
+	tpGapY  int32 = 4 // 弹层与触发区的垂直间距(sideOffset)
 )
 
 // TimePickerWidth 返回弹层卡片的宽度。
@@ -148,6 +148,18 @@ func (t *TimePicker) SetInvalid(v bool) *TimePicker {
 	t.Redraw(false)
 	return t
 }
+
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (t *TimePicker) SetFieldState(invalid, disabled bool) {
+	t.SetInvalid(invalid)
+	t.Enable(!disabled)
+	t.EnableFocus(!disabled)
+	t.EnableSwitchFocus(!disabled)
+	t.Redraw(false)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (t *TimePicker) FieldDisabled() bool { return t == nil || !t.IsEnable() }
 
 // Open 以编程方式打开弹层。
 func (t *TimePicker) Open() *TimePicker {

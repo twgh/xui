@@ -19,6 +19,8 @@ type Radio struct {
 	value    string // 所属 RadioGroup 的值(Attach 写入; 独立使用时为空)
 	backdrop func(t *xui.Theme) xui.Color
 	changes  []func(selected bool)
+	// focusRingProxy: 由外层标签/选择卡片代理键盘焦点环(同 Checkbox)。
+	focusRingProxy bool
 }
 
 // RadioOption 单选按钮配置项。
@@ -46,6 +48,7 @@ func NewRadio(x, y, cx, cy int32, text string, hParent int, opts ...RadioOption)
 	btn.SetTypeEx(xcc.Button_Type_Radio)
 	btn.SetTextAlign(xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter)
 	btn.EnableBkTransparent(true)
+	btn.SetCursor(controlCursor(!btn.IsEnable()))
 	btn.AddEvent_Paint(r.onPaint)
 	xui.AttachWindow(r.Handle)
 	r.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
@@ -136,6 +139,44 @@ func (r *Radio) SetInvalid(v bool) *Radio {
 // Invalid 返回当前是否处于校验失败态。
 func (r *Radio) Invalid() bool { return r.invalid }
 
+// SetDisabled 设置禁用态: 不可点击/聚焦, 指针变 not-allowed, 绘制整体 50%。
+func (r *Radio) SetDisabled(v bool) *Radio {
+	if r == nil {
+		return r
+	}
+	r.Enable(!v)
+	r.EnableFocus(!v)
+	r.EnableSwitchFocus(!v)
+	r.SetCursor(controlCursor(v))
+	r.Redraw(false)
+	return r
+}
+
+// Disabled 返回是否禁用。
+func (r *Radio) Disabled() bool { return r == nil || !r.IsEnable() }
+
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (r *Radio) SetFieldState(invalid, disabled bool) {
+	r.SetInvalid(invalid)
+	r.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (r *Radio) FieldDisabled() bool { return r.Disabled() }
+
+// SetFocusRingProxy 由外层包裹元素代理键盘焦点环, 本控件不再画自己的环。
+func (r *Radio) SetFocusRingProxy(v bool) *Radio {
+	if r == nil || r.focusRingProxy == v {
+		return r
+	}
+	r.focusRingProxy = v
+	r.Redraw(false)
+	return r
+}
+
+// FocusRingProxy 返回是否由外层代理键盘焦点环。
+func (r *Radio) FocusRingProxy() bool { return r != nil && r.focusRingProxy }
+
 // OnChange 注册选中状态变化回调(鼠标点击/空格/方向键选择时触发)。
 func (r *Radio) OnChange(fn func(selected bool)) *Radio {
 	r.addChangeListener(fn)
@@ -180,8 +221,9 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// aria-invalid 的 ring 常驻; focus-visible:ring-3 ring-ring/50 只在键盘焦点时画。
 	// 两者同时成立时红色优先(aria-invalid 在变体顺序里靠后)。
-	invalid := r.invalid && !st.Disabled
-	focusRing := st.Focused && !st.Disabled && xui.FocusedByKeyboard()
+	disabled := st.Disabled || !r.IsEnable()
+	invalid := r.invalid && !disabled
+	focusRing := st.Focused && !disabled && !r.focusRingProxy && xui.FocusedByKeyboard()
 	if invalid || focusRing {
 		halo := circle
 		halo.Left -= 3
@@ -214,9 +256,9 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	var fill, border, dot xui.Color
 	switch {
-	case st.Disabled && checked:
+	case disabled && checked:
 		fill, border, dot = t.Primary.ScaleAlpha(0.5), t.Primary.ScaleAlpha(0.5), t.PrimaryForeground.ScaleAlpha(0.5)
-	case st.Disabled:
+	case disabled:
 		// 禁用 = 上述颜色再 ×50%: 注意是"乘"不是覆盖(暗色 input 自带 15% alpha,
 		// 覆盖成 50% 会画出一个亮的实心灰盘)
 		fill, border, dot = idleFill.ScaleAlpha(0.5), t.Input.ScaleAlpha(0.5), t.Input.ScaleAlpha(0.5)
@@ -272,7 +314,7 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	// 禁用时文字同样变淡: 参考页暗色下禁用项文字 ≈ #8a8a8a(实测), 亮色下是黑字 50%
 	textColor := t.Foreground
-	if st.Disabled {
+	if disabled {
 		textColor = t.Foreground.ScaleAlpha(0.5)
 	}
 	p.Text(r.GetText(), &textRC, textColor, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)

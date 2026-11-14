@@ -473,6 +473,18 @@ func (d *DatePicker) SetInvalid(v bool) *DatePicker {
 	return d
 }
 
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (d *DatePicker) SetFieldState(invalid, disabled bool) {
+	d.SetInvalid(invalid)
+	d.Enable(!disabled)
+	d.EnableFocus(!disabled)
+	d.EnableSwitchFocus(!disabled)
+	d.Redraw(false)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (d *DatePicker) FieldDisabled() bool { return d == nil || !d.IsEnable() }
+
 // Open 以编程方式打开弹层(效果同点击触发区)。
 func (d *DatePicker) Open() *DatePicker {
 	if d.panel == nil && !d.ensurePopup() {

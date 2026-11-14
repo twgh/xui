@@ -971,6 +971,19 @@ func (i *Input) SetInvalid(v bool) *Input {
 // Invalid 返回当前是否处于校验失败态。
 func (i *Input) Invalid() bool { return i.invalid }
 
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (i *Input) SetFieldState(invalid, disabled bool) {
+	i.SetInvalid(invalid)
+	i.Enable(!disabled)
+	i.EnableFocus(!disabled)
+	i.EnableSwitchFocus(!disabled)
+	i.syncTextColor()
+	i.Redraw(false)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (i *Input) FieldDisabled() bool { return i == nil || !i.IsEnable() }
+
 // Value 返回输入内容。
 func (i *Input) Value() string { return i.GetText() }
 

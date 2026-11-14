@@ -51,28 +51,65 @@ func WithFieldInvalid() FieldOption {
 	return func(f *Field) { f.invalid = true }
 }
 
+// WithFieldDisabled 初始即禁用整个字段: 标签/说明转 50%, 已 Attach 的控件同步禁用。
+func WithFieldDisabled() FieldOption {
+	return func(f *Field) { f.disabled = true }
+}
+
+// WithFieldFocusProxy 声明键盘焦点环由外层包裹元素(选择卡片 / 自绘 FieldLabel)代理:
+// Field 会把该标记传给实现了 SetFocusRingProxy 的控件, 控件不再画自己的环。
+func WithFieldFocusProxy() FieldOption {
+	return func(f *Field) { f.labelProxy = true }
+}
+
+// FieldControl 是可被 Field 级联校验失败态/禁用态的控件。
+// 内置控件均已实现(Checkbox / Radio / RadioGroup / Switch / Input / Textarea /
+// NativeComboBox / NativeSelect / Select / Combobox / Slider / InputGroup / InputOTP /
+// TagInput / Toggle / Button / DatePicker / TimePicker); 自定义控件实现这两个方法
+// 也能用 Field.Attach 纳入级联。
+type FieldControl interface {
+	// SetFieldState 由 Field 调用: 同时写入校验失败态与禁用态。
+	SetFieldState(invalid, disabled bool)
+	// FieldDisabled 报告控件当前是否禁用, Field 重新启用时据此恢复
+	// "本来就单独禁用"的控件, 而不是一律打开。
+	FieldDisabled() bool
+}
+
+// fieldFocusProxy 是可选能力: 控件支持把键盘焦点环交给外层代理。
+type fieldFocusProxy interface {
+	SetFocusRingProxy(bool)
+}
+
 // Field 表单字段容器: 把标签、控件、说明、错误按 12px 间距排成一组。
 //
 // 与 shadcn field.tsx 的 Field 对齐:
 //   - 默认竖排, 子项满宽; FieldHorizontal 时横排、垂直居中;
 //   - 标签/标题 font-medium; 说明 muted; 校验失败时标签/标题转 destructive
 //     (说明仍保持 muted, 同上游 text-muted-foreground 覆盖继承色);
+//   - 禁用时标签/说明整体 50%, 并用 Attach 把状态级联给控件(对应 data-disabled);
 //   - 不强制子项宽度: 竖排请对控件/说明用 `xui.ItemFill`, 横排请用 `xui.ItemWidth`
 //     或让控件按自身宽度排(Field.Label 在横排下自动吃剩余宽度)。
 //
-// 标签/说明通过 Field 的方法创建, 这样 SetInvalid 能统一改色:
+// 标签/说明通过 Field 的方法创建, 这样 SetInvalid / SetDisabled 能统一改色:
 //
 //	f := ui.NewField(0, 0, 0, 0, stack.Handle)
 //	xui.ItemFill(f)
 //	f.Label("邮箱地址")
-//	xui.ItemFill(ui.NewInput(0, 0, 0, 0, f.Handle, ui.WithPlaceholder("m@example.com")))
+//	input := ui.NewInput(0, 0, 0, 0, f.Handle, ui.WithPlaceholder("m@example.com"))
+//	xui.ItemFill(input)
+//	f.Attach(input) // 校验/禁用状态与标签联动
 //	f.Description("我们只会用它发送登录链接。")
 type Field struct {
 	*widget.LayoutEle
-	orientation FieldOrientation
-	invalid     bool
-	labels      []*Label
-	content     *widget.LayoutEle
+	orientation  FieldOrientation
+	invalid      bool
+	disabled     bool
+	labelProxy   bool
+	labels       []*Label
+	texts        []*Label
+	content      *widget.LayoutEle
+	controls     []FieldControl
+	origDisabled map[FieldControl]bool
 }
 
 // NewField 创建字段容器。宽铺满、高自撑; cy 仅作初始高度。
@@ -131,8 +168,92 @@ func (f *Field) Title(text string) *Label {
 func (f *Field) Description(text string) *Label {
 	l := NewLabel(0, 0, 0, fieldTextH, text, f.Handle).SetMuted().SetWrap()
 	f.setChildWidth(l)
+	f.addText(l)
 	return l
 }
+
+// Attach 把控件纳入字段状态联动: SetInvalid / SetDisabled 会级联到它。
+// 支持 FieldControl 的内置控件(见接口注释); 重复 Attach 同一个控件只记一次。
+func (f *Field) Attach(controls ...FieldControl) *Field {
+	if f == nil {
+		return f
+	}
+	for _, c := range controls {
+		if c == nil || f.hasControl(c) {
+			continue
+		}
+		f.controls = append(f.controls, c)
+		if f.disabled {
+			if f.origDisabled == nil {
+				f.origDisabled = make(map[FieldControl]bool, len(f.controls))
+			}
+			f.origDisabled[c] = c.FieldDisabled()
+			c.SetFieldState(f.invalid, true)
+		} else {
+			c.SetFieldState(f.invalid, c.FieldDisabled())
+		}
+		if f.labelProxy {
+			if fp, ok := c.(fieldFocusProxy); ok {
+				fp.SetFocusRingProxy(true)
+			}
+		}
+	}
+	return f
+}
+
+func (f *Field) hasControl(c FieldControl) bool {
+	for _, it := range f.controls {
+		if it == c {
+			return true
+		}
+	}
+	return false
+}
+
+// SetDisabled 禁用/启用整个字段: 标签/说明转 50%, 已 Attach 的控件同步禁用。
+// 重新启用时保留控件自己原本的禁用状态(单独禁用的不会被字段级启用误开)。
+func (f *Field) SetDisabled(v bool) *Field {
+	if f == nil || f.disabled == v {
+		return f
+	}
+	f.disabled = v
+	if v {
+		f.origDisabled = make(map[FieldControl]bool, len(f.controls))
+		for _, c := range f.controls {
+			f.origDisabled[c] = c.FieldDisabled()
+			c.SetFieldState(f.invalid, true)
+		}
+	} else {
+		for _, c := range f.controls {
+			c.SetFieldState(f.invalid, f.origDisabled[c])
+		}
+		f.origDisabled = nil
+	}
+	f.applyTextEnabled()
+	f.Redraw(false)
+	return f
+}
+
+// Disabled 返回字段是否禁用。
+func (f *Field) Disabled() bool { return f != nil && f.disabled }
+
+// SetFocusRingProxy 声明键盘焦点环由外层包裹元素代理(见 WithFieldFocusProxy)。
+// 只影响实现了 SetFocusRingProxy 的控件(Checkbox / Radio / Group / Switch)。
+func (f *Field) SetFocusRingProxy(v bool) *Field {
+	if f == nil || f.labelProxy == v {
+		return f
+	}
+	f.labelProxy = v
+	for _, c := range f.controls {
+		if fp, ok := c.(fieldFocusProxy); ok {
+			fp.SetFocusRingProxy(v)
+		}
+	}
+	return f
+}
+
+// FocusRingProxy 返回是否由外层代理键盘焦点环。
+func (f *Field) FocusRingProxy() bool { return f != nil && f.labelProxy }
 
 // Content 返回字段内容列(竖向, gap-6): 用于"标题 + 多行说明"或复选框组这类复合内容。
 // 竖排下满宽; 横排下默认固定 240 宽 —— xcgui 不把 Weight/Percent 宽传给嵌套布局的
@@ -163,7 +284,7 @@ func (f *Field) Content() *widget.LayoutEle {
 	return f.content
 }
 
-// SetInvalid 切换校验失败态(标签/标题转 destructive), 返回自身便于链式调用。
+// SetInvalid 切换校验失败态(标签/标题转 destructive), 并级联到已 Attach 的控件。
 func (f *Field) SetInvalid(invalid bool) *Field {
 	if f == nil || f.invalid == invalid {
 		return f
@@ -171,6 +292,10 @@ func (f *Field) SetInvalid(invalid bool) *Field {
 	f.invalid = invalid
 	for _, l := range f.labels {
 		f.applyLabelColor(l)
+	}
+	for _, c := range f.controls {
+		disabled := f.disabled || c.FieldDisabled()
+		c.SetFieldState(invalid, disabled)
 	}
 	f.Redraw(false)
 	return f
@@ -186,7 +311,23 @@ func (f *Field) newText(text string) *Label {
 	f.setChildWidth(l)
 	f.labels = append(f.labels, l)
 	f.applyLabelColor(l)
+	f.addText(l)
 	return l
+}
+
+// addText 记录 Field 自己创建的文本, 供 SetDisabled 统一调暗。
+func (f *Field) addText(l *Label) {
+	f.texts = append(f.texts, l)
+	l.Enable(!f.disabled)
+}
+
+// applyTextEnabled 把字段禁用态同步到标签/标题/说明。
+// Label 的禁用是"字色与卡片底色预混 50%", 与 disabled:opacity-50 的观感一致。
+func (f *Field) applyTextEnabled() {
+	for _, l := range f.texts {
+		l.Enable(!f.disabled)
+		l.Redraw(false)
+	}
 }
 
 func (f *Field) setChildWidth(l *Label) {

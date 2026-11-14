@@ -221,6 +221,15 @@ func (s *Select) SetDisabled(v bool) *Select {
 // Disabled 返回触发区是否禁用。
 func (s *Select) Disabled() bool { return s.disabled }
 
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (s *Select) SetFieldState(invalid, disabled bool) {
+	s.SetInvalid(invalid)
+	s.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (s *Select) FieldDisabled() bool { return s == nil || s.Disabled() }
+
 // FitWidth 按当前选中项重新量宽(仅 cx 传 0 创建的触发区)。
 func (s *Select) FitWidth() *Select {
 	s.SetWidth(s.naturalWidth())

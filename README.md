@@ -124,11 +124,11 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 
 | 组件 | 说明 |
 |---|---|
-| Button | 6 变体(default/secondary/outline/ghost/destructive/link)× 8 尺寸档;图标按钮 / 图标+文字 / 内容对齐 / 胶囊 / 加载态;`cx` 传 0 按文字自动量宽 |
+| Button | 6 变体(default/secondary/outline/ghost/destructive/link)× 8 尺寸档;图标按钮 / 图标+文字 / 内容对齐 / 胶囊;加载态可在 inline-start/end,图标与颜色可换;运行时 `SetSize` 切高度档;As Link = `NewLinkButton`(Link 样式 + 手型 + 点击用系统默认程序打开 URL);`cx` 传 0 按文字自动量宽;禁用指针 not-allowed,普通控件默认箭头(`UsePointerCursor(true)` 全局改手型) |
 | ButtonGroup | 按钮组:横向/纵向、首尾外角 + 相邻边直角、宽高按内容自撑;可混放 Button / Input / NativeComboBox |
 | Alert | 提示条:图标 + 标题 + 描述 + 右上动作槽;两变体(default/destructive),高度按内容自撑、文字自动折行 |
 | Empty | 空状态容器:图标底板 + 标题 + 描述 + 动作区;三个槽位 `Header()` / `Content()` / `Body()`,不画边框 |
-| Field | 表单字段布局:Label / Title / Description / Content / 校验错误区,垂直或水平取向;横向时内容默认 240 宽(嵌套布局只认 Fixed 宽) |
+| Field | 表单字段布局:Label / Title / Description / Content / 校验错误区,垂直或水平取向;`Attach(控件)` 后 `SetInvalid` / `SetDisabled` 级联(内置控件与实现 `FieldControl` 的自定义控件都可接入,字段禁用保留控件原本的单独禁用状态);`WithFieldFocusProxy` 让外层卡片代理键盘焦点环;横向时内容默认 240 宽(嵌套布局只认 Fixed 宽) |
 | Item | 列表项:媒体 + 内容 + 动作区 + 头/尾槽位,三变体两尺寸;配 ItemGroup / ItemSeparator / ItemTitle / ItemDescription |
 | Breadcrumb | 面包屑:链接(hover 过渡 + `OnClick`)/ 当前页 / 分隔符 / 省略号 |
 | Kbd | 键帽:宽度按文字自适应;`NewKbdGroup` 排组合键 |
@@ -165,7 +165,8 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Input | 输入框:原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环;校验态、占位符、前缀/后缀/清除/密码切换/计数,以及步进器 `WithStepper`(−/+ 与 ↑/↓,失焦自动夹取吸附) |
 | Textarea | 文本域:Input 的多行预设 + **随内容自动长高**;要固定高度/滚动条用 `Input` + `WithMultiline` |
 | InputGroup | 输入组:输入框与附加件共用一层边框/焦点环,内层是"裸输入"(不画壳体);四向 addon 可放文本/图标/按钮/Kbd/下拉触发,一个 addon 放多个控件只整体外扩一次;`block-*` addon 存在时自动切成三段式 |
-| Checkbox / Radio | 自绘指示器 + 原生状态管理:Checkbox 三态(不确定态画减号、点击落到选中),两者都有校验态、空格切换与键盘焦点环;"整块区域可点"时用 `Checkbox.Toggle()` / `Radio.Select()`(走与点击指示器相同的路径,`SetSelected` 是不触发回调的静默版),放进非 Card 底色容器时用 `SetBackdrop` 跟随宿主底色 |
+| Checkbox / Radio | 自绘指示器 + 原生状态管理:Checkbox 三态(不确定态画减号、点击落到选中);只读 `WithCheckboxReadOnly`(仍可聚焦/键盘可达,用户不能改选)、可否决的 `OnCheckedChange(返回 false 取消切换)`;纯指示器默认 40×32 点击热区,有文字时自动量宽;两者都有校验态、空格切换与键盘焦点环;"整块区域可点"时用 `Checkbox.Toggle()` / `Radio.Select()`(走与点击指示器相同的路径,`SetSelected` 是不触发回调的静默版),放进非 Card 底色容器时用 `SetBackdrop` 跟随宿主底色;`SetFocusRingProxy` 把焦点环交给外层卡片 |
+| CheckboxGroup | 复选组:`Add(value, text)` / `Attach(c, value)` + `SetParent(parentCheckbox)`;父项三态(全选 / 部分选中 / 未选)与子项双向联动,组值 `Values` / `SetValues` / `OnChange` 只在集合变化时通知;组级禁用 / 校验 / 间距 / 焦点环代理级联到条目 |
 | RadioGroup | 单选组:`AddItem(value, text)` 或 `Attach(radio, value)` 收编放在 Field 等子容器里的条目(跨父级互斥);↑↓←→ 循环移动并选中、Home/End 首末 |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块:都有禁用与校验态;Progress 可 indeterminate 短条往返与 `ui.NewProgressField`(标题 + 百分比 + 条);Slider 支持值域/步进、范围与多滑块、垂直、反向 |
 | Rating | 星级评分(纯自绘):整星 / 半星、悬停预览、只读与禁用;点击提交(再点当前星清零)、聚焦后 ←/↓ 减一档、→/↑ 加一档、Home/End 两端;`WithRatingSize` 三档尺寸、`WithRatingLabels` 文案展现、`WithRatingIcons` 自定义图标、`OnHoverChange` 预览回调、`WithRatingKeyboard(false)` 关闭键盘;`OnFocus`/`OnBlur`/`OnKeyDown` 焦点与按键回调、`Blur()` 移除焦点 |

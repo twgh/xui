@@ -61,6 +61,26 @@ func buildBase1Page(body *widget.LayoutEle) {
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Outline", rv.Handle, ui.WithVariant(ui.ButtonOutline), ui.WithButtonInvalid()), 104)
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "Destructive", rv.Handle, ui.WithVariant(ui.ButtonDestructive), ui.WithButtonInvalid()), 120)
 
+	xui.ItemFill(hint(v.Handle, "运行时尺寸 / 尾部加载 / 外部链接"))
+	rrun := xui.HStack(v.Handle, 40, 10)
+	sizeNames := []string{"Xs", "Sm", "Default", "Lg"}
+	sizeVals := []ui.ButtonSize{ui.ButtonSizeXs, ui.ButtonSizeSm, ui.ButtonSizeDefault, ui.ButtonSizeLg}
+	sizeIdx := 2
+	sizeBtn := ui.NewButton(0, 0, 0, 0, sizeNames[sizeIdx], rrun.Handle, ui.WithSize(sizeVals[sizeIdx]))
+	xui.ItemWidth(sizeBtn, 104)
+	tip.Bind(sizeBtn.Handle, "点击切换 SetSize(高 24/28/32/36)")
+	sizeBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		sizeIdx = (sizeIdx + 1) % len(sizeVals)
+		sizeBtn.SetSize(sizeVals[sizeIdx])
+		sizeBtn.SetText(sizeNames[sizeIdx])
+		return 0
+	})
+	loadEnd := ui.NewButton(0, 0, 0, 0, "Downloading", rrun.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonLoadingAtEnd(),
+		ui.WithButtonLoadingColorFunc(func(t *xui.Theme) xui.Color { return t.Destructive }))
+	loadEnd.SetDisabled(true)
+	ui.NewLinkButton(0, 0, 0, 0, "打开 shadcn 文档", "https://ui.shadcn.com/docs/components/base/button", rrun.Handle)
+
 	// ---- 按钮组(与上面的按钮卡同宽, 同处左列) ----
 	// 组是宽高自撑的 LayoutEle: 子按钮 cx 传 0 时按文字量宽, 组自动拼成一条,
 	// 首尾保留外圆角、相邻边收成直角, 相邻边框自然并成 1px(见 buttongroup.go)。

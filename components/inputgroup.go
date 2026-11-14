@@ -365,6 +365,15 @@ func (g *InputGroup) SetDisabled(v bool) *InputGroup {
 // Disabled 返回整组是否禁用。
 func (g *InputGroup) Disabled() bool { return g != nil && g.disabled }
 
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (g *InputGroup) SetFieldState(invalid, disabled bool) {
+	g.SetInvalid(invalid)
+	g.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (g *InputGroup) FieldDisabled() bool { return g == nil || g.Disabled() }
+
 // Focus 把焦点放到组内输入框。
 func (g *InputGroup) Focus() *InputGroup {
 	if g != nil && g.input != nil {

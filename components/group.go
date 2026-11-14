@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/twgh/xcgui/xc"
+	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 )
 
@@ -88,4 +89,33 @@ func (g buttonGroupPlacement) corners(radius int32) xui.Corners {
 // 组内按首/中/尾收角, 组外四角统一。
 func groupCorners(hEle int, radius int32) xui.Corners {
 	return buttonGroupPlacementOf(hEle).corners(radius)
+}
+
+// reflowAfterResize 在控件尺寸(尤其高度)变化后逐级通知祖先重排:
+// Auto 高的卡片/行只改子元素尺寸不会自己长高, 遇到 ScrollArea 的框架交给框架排。
+// 与 Label 的折行重排同口径(reflowAfterTextHeight), 放在 group.go 是因为
+// button.go 依赖本文件、但不应额外依赖 label.go。
+func reflowAfterResize(hEle int) {
+	if hEle == 0 || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
+		return
+	}
+	xc.XEle_AdjustLayout(hEle)
+	for p := xc.XWidget_GetParentEle(hEle); p != 0; p = xc.XWidget_GetParentEle(p) {
+		if xc.XC_IsHXCGUI(p, xcc.XC_LAYOUT_FRAME) {
+			xc.XEle_AdjustLayout(p)
+			break
+		}
+		if pp := xc.XWidget_GetParentEle(p); pp != 0 && xc.XC_IsHXCGUI(pp, xcc.XC_LAYOUT_FRAME) {
+			xc.XEle_AdjustLayout(pp)
+			break
+		}
+		if xc.XC_IsHXCGUI(p, xcc.XC_ELE) {
+			xc.XEle_AdjustLayout(p)
+			continue
+		}
+		if xc.XC_IsHXCGUI(p, xcc.XC_WINDOW) {
+			xc.XWnd_AdjustLayout(p)
+		}
+		break
+	}
 }

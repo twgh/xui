@@ -37,10 +37,12 @@ const switchRingPad int32 = 3
 //   - 空格键切换(Radix 的 role=switch 语义, 原生 Check 按钮不响应空格, 见 DESIGN 第八节 108)。
 type Switch struct {
 	*widget.Button
-	size    SwitchSize
-	invalid bool
+	size     SwitchSize
+	invalid  bool
 	disabled bool
-	changes []func(checked bool)
+	// focusRingProxy: 由外层标签/选择卡片代理键盘焦点环(同 Checkbox)。
+	focusRingProxy bool
+	changes        []func(checked bool)
 }
 
 // SwitchOption 开关配置项。
@@ -78,6 +80,7 @@ func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
 
 	sw.SetTypeEx(xcc.Button_Type_Check)
 	sw.EnableBkTransparent(true) // 灭掉原生外观, 交给 onPaint
+	sw.SetCursor(controlCursor(sw.disabled))
 	sw.AddEvent_Paint(sw.onPaint)
 	xui.AttachWindow(sw.Handle)
 	sw.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
@@ -138,12 +141,35 @@ func (s *Switch) SetDisabled(v bool) *Switch {
 	s.disabled = v
 	s.Enable(!v)
 	s.EnableFocus(!v)
+	s.SetCursor(controlCursor(v))
 	s.Redraw(false)
 	return s
 }
 
 // Disabled 返回是否禁用。
 func (s *Switch) Disabled() bool { return s.disabled }
+
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (s *Switch) SetFieldState(invalid, disabled bool) {
+	s.SetInvalid(invalid)
+	s.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (s *Switch) FieldDisabled() bool { return s.Disabled() }
+
+// SetFocusRingProxy 由外层包裹元素代理键盘焦点环, 本控件不再画自己的环。
+func (s *Switch) SetFocusRingProxy(v bool) *Switch {
+	if s == nil || s.focusRingProxy == v {
+		return s
+	}
+	s.focusRingProxy = v
+	s.Redraw(false)
+	return s
+}
+
+// FocusRingProxy 返回是否由外层代理键盘焦点环。
+func (s *Switch) FocusRingProxy() bool { return s != nil && s.focusRingProxy }
 
 // SetInvalid 设置/清除校验失败态(见 WithSwitchInvalid)。
 func (s *Switch) SetInvalid(v bool) *Switch {
@@ -204,7 +230,7 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		alpha = 0.5 // disabled:opacity-50
 	}
 	invalid := s.invalid && !disabled
-	focusRing := st.Focused && !disabled && xui.FocusedByKeyboard()
+	focusRing := st.Focused && !disabled && !s.focusRingProxy && xui.FocusedByKeyboard()
 
 	// aria-invalid:ring-3 ring-destructive/20(dark /40) / focus-visible:ring-3 ring-ring/50
 	if invalid || focusRing {

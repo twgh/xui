@@ -29,14 +29,15 @@ const radioGroupGap int32 = 8
 //	grp.OnChange(func(v string) { ... })
 type RadioGroup struct {
 	*widget.LayoutEle
-	items       []*Radio
-	spacing     int32
-	disabled    bool
-	invalid     bool
-	initial     string
-	disabledOwn map[*Radio]bool
-	cb          func(value string)
-	applying    bool
+	items          []*Radio
+	spacing        int32
+	disabled       bool
+	invalid        bool
+	initial        string
+	disabledOwn    map[*Radio]bool
+	cb             func(value string)
+	applying       bool
+	focusRingProxy bool
 }
 
 // RadioGroupOption 单选组配置项。
@@ -115,6 +116,9 @@ func (g *RadioGroup) Attach(r *Radio, value string) *Radio {
 	}
 	if g.disabled {
 		r.Enable(false)
+	}
+	if g.focusRingProxy {
+		r.SetFocusRingProxy(true)
 	}
 	r.addChangeListener(func(on bool) { g.onItemSelected(r, on) })
 	r.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
@@ -228,6 +232,27 @@ func (g *RadioGroup) SetInvalid(v bool) *RadioGroup {
 
 // Invalid 返回整组是否处于校验失败态。
 func (g *RadioGroup) Invalid() bool { return g != nil && g.invalid }
+
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (g *RadioGroup) SetFieldState(invalid, disabled bool) {
+	g.SetInvalid(invalid)
+	g.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (g *RadioGroup) FieldDisabled() bool { return g.Disabled() }
+
+// SetFocusRingProxy 让组内所有条目的键盘焦点环由外层包裹元素代理。
+func (g *RadioGroup) SetFocusRingProxy(v bool) *RadioGroup {
+	if g == nil {
+		return g
+	}
+	g.focusRingProxy = v
+	for _, it := range g.items {
+		it.SetFocusRingProxy(v)
+	}
+	return g
+}
 
 // SetSpacing 运行时修改条目间距(逻辑像素)。
 func (g *RadioGroup) SetSpacing(px int32) *RadioGroup {

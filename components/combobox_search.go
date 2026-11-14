@@ -454,6 +454,15 @@ func (c *Combobox) SetDisabled(v bool) *Combobox {
 // Disabled 返回触发区是否禁用。
 func (c *Combobox) Disabled() bool { return c != nil && c.disabled }
 
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (c *Combobox) SetFieldState(invalid, disabled bool) {
+	c.SetInvalid(invalid)
+	c.SetDisabled(disabled)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (c *Combobox) FieldDisabled() bool { return c == nil || c.Disabled() }
+
 // FitWidth 按当前选中项重新量宽(仅 cx 传 0 创建的触发区)。
 func (c *Combobox) FitWidth() *Combobox {
 	if c == nil {

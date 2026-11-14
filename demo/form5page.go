@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
@@ -101,6 +103,45 @@ func buildForm5Page(body *widget.LayoutEle) {
 		return 0
 	})
 
+	xui.ItemFill(hint(vCB.Handle, "复选组(父项全选 / 半选联动 + 组值)"))
+	cbAll := ui.NewCheckbox(0, 0, 0, 0, "全选", vCB.Handle)
+	xui.ItemFill(cbAll)
+	cbGrp := ui.NewCheckboxGroup(vCB.Handle,
+		ui.WithCheckboxGroupValues("disks", "servers"), ui.WithCheckboxGroupSpacing(8))
+	xui.ItemFill(cbGrp)
+	cbGrp.SetParent(cbAll)
+	cbGrp.Add("disks", "硬盘")
+	cbGrp.Add("external", "外置磁盘")
+	cbGrp.Add("cds", "CD / DVD")
+	cbGrp.Add("servers", "连接的服务器")
+	cbGrpState := ui.NewLabel(0, 0, 0, 0, "选中: disks, servers", vCB.Handle).SetMuted()
+	xui.ItemFill(cbGrpState)
+	cbGrp.OnChange(func(values []string) {
+		if len(values) == 0 {
+			cbGrpState.SetText("选中: (空)")
+		} else {
+			cbGrpState.SetText("选中: " + strings.Join(values, ", "))
+		}
+		cbGrpState.Redraw()
+	})
+
+	xui.ItemFill(hint(vCB.Handle, "纯指示器热区(默认 40×32) / 只读 / 可否决"))
+	hotRow := xui.HStack(vCB.Handle, 32, 16)
+	ui.NewCheckbox(0, 0, 0, 0, "", hotRow.Handle, ui.WithCheckboxChecked(true))
+	ui.NewCheckbox(0, 0, 0, 0, "只读(点击不切换)", hotRow.Handle,
+		ui.WithCheckboxReadOnly(), ui.WithCheckboxChecked(true))
+	vetoCB := ui.NewCheckbox(0, 0, 0, 0, "否决取消(试试点掉)", vCB.Handle,
+		ui.WithCheckboxChecked(true))
+	xui.ItemFill(vetoCB)
+	vetoCB.OnCheckedChange(func(checked bool) bool { return checked }) // 取消操作一律否决
+
+	xui.ItemFill(hint(vCB.Handle, "组级禁用(父项与子项一起变淡)"))
+	cbGrpDis := ui.NewCheckboxGroup(vCB.Handle,
+		ui.WithCheckboxGroupDisabled(), ui.WithCheckboxGroupValues("a"))
+	xui.ItemFill(cbGrpDis)
+	cbGrpDis.Add("a", "选项 A")
+	cbGrpDis.Add("b", "选项 B")
+
 	xui.ItemFill(hint(vCB.Handle, "带说明的字段(整卡可点)"))
 	buildCheckboxChoiceCard(vCB.Handle)
 
@@ -152,6 +193,11 @@ func buildRadioChoiceCards(parent int) {
 		xui.ItemSize(radio, 24, 24)
 		// 点击统一交给卡片: 指示器本身不参与命中, 避免父子各处理一次
 		radio.EnableMouseThrough(true)
+		// 键盘焦点环由卡片代理(同 shadcn FieldLabel 包裹选择卡片), 指示器不再画自己的环
+		radio.SetFocusRingProxy(true)
+		card.setFocusRing(radio.Handle)
+		radio.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int { card.redraw(); return 0 })
+		radio.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int { card.redraw(); return 0 })
 		// 卡片选中态底色是 Accent, 指示器的宿主底色要跟着走(否则元素矩形留下 Card 色方块)
 		radio.SetBackdrop(func(t *xui.Theme) xui.Color {
 			if radio.Selected() {
@@ -194,6 +240,10 @@ func buildCheckboxChoiceCard(parent int) {
 	xui.ItemSize(cb, 24, 24)
 	cb.SetChecked(true)
 	cb.EnableMouseThrough(true) // 同单选卡片: 命中区只留卡片一层
+	cb.SetFocusRingProxy(true)  // 键盘焦点环由卡片代理
+	card.setFocusRing(cb.Handle)
+	cb.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int { card.redraw(); return 0 })
+	cb.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int { card.redraw(); return 0 })
 	cb.SetBackdrop(func(t *xui.Theme) xui.Color {
 		if cb.Checked() {
 			return t.Accent
@@ -223,10 +273,11 @@ func buildCheckboxChoiceCard(parent int) {
 // 卡片自绘是因为选中态要同时改底色和边框; 点击区域是整张卡片(子项一律鼠标穿透),
 // 指示器本身不接鼠标, 由卡片统一调 Radio.Select / Checkbox.Toggle。
 type choiceCard struct {
-	card    *widget.LayoutEle
-	content *widget.LayoutEle
-	gap     int32
-	active  bool
+	card     *widget.LayoutEle
+	content  *widget.LayoutEle
+	gap      int32
+	active   bool
+	focusEle int // 焦点环代理控件(指示器把键盘焦点环交给整张卡片画)
 }
 
 // Handle 返回卡片元素句柄(子项都挂在卡片下)。
@@ -303,6 +354,20 @@ func (c *choiceCard) setActive(v bool) {
 	c.card.Redraw(false)
 }
 
+// setFocusRing 指定由卡片代理键盘焦点环的控件句柄。
+func (c *choiceCard) setFocusRing(hEle int) {
+	if c == nil {
+		return
+	}
+	c.focusEle = hEle
+}
+
+func (c *choiceCard) redraw() {
+	if c != nil && c.card != nil {
+		c.card.Redraw(false)
+	}
+}
+
 func (c *choiceCard) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
@@ -323,6 +388,19 @@ func (c *choiceCard) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	rc.Right--
 	rc.Bottom--
 	p.StrokeRound(&rc, border, radius-1, 1)
+	// 指示器的键盘焦点环由卡片代理(Checkbox/Radio.SetFocusRingProxy),
+	// 对应 shadcn FieldLabel 包裹选择卡片时的整卡焦点环。
+	if c.focusEle != 0 {
+		st := xui.StateOf(c.focusEle)
+		if st.Focused && xui.FocusedByKeyboard() {
+			fr := p.Rc
+			fr.Left += 2
+			fr.Top += 2
+			fr.Right -= 2
+			fr.Bottom -= 2
+			p.StrokeRound(&fr, t.Ring.WithAlpha(160), radius-2, 3)
+		}
+	}
 	return 0
 }
 

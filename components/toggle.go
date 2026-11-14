@@ -199,6 +199,18 @@ func (t *Toggle) SetInvalid(v bool) *Toggle {
 // Invalid 返回当前是否处于校验失败态。
 func (t *Toggle) Invalid() bool { return t.invalid }
 
+// SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
+func (t *Toggle) SetFieldState(invalid, disabled bool) {
+	t.SetInvalid(invalid)
+	t.Enable(!disabled)
+	t.EnableFocus(!disabled)
+	t.EnableSwitchFocus(!disabled)
+	t.Redraw(false)
+}
+
+// FieldDisabled 实现 FieldControl。
+func (t *Toggle) FieldDisabled() bool { return t == nil || !t.IsEnable() }
+
 // FitWidth 按当前文字/图标重新量宽(仅 cx 传 0 创建的切换按钮)。
 func (t *Toggle) FitWidth() *Toggle {
 	if !t.autoWidth {
