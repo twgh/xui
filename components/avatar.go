@@ -405,11 +405,14 @@ func (a *Avatar) paintBadge(p *xui.Painter, t *xui.Theme) {
 	}
 	ring := int32(2)
 	outer := d + ring*2
+	// 徽标整体向内缩 ring: 头像的可见形状是圆, 元素矩形却是方的。徽标盒贴到元素右下角时,
+	// 盒角落在圆外 → 白色的"环"会和卡片底色连成一片, 圆边被吃掉一块(看起来右下角是方的)。
+	// 内缩 ring 后整个盒(含环)都落在圆内, 圆轮廓始终完整。
 	badge := xc.RECT{
-		Left:   p.Rc.Right - outer,
-		Top:    p.Rc.Bottom - outer,
-		Right:  p.Rc.Right,
-		Bottom: p.Rc.Bottom,
+		Left:   p.Rc.Right - outer - ring,
+		Top:    p.Rc.Bottom - outer - ring,
+		Right:  p.Rc.Right - ring,
+		Bottom: p.Rc.Bottom - ring,
 	}
 	p.Draw.SetBrushColor(uint32(t.Background))
 	p.Draw.FillEllipse(&badge)
