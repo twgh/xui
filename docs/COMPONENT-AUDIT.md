@@ -10,7 +10,7 @@
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
-> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#18(#1 / #3 / #5 的补齐已落地,其余 15 个出清单待确认),**下一轮从 #19 Popover 起**。
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#23(#1 / #3 / #5 的补齐已落地,其余 20 个出清单待确认),**下一轮从 #24 Accordion 起**。
 
 ## 一、按常用性排序的总表
 
@@ -34,12 +34,12 @@
 | 16 | Alert | `alert` | 已核查 | 结论见第七节;2 项可实现 |
 | 17 | Table | `table` | 已核查 | 结论见第七节;3 项可实现 |
 | 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现;官方是组合模式,差异见 DESIGN 第七节 |
-| 19 | Popover | `popover` | 待核查 | 下一轮起点 |
-| 20 | Progress | `progress` | 待核查 | |
-| 21 | Field | `field` | 待核查 | Form 亦收敛在此 |
-| 22 | Input Group | `input-group` | 待核查 | |
-| 23 | Avatar | `avatar` | 待核查 | |
-| 24 | Accordion | `accordion` | 待核查 | |
+| 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现;本批开合控制最完整 |
+| 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现 |
+| 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现;Form 亦收敛在此;本地无 `field.tsx` |
+| 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现;11 个官方示例仅缺 Custom Input |
+| 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现 |
+| 24 | Accordion | `accordion` | 待核查 | 下一轮起点 |
 | 25 | Slider | `slider` | 待核查 | |
 | 26 | Alert Dialog | `alert-dialog` | 待核查 | |
 | 27 | Sheet | `sheet` | 待核查 | |
@@ -392,7 +392,99 @@
 
 **本批实现顺序建议**:BA2 → BA3 → BA1 → TT2 → AL1 → TBL1 → DT2(小改动);随后 TT1 / AL2 / TBL2 / TBL3 / DT1;TT3 与 DT3 需要先确认需求。TT1 / TT2 是 DESIGN 428 里已白纸黑字记为「未做」的两项,若决定补齐,应同步更新第四节末映射表与第七节差异描述。
 
-## 八、实现顺序建议(仅 Input / Select 批次, 待确认后执行)
+## 八、追加核查:#19 Popover / #20 Progress / #21 Field / #22 Input Group / #23 Avatar
+
+依据:官方 base 五页(Field / Input Group 页自带 API Reference 表)、Base UI Popover / Progress / Avatar 的 Root·Positioner·Popup props、本地 base-nova `popover.tsx` / `progress.tsx` / `input-group.tsx` / `avatar.tsx`(本批本地参考实现**没有 `field.tsx`**,Field 以官方 API Reference 表为准)、`components/*.go`、DESIGN 第四节末语义表与第七节差异表。**只出结论,未改组件代码。**
+
+### Popover(#19)
+
+**官方页**:Usage / Composition(`Popover` + `PopoverTrigger` + `PopoverContent`)、Basic、Align(start/center/end)、With Form、RTL(排除)、API Reference → Base UI Popover。`popover.tsx` 从 Positioner Props 里 Pick 了 `align` / `alignOffset` / `side` / `sideOffset`,默认 `center` / `0` / `bottom` / `4`。
+
+**已具备**(本批最完整的一个):`WithPopoverSide` / `WithPopoverAlign` / `WithPopoverGap`(= sideOffset)、四方向自动翻转与工作区夹取(`popupPosition`)、`WithPopoverWidth/Height/Padding`、`WithPopoverOnOpenChange`(Open 通知 true、panel.OnHide 通知 false)、受控式 `Open/Close/SetOpen/IsOpen`、`WithPopoverKeepOnBlur`、ESC 关闭并还原触发区焦点、`PopoverHeader/Title/Description`、`Refresh` / `SetContentHeight` 打开中改高度、内容任意构建回调。Select S3 / Dialog D1 / Menu DM1 都在找的 `OnOpenChange`,这里**已经有了**。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| PO1 | `alignOffset` 交叉轴偏移 | `popover.tsx` 明确 Pick `alignOffset`;Base UI Positioner 默认 0 | `popupPosition(... gap int32)` 只有单一边距,`WithPopoverGap` 同时充当 sideOffset | 给 `popupPosition` 加 `alignOffset` 参数(带符号沿交叉轴平移),新增 `WithPopoverAlignOffset`;与 Menu DM2 共用一套定位参数 | 小 / 高 |
+| PO2 | `initialFocus` / `finalFocus` | Base UI Popup Props 明确列出(默认开时聚焦首个可聚焦项、关时回触发区) | 无打开焦点管理;关闭后固定 `SetFocus(trigger)` 写在 `panel.OnEsc` 里,点外部关闭不还原 | 仿 Dialog D3(已有 `initialFocus` 字段)导出 `WithPopoverInitialFocus(hEle)` / `WithPopoverFinalFocus(hEle)`,打开后 `SetFocus`、所有关闭路径统一还原 | 小-中 / 高 |
+| PO3 | 非 Button 触发区的键盘开合 + `defaultOpen` / 受控锁定 | Base UI Root `open` / `defaultOpen`;Trigger 支持键盘 | 非 `XC_BUTTON` 只挂 `LButtonUp`,空格/回车无效;`toggle()` 无条件开合,无「受控」状态锁 | 普通元素补 `AddEvent_KeyDown` 接管空格/回车;`WithPopoverDefaultOpen()`、`WithPopoverControlled(true)` 让 toggle 只发 `OnOpenChange`、由调用方 `SetOpen` 决定 | 小-中 / 中 |
+| PO4 | 定位策略可配:`anchor` / `collisionAvoidance` / `collisionPadding` / `sticky` | Base UI Positioner Props(默认 flip + clipping-ancestors + padding 5) | 翻转与夹取硬编码在 `popupPosition`,不能换锚点、不能只 shift 不 flip、不能跟随锚点滚动 | 把现有翻转/夹取抽成策略枚举,`WithPopoverCollision(...)`;锚点另给 `WithPopoverAnchor(hEle)`(虚拟锚点不做) | 中 / 中(需确认需求) |
+| PO5 | `Popover.Arrow` / `arrowPadding` | Base UI 有 Arrow 部件与 `arrowPadding=5`;shadcn 封装未暴露、官方页无示例 | 无箭头;Tooltip 已有自绘三角形与 `clampArrow` | 复用 Tooltip 的箭头绘制,挂在弹层边缘;与 Tooltip TT2 的 `arrowPadding` 一起做 | 中 / 低-中(扩展) |
+| PO6 | `modal` / `'trap-focus'` 与内容内 `Popover.Close` | Base UI Root `modal`;Close 部件 | 恒为非模态(点宿主窗口即关),内容里没有一键关闭的现成部件 | 模态可复用 Dialog 的 `modalStack` 与焦点圈禁;Close 只需导出一个 `PopoverClose(p, text)` 便捷构造 | 中-高 / 低(桌面非模态更符合习惯,建议确认后再做) |
+
+**已知差异 / 明确不做**:RTL;进场 zoom/slide(DESIGN 573 能力边界);`render` / `data-slot` / `aria-*` DOM 概念;`actionsRef` / `onOpenChangeComplete` 这类外部动画协同;函数式 `sideOffset` / `alignOffset`(读锚点尺寸动态算,桌面收益低)。
+
+### Progress(#20)
+
+**官方页**:Usage `<Progress value={33} />`、Composition(`Progress` / `ProgressLabel` / `ProgressValue` / `ProgressTrack` / `ProgressIndicator`)、Label、Controlled(由 Slider 控制)、RTL(排除)、API Reference → Base UI Progress。Base UI Root 有 `value: number|null`(null = indeterminate)、`min=0` / `max=100`、`format` / `locale` / `getAriaValueText` / `aria-valuetext`。
+
+**已具备**:`value` / `max`(`WithProgressMax` / `SetMax`)、`value=null` 不确定态(`WithProgressIndeterminate` / `SetIndeterminate`)、指示器颜色覆盖(固定色 + 主题函数)、`Percent()`、`SetValue` 夹取、`OnChange`、`ProgressField` 三件套(标题 + 百分比 + 条,数值格式可 `WithProgressFieldFormat` 覆盖,对应官方 Label / Controlled 示例)、4px 高与胶囊圆角自绘。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| PR1 | `min` 下限 | Base UI Root 明确有 `min`,默认 0 | 进度恒为 `0..max`,`syncPos()` 里直接 `value/max` | 加 `min` 字段与 `WithProgressMin` / `SetMin` / `Min()`,百分比改 `(value-min)/(max-min)`;负值域也可用 | 小 / 中 |
+| PR2 | 指示器宽度过渡 | `progress.tsx` 的 Indicator 有 `transition-all` | `SetValue` 直接 `syncPos` + 重绘,数值跳变 | 用运行时 Spin 或缓动把 `barW` 从旧值插值到新值;与 Tabs TB4 / Switch SW3 共用一套缓动 | 中 / 中 |
+| PR3 | 轨道 / 指示器几何与配色可配 | Track / Indicator 是独立部件,均可传 `className`(改高度、圆角、轨道底色) | 轨道固定 `bg-muted`、高随 `cy`、圆角恒 `h/2`;只有指示器颜色可覆盖 | `WithProgressTrackColor` / `SetTrackColor`、`WithProgressRadius`、`ProgressField` 暴露 `Bar()` 已有,再给独立 Track 配置入口 | 小-中 / 中 |
+| PR4 | 独立的 `ProgressLabel` / `ProgressValue` 部件 | Composition 把两者列为可自由摆放的子部件 | 只有固定组合 `ProgressField`(标题行 + 条),标签与数值不能分开放、不能挂在条外 | 导出 `NewProgressLabel` / `NewProgressValue`,订阅 `OnChange` 自动刷新;或给 `ProgressField` 加 `Labels()` 与 `SetLabelPlacement` | 中 / 低(现有组合已覆盖主用例) |
+
+**已知差异 / 明确不做**:RTL;不确定态「短条往返」vs 上游空轨道(DESIGN 589 已记,是主动视觉选择);`format` / `locale` / `getAriaValueText` / `aria-valuetext`(Intl 与无障碍元数据,桌面由 `WithProgressFieldFormat` 覆盖格式化);`data-state=complete` 上游也无独立视觉;`render` DOM 概念。
+
+### Field(#21)
+
+**官方页**:自带完整 API Reference(FieldSet / FieldLegend `variant` / FieldGroup / Field `orientation` + `data-invalid` / FieldContent / FieldLabel / FieldTitle / FieldDescription / FieldSeparator / FieldError `errors` + Standard Schema `issues`)、Anatomy、Form(React Hook Form 等)、Input / Textarea / Select / Slider / Fieldset / Checkbox / Radio / Switch / Choice Card / Field Group 示例、Responsive Layout、Validation and Errors、Accessibility、RTL(排除)。本批本地参考实现无 `field.tsx`,依官方表比对。
+
+**已具备**:`Field` / `FieldSet` / `FieldGroup` / `FieldLegend`(`FieldLegendVariant` 两档) / `FieldContent`(`Content()`) / `Label` / `Title` / `Description` / `FieldSeparator` / `FieldError`(`SetErrors` 多条去重、空列表隐藏并回收祖先高度)、`FieldVertical` / `FieldHorizontal`、`WithFieldInvalid` / `SetInvalid` / `Invalid`、`WithFieldDisabled` / `SetDisabled` / `Disabled`、`WithFieldFocusProxy` / `SetFocusRingProxy`、`Field.Attach(FieldControl...)` 的 19 控件级联(含「本来就单独禁用」的恢复)。上游 `FieldError errors` 数组的多条渲染语义已覆盖。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| FL1 | `orientation="responsive"` | 官方 Responsive Layout 明确列为第三档;源码注释亦写「Go 侧没有容器查询,需调用方按窗口宽度自行选」 | 只有两档,且 `SetOrientation` 都没有 | 加第三档:挂宿主窗口 `WM_SIZE`,按 `Field` 实际宽度在断点切 `EnableHorizon` 并 `AdjustLayout()`;或先补运行时 `SetOrientation()` 让应用层自己切 | 中 / 中 |
+| FL2 | Choice Card(整块点击选中) | 官方专节:「Wrap `Field` components inside `FieldLabel`」,配 RadioItem / Checkbox / Switch | 只有 `WithFieldFocusProxy` 声明焦点环交给外层,没有「点整块即选中」的容器 | 复用 #8 Label L1 的 `htmlFor` 点击关联(`FocusElement` + 对实现 `Toggle()` 的控件切换),再加 `NewFieldChoiceCard(build)` 把 Field 放进可点击标签 | 中 / 中(与 L1 同批做) |
+| FL3 | FieldGroup 级 `Validate()` / 提交聚合 | 官方 Form 节与 Validation and Errors;本台账 Input I3 / Select S9 / Label L3 都指向同一套 Field 基础设施 | `SetInvalid` 是逐字段手动调用,没有组级必填/校验器注册与一次性汇总 | `FieldGroup` 升级为带 `controls`/`validators` 的结构体,提供 `Register(field, validator...)`、`Validate() []error`、`OnSubmit(fn)`;I3/S9/L3 一并落地 | 中-高 / 中(跨组件共用) |
+| FL4 | `Field` 与 `FieldError` 绑定 | 官方 Anatomy:FieldError 紧跟控件或放 FieldContent 内,与 `data-invalid` 同状态 | `FieldError` 是独立组件,调用方要自己 `SetInvalid(true)` 再 `SetErrors(...)`,两者不会联动 | `Field.AttachError(*FieldError)` / `Field.SetErrors(...)`:设错时自动置 invalid 并显示错误区,清错时恢复;多条错误仍走现有 `SetErrors` | 小-中 / 高 |
+
+**已知差异 / 明确不做**:RTL;`FieldLabel htmlFor` 是 #8 Label L1,**不在此重复计项**;Standard Schema `issues` / `errors` 对象数组 / React Hook Form 等 JS 生态概念(DOM/框架语义,但 FL3 会提供等价的 Go 侧聚合入口);`role=group` / `aria-*` 无障碍元数据;横向 `Content` 只认 Fixed 宽(DESIGN 565 能力边界);描述/错误默认单行(DESIGN 566,`SetAutoWrap()` 已有替代)。
+
+### Input Group(#22)
+
+**官方页**:Usage / Composition、Align 四档(inline-start/end、block-start/end,API Reference 明确 `align` 默认 inline-start 且注明「Input 用 inline、Textarea 用 block」)、Icon / Text / Button / Kbd / Dropdown / Spinner / Textarea / Custom Input(`data-slot="input-group-control"` 让第三方控件也吃到焦点态)、RTL(排除)、`InputGroupButton` 的 `size`(xs/icon-xs/sm/icon-sm)与 `variant` 六档。
+
+**已具备**(本批覆盖度最高):`Input()` / `Textarea(cy)`、`Addon(align)` 四向、`Addon.Text/Icon/Button/IconButton/MenuButton/Kbd/Spinner`、`Search()` 便捷构造、`SetInvalid` / `SetDisabled` / `SetFieldState`(实现 `FieldControl`)、容器级焦点环与校验环自绘、`syncInsets()` 按 addon 位置收窄输入内边距、`markBlock()` 三段式布局、按钮四尺寸档(`applyInputGroupButton` 的圆角模式 + `fixButtonBox` 按档算高)、`WithInputBare` 裸输入。官方 11 个示例除 Custom Input 外都有现成 API。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| IG1 | 点击 addon 聚焦输入框 | `input-group.tsx` 的 `InputGroupAddon.onClick` 明确写「非按钮区域点击 → `querySelector('input').focus()`」 | `Addon.Text/Icon` 建的是 `EnableFocus(false)` 的静态元素,点文字/图标不会把焦点给输入框,与浏览器行为不一致 | 给 addon 容器挂 `LButtonUp`,命中非按钮子项时调 `g.Focus()`;按钮子项保持原样(上游也 `return`) | 小 / 高 |
+| IG2 | 自定义控件接入(`data-slot=input-group-control`) | 官方 Custom Input 专节:第三方 resizable textarea 也能吃到容器焦点/禁用/校验态 | `focused()` / `Focus()` / `SetDisabled()` 全部写死 `g.input`(`*Input`),`Content()` 只返回 addon 容器句柄 | 加 `InputGroup.AttachControl(hEle)` 登记外部控件:焦点判断改为「任一登记控件持有焦点」,禁用时对登记控件 `Enable(!v)`;配合 IG1 把 `Focus()` 指向当前控件 | 中 / 中 |
+
+**明确不做**:RTL;`data-slot` DOM 属性本身(只取其「统一焦点态」语义);`aria-invalid` / `role=group` 无障碍元数据;负外边距(项目硬规则,通栏用独立容器)。**已覆盖不要重复列**:Button 的 size/variant 档、block 组合、Dropdown(MenuButton)、Spinner、Kbd、Textarea。
+
+### Avatar(#23)
+
+**官方页**:Usage / Composition(`Avatar` + `AvatarImage` + `AvatarFallback` + `AvatarBadge`;`AvatarGroup` + `AvatarGroupCount`)、Basic、Badge(可用 `className` 自定义颜色尺寸)、Badge with Icon、Avatar Group / Group Count / Group with Icon、Sizes(sm/default/lg)、Dropdown(头像作为菜单触发区)、RTL(排除)、API Reference。Base UI Avatar 的 Fallback 有 `delay`,Image 有 `onLoadingStatusChange`。
+
+**已具备**:三档尺寸(24/32/40,构造期 `cx/cy` 可覆盖)、本地文件与 `image.Image` 两种图源、CPU 侧 4 倍抗锯齿圆形蒙版居中裁剪、加载失败自动回落首字母、`SetImage` / `SetImageData` / `SetFallback`、`WithAvatarRing` 背景色环、`WithAvatarBadge(icon)` / `SetBadge(on, icon)` 右下角徽标(尺寸随档位 8/10/12 + 2px 环)、`NewAvatarGroup` 负间距叠放、`Add` / `AddCount(n)`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| AV1 | 徽标自定义颜色 / 尺寸 / 任意内容 | 官方 Badge 节用 `className="bg-green-600 dark:bg-green-800"`;Badge with Icon 可放任意图标 | `paintBadge` 固定 `t.Primary` 底 + `t.PrimaryForeground` 图标色,直径由 `size.badgeD()` 定死 | `WithAvatarBadgeColor(c)` / `SetBadgeColor`、`SetBadgeSize(d)`;颜色沿用 `xui.Color` 或主题函数(与 Badge `WithBadgeColors` 同形态) | 小 / 高 |
+| AV2 | `AvatarGroupCount` 放图标或任意内容 | 官方 Avatar Group with Icon 示例 | `AddCount(n)` 只能生成 `"+N"` 文字 | 给 `AddCount` 加 opts 或新增 `AddCountContent(build func(*Avatar))`;返回的 `*Avatar` 已可 `SetFallback`,但图标需自绘槽位 | 小-中 / 中 |
+| AV3 | 头像可交互(作为 Dropdown / Popover 触发区) | 官方 Dropdown 示例 | 注释明确「纯展示,不接收焦点与鼠标」,`EnableFocus(false)` + `EnableSwitchFocus(false)` | 加 `WithAvatarInteractive()` 打开焦点与点击,再用现有 `NewPopover(a.Handle)` / `Menu.PopupAtElementRect` 组合;焦点环复用 `SetFocusRingProxy` 思路 | 中 / 中(与 #8 Label L1 同属「展示元素变触发区」) |
+| AV4 | 运行时 `SetSize` / `SetRing` | 与 Button `SetSize` 等一致性;上游 `size` 是 Root prop | 尺寸与色环只在构造期通过 `AvatarOption` 设置,`SetBadge` 等已有运行时 API | `SetSize(AvatarSize)` 重设矩形并重生成圆形图片句柄(蒙版按新直径),`SetRing(bool)` 触发重绘 | 小-中 / 中 |
+| AV5 | 图片状态回调 / fallback 延迟显示 | Base UI Fallback `delay`、Image `onLoadingStatusChange` | 同步解码,`syncImage()` 失败静默回落,调用方拿不到结果;也无加载态 | `SetImage` 返回成功标志或加 `OnImageStatus(func(ok bool))`;延迟回落用计时器(桌面本地解码几乎瞬时,价值低) | 小 / 低 |
+
+**已知差异 / 明确不做**:RTL;远程 URL / 动图(DESIGN 578 能力边界);`alt` / `aria-*` 无障碍元数据;`object-cover` 由 CPU 裁剪等价实现;圆形裁剪本身已实现(#7 Card C4 提到要重评估第七节,这里不重复)。
+
+**本批实现顺序建议**:PO1 → IG1 → FL4 → AV1 → PR1(小改动、收益明确);随后 PO2 / PO3 / PR2 / PR3 / FL1 / FL2 / IG2 / AV2 / AV3 / AV4;FL3 与 Input I3 / Select S9 / Label L3 必须同批设计;PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求。PO1 与 Menu DM2、PO2 与 Dialog D3、PO5 与 Tooltip TT2、FL2 与 Label L1、AV3 与 Label L1 都建议共用同一套 API 形态,避免各写一份。
+
+## 九、实现顺序建议(仅 Input / Select 批次, 待确认后执行)
 
 1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化。
 2. **中改动、功能缺口**:I1 文件输入 → I3/S9 必填校验 → I4 上限 → S1 定位开关 → S2 typeahead。
