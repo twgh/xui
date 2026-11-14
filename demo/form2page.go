@@ -181,9 +181,27 @@ func buildForm2Page(body *widget.LayoutEle) {
 	_, vc := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "自动补全", vc.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"shadcn 文档的 Combobox: 触发按钮 + 弹层搜索框 + 建议列表; 输入即过滤(不区分大小写), ↑↓ 移动、Enter 选中、ESC 关闭", vc.Handle))
+		"shadcn 文档的 Combobox: 输入过滤 + 建议列表。输入框形态 = 上游 Basic(输入框就是触发层), 按钮形态 = 上游 Popup(触发按钮 + 弹层搜索框); ↑↓ 移动、Enter 选中、ESC 关闭", vc.Handle))
 
-	xui.ItemFill(hint(vc.Handle, "单选(分组 + 图标 + 禁用项)"))
+	xui.ItemFill(hint(vc.Handle, "输入框形态(上游 Basic): 点开或 ↓ 全选, 直接打字过滤; 删空 = 取消选中"))
+	cbInput := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxInput(),
+		ui.WithComboboxPlaceholder("Select a framework..."),
+		ui.WithComboboxItems([]ui.SelectItem{
+			{Value: "next", Text: "Next.js", Icon: icons.IconGlobe},
+			{Value: "svelte", Text: "SvelteKit", Icon: icons.IconGlobe},
+			{Value: "nuxt", Text: "Nuxt.js", Icon: icons.IconGlobe},
+			{Value: "remix", Text: "Remix(不可选)", Icon: icons.IconGlobe, Disabled: true},
+			{Value: "astro", Text: "Astro", Icon: icons.IconGlobe},
+		}))
+	xui.ItemFill(cbInput)
+	cbInput.OnChange(func(items []ui.SelectItem) {
+		if len(items) > 0 {
+			println("Combobox(input):", items[0].Value)
+		}
+	})
+
+	xui.ItemFill(hint(vc.Handle, "单选(按钮触发 + 弹层搜索框; 分组 + 图标 + 禁用项)"))
 	cb := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
 		ui.WithComboboxPlaceholder("Select framework..."),
 		ui.WithComboboxSearchPlaceholder("Search framework..."),

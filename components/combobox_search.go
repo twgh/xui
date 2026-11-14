@@ -4,7 +4,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
@@ -35,26 +37,35 @@ const (
 	comboboxChipXHit int32 = 16
 	comboboxChipTrk  int32 = 30 // 右侧箭头/清除钮的预留宽
 	comboboxClearSz  int32 = 24
+	// 输入框形态的裸 Edit 左右内缩(同触发区文字的 pl-2.5 / 右侧箭头预留 30)。
+	comboboxInputPadL int32 = 10
+	comboboxInputPadR int32 = 30
 	// comboboxClearHoverKey 是清除钮的 hover 过渡键: chip 用下标, 这里取一个大偏移避免相撞。
 	comboboxClearHoverKey int32 = 1000
 )
 
 // Combobox 自动补全选择框 —— 对应 shadcn 文档的 **Combobox**(输入过滤 + 建议列表),
-// 与 ui.NativeComboBox(shadcn select 的原生下拉)不是同一个东西:
+// 与 ui.NativeComboBox(shadcn select 的原生下拉)不是同一个东西。两种触发形态:
 //
-//   - 触发区是 outline 按钮(同 Select), 显示当前值/占位符, 右侧 chevrons-up-down;
-//   - 点开弹层 = 顶部搜索框(输入即过滤, 不区分大小写) + 建议列表 + 空状态;
-//   - 条目支持前置图标 / 禁用 / 分组标签 / 左侧(多选)或右侧(单选)选中勾;
-//   - 键盘: 搜索框里 ↑/↓ 循环移动高亮(跳过禁用)、Home/End 首末、Enter 选中、
-//     ESC 关闭; 鼠标悬停即高亮, 点击选中;
-//   - 单选选中即关闭; `WithComboboxMultiple` 多选时点击切换并保持打开,
-//     触发区默认显示 "首个值 +N", `WithComboboxChips` 改为 chips 展示
-//     (每个 chip 带移除钮, 放不下的折叠成 "+N"; 搜索框为空时退格删末尾);
-//   - `WithComboboxClear` 有选中值时在触发区右侧显示清除钮(替代箭头), 点击清空;
-//   - 过滤后默认自动高亮第一条匹配项; `WithComboboxAutoHighlight(false)` 关闭
-//     (同上游 base combobox 的默认: 打字不移动高亮, 需 ↓/悬停才出现);
-//   - 条目显示与搜索用 Text, 为空时回落到 Value(对应上游 itemToStringLabel;
-//     Value 是程序侧值, 对应 itemToStringValue)。
+//   - 默认 = 上游 Popup 示例: 触发区是 outline 按钮(同 Select), 显示当前值/占位符,
+//     右侧 chevrons-up-down; 弹层 = 顶部搜索框(输入即过滤) + 建议列表 + 空状态;
+//   - `WithComboboxInput` = 上游 Basic 示例: 触发区本身是可输入的原生输入框
+//     (ComboboxInput 就在触发层), 边打字边过滤; 弹层里不再有搜索行, 只列条目。
+//
+// 共通语义: 条目支持前置图标 / 禁用 / 分组标签 / 左侧(多选)或右侧(单选)选中勾;
+// 键盘 ↑/↓ 循环移动高亮(跳过禁用)、Home/End 首末、Enter 选中、ESC 关闭; 鼠标悬停
+// 即高亮, 点击选中; 单选选中即关闭; `WithComboboxMultiple` 多选时点击切换并保持打开,
+// 触发区默认显示 "首个值 +N", `WithComboboxChips` 改为 chips 展示(每个 chip 带移除钮,
+// 放不下的折叠成 "+N"; 搜索框为空时退格删末尾); `WithComboboxClear` 有选中值时在
+// 触发区右侧显示清除钮(替代箭头), 点击清空; 过滤后默认自动高亮第一条匹配项,
+// `WithComboboxAutoHighlight(false)` 关闭(同上游 base combobox 的默认);
+// 条目显示与搜索用 Text, 为空时回落到 Value(对应上游 itemToStringLabel;
+// Value 是程序侧值, 对应 itemToStringValue)。
+//
+// 输入框形态额外语义: 点输入框/↓ 打开列表并全选已选文字(直接打字是替换, 不会拼在
+// 标签后面), 列表开着时输入框保持焦点(弹层不激活), 点条目照常选中; 把文字删空即
+// 取消选中(上游 inputClear); ESC 关闭列表, 列表已关时 ESC 清值并清空文字;
+// 关闭列表后输入框恢复显示已选标签(未提交的过滤词不保留)。
 //
 // 弹层复用 popoverPanel(阴影窗 + 卡片 body + 失焦/ESC 关闭 + 工作区夹取),
 // 数据模型与 Select 共用 SelectItem / SelectGroup。
@@ -67,12 +78,17 @@ type Combobox struct {
 	chips             bool
 	clear             bool
 	autoHighlight     bool
+	input             bool
 	placeholder       string
 	searchPlaceholder string
 	emptyText         string
 	size              SelectSize
 	invalid           bool
 	disabled          bool
+
+	inputEdit     *widget.Edit // 输入框形态的触发区裸 Edit(叠在 Button 上)
+	suppressInput bool         // 程序化 SetText 期间屏蔽 Edit_Changed
+	emptyPending  bool         // "删空即清值"的确认已排进下一轮消息
 
 	panel  *popoverPanel
 	scroll *ScrollArea
@@ -186,6 +202,14 @@ func WithComboboxClear() ComboboxOption {
 	return func(c *Combobox) { c.clear = true }
 }
 
+// WithComboboxInput 把触发区换成可输入的原生输入框(上游 base combobox 的 Basic 形态:
+// ComboboxInput 就是触发层, 边打字边过滤, 弹层里只列条目); 默认形态是"按钮触发 +
+// 弹层搜索框"(上游 Popup 形态)。仅用于单选 —— 与 WithComboboxMultiple / WithComboboxChips
+// 一起用时忽略本项, 多选仍在弹层搜索框里输入。
+func WithComboboxInput() ComboboxOption {
+	return func(c *Combobox) { c.input = true }
+}
+
 // WithComboboxAutoHighlight 过滤后是否自动高亮第一条匹配项。默认 true(本库既有语义,
 // 打完字直接 Enter 即选首条); 传 false 对齐上游 base combobox 的默认 —— 打字不移动高亮,
 // 按 ↓ 或悬停才出现。
@@ -256,8 +280,12 @@ func NewCombobox(x, y, cx, cy int32, hParent int, opts ...ComboboxOption) *Combo
 			return 0
 		}
 		// 弹层开着时点触发区: 弹层先因失焦关闭(更新了 lastClose), 这里不再重开 ——
-		// 否则会出现"点两次才关掉"(同 Select / DatePicker)。
+		// 否则会出现"点两次才关掉"(同 Select / DatePicker)。输入框形态的弹层不抢焦点,
+		// 点右侧箭头区收不到那个"先关"的信号, 直接在这里收起。
 		if c.panel != nil && (c.panel.IsOpen() || c.panel.RecentlyClosed()) {
+			if c.input && c.panel.IsOpen() {
+				c.Close()
+			}
 			return 0
 		}
 		c.Open()
@@ -280,13 +308,266 @@ func NewCombobox(x, y, cx, cy int32, hParent int, opts ...ComboboxOption) *Combo
 			c.panel.Destroy()
 		}
 		c.panel, c.scroll, c.stack, c.edit, c.empty = nil, nil, nil, nil, nil
+		c.inputEdit = nil
 		return 0
 	})
+	if c.input && !c.multiple {
+		c.setupInput()
+	} else {
+		c.input = false // 输入框形态只对单选成立(多选在弹层搜索框里输入)
+	}
 	if c.disabled {
 		c.SetDisabled(true)
 	}
 	xui.AttachWindow(btn.Handle)
 	return c
+}
+
+// setupInput 在按钮触发区上叠一个透明原生 Edit(上游 Basic 形态: 输入框就是触发层)。
+// Button 仍画边框/箭头/清除钮, Edit 只负责文字、光标与 IME; Button 不是布局容器,
+// 所以子控件位置用 SetRectEx 跟随触发区尺寸(同 TagInput 的裸输入做法)。
+func (c *Combobox) setupInput() {
+	e := widget.NewEdit(0, 0, comboboxChipTrk+20, c.GetHeight(), c.Handle)
+	if e == nil {
+		c.input = false
+		return
+	}
+	c.inputEdit = e
+	e.EnableMultiLine(false)
+	e.EnableBkTransparent(true)
+	e.EnableDrawBorder(false).EnableDrawFocus(false)
+	e.EnableAutoSelAll(false)
+	e.EnableAutoShowScrollBar(false)
+	if h := e.GetScrollBarHObj(); h != nil {
+		h.Show(false)
+	}
+	if v := e.GetScrollBarVObj(); v != nil {
+		v.Show(false)
+	}
+	e.SetBorderSize(0, 0, 0, 0)
+	e.SetTextAlign(xcc.Edit_TextAlign_Flag_Left | xcc.Edit_TextAlign_Flag_Center_V)
+	e.AddEvent_Edit_Changed(func(hEle int, pbHandled *bool) int {
+		c.onInputChanged()
+		return 0
+	})
+	e.AddEvent_KeyDown(c.onInputKeyDown)
+	e.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		xui.NotePointerPress()
+		c.Open()
+		c.selectAllInput()
+		return 0
+	})
+	e.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int {
+		c.Redraw(false)
+		return 0
+	})
+	e.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int {
+		// 输入框形态的弹层不激活(activate=false), 没有自己的失焦关闭信号 ——
+		// 关层由触发区输入框失焦驱动: 点窗口内其它控件 / 切到别的应用都走这里。
+		if c.IsOpen() {
+			c.Close()
+		}
+		c.Redraw(false)
+		return 0
+	})
+	e.AddEvent_MouseMove(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		c.Redraw(false) // 让按钮的暗色悬停底色跟上 Edit 的 hover
+		return 0
+	})
+	e.AddEvent_MouseLeave(func(hEle, hEleStay int, pbHandled *bool) int {
+		c.Redraw(false)
+		return 0
+	})
+	c.Button.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		c.syncInputRect()
+		return 0
+	})
+	// 输入框形态的弹层不激活窗口(否则抢走输入焦点), 收不到"弹层失焦"信号;
+	// 点宿主窗口里触发区以外的位置时手动收起(点弹层自身走不到这里, 它是独立窗口)。
+	if hWnd := xc.XWidget_GetHWINDOW(c.Handle); hWnd > 0 {
+		if w := window.NewByHandle(hWnd); w != nil {
+			w.AddEvent_LButtonDown(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
+				c.closeOnOutsidePress(hWindow, pPt)
+				return 0
+			})
+		}
+	}
+	xui.OnThemeChangeFor(c.Button.Handle, func(t *xui.Theme) {
+		c.applyInputTheme(t)
+		c.Redraw(false)
+	})
+	c.applyInputTheme(xui.Current())
+	c.syncInputRect()
+	c.syncInputText()
+	// 焦点属于输入框: 按钮自身不再进 Tab 顺序, 焦点环按 Edit 的焦点画
+	c.Button.EnableFocus(false)
+	c.Button.EnableSwitchFocus(false)
+}
+
+// syncInputRect 把裸 Edit 摆到触发区文字的位置(左 pl-2.5, 右侧给箭头/清除钮留 30)。
+func (c *Combobox) syncInputRect() {
+	if c == nil || c.inputEdit == nil {
+		return
+	}
+	var rc xc.RECT
+	xc.XEle_GetClientRect(c.Handle, &rc)
+	w, h := rc.Right-rc.Left, rc.Bottom-rc.Top
+	if w <= 0 || h <= 0 {
+		return
+	}
+	left := rc.Left + comboboxInputPadL
+	right := rc.Right - comboboxInputPadR
+	if right-left < 24 {
+		right = left + 24
+	}
+	c.inputEdit.SetRectEx(left, rc.Top, right-left, h, false, xcc.AdjustLayout_No)
+}
+
+// applyInputTheme 把主题字体/文字色/占位符色/插入符色下发给原生 Edit(原生 API 不吃令牌)。
+func (c *Combobox) applyInputTheme(t *xui.Theme) {
+	e := c.inputEdit
+	if e == nil {
+		return
+	}
+	if f := xui.FontHandle(t.FontDefault); f != 0 {
+		e.SetFont(f)
+	}
+	fore, ph := t.Foreground, t.MutedForeground
+	if c.disabled {
+		fore, ph = fore.Mix(t.Card, 0.5), ph.Mix(t.Card, 0.5)
+	}
+	e.SetTextColor(uint32(fore))
+	e.SetDefaultText(c.placeholder)
+	e.SetDefaultTextColor(uint32(ph))
+	e.SetCaretColor(uint32(t.Primary))
+}
+
+// syncInputText 关闭列表后把输入框恢复成"已选标签 / 空", 未提交的过滤词不保留。
+func (c *Combobox) syncInputText() {
+	if c == nil || c.inputEdit == nil {
+		return
+	}
+	text := ""
+	if !c.multiple {
+		if it, ok := c.Selected(); ok {
+			text = selectItemLabel(it)
+		}
+	}
+	if c.inputEdit.GetText() == text {
+		return
+	}
+	c.suppressInput = true
+	c.inputEdit.SetText(text)
+	// 原生 Edit 也不自动刷新(与其它元素一致): SetText 后补 Redraw, 聚焦态光标用 MoveEnd 归位
+	c.inputEdit.MoveEnd()
+	c.inputEdit.Redraw(false)
+	c.suppressInput = false
+}
+
+// selectAllInput 全选输入框文字: 点开列表后直接打字是替换已选标签, 不会拼在标签后面。
+// 推迟到下一轮消息 —— 鼠标按下的原生选区落在事件之后, 同步 SelectAll 会被覆盖。
+func (c *Combobox) selectAllInput() {
+	if c == nil || c.inputEdit == nil {
+		return
+	}
+	app.AfterFunc(0, func() {
+		if c.inputEdit != nil && xc.XC_IsHXCGUI(c.inputEdit.Handle, xcc.XC_ELE) {
+			c.inputEdit.SelectAll()
+		}
+	})
+}
+
+// closeOnOutsidePress 在宿主窗口按下鼠标时收起输入框形态的弹层(点在触发区上不算)。
+func (c *Combobox) closeOnOutsidePress(hWindow int, pt *xc.POINT) {
+	if c == nil || pt == nil || !c.IsOpen() || c.inputEdit == nil {
+		return
+	}
+	if !xc.XC_IsHXCGUI(c.Handle, xcc.XC_ELE) || xc.XWidget_GetHWINDOW(c.Handle) != hWindow {
+		return
+	}
+	var rc xc.RECT
+	xc.XEle_GetWndClientRect(c.Handle, &rc)
+	if pt.X >= rc.Left && pt.X < rc.Right && pt.Y >= rc.Top && pt.Y < rc.Bottom {
+		return
+	}
+	c.Close()
+}
+
+// onInputChanged 输入框形态: 边打字边过滤; 删空文字即取消选中(上游 inputClear);
+// 列表没开就一起打开(弹层不激活, 焦点一直留在触发区输入框)。
+func (c *Combobox) onInputChanged() {
+	if c == nil || c.inputEdit == nil || c.suppressInput {
+		return
+	}
+	c.query = c.inputEdit.GetText()
+	if strings.TrimSpace(c.query) == "" && len(c.picked) > 0 {
+		c.clearIfInputEmpty()
+	}
+	if !c.IsOpen() {
+		c.showInputPopup()
+	} else {
+		c.applyFilter()
+	}
+}
+
+// clearIfInputEmpty 处理"输入框删空 = 取消选中"(上游 inputClear)。判定推迟到下一轮
+// 消息: 原生 Edit 替换整段选中文字时会先报一次空文本、再报新文本(实测), 立即清值
+// 会把"打字替换已选标签"误判成用户删空; 下一轮再看仍是空, 才是真的删空。
+func (c *Combobox) clearIfInputEmpty() {
+	if c == nil || c.inputEdit == nil || c.emptyPending {
+		return
+	}
+	c.emptyPending = true
+	app.AfterFunc(0, func() {
+		if c == nil {
+			return
+		}
+		c.emptyPending = false
+		if c.inputEdit == nil || c.suppressInput || !xc.XC_IsHXCGUI(c.inputEdit.Handle, xcc.XC_ELE) {
+			return
+		}
+		if len(c.picked) == 0 || strings.TrimSpace(c.inputEdit.GetText()) != "" {
+			return
+		}
+		c.clearPicked()
+		c.applyFilter() // 选中值没了, 高亮回落到第一条(不再停在刚清掉的那项)
+	})
+}
+
+// onInputKeyDown 输入框形态的键盘: 列表开着时 ↑/↓ 移动、Enter 选中、ESC 关闭;
+// 列表没开时 ↓ 打开; 关闭态的 ESC 清值(上游 base combobox)。
+// Home/End 与退格都不抢 —— 上游输入框里它们是光标/删除操作; "删空文字 = 清值"
+// 由 onInputChanged 处理, 在这里拦退格反而会吃掉原生删除、让 Changed 不触发。
+func (c *Combobox) onInputKeyDown(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
+	switch int(wParam) {
+	case xcc.VK_Down:
+		if c.IsOpen() {
+			c.moveActive(1)
+		} else {
+			c.Open()
+		}
+		*pbHandled = true
+	case xcc.VK_Up:
+		if c.IsOpen() {
+			c.moveActive(-1)
+			*pbHandled = true
+		}
+	case xcc.VK_Enter:
+		if c.IsOpen() {
+			if c.active >= 0 && int(c.active) < len(c.rows) {
+				c.chooseRow(c.rows[c.active])
+			}
+			*pbHandled = true
+		}
+	case xcc.VK_Esc:
+		if c.IsOpen() {
+			c.Close()
+		} else if len(c.picked) > 0 {
+			c.clearPicked()
+		}
+		*pbHandled = true
+	}
+	return 0
 }
 
 // ===== 数据 =====
@@ -310,6 +591,7 @@ func (c *Combobox) SetGroups(groups []SelectGroup) *Combobox {
 	c.syncPicked()
 	c.invalidateTriggerHits()
 	c.Redraw(false)
+	c.syncInputText()
 	return c
 }
 
@@ -381,6 +663,7 @@ func (c *Combobox) SetValue(v string) *Combobox {
 	c.syncPicked()
 	c.invalidateTriggerHits()
 	c.Redraw(false)
+	c.syncInputText()
 	c.refreshRows()
 	return c
 }
@@ -397,6 +680,7 @@ func (c *Combobox) SetValues(vs ...string) *Combobox {
 	c.syncPicked()
 	c.invalidateTriggerHits()
 	c.Redraw(false)
+	c.syncInputText()
 	c.refreshRows()
 	return c
 }
@@ -444,6 +728,13 @@ func (c *Combobox) SetDisabled(v bool) *Combobox {
 	}
 	c.disabled = v
 	c.Enable(!v)
+	if c.inputEdit != nil {
+		c.inputEdit.Enable(!v)
+		// Enable(false) 只挡输入, 点上去 xcgui 仍会给它焦点并显示光标(同 TagInput 的坑)
+		c.inputEdit.EnableFocus(!v)
+		c.inputEdit.EnableSwitchFocus(!v)
+		c.applyInputTheme(xui.Current())
+	}
 	if v && c.panel != nil {
 		c.panel.Hide()
 	}
@@ -475,10 +766,16 @@ func (c *Combobox) FitWidth() *Combobox {
 
 // ===== 弹层 =====
 
-// Open 打开弹层(内容按需构建/重建), 焦点落到搜索框。
+// Open 打开弹层(内容按需构建/重建)。按钮触发形态: 焦点落到弹层搜索框, 每次从空搜索词
+// 开始; 输入框形态: 搜索词清空、已选标签保留在输入框里, 列表显示全量(上游点开即全量,
+// 打字才开始过滤), 焦点留在触发区输入框。
 func (c *Combobox) Open() *Combobox {
 	if c == nil || c.disabled || (c.panel != nil && c.panel.IsOpen()) {
 		return c
+	}
+	if c.input {
+		c.query = ""
+		return c.showInputPopup()
 	}
 	if !c.built {
 		c.build()
@@ -503,12 +800,39 @@ func (c *Combobox) Open() *Combobox {
 	return c
 }
 
+// showInputPopup 是输入框形态的打开路径: 不清输入框文字(那是已选标签或正在输入的内容),
+// 只按当前 query 过滤; 弹层不抢焦点, 键盘继续由触发区输入框接收。
+func (c *Combobox) showInputPopup() *Combobox {
+	if c == nil || c.disabled || c.IsOpen() {
+		return c
+	}
+	if !c.built {
+		c.build()
+	}
+	if c.panel == nil {
+		return c
+	}
+	c.clearActive()
+	x, y := popupPosition(c.Handle, c.panel.cw, c.panel.ch, PopoverSideBottom, PopoverAlignStart, 4)
+	c.panel.ShowAt(c.Handle, x, y)
+	c.updateAnchorSide(y, c.panel.ch)
+	c.applyFilter()
+	return c
+}
+
 // SetQuery 设置搜索词并立即过滤(程序化驱动, 等价于用户在搜索框里输入)。
 func (c *Combobox) SetQuery(q string) *Combobox {
 	if c == nil {
 		return c
 	}
 	c.query = q
+	if c.inputEdit != nil {
+		c.suppressInput = true
+		c.inputEdit.SetText(q)
+		c.inputEdit.MoveEnd()
+		c.inputEdit.Redraw(false)
+		c.suppressInput = false
+	}
 	if c.edit != nil {
 		c.edit.SetText(q)
 	}
@@ -532,13 +856,17 @@ func (c *Combobox) Close() *Combobox {
 		c.clearActive()
 		c.panel.Hide()
 	}
+	if c != nil && c.input {
+		c.syncInputText()
+		c.query = "" // 关闭后输入框显示的是标签, 未提交的过滤词不再算"当前搜索词"
+	}
 	return c
 }
 
 // IsOpen 返回弹层是否打开。
 func (c *Combobox) IsOpen() bool { return c != nil && c.panel != nil && c.panel.IsOpen() }
 
-// build 构建弹层: 搜索行 + 列表 + 空状态。
+// build 构建弹层: 搜索行(可选) + 列表 + 空状态。
 func (c *Combobox) build() {
 	c.built = true
 	if c.panel != nil {
@@ -553,9 +881,11 @@ func (c *Combobox) build() {
 	}
 	// 行还没建, 这里先给一个占位高度; 行建好后 layoutContent 会按实际内容重算。
 	listH := comboboxSearchH
-	ch := comboboxPad*2 + comboboxSearchH + listH
+	ch := comboboxPad*2 + c.headerH() + listH
 
-	panel := newPopoverPanel(cw, ch, c.Handle)
+	// 输入框形态的弹层不能激活窗口: 一激活就把触发区输入框的焦点抢走,
+	// 输入框失焦又会立刻把自己的弹层关掉(光标消失 + 列表闪一下)。
+	panel := newPopoverPanelEx(cw, ch, c.Handle, false, !c.input)
 	if panel == nil {
 		return
 	}
@@ -579,8 +909,11 @@ func (c *Combobox) build() {
 	root.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ch)
 	c.stack = root
 
-	// ---- 搜索行 ----
-	row := widget.NewLayoutEle(0, 0, 0, comboboxSearchH, root.Handle)
+	// ---- 搜索行(输入框形态没有: 输入就在触发区) ----
+	var row *widget.LayoutEle
+	if !c.input {
+		row = widget.NewLayoutEle(0, 0, 0, comboboxSearchH, root.Handle)
+	}
 	if row != nil {
 		row.EnableHorizon(true)
 		row.EnableLayout(true)
@@ -737,7 +1070,7 @@ func (c *Combobox) layoutContent() {
 	listH := c.viewHeight()
 	c.scroll.SetHeight(listH)
 	c.scroll.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, listH)
-	ch := comboboxPad*2 + comboboxSearchH + listH
+	ch := comboboxPad*2 + c.headerH() + listH
 	if c.stack != nil {
 		c.stack.SetHeight(ch)
 		c.stack.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, ch)
@@ -962,9 +1295,21 @@ func (c *Combobox) chooseRow(r *comboboxRow) {
 	}
 	c.notify()
 	if !c.multiple {
+		if c.input {
+			c.syncInputText() // 输入框形态回填标签, 不等弹层淡出
+		}
 		c.Close()
-		c.SetFocus()
+		c.focusTrigger()
 	}
+}
+
+// focusTrigger 把焦点还给触发区: 输入框形态给裸 Edit, 按钮形态给按钮自身。
+func (c *Combobox) focusTrigger() {
+	if c.input && c.inputEdit != nil {
+		c.inputEdit.SetFocus()
+		return
+	}
+	c.SetFocus()
 }
 
 // notify 触发 OnChange(按数据顺序回传全部选中条目)。
@@ -987,6 +1332,7 @@ func (c *Combobox) removePicked(v string) {
 	c.hoverChip = -1
 	c.invalidateTriggerHits()
 	c.Redraw(false)
+	c.syncInputText()
 	c.refreshRows()
 	c.notify()
 }
@@ -1000,6 +1346,7 @@ func (c *Combobox) clearPicked() {
 	c.hoverChip = -1
 	c.invalidateTriggerHits()
 	c.Redraw(false)
+	c.syncInputText()
 	c.refreshRows()
 	c.notify()
 }
@@ -1079,6 +1426,14 @@ func (c *Combobox) applyFilter() {
 	c.setActive(c.initialActive(), false)
 }
 
+// headerH 是弹层顶部搜索行占的高度: 输入框形态没有搜索行(输入在触发区)。
+func (c *Combobox) headerH() int32 {
+	if c.input {
+		return 0
+	}
+	return comboboxSearchH
+}
+
 // viewHeight 列表可视高度: 可见行总高, 上限 comboboxMaxList。
 func (c *Combobox) viewHeight() int32 {
 	h := int32(0)
@@ -1110,7 +1465,7 @@ func (c *Combobox) resizePopup() {
 	listH := c.viewHeight()
 	c.scroll.SetHeight(listH)
 	c.scroll.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, listH)
-	ch := comboboxPad*2 + comboboxSearchH + listH
+	ch := comboboxPad*2 + c.headerH() + listH
 	if c.panel.ch == ch {
 		if c.stack != nil {
 			c.stack.AdjustLayout()
@@ -1186,6 +1541,14 @@ func (c *Combobox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	*pbHandled = true
 	t := xui.Current()
 	st := xui.StateOf(hEle)
+	if c.input && c.inputEdit != nil {
+		// 输入框叠在按钮上层, 焦点/悬停/按下都发生在 Edit 上; 焦点环按 Edit 的焦点画
+		// (shadcn 的 Input 是 :focus-visible, 文本输入框任何聚焦都算).
+		es := xui.StateOf(c.inputEdit.Handle)
+		st.Focused = es.Focused
+		st.Hover = st.Hover || es.Hover
+		st.Pressed = st.Pressed || es.Pressed
+	}
 
 	bg, border := t.Card, t.Input
 	if st.Disabled {
@@ -1218,7 +1581,7 @@ func (c *Combobox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
 			p.StrokeRoundCorners(&inner, borderColor, corners.Inset(inset), 1)
 		}
-	case st.Focused && !st.Disabled && xui.FocusedByKeyboard():
+	case st.Focused && !st.Disabled && (c.input || xui.FocusedByKeyboard()):
 		p.FocusFrameCorners(t.Ring, bg, corners)
 	default:
 		p.FillRoundCorners(&p.Rc, bg, corners)
@@ -1236,7 +1599,8 @@ func (c *Combobox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		c.chipHits = c.layoutChips(t, p.Rc, picked)
 		c.hitsW, c.hitsH = p.W(), p.H()
 		c.paintChips(p, t, hEle, bg, fore, st.Disabled)
-	} else {
+	} else if !c.input {
+		// 输入框形态的文字/占位符由原生 Edit 画在上层, 这里再画就是双份(会发虚)。
 		c.chipHits = nil
 		text := c.triggerText()
 		if text == "" {
@@ -1252,9 +1616,9 @@ func (c *Combobox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		if text != "" {
 			dy := textVDy(text)
 			rc := xc.RECTF{
-				Left:   float32(p.Rc.Left + 10), // pl-2.5
+				Left:   float32(p.Rc.Left + comboboxInputPadL), // pl-2.5
 				Top:    float32(p.Rc.Top) - dy,
-				Right:  float32(p.Rc.Right - 30),
+				Right:  float32(p.Rc.Right - comboboxInputPadR),
 				Bottom: float32(p.Rc.Bottom) - dy,
 			}
 			p.TextF(text, &rc, fore, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
