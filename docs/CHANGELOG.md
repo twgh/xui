@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **本地 shadcn 参照项目切到 base-nova**(2026-11-14, 参照策略调整):
+  - **动因**: 上游新组件(combobox / questionnaire / message-scroller)三种变体已齐发, 且 radix 变体在 Radix 缺原语时同样直接用 `@base-ui/react` / `@shadcn/react`; 参照项目留在 `radix-nova` 会让"本地唯一权威"与 base 文档混用。视觉令牌两边同源(nova), 切换只换无头原语, 既有 xui 组件不做复核。
+  - **改动**: `D:\GOProject\src\ui\shadcn` 的 `components.json` 改 `base-nova`; 39 个已装组件按 base 重装(`@base-ui/react` 进依赖), 并补装 `combobox` / `questionnaire` / `message-scroller`(`@shadcn/react`)。App.tsx 迁移: 17 处 `asChild` → `render={<Button/>}`; Tabs `forceMount` → `keepMounted`(不再需要 `data-[state=inactive]:hidden`); Accordion `type="single|multiple"` + 字符串 `defaultValue` → `multiple` + 数组; Slider `onValueChange` 收窄 `number | readonly number[]`; Collapsible 箭头 `group-data-[state=open]` → `group-data-[panel-open]`; scroll-area 生成文件的未用 React 导入删除。
+  - **验证**: `pnpm build` 通过; headless Chrome 截图 base / 表单 / 反馈三页渲染正常(按钮、输入组下拉、Select、手风琴、触发器均正常)。切换前的 radix 版本留在该目录的 git 历史(`dc71d82`, 切换提交 `5e54b35`)。
+  - **边界**: DESIGN 各组件参考列里的 `radix-nova` 是旧批次的历史出处, 不据此回改; AGENTS / HANDOFF 已写明"新组件/新交互一律对照 base"。
+
 - ✅ **Combobox 对齐上游 base 新增细节: chips / 清除钮 / autoHighlight**(2026-11-14, 参 shadcn base combobox 文档):
   - **chips 多选**: `WithComboboxChips`(需配 `WithComboboxMultiple`)把触发区从"首个值 +N"换成 chips —— 几何对齐 base-nova(`bg-muted` / 高 21 / `text-xs` 12 / `rounded-sm` / `px-1.5`, 容器 gap 4、有 chip 时左右内距 4);每枚右侧 × 单独移除(× 半透明, 悬停过渡到全色),搜索框为空时退格删末尾;上游容器是多行换行、触发区会长高,本库触发区高度固定(布局链 32/28),放不下的合并成 `+N` 标记(标记不可移除, 点击照常开弹层)。
   - **清除钮**: `WithComboboxClear` —— 有选中值时在触发区右侧画 X(ghost 按钮的 hover 底 + 图标提亮),并像上游一样**隐藏下拉箭头**;点击清空全部选中值并触发 `OnChange`(单选/多选都生效);无值时仍显示箭头。命中块与 chip × 都在触发区 `LButtonUp` 里优先于"打开弹层"处理。
