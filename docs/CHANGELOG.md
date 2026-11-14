@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复: 改文字/改尺寸后的残影 + 头像圆形边缘发毛**(2026-11-14, 用户反馈截图):
+  - **残影(按钮文字变短、头像 lg→sm 后旧图还在)**: `cx=0` 的原生 Button / Label 在 `SetText` 里会按新文字自撑宽度、元素当场缩小, 而尺寸变化的刷新只重绘"新旧元素矩形的并集"; 同一行里的兄弟还会跟着平移(头像缩小 → 右侧按钮整体左移), 它们腾出的旧位置不在并集里; 实测 `XWnd_RedrawRect`(逻辑坐标 / 设备坐标 / 立即 / 延迟都试过)在这类透明布局壳上擦不掉残影。**修法**: 尺寸或文字变化前后各取一次元素矩形, **矩形真的变了就 `XWnd_Redraw(hwnd, true)` 整窗重绘一次**, 没变就什么都不做(定宽槽里的标签改文字是高频操作, 不值得每次整窗刷新); `SetText` / `FitWidth` / 换图标 / 换加载态 / 切尺寸档统一走 `reflowAfterResize` 与 `repaintTextBounds` 两个 helper, 不再各自 `SetWidth + Redraw`。踩坑记入第八节 204, 并回注 200 的"后续修正"。
+  - **头像边缘发毛**: 圆形蒙版原来按 4× 逻辑尺寸生成(n = 直径×4, 至少 96), 绘制时被框架下采样一次, 1px 的抗锯齿边缘被抹掉 → 圆边出现硬台阶(大尺寸档最明显)。**修法**: 按窗口 DPI 生成**物理像素**尺寸的位图(逻辑直径 × DPI, 用 `XWidget_GetHWINDOW` + `XWnd_GetDPI` 取 DPI, 取不到按 96), 与目标 1:1 绘制, AA 边缘落在设备像素上。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; demo 基础2 连点"循环改尺寸"(lg → default → sm)每次截图旧药丸与旧头像都不残留, 头像圆边放大 6× 无硬台阶; 基础1 运行时尺寸按钮(固定行)与表单页计数标签同样干净; 亮/暗与 150% DPI 一致。
+  - **登记**: 无新增文件、无 `registry.json` 改动; `runtime` / `cliChange` 不动(未打 tag)。
+
 - ✅ **Avatar 可交互 `WithAvatarInteractive`(作弹层触发区)**(2026-11-14, 台账 AV3):
   - **组件**: 头像默认是纯展示(不接焦点、不进 Tab); 新增 `WithAvatarInteractive()` / `SetInteractive(bool)` 打开焦点与 Tab, 配合已有的 `NewPopover(avatar.Handle)` / `Menu.PopupAtElementRect` 即成"点头像弹资料卡"(上游把 Avatar 放进 DropdownMenuTrigger 的写法)。普通元素的触发区在 Popover 侧已补 Enter/空格开合, 键盘可达。
   - **焦点环为什么画在内侧**: 头像元素尺寸就是直径, 没有像 Switch 那样"元素比可见形状大 3px"的余量, 外扩会画到父容器上; 所以交互态获焦时先用 Ring 色铺满圆、再把内容内缩 2px, 留出一圈内描边(仅键盘焦点可见, 鼠标点击不画)。

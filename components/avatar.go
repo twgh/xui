@@ -263,10 +263,6 @@ func (a *Avatar) SetSize(s AvatarSize) *Avatar {
 	d := s.px()
 	var old xc.RECT
 	xc.XEle_GetWndClientRect(a.Handle, &old)
-	var pw, ph int32
-	if p := xc.XWidget_GetParentEle(a.Handle); p != 0 {
-		pw, ph = xc.XEle_GetWidth(p), xc.XEle_GetHeight(p)
-	}
 	a.size = s
 	// 元素矩形与布局项一起改: 只改矩形的话父级下一次布局会按旧的布局项把尺寸压回去
 	a.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, d)
@@ -276,7 +272,7 @@ func (a *Avatar) SetSize(s AvatarSize) *Avatar {
 	// 圆形图片按元素宽度生成, 直径变了必须重建(否则缩放糊边)
 	a.releaseImage()
 	a.syncImage()
-	reflowAfterResize(a.Handle, old, pw, ph)
+	reflowAfterResize(a.Handle, old)
 	a.Redraw(true)
 	return a
 }
@@ -322,7 +318,7 @@ func (a *Avatar) syncImage() {
 	if img == nil {
 		return
 	}
-	a.imgHandle = avatarImageHandle(img, a.GetWidth())
+	a.imgHandle = avatarImageHandle(img, a.GetWidth(), avatarDPI(a.Handle))
 }
 
 func (a *Avatar) releaseImage() {
@@ -549,15 +545,32 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
+// avatarDPI 取元素所属窗口的 DPI(取不到按 96)。
+//
+// 每个头像元素自己生成一份圆形位图, 位图按**物理像素**尺寸生成: 框架把逻辑坐标映射到
+// 设备像素绘制图片, 按物理尺寸生成时位图与目标 1:1, 抗锯齿的 1px 边缘才不会被再缩放一次
+// (按 2×/4× 逻辑尺寸生成时, 下采样会把那一圈 AA 抹掉, 边缘变成硬台阶 —— 实测)。
+func avatarDPI(hEle int) int32 {
+	if hwnd := xc.XWidget_GetHWINDOW(hEle); hwnd != 0 {
+		if dpi := xc.XWnd_GetDPI(hwnd); dpi > 0 {
+			return dpi
+		}
+	}
+	return 96
+}
+
 // avatarImageHandle 把任意图片居中裁剪成圆形 RGBA, 交给 xcgui 生成图片句柄。
-// n 取 4 倍逻辑尺寸(至少 96), 保证高 DPI 下边缘平滑。
-func avatarImageHandle(img image.Image, logical int32) int {
+// 边长 n 按物理像素算(逻辑直径 × DPI), 保证边缘 AA 落在设备像素上。
+func avatarImageHandle(img image.Image, logical, dpi int32) int {
 	if img == nil {
 		return 0
 	}
-	n := int(logical) * 4
-	if n < 96 {
-		n = 96
+	if dpi <= 0 {
+		dpi = 96
+	}
+	n := int(float64(logical)*float64(dpi)/96 + 0.5)
+	if n < 24 {
+		n = 24
 	}
 	src := img.Bounds()
 	sw, sh := float64(src.Dx()), float64(src.Dy())

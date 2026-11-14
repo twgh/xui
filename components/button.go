@@ -297,10 +297,6 @@ func (b *Button) SetSize(s ButtonSize) *Button {
 	}
 	var oldRect xc.RECT
 	xc.XEle_GetWndClientRect(b.Handle, &oldRect)
-	var parentW, parentH int32
-	if p := xc.XWidget_GetParentEle(b.Handle); p != 0 {
-		parentW, parentH = xc.XEle_GetWidth(p), xc.XEle_GetHeight(p)
-	}
 	b.size = s
 	sp := buttonSpecs[s]
 	b.SetHeight(sp.height + pressShift)
@@ -309,7 +305,7 @@ func (b *Button) SetSize(s ButtonSize) *Button {
 	} else if b.autoWidth {
 		b.SetWidth(b.naturalWidth(xui.Current()))
 	}
-	reflowAfterResize(b.Handle, oldRect, parentW, parentH)
+	reflowAfterResize(b.Handle, oldRect)
 	b.Redraw(false)
 	return b
 }
@@ -436,13 +432,37 @@ func (b *Button) naturalWidth(t *xui.Theme) int32 {
 	return padL + content + padR
 }
 
+// SetText 改按钮文字。
+//
+// 覆盖原生实现: cx=0(自适应宽)的按钮在原生 `SetText` 里会**立刻**按新文字自撑宽度,
+// 文字变短就当场缩小 —— 只重绘新矩形会留下旧宽度的一截底色, 同一行的兄弟还会跟着平移
+// (见 DESIGN 第八节 204)。这里按新文字重量一次宽度并沿父链重排, 矩形真的变了就整窗重绘。
+func (b *Button) SetText(s string) *Button {
+	if b == nil {
+		return b
+	}
+	var oldRc xc.RECT
+	xc.XEle_GetWndClientRect(b.Handle, &oldRc)
+	b.Button.SetText(s)
+	if b.autoWidth {
+		b.SetWidth(b.naturalWidth(xui.Current()))
+		reflowAfterResize(b.Handle, oldRc)
+		return b
+	}
+	repaintUnionWith(b.Handle, oldRc) // 定宽按钮: 原生也可能改过矩形, 补一次重绘
+	b.Redraw(false)
+	return b
+}
+
 // FitWidth 按当前文字/图标重新量宽(仅 cx 传 0 创建的按钮)。主题换了字体族后可手动调用。
 func (b *Button) FitWidth() *Button {
 	if !b.autoWidth {
 		return b
 	}
+	var oldRc xc.RECT
+	xc.XEle_GetWndClientRect(b.Handle, &oldRc)
 	b.SetWidth(b.naturalWidth(xui.Current()))
-	b.Redraw(false)
+	reflowAfterResize(b.Handle, oldRc)
 	return b
 }
 
@@ -506,9 +526,7 @@ func (b *Button) SetLoading(v bool) *Button {
 	if !v {
 		xui.Spin(b.Handle, false) // 停掉运行时的旋转定时器(不等下一帧绘制)
 	}
-	if b.autoWidth {
-		b.SetWidth(b.naturalWidth(xui.Current()))
-	}
+	b.FitWidth() // 自适应宽按钮重量宽; 矩形变了就整窗重绘(缩小会留残影, 见第八节 204)
 	b.Redraw(false)
 	return b
 }
@@ -522,9 +540,7 @@ func (b *Button) SetLoadingAtEnd(v bool) *Button {
 		return b
 	}
 	b.loadingAtEnd = v
-	if b.autoWidth {
-		b.SetWidth(b.naturalWidth(xui.Current()))
-	}
+	b.FitWidth() // 自适应宽按钮重量宽; 矩形变了就整窗重绘(缩小会留残影, 见第八节 204)
 	b.Redraw(false)
 	return b
 }
@@ -535,9 +551,7 @@ func (b *Button) SetLoadingIcon(path string) *Button {
 		return b
 	}
 	b.loadingIcon = path
-	if b.autoWidth {
-		b.SetWidth(b.naturalWidth(xui.Current()))
-	}
+	b.FitWidth() // 自适应宽按钮重量宽; 矩形变了就整窗重绘(缩小会留残影, 见第八节 204)
 	b.Redraw(false)
 	return b
 }
@@ -576,9 +590,7 @@ func (b *Button) slotIcons() (lead, trail string) {
 // icons.IconSun / icons.IconMoon)。
 func (b *Button) SetIcon(path string) *Button {
 	b.icon = path
-	if b.autoWidth {
-		b.SetWidth(b.naturalWidth(xui.Current()))
-	}
+	b.FitWidth() // 自适应宽按钮重量宽; 矩形变了就整窗重绘(缩小会留残影, 见第八节 204)
 	b.Redraw(false)
 	return b
 }

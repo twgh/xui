@@ -96,9 +96,9 @@ func groupCorners(hEle int, radius int32) xui.Corners {
 // 与 Label 的折行重排同口径(reflowAfterTextHeight), 放在 group.go 是因为
 // button.go 依赖本文件、但不应额外依赖 label.go。
 //
-// oldRc / parentW / parentH 是尺寸变化前的元素矩形与直接父级尺寸: 重排后据此
-// 决定重绘范围(见 repaintResize)。
-func reflowAfterResize(hEle int, oldRc xc.RECT, parentW, parentH int32) {
+// oldRc 是尺寸变化前的元素矩形: 重排后据此判断矩形是否真的变了, 变了就整窗重绘
+// (见 repaintResize)。
+func reflowAfterResize(hEle int, oldRc xc.RECT) {
 	if hEle == 0 || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
 		return
 	}
@@ -121,20 +121,50 @@ func reflowAfterResize(hEle int, oldRc xc.RECT, parentW, parentH int32) {
 		}
 		break
 	}
-	repaintResize(hEle, oldRc, parentW, parentH)
+	repaintResize(hEle, oldRc)
 }
 
 // repaintResize 重绘尺寸变化影响的区域。
 //
-// 元素变小后, 新矩形之外的旧像素不会被元素自身的 Redraw 覆盖(自绘底色会留下
-// 大号尺寸的残影, 见 DESIGN 第八节 200)。最小代价是只重绘新旧矩形的并集:
-//   - 直接父级尺寸没变 → 元素仍占同一个布局槽, 兄弟不会被顶动, 只刷新这块矩形;
-//   - 父级尺寸变了(Auto 高的行/卡片) → 下面的兄弟可能整体移动, 它们腾出的旧位置
-//     不在元素矩形内, 无法安全枚举, 才退回整窗重绘。
+// 元素变小后, 新矩形之外的旧像素不会被元素自身的 Redraw 覆盖(自绘底色会留下大号尺寸的
+// 残影, 见 DESIGN 第八节 200)。而且"尺寸变了"从不只是自己的事: 同一行/列里的兄弟会跟着
+// 平移, 它们腾出的旧位置也不在新旧元素的矩形内(实测: 行内头像缩小时右侧按钮整体左移,
+// 只重绘并集会在按钮原位置留下半截药丸)。所以尺寸真的变了就整窗重绘一次。
 //
-// 不要只重绘父元素: 布局壳( LayoutEle )通常是透明的, 自己什么也不画, 擦不掉
-// 旧像素; 真正需要刷新的是窗口表面。
-func repaintResize(hEle int, oldRc xc.RECT, parentW, parentH int32) {
+// 不要只重绘父元素: 布局壳(LayoutEle)通常是透明的, 自己什么也不画, 擦不掉旧像素;
+// 真正需要刷新的是窗口表面。尺寸变化都是用户动作触发的(切换尺寸档 / 改文字 / 换图标),
+// 不是每帧路径, 整窗重绘的代价可以接受。
+func repaintResize(hEle int, oldRc xc.RECT) {
+	repaintUnionWith(hEle, oldRc)
+}
+
+// repaintTextBounds 在改文字前后各取一次元素矩形, 矩形变了就补一次重绘。
+//
+// 原生控件(cx=0 的 Button / Label)在 `SetText` 时会按新文字自撑宽度: 文字变短, 元素当场
+// 缩小(与第八节 200 的缩小残影同源, 触发源是文字而不是尺寸档)。矩形没变就不重绘 —— 定宽
+// 布局槽里的标签改文字是高频操作, 每次都整窗重绘没有必要。
+func repaintTextBounds(hEle int, change func()) {
+	if hEle == 0 || change == nil {
+		return
+	}
+	var oldRc xc.RECT
+	xc.XEle_GetWndClientRect(hEle, &oldRc)
+	change()
+	repaintUnionWith(hEle, oldRc)
+}
+
+// repaintUnionWith 元素矩形变了就整窗重绘一次(见 repaintResize 的说明: 兄弟也会移动,
+// 只刷新旧矩形并集擦不干净)。
+func repaintUnionWith(hEle int, oldRc xc.RECT) {
+	if hEle == 0 {
+		return
+	}
+	var newRc xc.RECT
+	xc.XEle_GetWndClientRect(hEle, &newRc)
+	if oldRc.Left == newRc.Left && oldRc.Top == newRc.Top &&
+		oldRc.Right == newRc.Right && oldRc.Bottom == newRc.Bottom {
+		return
+	}
 	hwnd := xc.XWidget_GetHWND(hEle)
 	if hwnd == 0 {
 		return
@@ -143,21 +173,7 @@ func repaintResize(hEle int, oldRc xc.RECT, parentW, parentH int32) {
 	if hw == 0 {
 		return
 	}
-	if p := xc.XWidget_GetParentEle(hEle); p != 0 {
-		if xc.XEle_GetWidth(p) != parentW || xc.XEle_GetHeight(p) != parentH {
-			xc.XWnd_Redraw(hw, false)
-			return
-		}
-	}
-	var newRc xc.RECT
-	xc.XEle_GetWndClientRect(hEle, &newRc)
-	rc := xc.RECT{
-		Left:   minInt32(oldRc.Left, newRc.Left) - 2,
-		Top:    minInt32(oldRc.Top, newRc.Top) - 2,
-		Right:  maxInt32(oldRc.Right, newRc.Right) + 2,
-		Bottom: maxInt32(oldRc.Bottom, newRc.Bottom) + 2,
-	}
-	xc.XWnd_RedrawRect(hw, &rc, false)
+	xc.XWnd_Redraw(hw, true)
 }
 
 func minInt32(a, b int32) int32 {

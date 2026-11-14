@@ -235,8 +235,12 @@ func (l *Label) SetAutoWrap() *Label {
 
 // SetText 更新文本。开启 SetAutoWrap 后会重新量高; 返回值保持原生 Button 的签名,
 // 不影响现有链式调用。
+//
+// 原生按钮在 cx=0(自适应宽)时会按新文字自撑宽度, 文字变短当场缩小 —— 只重绘新矩形会把
+// 旧宽度的那一截留在画布上(同第八节 200 的缩小残影), 所以这里重绘"新旧矩形并集"。
 func (l *Label) SetText(name string) *widget.Button {
-	b := l.Button.SetText(name)
+	var b *widget.Button
+	repaintTextBounds(l.Handle, func() { b = l.Button.SetText(name) })
 	if l.autoWrap {
 		l.wrapW = -1
 		l.scheduleAutoWrap()
