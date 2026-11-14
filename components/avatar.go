@@ -285,6 +285,8 @@ func (a *Avatar) SetInteractive(on bool) *Avatar {
 	a.interactive = on
 	xc.XEle_EnableFocus(a.Handle, on)
 	xc.XEle_EnableSwitchFocus(a.Handle, on)
+	// 可交互头像要给焦点环让出 2px, 圆半径变了 → 位图重建
+	a.syncImage()
 	a.Redraw(true)
 	return a
 }
@@ -295,6 +297,8 @@ func (a *Avatar) SetRing(on bool) *Avatar {
 		return a
 	}
 	a.ring = on
+	// 环带宽度变了 → 圆半径变, 位图要重建(否则圆边会被环带压住一截)
+	a.syncImage()
 	a.Redraw(true)
 	return a
 }
@@ -318,7 +322,21 @@ func (a *Avatar) syncImage() {
 	if img == nil {
 		return
 	}
-	a.imgHandle = avatarImageHandle(img, a.GetWidth(), avatarDPI(a.Handle))
+	a.imgHandle = avatarImageHandle(img, a.GetWidth(), avatarDPI(a.Handle), a.circleInset())
+}
+
+// circleInset 返回照片位图要让出的环带宽度(逻辑像素): 画色环或需要画焦点环时为 2。
+//
+// 位图按**整块元素**的物理尺寸生成, 圆半径再扣掉这条环带 —— 于是"位图尺寸 == 元素尺寸",
+// 绘制时按元素矩形 1:1 铺满, 不存在框架二次缩放/裁切, 圆边永远是圆的。
+func (a *Avatar) circleInset() int32 {
+	if a == nil {
+		return 0
+	}
+	if a.ring || a.interactive {
+		return 2
+	}
+	return 0
 }
 
 func (a *Avatar) releaseImage() {
@@ -338,23 +356,27 @@ func (a *Avatar) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	rc := p.Rc
 	elemW := rc.Right - rc.Left
-	// 可交互头像的键盘焦点环: 画在圆内侧 2px(元素尺寸就是直径, 环带没有外侧空间;
-	// 与 Switch 那种"元素比可见形状大 3px"的做法不同, 这里改成内描边)
-	if a.interactive && xui.StateOf(hEle).Focused {
-		p.Draw.SetBrushColor(uint32(t.Ring))
+	// 环带(色环 / 键盘焦点环)统一画在**整块元素**的圆里, 照片的位图自带 inset 透明边,
+	// 让出这圈宽度。不要把照片画进内缩后的矩形: 位图的像素尺寸就是元素尺寸, 传一个更小的
+	// 目标矩形时框架不保证按比例缩放, 实测照片会溢出到元素右下角、圆边被切成直角。
+	focused := a.interactive && xui.StateOf(hEle).Focused
+	if band := a.circleInset(); band > 0 && (a.ring || focused) {
+		c := t.Background
+		if focused {
+			c = t.Ring
+		}
+		p.Draw.SetBrushColor(uint32(c))
 		p.Draw.FillEllipse(&rc)
-		rc = insetRect(rc, 2)
-	}
-	if a.ring {
-		// ring-2 ring-background: 画在头像内侧, 避免子元素被父矩形裁掉
-		p.Draw.SetBrushColor(uint32(t.Background))
-		p.Draw.FillEllipse(&rc)
-		rc = insetRect(rc, 2)
 	}
 
 	if a.imgHandle != 0 {
 		p.Draw.XDraw_ImageEx(a.imgHandle, rc.Left, rc.Top, rc.Right-rc.Left, rc.Bottom-rc.Top)
 	} else {
+		if band := a.circleInset(); band > 0 {
+			if a.ring || focused {
+				rc = insetRect(rc, band)
+			}
+		}
 		p.Draw.SetBrushColor(uint32(t.Muted))
 		p.Draw.FillEllipse(&rc)
 		if a.icon != "" {
@@ -405,14 +427,15 @@ func (a *Avatar) paintBadge(p *xui.Painter, t *xui.Theme) {
 	}
 	ring := int32(2)
 	outer := d + ring*2
-	// 徽标整体向内缩 ring: 头像的可见形状是圆, 元素矩形却是方的。徽标盒贴到元素右下角时,
+	// 徽标整体向内缩 circleInset: 头像的可见形状是圆, 元素矩形却是方的。徽标盒贴到元素右下角时,
 	// 盒角落在圆外 → 白色的"环"会和卡片底色连成一片, 圆边被吃掉一块(看起来右下角是方的)。
-	// 内缩 ring 后整个盒(含环)都落在圆内, 圆轮廓始终完整。
+	// 内缩后整个盒(含环)都落在圆内, 圆轮廓始终完整。
+	band := a.circleInset()
 	badge := xc.RECT{
-		Left:   p.Rc.Right - outer - ring,
-		Top:    p.Rc.Bottom - outer - ring,
-		Right:  p.Rc.Right - ring,
-		Bottom: p.Rc.Bottom - ring,
+		Left:   p.Rc.Right - outer - band,
+		Top:    p.Rc.Bottom - outer - band,
+		Right:  p.Rc.Right - band,
+		Bottom: p.Rc.Bottom - band,
 	}
 	p.Draw.SetBrushColor(uint32(t.Background))
 	p.Draw.FillEllipse(&badge)
@@ -563,8 +586,11 @@ func avatarDPI(hEle int) int32 {
 }
 
 // avatarImageHandle 把任意图片居中裁剪成圆形 RGBA, 交给 xcgui 生成图片句柄。
-// 边长 n 按物理像素算(逻辑直径 × DPI), 保证边缘 AA 落在设备像素上。
-func avatarImageHandle(img image.Image, logical, dpi int32) int {
+//
+// 位图边长 n = 逻辑直径 × DPI(物理像素), 与元素的物理尺寸一致: 绘制时按元素矩形铺满就是
+// 1:1 映射, 既不会因下采样丢掉 1px 抗锯齿边, 也不会因缩放把圆边切平。inset 是环带宽度
+// (逻辑像素), 圆半径扣掉它, 让出的透明边由调用方在下面铺环带色。
+func avatarImageHandle(img image.Image, logical, dpi, inset int32) int {
 	if img == nil {
 		return 0
 	}
@@ -586,7 +612,11 @@ func avatarImageHandle(img image.Image, logical, dpi int32) int {
 	oy := float64(src.Min.Y) + (sh-side)/2
 	scale := side / float64(n)
 	cx, cy := float64(n)/2, float64(n)/2
-	radius := float64(n)/2 - 0.5
+	band := float64(inset) * float64(dpi) / 96 // 环带换算成物理像素
+	radius := float64(n)/2 - band - 0.5
+	if radius < 4 {
+		radius = 4
+	}
 
 	data := make([]byte, n*n*4)
 	for y := 0; y < n; y++ {
