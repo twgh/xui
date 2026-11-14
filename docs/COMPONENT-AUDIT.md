@@ -1,0 +1,401 @@
+# COMPONENT-AUDIT — shadcn 组件特性核查台账
+
+> **用途**:按组件常用性依次核查「还有哪些上游特性未实现、但 xcgui 侧可实现」,记录进度与结论,供后续逐批实现时取用。本文是仓库内部台账,**不随 `xui init` 下发**,不写设计原理(见 DESIGN.md)与完成记录(见 CHANGELOG.md)。
+>
+> **依据优先级**:① 官方索引页 https://ui.shadcn.com/docs/components 与各组件 `base/` 文档页(示例 / 变体 / 状态);② 文档 API Reference 指向的 Base UI 上游文档(如 Select Root props);③ 本地参照实现 `D:\GOProject\src\ui\shadcn\src\components\ui\*.tsx`(交互语义唯一权威);④ 本库 `components/*.go`、`registry.json`、`DESIGN.md` 第四节末语义表与第七节差异表。
+>
+> **排除项(不计入「可实现」)**:
+> - **RTL / 方向性**:用户明确不做。官方几乎每个组件页都有 RTL 示例,本台账一律不列(范围决策见 DESIGN 第七节 Direction / Calendar 条目)。
+> - **已记为 xcgui 能力边界的差异**:DESIGN 第七节里「改组件代码也补不上」的条目(原生 Edit 文字/光标/IME、圆角裁剪、Tab 焦点链、弹层 zoom/slide 等)不算可实现项。第七节里标注「后续有需求再加」「暂不提供」的,属于本台账要列的项。
+>
+> **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
+>
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#18(#1 / #3 / #5 的补齐已落地,其余 15 个出清单待确认),**下一轮从 #19 Popover 起**。
+
+## 一、按常用性排序的总表
+
+| # | 官方组件 | 本库 key / 实现 | 状态 | 备注 |
+|---:|---|---|---|---|
+| 1 | Button | `button` | 已核查 | 补齐清单已实现,见 `3342cad` |
+| 2 | Input | `input` | 已核查 | 结论见第三节;8 项可实现,清单待确认 |
+| 3 | Checkbox | `checkbox` | 已核查 | 补齐清单已实现,见 `3342cad` |
+| 4 | Select | `select` | 已核查 | 结论见第四节;9 项可实现,清单待确认 |
+| 5 | Combobox | `combobox` | 已核查 | 三批补齐,见 `23bdfc5` / `725d329` / `7441a77` |
+| 6 | Dialog | `dialog` | 已核查 | 结论见第五节;6 项可实现,清单待确认 |
+| 7 | Card | `card` | 已核查 | 结论见第五节;5 项可实现,含 1 项能力边界重评估 |
+| 8 | Label | `label` | 已核查 | 结论见第五节;4 项可实现 |
+| 9 | Textarea | `textarea` | 已核查 | 结论见第六节;与 Input 同源 + 3 项特有 |
+| 10 | Tabs | `tabs` | 已核查 | 结论见第六节;4 项可实现 |
+| 11 | Switch | `switch` | 已核查 | 结论见第六节;3 项可实现 |
+| 12 | Radio Group | `radio-group` | 已核查 | 结论见第六节;3 项可实现(+1 扩展) |
+| 13 | Dropdown Menu | `menu` | 已核查 | 结论见第六节;5 项可实现;#56 Context Menu 同一实现 |
+| 14 | Tooltip | `tooltip` | 已核查 | 结论见第七节;3 项可实现 |
+| 15 | Badge | `badge` | 已核查 | 结论见第七节;3 项可实现;文件 `separator.go` |
+| 16 | Alert | `alert` | 已核查 | 结论见第七节;2 项可实现 |
+| 17 | Table | `table` | 已核查 | 结论见第七节;3 项可实现 |
+| 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现;官方是组合模式,差异见 DESIGN 第七节 |
+| 19 | Popover | `popover` | 待核查 | 下一轮起点 |
+| 20 | Progress | `progress` | 待核查 | |
+| 21 | Field | `field` | 待核查 | Form 亦收敛在此 |
+| 22 | Input Group | `input-group` | 待核查 | |
+| 23 | Avatar | `avatar` | 待核查 | |
+| 24 | Accordion | `accordion` | 待核查 | |
+| 25 | Slider | `slider` | 待核查 | |
+| 26 | Alert Dialog | `alert-dialog` | 待核查 | |
+| 27 | Sheet | `sheet` | 待核查 | |
+| 28 | Separator | `separator` | 待核查 | |
+| 29 | Skeleton | `skeleton` | 待核查 | |
+| 30 | Scroll Area | `scroll-area` | 待核查 | |
+| 31 | Toast | `toast` | 待核查 | sonner 形态 |
+| 32 | Toggle | `toggle` | 待核查 | |
+| 33 | Toggle Group | `toggle-group` | 待核查 | |
+| 34 | Pagination | `pagination` | 待核查 | |
+| 35 | Command | `command` | 待核查 | |
+| 36 | Calendar | `calendar` | 待核查 | RTL / Jalali / timeZone 已列能力边界 |
+| 37 | Date Picker | `date-picker` | 待核查 | |
+| 38 | Hover Card | `hover-card` | 待核查 | |
+| 39 | Collapsible | `collapsible` | 待核查 | |
+| 40 | Breadcrumb | `breadcrumb` | 待核查 | |
+| 41 | Navigation Menu | `navigation-menu` | 待核查 | |
+| 42 | Menubar | `menubar` | 待核查 | |
+| 43 | Sidebar | `sidebar` | 待核查 | |
+| 44 | Resizable | `resizable` | 待核查 | |
+| 45 | Carousel | `carousel` | 待核查 | |
+| 46 | Aspect Ratio | `aspect-ratio` | 待核查 | |
+| 47 | Kbd | `kbd` | 待核查 | |
+| 48 | Empty | `empty` | 待核查 | |
+| 49 | Item | `item` | 待核查 | |
+| 50 | Native Select | `native-select` | 待核查 | |
+| 51 | Input OTP | `input-otp` | 待核查 | |
+| 52 | Spinner | `spinner` | 待核查 | |
+| 53 | Chart | `chart` | 待核查 | |
+| 54 | Drawer | `drawer` | 待核查 | |
+| 55 | Button Group | `button-group` | 待核查 | |
+| 56 | Context Menu | `menu` | 待核查 | 与 Dropdown Menu 同一实现 |
+| 57 | Trace | `trace` | 待核查 | 官方索引页 New Components 之一 |
+| 58 | Message | `message` | 待核查 | |
+| 59 | Bubble | `bubble` | 待核查 | |
+| 60 | Marker | `marker` | 待核查 | |
+| 61 | Attachment | `attachment` | 待核查 | |
+| 62 | Message Scroller | `message-scroller` | 待核查 | |
+| 63 | Questionnaire | `questionnaire` | 待核查 | |
+
+**范围外(官方侧栏 66 个中的另 3 个 + 侧栏分组)**:
+
+| 上游条目 | 状态 | 理由 |
+|---|---|---|
+| Code Block | 范围外 | 全量对齐要在 Go 侧实现 Shiki tokenizer;若提供降级版须在 DESIGN 第七节声明部分对齐 |
+| Direction | 范围外 | 文字渲染只有 LTR,无 RTL 布局能力(用户本轮再次明确不做) |
+| Typography | 范围外 | 纯样式文档页,无可安装组件 |
+| AI Elements | 范围外 | 侧栏独立分组,暂无需求 |
+
+## 二、已核查并落地的三个组件(存档)
+
+| 组件 | 提交 | 当时补的「未实现但可实现」项 |
+|---|---|---|
+| Button | `3342cad`(+ `a6f283b` 修残余) | `SetSize` 运行时尺寸档、`WithButtonLoadingAtEnd/Icon/ColorFunc`、`NewLinkButton`(As Link)、`SetDisabled`/`SetFieldState`、`UsePointerCursor` 全局手型与禁用光标 |
+| Checkbox | `3342cad`(+ `a6f283b` 修残余) | `WithCheckboxChecked`(defaultChecked)、`WithCheckboxReadOnly`/`SetReadOnly`、`WithCheckboxDisabled`、可否决的 `OnCheckedChange`、纯指示器 40×32 热区、`SetFocusRingProxy`;新增 `CheckboxGroup` 与 `Field.Attach` 的 19 控件联动 |
+| Combobox | `23bdfc5` / `725d329` / `7441a77` | `WithComboboxChips`、`WithComboboxClear`、`WithComboboxAutoHighlight`、`WithComboboxInput`(Basic 输入框触发)、`WithComboboxEditable`(可编辑组合框)、Text 空回落 Value |
+
+三次核查的结论均已写入 CHANGELOG 与 DESIGN 第四节末语义表,本表只留索引,不重复内容。
+
+## 三、核查:#2 Input
+
+**官方 base/input 文档页示例**:Basic / Field / Field Group / Disabled / Invalid / **File** / Inline / Grid / **Required** / Badge / Input Group / Button Group / Form / RTL(排除)。组件源码 `input.tsx` 只有一层样式壳,其余全部是原生 `<input>` 属性转发 + Field 组合。
+
+**已具备(不必再列)**:Field / FieldGroup / FieldSet / FieldLegend / FieldSeparator / FieldError 及 Inline / Grid / Form / Badge-in-label 组合;Disabled(`Enable` / `SetFieldState`);Invalid(`WithInputInvalid` / `SetInvalid` + aria-invalid 红环);Input Group(`NewInputGroup` 四向 addon);Button Group;搜索清除(`WithClearButton`);密码显隐(`WithPasswordToggle`);数字步进(`WithStepper`);字数计数(`WithCounter`);焦点环 / 禁用态 / 暗色配色;多行 Textarea 自动长高。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| I1 | `type="file"` 文件输入形态 | 官方 Input#File;`input.tsx` 的 `file:*` 样式 | 只有独立 `file-dialog`(`Open/OpenMulti/Save/PickDir`,含 filters / MaxFiles),没有输入框形态 | `WithFileInput(...)` 或 `NewFileInput`:只读文件名 + 幽灵「选择文件」钮(对齐 `file:` 样式)+ 调 FileDialog + 多选显示 `+N` + 清除 + 空值校验联动;accept 复用 `WithFileDialogFilters`,多文件复用 `WithFileDialogMaxFiles` | 中 / **高**(桌面高频) |
+| I2 | `readOnly` 只读 | 原生 `<input readOnly>`(`...props` 转发);本库 Checkbox 已实现同语义 | Input 无 `SetReadOnly/ReadOnly`;只能 `Enable(false)`,会丢焦点与复制能力 | xcgui 已提供 `XEdit_EnableReadOnly` / `XEdit_IsReadOnly`,直接暴露 `WithInputReadOnly` / `SetReadOnly` / `ReadOnly()`,配色与禁用态区分 | 极小 / **高** |
+| I3 | `required` 必填与校验联动 | 官方 Input#Required(标签 `*` + 说明);Base UI 表单校验 | Field 有 `SetInvalid` / `FieldError` / `Attach(FieldControl...)`,但无必填标记与校验入口 | `WithFieldRequired()` + `Field.Validate()` / `Required()`;空值 → `SetInvalid` + 错误文案,复用现有级联,不新增控件接口 | 小-中 / 中 |
+| I4 | `maxLength` 硬限制 | 原生 `<input maxLength>` | `WithCounter(max)` **只显示 `n/max`、超限变红,仍可继续输入**(`input.go` 的 `paintAddons` 只读文本长度) | `WithMaxLength(n)` / `SetMaxLength`:在 `AddEvent_Edit_Changed` 里截断(InputOTP 已有输入过滤先例),与 `WithCounter` 配套 | 小 / 中 |
+| I5 | `pattern` / 自定义校验器 | 原生 `<input pattern>`;官方表单示例 | 无校验器,校验失败态只能外部手动 `SetInvalid` | `WithValidator(func(string) error)` + `Validate()`,失败时置 invalid 并写 `FieldError` | 中 / 中 |
+| I6 | 原生 Edit 已开放但未接线的视觉/行为 API | xcgui `XEdit_*` API 清单 | 当前只用 `SetCaretColor` / `SetDefaultTextColor` / `SetTextAlign` / `EnablePassword` / `EnableAutoSelAll(false)` | `XEdit_SetSelectBkColor`(对应 `::selection`,切主题时同步)、`XEdit_SetCaretWidth`、`XEdit_EnableAutoSelAll(true)`(聚焦自动全选)、`XEdit_Undo/Redo` | 小 / 低-中 |
+| I7 | 运行时 `SetDisabled` / `Disabled` | 与 Button / Select / InputGroup API 一致性 | 只有继承的 `Enable()` 与 `SetFieldState()`(后者会同时改 invalid) | 补一对方法,并同步禁用文字预混色(`syncTextColor`) | 极小 / 中 |
+| I8 | 标签内联 Badge / Grid / Inline / Form 的 demo 对照 | 官方同页 4 个示例 | 组件能力齐全,缺同构示例卡 | 只补 demo 表单页与文档示例,不改组件 | 小 / 低(非功能缺口) |
+
+**明确不做 / 能力边界**:
+
+- RTL(排除)、Direction。
+- `type=email/tel/url/date` 的移动端键盘与浏览器原生校验 UI(桌面无对应物;`search` / `number` / `password` 已由 `WithClearButton` / `WithStepper` / `WithPasswordToggle` 覆盖)。
+- `name` / `form` / `autoComplete` / 原生表单提交(Go 无表单提交语义,布局与校验展示归 Field 系列)。
+- 文字/光标/选区/IME 完全自绘(DESIGN 第七节能力边界);`::selection` 之外的富文本排版。
+
+## 四、核查:#4 Select
+
+**官方 base/select 文档页**:Usage / Composition / **Align Item With Trigger** / Groups / Scrollable / Disabled / Invalid / RTL(排除) / API Reference(指向 Base UI)。本地参照实现 `select.tsx` 是 base-nova 版本,暴露 `alignItemWithTrigger` 与 `SelectScrollUpButton/ScrollDownButton`,Root props 由 Base UI 提供。
+
+**已具备(不必再列)**:触发区 / Value / Popup / Group / GroupLabel / Separator / Item / Check 的组合;Groups、Scrollable(ScrollArea 承载)、Disabled(整体 + `SelectItem.Disabled`)、Invalid;item-aligned 定位与选中项对位;打开即定位选中项;键盘 ↑↓ / Home / End / Enter / ESC(ESC 还焦点);`Value/SetValue/Selected/SetItems/SetGroups/OnChange/FitWidth/Open/Close/IsOpen`;`FieldControl` 联动;暗色触发区 hover。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| S1 | `alignItemWithTrigger=false` 与 `side/align/sideOffset/alignOffset` | 官方 Select#Align Item With Trigger 有开关示例;`select.tsx` 的 `SelectContent` 参数 | `itemAlignedPos()` 恒按 item-aligned 定位,无配置 | `WithSelectAlignItem(bool)`(默认 true 保持现状),false 走 `popoverPanel` 常规锚定(下方优先 / 翻转 / 夹工作区);side/align 可给枚举,几何已有 | 中 / 中-高 |
+| S2 | typeahead 键入跳转 | Base UI 文档明示「aside from basic keyboard typeahead」;**DESIGN 第七节已写「后续有需求再加」** | `panel.OnKeyDown` 只处理 ↑↓/Home/End/Enter | 聚合可打印字符(约 500ms 窗口),按 `selectItemLabel` 前缀/包含匹配后 `setActive(..., true)`;Combobox 的过滤输入是另一语义,不算覆盖 | 小-中 / 中 |
+| S3 | `OnOpenChange` 开合回调 | Base UI Root `onOpenChange`;Popover / Dialog / Combobox 本库已有同类回调 | 有 `Open/Close/IsOpen`,**无回调**;`popup.go` 的 `popoverPanel.OnHide` 注释已写明用于 `OnOpenChange(false)` | `Select.OnOpenChange(func(bool))`,在 Open / Hide / ESC / 失焦四条路径统一触发 | 极小 / **高** |
+| S4 | `readOnly` 只读 | Base UI Root `readOnly`(默认 false:不能从弹层改选) | 只有 `SetDisabled`(整体置灰、打不开) | `WithSelectReadOnly/SetReadOnly/ReadOnly`:可打开查看与高亮,但 `choose` 不落值、触发区不置灰;与 Checkbox 的 readOnly 同语义 | 小 / 中 |
+| S5 | `multiple` 多选 | Base UI Root `multiple`(默认 false)与官方 Multiple selection 示例;shadcn 文档页本身未给示例 | `Value()/SetValue()` 单值;多选能力在 Combobox | `WithSelectMultiple()` + `Values/SetValues` + 条目勾选切换且不关闭 + 触发区文本约定(首个 `+N` 或 chips);`OnChange` 需定新签名或另加 `OnValuesChange` | 大 / 中-低(桌面多选优先 Combobox,需先确认需求) |
+| S6 | `highlightItemOnHover=false` | Base UI Root 默认 true | `paintItem` 用 `xui.Hover` 把 hover 与 focus 合成同一条高亮,无法区分 | 开关关闭时悬停只画淡底、不移动键盘高亮 | 小 / 低 |
+| S7 | ScrollUpArrow / ScrollDownArrow 悬停自动滚 | 本地 `select.tsx` 明确导出两个部件;**DESIGN 第七节记为「没有 radix 的悬停自动滚按钮」** | ScrollArea 只有滚轮与键盘 reveal | 内容区上下叠 16px 命中带,只在对应方向还能滚时出现;按运行时 `xui.Hover` 的过渡值驱动逐帧滚动(**不自起定时器**,遵守运行时过渡约定) | 中 / 低-中 |
+| S8 | `Select.Value` 自定义格式化 | Base UI `<Select.Value>` 可传函数;`items` 与 `itemToStringLabel/Value` | `SelectItem.Text`(空回落 `Value`)已覆盖 label 映射,但无自定义渲染 | `WithSelectValueText(func(SelectItem) string)` 或 `SetValueText(string)`,用于前缀/图标/组合文案 | 小 / 中 |
+| S9 | `required` 字段级必填 | Base UI Root `required`;官方 Invalid 示例走 Field | Field 侧暂无校验入口(见 I3) | 与 I3 同一套 Field 校验基础设施,Select 通过 `FieldControl` 接入 | 小 / 中 |
+
+**明确不做 / 能力边界**:
+
+- RTL(排除)。
+- 弹层 fade / zoom 进场(DESIGN 第七节:异型透明窗整窗 alpha 只认第一次调用,Select 明确不做淡入)。
+- `name` / `form` / `autoComplete` / 隐藏 input 提交(Go 无表单提交);`modal=false`(桌面弹层是独立窗口,点外部失焦即关闭,「锁页面滚动 / 禁用外部交互」无等价需求);Arrow/Indicator(shadcn 默认示例不启用,桌面弹层无箭头语义)。
+- `data-slot` / `data-highlighted` / `render` / `asChild` 等 DOM 概念(React 专属,Go 侧无对应物)。
+
+## 五、追加核查:#6 Dialog / #7 Card / #8 Label
+
+依据:官方 `base/dialog`、`base/card`、`base/label` 文档页(含 Card 的 API Reference 与 Spacing Variable Changelog)、Base UI Dialog Root props 表、本地 base-nova `dialog.tsx` / `card.tsx` / `label.tsx`、本库 `dialog.go` / `card.go` / `label.go`、DESIGN 第四节末映射表与第七节差异表。RTL 三页都有示例,按约定排除。
+
+### Dialog(#6)
+
+**官方页**:Usage / Composition / Custom Close Button / No Close Button(`showCloseButton={false}`) / Sticky Footer / Scrollable Content / RTL(排除) / API Reference → Base UI。
+
+**已具备**:`DialogTrigger`(BindTrigger)、`DialogContent` 面板与遮罩(`bg-black/10` + backdrop-blur-xs 的盒式模糊实现)、`DialogTitle/Description`(SetTitle/SetDescription)、`DialogFooter`(AddFooter / BindClose)、Custom Close Button(BindClose 任意控件)、No Close Button(`WithDialogCloseButton(false)`)、Sticky Footer 与 Scrollable Content(`WithDialogScroll` 头/页脚固定 + ScrollArea)、宽度(`WithDialogWidth`)、`Refresh`、ESC / 点遮罩关闭、打开自动聚焦首个可聚焦控件、Tab 焦点循环、模态栈(嵌套对话框)、100ms 淡入淡出。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| D1 | `open` 受控与 `onOpenChange` | Base UI Dialog Root `open` / `onOpenChange` | 有 `Show/Hide/Close/IsOpen` + `OnClose`,但**语义分裂**:`Hide()` 不触发回调、`Close()` 才触发,也没有打开回调 | `OnOpenChange(func(bool))` 统一四条开合路径(Show / Hide / ESC / 遮罩 / 关闭钮),`SetOpen(bool)` 作受控入口;保留 `OnClose` 兼容 | 小 / **高** |
+| D2 | `disablePointerDismissal` + ESC 关闭开关 + 可否决关闭 | Base UI Root `disablePointerDismissal`(默认 false) | `dismissOutside` 字段**已存在**,但只在 `alertdialog.go` 内部置 false,普通 Dialog 不可配;ESC 恒关,关闭不可否决 | 把 `WithDialogDismissOutside(bool)` / `WithDialogEscClose(bool)` 导出,加 `OnClosing(func() bool)` 让「未保存内容」可拦下 ESC / 遮罩 / X | 极小 / **高** |
+| D3 | `initialFocus` / `finalFocus` | Base UI Popup props(文档有专节示例) | `initialFocus` 字段**已存在**,但只给 AlertDialog 聚焦 Cancel 用;普通 Dialog 固定 `defaultFocus(fs)` 取首项,关闭后 `restoreModalFocus` 固定还原下层 | `WithDialogInitialFocus(hEle)` / `WithDialogFinalFocus(hEle)` 两个选项,复用现有 `XWnd_SetFocusEle` 与 `restoreModalFocus` | 极小 / 中-高 |
+| D4 | `DialogHeader` / `DialogFooter` 任意内容 | 官方 Composition 与 base `dialog.tsx` 的容器部件 | 头部只有 `SetTitle/SetDescription` 两条文字,页脚只能 `AddFooter(text, variant, onClick)` 加按钮 | `Header()` / `FooterStack()` 返回容器,或 `Title()` / `Description()` 返回 `*Label` 供改字号/配色/图标 | 中 / 中 |
+| D5 | 遮罩与面板样式可配 | `DialogOverlay` 可传 `className`;Popup 的 `p-4` / `gap-4` | 遮罩固定黑 10%、模糊固定盒式,面板内边距/组间距写死 | `WithDialogOverlayAlpha(float64)` / `WithDialogPadding(px)` / `WithDialogGap(px)` | 小-中 / 低-中 |
+| D6 | `modal=false` / `'trap-focus'` | Base UI Root `modal` | 对话框恒为「覆盖窗口内容区 + 拦截下层鼠标 + Tab 焦点圈禁」的模态层 | 桌面下非模态 = 独立窗口,是另一套形态而非开关;若要提供需新建 window 载体 | 大 / 低(建议不做并写明理由) |
+
+**明确不做 / 能力边界**:RTL;zoom-in-95 缩放进场(DESIGN 第七节:元素级缩放对自绘元素无效,已用淡入覆盖);DOM 概念(`handle` / `triggerId` / `actionsRef` / `children` render / `onOpenChangeComplete`);`aria-describedby` 自动关联;原生 CSS 层背景模糊(已用抓窗快照 + Go 盒式模糊替代,见 DESIGN 第八节 47)。
+
+### Card(#7)
+
+**官方页**:Usage / Composition(CardHeader / Title / Description / Action / Content / Footer) / `size="sm"` / **Spacing(`--card-spacing` 16/20/24/32)** / 负边距通栏内容 / Image(首图通栏、自动圆角) / RTL(排除) / API Reference / Spacing Variable Changelog。
+
+**已具备**:`size` 档(`WithCardSize(CardSizeSm)` = 16→12)、`CardHeader/Title/Description/Action`(`NewCardHeader` + `TitleStack` / `ActionStack`)、`CardContent`(`ContentStack`)、`CardFooter`(`Footer` / `NewCardFooter` + `WithCardFooterPadding`,含 `border-t` + `bg-muted/50` + 下两角圆角)、`ring-1 ring-foreground/10`、`TitleSize()`、Auto 高自撑、元素 padding 表达左右内距(DESIGN 8.129 硬规则)。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| C1 | `--card-spacing` 任意值 | 官方 Spacing 示例(16/20/24/32)+ Changelog 明说「用 `--card-spacing` 控制段间距与内缩」 | 只有 `WithCardSize` 两档;`Card.Padding` 是导出字段,但**直接改不会同步** `ContentStack` 的 margin/padding 与 `Footer` 内边距 | `WithCardSpacing(px)` / `SetSpacing(px)`:同步刷新内容区与页脚并重排;保留 `WithCardSize` 作为预设 | 小-中 / **高** |
+| C2 | 有页脚时去掉卡片底部内距 | `card.tsx` 的 `has-data-[slot=card-footer]:pb-0` | `ContentStack` 上下外边距恒为 `Padding`,`Footer()` 创建页脚后未改 → 内容区与页脚之间多出一整段内距 | `Footer()` 里把内容区下外边距置 0 后重排(上下内距用布局项外边距表达,符合硬规则) | 极小 / **高** |
+| C3 | edge-to-edge 通栏内容 | 官方 Spacing 第二例用 `-mx-(--card-spacing)` / `-mb-(--card-spacing)` 让分隔线/内容贴到卡片边 | 无对应物;内容区一律受左右 padding 约束 | `ContentFullBleed()` 或 `AddFullBleed(child)`:**不要照搬负外边距**(DESIGN 8.129),改为单独一层不受元素 padding 约束的通栏容器 | 中 / 中 |
+| C4 | 首图 / 末图自动圆角 + 卡片图片槽 | 官方 Image 示例 + `*: [img:first-child]:rounded-t-xl` | 无图片槽;DESIGN 第七节记为「xcgui 没有圆角裁剪语义」的能力边界 | **需重新评估**:`Avatar` 的 `SetImageData` 已在 CPU 侧用 RGBA 蒙版做过圆角裁剪,组件级「图片按卡片上/下两角裁剪」同理可实现(或提供 `CardImage` 助手)。若仍判不做,需在 DESIGN 第七节写明与 Avatar 的差异理由 | 中 / 中 |
+| C5 | header 的容器查询响应式 | `card.tsx` 的 `@container/card-header`(窄卡时动作区栅格自适应) | 头部栅格固定一行两列 | 在尺寸事件里按卡片宽度切 `ActionStack` 排布;桌面窗口宽度稳定,收益有限 | 中 / 低 |
+
+**明确不做 / 能力边界**:RTL;CSS 变量与 `className` / `data-slot` / `group-data-[size]` 选择器(Go 无 DOM,以选项 API 表达);背景 `overflow-hidden` 语义(DESIGN 第七节,但 C4 的图片裁剪不受此限)。
+
+### Label(#8)
+
+**官方页**:Usage(`<Label htmlFor="email">`)、Checkbox 组合、Label in Field(FieldLabel/FieldDescription/FieldError)、RTL(排除)、API Reference → Base UI Label;`label.tsx` 是原生 `<label>` + `group-data-[disabled]` / `peer-disabled` 变淡样式。
+
+**已具备**:文字/弱化色/粗体/中等字重/字号/对齐(Left、Center)/折行(`SetWrap` / `SetAutoWrap` + `WrappedHeight`)、实时取令牌(`SetColorFunc` + `OnThemeChangeFor`)、省略号截断、不参与 Tab 焦点、Field 内的标签/说明统一变淡与校验变红(`field.go` 的 `applyLabelColor`)。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| L1 | `htmlFor` 点击关联 | 官方 Usage 全文就是 `htmlFor`;Base UI Label 继承原生 `<label>` 行为 | Label 载体是「不响应点击」的原生 Button,**没有任何关联能力**;Field 也没有点击标签聚焦控件 | `BindFor(hEle)`:点击时 `xui.FocusElement` 聚焦;对实现 `Toggle()` 的控件(Checkbox / Switch)顺带切换,对齐浏览器 `<label for>` 语义;Field 的 `FieldLabel` 同步走这条路径 | 小-中 / **高** |
+| L2 | 独立 Label 的禁用 / 校验态 | `label.tsx` 的 `group-data-[disabled]:opacity-50` 与 `peer-disabled:opacity-50` | 只有 Field 内部 `applyLabelColor` 会联动,独立 Label 无 `SetDisabled` / `SetInvalid` | 复用 Field 的配色逻辑补 `SetDisabled(bool)` / `SetInvalid(bool)` 及对应 getter + 禁用光标 | 小 / 中 |
+| L3 | `required` 标记 | 官方 Field 示例里的必填星号(与 Input 的 Required 同源) | 无 | 与 I3 / S9 同一套 Field 校验基础设施一起做:`WithLabelRequired()` 或 Field 层统一 | 小 / 中 |
+| L4 | 右对齐 | 上游 label 在行尾/表单行右对齐常见;本库只有 Left / Center | 无 `SetAlignRight()` | 补一个对齐方法(与 `SetAlignCenter` 同一处) | 极小 / 低 |
+
+**明确不做 / 能力边界**:RTL;`htmlFor` 的字符串 ID 与 `aria-*` 元数据(Go 无 DOM,以元素句柄绑定替代,见 L1);富文本内联链接与 `*: [a]:underline` 样式(Label 是原生 Button 载体);`font-medium` 在中文下回落常规字重(源码注释已说明,可用 `SetMedium` 手动覆盖)。
+
+**本批实现顺序建议**:C2 → C1 → D1 → D2 → L1 → D3(小改动、对齐收益明显);随后 C3 / C4 / L2 / L3 / D4;C5 / L4 / D5 低优先,D6 建议不做。C4 需先决定 DESIGN 第七节那条能力边界是否修订。
+
+## 六、追加核查:#9 Textarea / #10 Tabs / #11 Switch / #12 Radio Group / #13 Dropdown Menu
+
+依据:官方 `base/textarea`、`base/tabs`、`base/switch`、`base/radio-group`、`base/dropdown-menu` 文档页(含 Dropdown Menu 的 Composition 与 11 个示例)、Base UI Tabs / Menu / Switch / Radio Root props 表、本地 base-nova 五份 `*.tsx`、本库 `textarea.go` / `tabs.go` / `switch.go` / `radio.go` / `radiogroup.go` / `menu.go` / `menu_model.go`、DESIGN 第四节末映射表与第七节差异表。RTL 五页都有示例,按约定排除。
+
+> **共用实现提示**:Textarea 内嵌 `*Input`(`textarea.go`),Input 侧的 I2 / I3 / I4 / I5 / I6 / I7 一旦落地,Textarea 自动获得;Dropdown Menu 与 #56 Context Menu 共用 `menu.go`,本节的结论可直接复用,只需另核右键触发特有的行为。
+
+### Textarea(#9)
+
+**官方页**:Basic / Field / Disabled / Invalid / Button / RTL(排除)。**没有 API Reference** —— Base UI 也未提供独立的 textarea 组件(取 `base-ui.com/react/components/textarea.md` 失败),tsx 就是原生 `<textarea>` 加一层样式壳,因此属性全部来自 HTML 标准。
+
+**已具备**:`field-sizing-content` 自动长高(最小 64、上下内边距 8、内容装得下故不挂滚动条,DESIGN 8.166)、Field 组合、Disabled / Invalid(继承 `WithInputInvalid` / `SetInvalid` / `SetFieldState`)、焦点环与暗色、`SetValue` / `Refresh` / `OnChange`、Button 组合(调用方拼)。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| TA1 | 与 Input 同源的 6 项 | 原生 `<textarea>` 属性(readOnly / required / maxLength / pattern 等) | Textarea 内嵌 `*Input`,但 Input 侧 I2 / I3 / I4 / I5 / I6 / I7 都还没做 | **在 `input.go` 补一次即同时生效**,不必为 Textarea 单独写一遍 | 见第三节 / **高** |
+| TA2 | `resize` 拖拽调整高度 | 浏览器 `<textarea>` 默认右下角可拖拽 | 自动长高 + 不挂滚动条,没有 resize 抓手 | 右下角抓手 + 拖拽改 `minH`(或切到固定高度 + 滚动条形态),与自动长高互斥 | 中 / 低-中 |
+| TA3 | `rows` 初始行数 | 原生 `rows` 属性 | `cy` 目前表达的是最小高度 | `WithTextareaRows(n)` 按行高换算初始高度;与 `cy` 二选一 | 小 / 低 |
+| TA4 | Button 组合示例 | 官方 Button 示例(文本域 + 发送钮) | 组件能拼,缺 demo 对照卡 | 只补 demo | 小 / 低(非功能缺口) |
+
+**明确不做**:RTL;固定高度 + 溢出滚动(已有替代方案 `Input + WithMultiline`,DESIGN 437);`cols` / `wrap` 的浏览器细节(Edit 折行已覆盖);`name` / `form` 表单提交。
+
+### Tabs(#10)
+
+**官方页**:Usage / Composition / Line / Vertical / Disabled / Icons / RTL(排除) / API → Base UI Tabs。Root props 含 `defaultValue` / `value` / `onValueChange` / `orientation`,并明确 **`value=null` 时无选中项**、`onValueChange` 的 `eventDetails.cancel()` 可取消用户切换、选中项被禁用或移除时有自动回退(reason=`disabled` / `missing`)。
+
+**已具备**:default / line 变体、vertical、换行(扩展)、单标签禁用、行内图标、受控 index / value(`SetActive` / `SetActiveValue` / `OnValueChange` / `WithTabsValues`)、`BindPanel` 面板显隐、`activationMode`、整块一个 Tab 站点 + ←/→/↑/↓/Home/End/Enter/空格、**focus-visible 环**(`onPaintTab` 已画)、`forceMount` 语义(Go 侧元素常驻不卸载,天然等价)。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| TB1 | 可否决切换 | Root `onValueChange` 的 `eventDetails.cancel()` | `OnValueChange` 只注册通知,`onClick` 直接换 active | `OnValueChangeVeto(func(value string) bool)`(或让回调返回 bool),在 `SetActive` 的用户路径上判定;程序化 `SetActive` 不经过否决 | 小 / 中-高(未保存内容禁止切页) |
+| TB2 | `value=null` 无选中态 | Root props 明确 | `SetActive(i)` 要求 `i>=0`,`ActiveValue()` 无 values 时返回空串,但没有"无选中"状态 | `ClearActive()` / 允许 `active=-1`,`syncPanels` 全部隐藏;受控值用空串表达 | 小 / 中 |
+| TB3 | 选中项被禁用 / 移除时自动回退 | Root 的 `disabled` / `missing` 自动 fallback | `SetDisabled` 只迁移 `focus`,**`active` 保持不变**(注释写明"禁用项也可程序化选中") | 在 `SetDisabled` / `SetItems` 里按策略落到 `nearestEnabled`(或保留受控值,由选项决定) | 小 / 中 |
+| TB4 | 活动指示条滑动过渡 | DESIGN 427 记「未做拖动滑块式指示器」 | 选中项高亮/下划线直接切换 | 用运行时 `xui.PresenceOnce`(每次切换新键)驱动指示条位置,不自起定时器 | 中 / 低-中 |
+
+**明确不做**:RTL;CSS 选择器 / `render` / `data-activation-direction`;事件 reason 枚举(DOM 概念)。
+
+### Switch(#11)
+
+**官方页**:Basic / Description / Choice Card / Disabled / Invalid / **Size** / RTL(排除) / API → Base UI Switch Root(`checked` / `defaultChecked` / `onCheckedChange` / `disabled` / **`readOnly`** / `required` / `name` / `value` / `uncheckedValue` / `form`)。
+
+**已具备**:default 32×18 / sm 24×14 两档(与 tsx 数值一致)、`WithSwitchChecked`(defaultChecked)、disabled、invalid、空格切换、FieldControl 联动、`SetFocusRingProxy`、**热区外扩 `switchRingPad=3`**(注释明确等效 `after:-inset-x-3 -inset-y-2`)、hover 配色与 focus-visible 环、`Checked/SetChecked/Toggle/OnChange`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| SW1 | `readOnly` | Root 默认 false(「unable to activate or deactivate」) | 无 `SetReadOnly/ReadOnly`;只能 `SetDisabled`(会灰掉、丢焦点) | 复用 Checkbox 已落地的做法:原生 Check 按钮在事件前已改勾选位,在 `XE_BUTTON_CHECK` 里 `SetCheck(!bCheck)` 回滚 + `Redraw`(DESIGN 8.198);保留焦点与键盘可达 | 小 / **高** |
+| SW2 | 可否决 `onCheckedChange` | Root `onCheckedChange` 附 `eventDetails.cancel()` | `OnChange` 只通知,`Toggle` / 点击 / 空格各自直接改状态 | 把三条路径收敛到一个可否决入口(同 Checkbox 的 `OnCheckedChange(func(bool) bool)`),程序化 `SetChecked` 不经过否决 | 小 / 中-高 |
+| SW3 | 滑块位移 / 轨道色过渡 | tsx 的 `transition-all` 与 thumb `transition-transform` | `onPaint` 按 `checked` 直接画终点位置,没有位移过渡 | 用运行时过渡表(每次切换 `xui.PresenceOnce` 取新键)插值 thumb 的 x,配色继续用 `xui.Fade`;不要组件自起定时器 | 中 / 中 |
+
+**其余**:`required` 归 Field 层(I3 / S9 / RG3 同一套);Choice Card 整卡可点依赖 L1(Label 点击关联)。**明确不做**:RTL;`name` / `value` / `uncheckedValue` / `form` 表单提交;`nativeButton` / `render`;自定义 thumb children(Go 无 Slot)。
+
+### Radio Group(#12)
+
+**官方页**:Basic / Composition / Description / Choice Card / Fieldset / Disabled / Invalid / RTL(排除) / API → Base UI Radio Root(`value` / `disabled` / **`readOnly`** / `required`)。
+
+**已具备**:组值 `Value/SetValue/OnChange`、组级 `SetDisabled` / `SetInvalid` / `SetFocusRingProxy` / `SetSpacing`、`AddItem` / `Attach` 跨父入组、方向键循环 + Home/End + 空格、条目 invalid/disabled/focus 环、FieldSet / FieldLegend、Choice Card(FieldLabel 代理焦点环)、竖向 gap-2。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| RG1 | `readOnly` | Radio Root 明确有 `readOnly`(「unable to select the radio button」) | 组与条目都没有 `SetReadOnly/ReadOnly` | 组级开关 + 条目在 `XE_BUTTON_CHECK` 里回滚(同 SW1 / Checkbox),键盘方向键走同一判定 | 小 / **高** |
+| RG2 | 可否决组值变化 | 上游 `onValueChange` 的 cancel 语义 | `OnChange(fn func(string))` 只通知;`onItemSelected` 直接改组值 | `OnValueChangeVeto(func(value string) bool)`,用于"未保存内容禁止换选项" | 小 / 中-高 |
+| RG3 | `required` | Radio Root `required` | 无 | 与 I3 / S9 / L3 共用 Field 校验基础设施 | 小 / 中 |
+| RG4 | 横向排列 | 上游默认 `grid gap-2` 竖向,官方无横向示例 | 只有竖向 | `WithRadioGroupHorizontal()`(扩展),成本小但非上游特性 | 小 / 低 |
+
+**明确不做**:RTL;roving tabindex(DESIGN 307 已记桌面惯例差异:Tab 遍历各项);`name` / `form` 表单提交。
+
+### Dropdown Menu(#13)
+
+**官方页**:Usage / Composition(Trigger / Content / Group / Label / Item / CheckboxItem / RadioGroup / RadioItem / Separator / Shortcut / Sub / SubTrigger / SubContent)+ 11 个示例(Basic / Submenu / Shortcuts / Icons / Checkboxes / Checkboxes Icons / Radio Group / Radio Icons / Destructive / Avatar / Complex)+ RTL(排除)+ API → Base UI Menu。Root props 含 `open` / **`onOpenChange`** / `highlightItemOnHover` / `closeParentOnEsc` / `loopFocus` / `modal` / `orientation` / `disabled` / `onItemHighlighted`;`Content` 还有 `align` / `alignOffset` / `side` / `sideOffset`(默认 align=start、side=bottom、sideOffset=4)。
+
+**已具备**:Composition 的全部部件(`Item/Check/Radio/Label/Separator/Sub` + `MenuShortcut/MenuDisabled/MenuDestructive/MenuGroup/MenuInset/MenuIcon/MenuOnSelect/MenuOnCheck`)、三种弹出方式(`PopupAtElement` / `PopupAtElementRect` / `PopupAtCursor`)、下方放不下翻转 + 屏幕夹紧、`sideOffset=4` 与 `min-w-32=128`、显式 `Width`、自绘背景/条目/图标/勾选/快捷键、`ContextMenu` 的 `SetEnabled` / **`OnOpenChange`**。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| DM1 | `OnOpenChange` 普通菜单 | Root `open` / `onOpenChange` | **只有 `ContextMenu` 有**,`Menu` 没有;而 `AddEvent_Menu_PopupWnd` / `AddEvent_Menu_Exit` 已在用(DESIGN 826) | `Menu.OnOpenChange(func(bool))`,弹层创建/退出各发一次;与 ContextMenu 口径统一 | 小 / **高** |
+| DM2 | `side` / `align` / `sideOffset` / `alignOffset` | Content 的默认定位参数 | 固定「锚点下方 + 翻转 + 夹紧」,`menuSideOffset` 是常量 | 把定位参数收进 `Menu` 选项,`menuOnPopupWnd` 里按 side/align 算落位(现有翻转/夹紧逻辑复用) | 中 / 中-高(靠边按钮、右键菜单常需) |
+| DM3 | 受控 `RadioGroup` 组值 | `DropdownMenuRadioGroup` 的 value / onValueChange | 靠 `MenuGroup(n)` 手动分组 + `Radio(text, checked)` + `MenuOnCheck`,没有组值 API | `RadioGroupValue/SetRadioGroupValue/OnRadioGroupChange`,按 `group` 收敛;菜单是一次性对象,状态仍由调用方持有 | 小-中 / 中 |
+| DM4 | Root 级小项 | `disabled` / `highlightItemOnHover` / `onItemHighlighted` / `loopFocus` / `closeParentOnEsc` | 只有条目级 `MenuDisabled`;整菜单禁用、悬停开关、高亮回调、焦点循环、子菜单 ESC 层级都不可配 | 弹层事件 + `menuDrawItem` 已具备,逐项加选项/回调 | 小-中 / 低-中 |
+| DM5 | Avatar 触发区 / Complex 组合示例 | 官方两个示例 | 部件齐全,缺 demo 对照 | 只补 demo | 小 / 低(非功能缺口) |
+
+**明确不做**:RTL;`modal=false` 与 `orientation=horizontal`(原生菜单恒模态/竖向,要改成自绘弹层成本高,Menubar 已有自绘实现但不建议为 Menu 重做);`handle` / `triggerId` / `actionsRef` / `render` 等 DOM 概念;弹层 zoom/slide 动画(DESIGN 第七节能力边界)。原生菜单超高滚动由系统处理,若实测缺失再单列。
+
+**本批实现顺序建议**:SW1 → RG1 → DM1 → TA1(随 Input 一起) → TB1 → SW2 / RG2 / TB2 / TB3 / DM2 / DM3;其后 SW3 / TB4 / DM4 / TA2 / TA3。SW1 / RG1 与 Checkbox 的 readOnly 是同一套原生事件回滚做法,建议三处一起改并一起验收;TB1 / RG2 / SW2 的「可否决回调」也宜统一 API 形态。
+
+## 七、追加核查:#14 Tooltip / #15 Badge / #16 Alert / #17 Table / #18 Data Table
+
+依据:官方 `base/tooltip`、`base/badge`、`base/alert`、`base/table`、`base/data-table` 文档页(含 Badge / Alert 的 API Reference、Data Table 的 TanStack v9 指南目录)、本地 base-nova `tooltip.tsx` / `badge.tsx` / `table.tsx`(Alert 与 Data Table 无独立 tsx,按 HANDOFF 待办记录)、本库 `tooltip.go` / `separator.go` / `alert.go` / `table.go` / `datatable.go`、DESIGN 第四节末映射表与第七节差异表。RTL 五页都有示例(或阿拉伯语示例),按约定排除。
+
+> **本批特点**:五个组件的主体能力都已对齐,缺口集中在少量 API 形态与配置开关;Tooltip / Badge / Table 甚至已有上游文档未明确列出的能力(键盘焦点触发、行内转圈、行 hover 过渡)。
+
+### Tooltip(#14)
+
+**官方页**:Installation 明确要挂 `TooltipProvider`(delay=0)、Usage / Composition、Side(left/top/bottom/right)、With Keyboard Shortcut、Disabled Button(用 span 包禁用按钮)、RTL(排除)、API → Base UI Tooltip。本地 `tooltip.tsx` 的 Content 还有 `align` / `alignOffset` / `side` / `sideOffset` 与 `TooltipPrimitive.Arrow`。
+
+**已具备**:`WithTipSide`(四方向 + 自动翻转夹紧)、`WithTipAlign`、`WithTipOffset`(sideOffset)、`WithTipDelay`、全局 `SetDelay` / `SetSkipDelay`(Provider 的共享延迟)、`WithTipShortcut`(内容右侧 Kbd,对应官方快捷键示例)、`WithTipMaxWidth`、受控 `Show` / `Hide` / `IsOpen`、**键盘焦点触发**(`AddEvent_SetFocus` + `FocusedByKeyboard`)、自绘箭头(`tipArrow`)、淡入淡出/滑动、一个管理器绑定任意多个元素、`Unbind`、宿主窗口销毁清理。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| TT1 | `disableHoverableContent` | Base UI Tooltip Provider/Root;**DESIGN 428 明确记为「未做」** | 鼠标移入提示气泡即按离开锚点处理 | 弹层自身挂 MouseEnter/Leave,开时保持显示;做成 `WithTipHoverable(bool)` 或全局开关 | 小-中 / 中 |
+| TT2 | `arrowPadding` / 箭头避开圆角 | DESIGN 428 记为「未做 arrowPadding 单独配置」 | `clampArrow(v, span)` 只保证三角形完整落在气泡内,把值夹在 `[tipArrow, span-tipArrow]`,不按圆角半径让位 | 给 `clampArrow` 加 padding 参数并暴露 `WithTipArrowPadding(px)` | 小 / 中 |
+| TT3 | TooltipContent 放任意控件 | 官方 `<TooltipContent><p>…</p></TooltipContent>` 与 tsx 的 `children` | 弹层是 FloatWindow 自绘,只有文本 + Kbd 块 | `BindTipContent(hEle, build func(parent int))`:内容区改成可挂控件的容器,按内容量高(参考 ScreenPopup.FitContent) | 中 / 低-中 |
+
+**低优先小项**:`alignOffset`(tsx 默认 0,本库 `tipConfig` 无该字段)、禁用按钮上的提示(官方用 span 包裹;本库可绑到父元素或提供矩形绑定)。**明确不做**:RTL;zoom 进场(异型透明窗整窗 alpha 冻结,DESIGN 8.57);`render` / `data-slot` 等 DOM 概念。
+
+### Badge(#15)
+
+**官方页**:6 个 variant、With Icon(`data-icon=inline-start/end`)、With Spinner、Link(`render` 成 `<a>`)、Custom Colors、RTL(排除)、API Reference(6 变体 + className)。
+
+**已具备**:六档变体、`WithBadgeLeadingIcon` / `WithBadgeTrailingIcon`、`WithBadgeLoading` / `SetLoading`(转圈)、`WithBadgeColors` / `SetColors`(自定义配色,对应 Custom Colors)、`WithBadgeOnClick` / `OnClick`、`SetText`、`WithVariant`、`link` 变体 hover 下划线、hover 过渡(`xui.Hover` + `Fade`)。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| BA1 | `focus-visible` 环与 `aria-invalid` 校验环 | `badge.tsx` 的 `focus-visible:ring-[3px]` / `aria-invalid:border-destructive` | Badge 是纯 Element,没有焦点环也没有 `SetInvalid` | 可点击形态启用焦点 + 手绘环(同 Button);补 `WithBadgeInvalid` / `SetInvalid(bool)` 画 destructive 环 | 小-中 / 中 |
+| BA2 | 行内图标侧内距收窄 | `badge.tsx` 的 `has-data-[icon=inline-start]:pl-1.5` / `pr-1.5` | `naturalWidth` 用固定 `badgePadX*2` 再加图标宽,**有图标时那一侧没有收窄** | 按 `leading` / `trailing` / `loading` 把对应侧内距从 `padX` 换成 6(同 Button 412 的做法) | 极小 / 中 |
+| BA3 | Link 变体真正打开链接 | 官方 Link 示例用 `render` 渲染 `<a>` | link 只是样式,`OnClick` 要调用方自己写 ShellExecute | `NewLinkBadge(...)` / `SetLinkURL(url)`,复用 Button 的 `NewLinkButton` 逻辑 | 小 / 中 |
+
+**明确不做**:RTL;`[a]:hover:*` 只有包在链接里才生效的条件(DESIGN 415 已记差异:Go 侧无链接概念,悬停恒生效);`render` / `className`。
+
+### Alert(#16)
+
+**官方页**:Composition(Icon / Title / Description / Action)、Basic、Destructive、Action、Custom Colors、RTL(排除)、API Reference(variant = default / destructive + 三个子组件)。
+
+**已具备**:`WithAlertVariant` / `SetVariant`、`WithAlertIcon` / `SetIcon`、`WithAlertTitle` / `SetTitle`、`WithAlertDescription` / `SetDescription`、`Action()` 动作槽、`Title()` / `Description()` 返回 `*Label` 可改字体、`Refresh()`、按宽度量高后写回标题/描述高度(`alertTextHeight` / `setTextHeight`)、整体 Auto 高自撑、破坏性配色。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| AL1 | 自定义配色 | 官方 Custom Colors 示例 | `foreground(t)` / `descriptionColor(t)` 是内部按 variant 取令牌,没有公开配色入口 | `WithAlertColors(bg, border, fore, desc)` / `SetColors`,复用 `xui.Hex` 与 Badge 的 `SetColors` 口径,主题切换仍现取 | 小 / 中 |
+| AL2 | 描述多行折行 | 官方描述段落可多行;DESIGN 566 记 Field/Empty 描述默认单行,Label 用 `SetAutoWrap()` 折行 | `Description()` 返回 `*Label`,但 `reflow()` 里 `setTextHeight` 按 `alertTextHeight` 写回高度,是否与 `SetAutoWrap()` 协同**需实测**;不同步则折行被覆盖 | 把 `alertTextHeight` 接到 Label 的折行高度(`WrappedHeight`),或让 `Refresh()` 尊重 `autoWrap` 的自撑高度 | 小-中 / 中 |
+
+**已知差异 / 明确不做**:RTL;动作槽按实际宽度缩短文本列 vs 上游固定 `pr-18=72`(DESIGN 420 已记,如需严格对齐可加 `WithAlertActionFixed(bool)`,低优先);`role=alert` / `aria-*` 无障碍元数据;可关闭(dismissible)上游未提供。
+
+### Table(#17)
+
+**官方页**:Composition(`TableCaption` / `TableHeader` / `TableBody` / `TableFooter` / `TableRow` / `TableHead` / `TableCell`)、Footer 示例、Actions 示例(每行 `<DropdownMenu />`)、Data Table 组合指引、RTL(排除)。
+
+**已具备**:原生 List 载体 + 表头/行底/边框/滚动条全自绘、`TableColumn.Align` 文本对齐、**行 hover `bg-muted/50` 过渡与选中行 `bg-muted`**(`onDrawItem` 已有)、表头悬停/拖拽换位、`SetColumns` / `FitColumns` / 自适应列宽、虚拟行 `setVirtualRows`、`AddRow` / `SetCell` / `SetRow` / `CellText` / `Clear`、`Select` / `OnSelect`、`HeaderCellRect` / `RowHeight`、内部单元格扩展绘制钩子 `onCellExtra`(DESIGN 8.167)。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| TBL1 | `TableCaption` | Composition 与 `caption-bottom` | 无标题/说明槽 | 表格下方一行弱化 Label,宽度跟随表格,计入 Auto 高度;提供 `SetCaption(text)` | 小-中 / 中 |
+| TBL2 | `TableFooter` / 合计行 | 官方 Footer 示例(`border-t bg-muted/50`) | 无页脚行 | 在表格底部自绘一条固定合计行(或追加一个不参与数据下标的特殊行),配 `SetFooter(cells...)` | 中 / 中 |
+| TBL3 | 单元格任意控件与点击回调 | 官方 Actions 示例每行放菜单按钮 | 只有**内部** `onCellExtra` 自绘钩子,没有公开的单元格渲染/点击/右键 API;DataTable 用 `Render` + `Menu.PopupAtElementRect` 做过类似事 | 暴露 `OnCellExtra(...)` 与 `OnCellClick(row,col)` / `OnCellMenu(...)`,配合 `HeaderCellRect` + 单元格矩形做命中 | 中 / 中 |
+
+**低优先扩展**:列宽拖拽调整(表头 MouseDown/Move 已有,但当前只用于换列顺序;TanStack 有 column sizing,官方 Table 页未列,不计入本批清单)。**明确不做**:RTL;HTML `<colgroup>` / `colSpan` / `rowSpan` 语义(原生 List 无对应物);`data-state=selected` 之外的 DOM 状态钩子。
+
+### Data Table(#18)
+
+**官方页**:定位是「用 TanStack Table v9 + `<Table />` 自己组合」的指南,**不是可安装组件**;目录覆盖 Set up Table Features / Basic Table / Cell Formatting / Row Actions / Pagination / Sorting / Filtering / Visibility / Row Selection / Reusable Components。示例里有「No results.」空态行、金额格式化/右对齐、页脚 `0 of 5 row(s) selected.`、分页 Previous/Next。
+
+**已具备**:本库把它收敛成 `NewDataTable`(工具栏 / 表格 / 页脚三段)—— 排序(单列 + 多列键)、关键字筛选与分面筛选、分页与虚拟滚动、列显隐、行选择(含跨页全选)、单元格格式化(`DataColumn.Render` / `Align`)、行/单元格点击与双击原地编辑、表头菜单与拖拽换位、**空状态 `paintEmpty`**、页脚统计、自定义比较器 `Compare`。比官方指南还多了编辑、虚拟滚动、分面筛选与多列排序。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| DT1 | 服务端 / 手动分页 | 官方 Pagination 节提示「implementing manual pagination」 | `TotalRows()` = `len(rows)`,排序/筛选/分页全在本地内存数据上 | `WithDataTableRemote(total, fetch)` 或 `SetTotalRows` + `OnPageChange` 让调用方按页拉取;排序/筛选参数一并回传,避免组件再对整表排序 | 中-高 / 中(大数据量刚需) |
+| DT2 | 自定义空态文案 / 内容 | 官方 `No results.` 空态行 | `paintEmpty` 固定文案与样式 | `WithDataTableEmptyText(s)` 或 `SetEmptyContent(build)`;成本小 | 小 / 中 |
+| DT3 | 列宽拖拽调整 | TanStack column sizing(官方指南未列,但桌面表格常见);DESIGN 596 记表头拖拽只换显示顺序 | 表头拖拽只重排 `order`,不能改列宽 | 表头命中列缝时切到 resize 模式,调 `Table.SetColumnWidth` 并刷新;与现有换列拖拽互斥 | 中 / 低-中(需先确认需求) |
+
+**明确不做**:RTL;行拖拽(DESIGN 595 已充分说明:排序/筛选/分页后显示顺序 ≠ 原始下标,落点语义属于业务);表头键盘排序(DESIGN 598:表头是原生 List 子元素,不进 Tab 链);中文拼音排序(DESIGN 597,用 `DataColumn.Compare` 覆盖);行展开 / 分组 / 聚合(官方指南未列)。
+
+**本批实现顺序建议**:BA2 → BA3 → BA1 → TT2 → AL1 → TBL1 → DT2(小改动);随后 TT1 / AL2 / TBL2 / TBL3 / DT1;TT3 与 DT3 需要先确认需求。TT1 / TT2 是 DESIGN 428 里已白纸黑字记为「未做」的两项,若决定补齐,应同步更新第四节末映射表与第七节差异描述。
+
+## 八、实现顺序建议(仅 Input / Select 批次, 待确认后执行)
+
+1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化。
+2. **中改动、功能缺口**:I1 文件输入 → I3/S9 必填校验 → I4 上限 → S1 定位开关 → S2 typeahead。
+3. **需先确认需求或成本较高**:S5 多选、S7 滚动箭头、S6 悬停开关、I6 原生 Edit 视觉 API、I8 demo 对照。
+
+实现时按仓库固定流程:先查 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build ./...` / `go vet ./...` / `go test ./...`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。本轮**只核查,未改任何组件代码**。

@@ -29,6 +29,7 @@
 
 ## 待办
 
+- ⬜ **组件特性核查(按常用性依次推进)**: 进度台账在 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) —— 官方侧栏 66 个组件按常用性排序(63 个可核查 + 3 个范围外), RTL 明确不做。已完成 #1..#18: Button / Checkbox / Combobox 的补齐清单已落地(见 CHANGELOG), 其余 15 个已出「未实现但可实现」清单待确认(逐组件结论见台账); **下一轮从 #19 Popover 起**。核查只出结论, 实现按下面的固定流程走。
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)。
 - ⬜ **可选(不阻塞)**: 补齐本地 shadcn 参考实现中旧批次组件的 tsx 与 App.tsx 对照卡(alert / alert-dialog / aspect-ratio / breadcrumb / button-group / calendar / chart / context-menu / empty / field / item / sonner / toggle / toggle-group); 对应 Go 组件均已实现并验收, 仅用于逐像素视觉对照。calendar / chart / sonner 需要额外 npm 依赖。Data Table 是组合模式, 无独立 tsx; Combobox 在 base 变体里已有独立 tsx(已装)。
 
