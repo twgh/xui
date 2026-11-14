@@ -154,3 +154,71 @@ func TestComboboxInitialActiveMultiple(t *testing.T) {
 	c.applyFilter() // 多选取数据顺序里第一个已选中的行
 	assertOnlyRowActive(t, c, 1)
 }
+
+// 可编辑组合框: 列表里没有的文字作为自定义值(Text=Value), 精确命中(不区分大小写)时
+// 仍选数据条目; 数据里后来出现同值条目时以数据为准。
+func TestComboboxTypedValue(t *testing.T) {
+	groups := []SelectGroup{{Items: []SelectItem{
+		{Value: "a", Text: "Next.js"},
+		{Value: "b", Text: "SvelteKit"},
+	}}}
+	c := &Combobox{groups: groups, picked: map[string]bool{}, editable: true}
+
+	if !c.setTypedValue("  Nuxt  ") {
+		t.Fatal("setTypedValue(Nuxt) = false, want true")
+	}
+	if c.Value() != "Nuxt" {
+		t.Fatalf("Value = %q, want Nuxt", c.Value())
+	}
+	items := c.pickedItems()
+	if len(items) != 1 || items[0].Value != "Nuxt" || items[0].Text != "Nuxt" {
+		t.Fatalf("pickedItems = %+v, want one custom item Nuxt", items)
+	}
+	if it, ok := c.Selected(); !ok || it.Text != "Nuxt" {
+		t.Fatalf("Selected = %+v, %v, want custom Nuxt", it, ok)
+	}
+	if c.setTypedValue("Nuxt") {
+		t.Fatal("setTypedValue(same) = true, want false (无改动)")
+	}
+
+	if !c.setTypedValue("sveltekit") { // 不区分大小写精确命中显示文字
+		t.Fatal("setTypedValue(sveltekit) = false, want true")
+	}
+	if c.hasCustom || c.Value() != "b" {
+		t.Fatalf("after exact match: custom=%v value=%q, want data item b", c.hasCustom, c.Value())
+	}
+
+	c.setTypedValue("Nuxt")
+	c.groups = append(groups, SelectGroup{Items: []SelectItem{{Value: "Nuxt", Text: "Nuxt"}}})
+	c.syncPicked() // 数据里出现同值条目: 自定义值退场, 值不变
+	if c.hasCustom {
+		t.Fatal("custom value should be replaced by the data item")
+	}
+	if c.Value() != "Nuxt" || len(c.pickedItems()) != 1 {
+		t.Fatalf("after data sync: value=%q items=%+v", c.Value(), c.pickedItems())
+	}
+
+	if c.setTypedValue("   ") {
+		t.Fatal("setTypedValue(blank) = true, want false")
+	}
+}
+
+// 可编辑组合框展开列表时不预亮任何条目(文字可能与已选值不同): Enter 留给"提交文字",
+// 要选固定选项按 ↓ 或悬停/点击。
+func TestComboboxEditableInitialActive(t *testing.T) {
+	groups := []SelectGroup{{Items: []SelectItem{
+		{Value: "a", Text: "Next.js"},
+		{Value: "b", Text: "SvelteKit"},
+		{Value: "c", Text: "Nuxt.js"},
+	}}}
+	c := &Combobox{
+		groups: groups, rows: comboboxTestRows(groups), editable: true,
+		picked: map[string]bool{"c": true}, built: true, active: -1,
+	}
+
+	c.applyFilter() // 已选 Nuxt.js, 但输入框里可能正在编辑别的文字: 不预亮
+	assertOnlyRowActive(t, c, -1)
+
+	c.moveActive(1) // ↓ 才落到第一条
+	assertOnlyRowActive(t, c, 0)
+}

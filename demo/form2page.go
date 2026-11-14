@@ -201,6 +201,23 @@ func buildForm2Page(body *widget.LayoutEle) {
 		}
 	})
 
+	xui.ItemFill(hint(vc.Handle, "可编辑组合框: 任意输入(不搜索), 点箭头或 ↓ 展开固定选项"))
+	cbEditable := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
+		ui.WithComboboxEditable(),
+		ui.WithComboboxPlaceholder("输入或选择框架..."),
+		ui.WithComboboxItems([]ui.SelectItem{
+			{Value: "next", Text: "Next.js", Icon: icons.IconGlobe},
+			{Value: "svelte", Text: "SvelteKit", Icon: icons.IconGlobe},
+			{Value: "nuxt", Text: "Nuxt.js", Icon: icons.IconGlobe},
+			{Value: "astro", Text: "Astro", Icon: icons.IconGlobe},
+		}))
+	xui.ItemFill(cbEditable)
+	cbEditable.OnChange(func(items []ui.SelectItem) {
+		if len(items) > 0 {
+			println("Combobox(editable):", items[0].Value)
+		}
+	})
+
 	xui.ItemFill(hint(vc.Handle, "单选(按钮触发 + 弹层搜索框; 分组 + 图标 + 禁用项)"))
 	cb := ui.NewCombobox(0, 0, 0, 0, vc.Handle,
 		ui.WithComboboxPlaceholder("Select framework..."),

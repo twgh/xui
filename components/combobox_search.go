@@ -24,6 +24,9 @@ const (
 	comboboxEmptyH  int32 = 40
 )
 
+// comboboxEmptyText 是过滤后一条都不剩时的空状态文案。
+const comboboxEmptyText = "没有找到结果。"
+
 // chips 几何(逻辑像素), 对齐 base-nova combobox:
 // chip 高 21(h-[calc(--spacing(5.25))])、text-xs(12)、rounded-sm、px-1.5(6),
 // 容器 gap-1(4) 且在有 chip 时左右内边距收到 4(has-data-[slot=combobox-chip]:px-1)。
@@ -45,12 +48,14 @@ const (
 )
 
 // Combobox 自动补全选择框 —— 对应 shadcn 文档的 **Combobox**(输入过滤 + 建议列表),
-// 与 ui.NativeComboBox(shadcn select 的原生下拉)不是同一个东西。两种触发形态:
+// 与 ui.NativeComboBox(shadcn select 的原生下拉)不是同一个东西。触发形态:
 //
 //   - 默认 = 上游 Popup 示例: 触发区是 outline 按钮(同 Select), 显示当前值/占位符,
 //     右侧 chevrons-up-down; 弹层 = 顶部搜索框(输入即过滤) + 建议列表 + 空状态;
 //   - `WithComboboxInput` = 上游 Basic 示例: 触发区本身是可输入的原生输入框
 //     (ComboboxInput 就在触发层), 边打字边过滤; 弹层里不再有搜索行, 只列条目。
+//   - `WithComboboxEditable` = 可编辑组合框(本库扩展): 输入框只编辑值、不做搜索,
+//     打字不过滤也不自动开层; 箭头/↓ 展开固定选项的全量列表(见下方段落)。
 //
 // 共通语义: 条目支持前置图标 / 禁用 / 分组标签 / 左侧(多选)或右侧(单选)选中勾;
 // 键盘 ↑/↓ 循环移动高亮(跳过禁用)、Home/End 首末、Enter 选中、ESC 关闭; 鼠标悬停
@@ -67,6 +72,12 @@ const (
 // 取消选中(上游 inputClear); ESC 关闭列表, 列表已关时 ESC 清值并清空文字;
 // 关闭列表后输入框恢复显示已选标签(未提交的过滤词不保留)。
 //
+// `WithComboboxEditable`(本库扩展)把触发区换成**可编辑组合框**(仅单选): 输入框接受
+// 任意文字, 打字不搜索、不过滤、也不自动开列表; 点右侧箭头或 ↓ 展开的是固定选项的
+// 全量列表。文字在 Enter / 失焦 / 点触发区外时提交: 与某条目的 Text/Value 精确相等
+// (不区分大小写)时选中该条目, 否则整段文字就是值(Text=Value=文字, OnChange 回传
+// SelectItem{Value: 文字, Text: 文字}); 提交空文字 = 清空值; ESC 放弃未提交的文字。
+//
 // 弹层复用 popoverPanel(阴影窗 + 卡片 body + 失焦/ESC 关闭 + 工作区夹取),
 // 数据模型与 Select 共用 SelectItem / SelectGroup。
 type Combobox struct {
@@ -79,6 +90,7 @@ type Combobox struct {
 	clear             bool
 	autoHighlight     bool
 	input             bool
+	editable          bool
 	placeholder       string
 	searchPlaceholder string
 	emptyText         string
@@ -89,6 +101,8 @@ type Combobox struct {
 	inputEdit     *widget.Edit // 输入框形态的触发区裸 Edit(叠在 Button 上)
 	suppressInput bool         // 程序化 SetText 期间屏蔽 Edit_Changed
 	emptyPending  bool         // "删空即清值"的确认已排进下一轮消息
+	hasCustom     bool         // 当前值是否来自可编辑输入(不在 groups 里)
+	custom        SelectItem   // 可编辑输入提交的值(Text=Value=输入的文字)
 
 	panel  *popoverPanel
 	scroll *ScrollArea
@@ -207,7 +221,19 @@ func WithComboboxClear() ComboboxOption {
 // 弹层搜索框"(上游 Popup 形态)。仅用于单选 —— 与 WithComboboxMultiple / WithComboboxChips
 // 一起用时忽略本项, 多选仍在弹层搜索框里输入。
 func WithComboboxInput() ComboboxOption {
-	return func(c *Combobox) { c.input = true }
+	return func(c *Combobox) { c.input, c.editable = true, false }
+}
+
+// WithComboboxEditable 把触发区换成可编辑组合框(本库扩展, 仅单选): 输入框接受任意
+// 文字, 打字不搜索、不过滤、也不自动打开列表; 点右侧箭头或 ↓ 展开固定选项的全量列表,
+// 条目照常可点选。文字在 Enter / 失焦 / 点触发区外时提交 —— 与某条目的 Text/Value
+// 精确相等(不区分大小写)时选中该条目, 否则整段文字作为自定义值(Value/Text 都是这段
+// 文字, OnChange 回传 SelectItem{Value: 文字, Text: 文字}); 提交空文字 = 清空值;
+// ESC 放弃未提交的文字(恢复原来的值)。
+// 与 WithComboboxInput 互斥, 后写的那个生效 —— 前者是"边打字边过滤"的自动补全,
+// 本项是"只编辑值、不搜索"的经典可编辑组合框。多选模式忽略本项。
+func WithComboboxEditable() ComboboxOption {
+	return func(c *Combobox) { c.input, c.editable = true, true }
 }
 
 // WithComboboxAutoHighlight 过滤后是否自动高亮第一条匹配项。默认 true(本库既有语义,
@@ -241,7 +267,7 @@ func NewCombobox(x, y, cx, cy int32, hParent int, opts ...ComboboxOption) *Combo
 		autoHighlight:     true,
 		placeholder:       "请选择...",
 		searchPlaceholder: "搜索...",
-		emptyText:         "没有找到结果。",
+		emptyText:         comboboxEmptyText,
 		hoverChip:         -1,
 	}
 	for _, o := range opts {
@@ -284,6 +310,9 @@ func NewCombobox(x, y, cx, cy int32, hParent int, opts ...ComboboxOption) *Combo
 		// 点右侧箭头区收不到那个"先关"的信号, 直接在这里收起。
 		if c.panel != nil && (c.panel.IsOpen() || c.panel.RecentlyClosed()) {
 			if c.input && c.panel.IsOpen() {
+				if c.editable {
+					c.commitEditable() // 箭头收起列表时, 输入框里没提交的文字照常落值
+				}
 				c.Close()
 			}
 			return 0
@@ -314,7 +343,7 @@ func NewCombobox(x, y, cx, cy int32, hParent int, opts ...ComboboxOption) *Combo
 	if c.input && !c.multiple {
 		c.setupInput()
 	} else {
-		c.input = false // 输入框形态只对单选成立(多选在弹层搜索框里输入)
+		c.input, c.editable = false, false // 输入框形态只对单选成立(多选在弹层搜索框里输入)
 	}
 	if c.disabled {
 		c.SetDisabled(true)
@@ -353,8 +382,12 @@ func (c *Combobox) setupInput() {
 	e.AddEvent_KeyDown(c.onInputKeyDown)
 	e.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 		xui.NotePointerPress()
-		c.Open()
-		c.selectAllInput()
+		if !c.editable {
+			// 自动补全: 点输入框即开列表, 并全选已选标签(直接打字是替换)
+			c.Open()
+			c.selectAllInput()
+		}
+		// 可编辑组合框: 点文字区只放光标/选中文字, 列表由右侧箭头或 ↓ 打开
 		return 0
 	})
 	e.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int {
@@ -364,6 +397,9 @@ func (c *Combobox) setupInput() {
 	e.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int {
 		// 输入框形态的弹层不激活(activate=false), 没有自己的失焦关闭信号 ——
 		// 关层由触发区输入框失焦驱动: 点窗口内其它控件 / 切到别的应用都走这里。
+		if c.editable {
+			c.commitEditable() // 可编辑组合框: 输入完直接点别处也算提交
+		}
 		if c.IsOpen() {
 			c.Close()
 		}
@@ -477,9 +513,10 @@ func (c *Combobox) selectAllInput() {
 	})
 }
 
-// closeOnOutsidePress 在宿主窗口按下鼠标时收起输入框形态的弹层(点在触发区上不算)。
+// closeOnOutsidePress 宿主窗口按下鼠标时: 可编辑组合框把输入框里没提交的文字落值
+// (点击不用落在可聚焦控件上, 否则 Edit 不失焦、文字永远不提交), 弹层开着时一并收起。
 func (c *Combobox) closeOnOutsidePress(hWindow int, pt *xc.POINT) {
-	if c == nil || pt == nil || !c.IsOpen() || c.inputEdit == nil {
+	if c == nil || pt == nil || c.inputEdit == nil {
 		return
 	}
 	if !xc.XC_IsHXCGUI(c.Handle, xcc.XC_ELE) || xc.XWidget_GetHWINDOW(c.Handle) != hWindow {
@@ -490,13 +527,22 @@ func (c *Combobox) closeOnOutsidePress(hWindow int, pt *xc.POINT) {
 	if pt.X >= rc.Left && pt.X < rc.Right && pt.Y >= rc.Top && pt.Y < rc.Bottom {
 		return
 	}
-	c.Close()
+	if c.editable {
+		c.commitEditable() // 点触发区外视同"输入完了"
+	}
+	if c.IsOpen() {
+		c.Close()
+	}
 }
 
-// onInputChanged 输入框形态: 边打字边过滤; 删空文字即取消选中(上游 inputClear);
+// onInputChanged 自动补全形态: 边打字边过滤; 删空文字即取消选中(上游 inputClear);
 // 列表没开就一起打开(弹层不激活, 焦点一直留在触发区输入框)。
+// 可编辑组合框不做任何搜索: 打字只是改文字, 列表保持全量、也不自动打开。
 func (c *Combobox) onInputChanged() {
 	if c == nil || c.inputEdit == nil || c.suppressInput {
+		return
+	}
+	if c.editable {
 		return
 	}
 	c.query = c.inputEdit.GetText()
@@ -535,14 +581,18 @@ func (c *Combobox) clearIfInputEmpty() {
 }
 
 // onInputKeyDown 输入框形态的键盘: 列表开着时 ↑/↓ 移动、Enter 选中、ESC 关闭;
-// 列表没开时 ↓ 打开; 关闭态的 ESC 清值(上游 base combobox)。
-// Home/End 与退格都不抢 —— 上游输入框里它们是光标/删除操作; "删空文字 = 清值"
-// 由 onInputChanged 处理, 在这里拦退格反而会吃掉原生删除、让 Changed 不触发。
+// 列表没开时 ↓ 打开(可编辑组合框顺带点亮第一项), Enter 提交文字;
+// 自动补全形态关闭态的 ESC 清值(上游 base combobox), 可编辑形态 ESC 放弃未提交的文字。
+// Home/End 与退格都不抢 —— 上游输入框里它们是光标/删除操作; 自动补全的"删空文字 =
+// 清值"由 onInputChanged 处理, 在这里拦退格反而会吃掉原生删除、让 Changed 不触发。
 func (c *Combobox) onInputKeyDown(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
 	switch int(wParam) {
 	case xcc.VK_Down:
 		if c.IsOpen() {
 			c.moveActive(1)
+		} else if c.editable {
+			c.Open()
+			c.setActive(c.firstEnabled(0, 1), true) // 打开不预亮(见 initialActive), ↓ 明确要选第一项
 		} else {
 			c.Open()
 		}
@@ -556,12 +606,21 @@ func (c *Combobox) onInputKeyDown(hEle int, wParam, lParam uintptr, pbHandled *b
 		if c.IsOpen() {
 			if c.active >= 0 && int(c.active) < len(c.rows) {
 				c.chooseRow(c.rows[c.active])
+			} else if c.editable {
+				// 可编辑组合框打开时不预亮条目: 没有高亮就是把输入的文字提交为值
+				c.commitEditable()
+				c.Close()
 			}
+			*pbHandled = true
+		} else if c.editable {
+			c.commitEditable()
 			*pbHandled = true
 		}
 	case xcc.VK_Esc:
 		if c.IsOpen() {
 			c.Close()
+		} else if c.editable {
+			c.syncInputText() // 放弃未提交的文字, 恢复原来的值
 		} else if len(c.picked) > 0 {
 			c.clearPicked()
 		}
@@ -607,6 +666,9 @@ func (c *Combobox) Value() string {
 			}
 		}
 	}
+	if c.hasCustom && c.picked[c.custom.Value] {
+		return c.custom.Value
+	}
 	return ""
 }
 
@@ -622,7 +684,8 @@ func (c *Combobox) Values() []string {
 	return out
 }
 
-// pickedItems 按数据顺序返回已选中条目(触发区文字 / chips / OnChange 共用)。
+// pickedItems 按数据顺序返回已选中条目(触发区文字 / chips / OnChange 共用);
+// 可编辑组合框提交的自定义值不在数据里, 追加在最后。
 func (c *Combobox) pickedItems() []SelectItem {
 	if c == nil {
 		return nil
@@ -634,6 +697,9 @@ func (c *Combobox) pickedItems() []SelectItem {
 				out = append(out, it)
 			}
 		}
+	}
+	if c.hasCustom && c.picked[c.custom.Value] {
+		out = append(out, c.custom)
 	}
 	return out
 }
@@ -648,17 +714,25 @@ func (c *Combobox) Selected() (SelectItem, bool) {
 			}
 		}
 	}
+	if c.hasCustom && c.custom.Value == v && v != "" {
+		return c.custom, true
+	}
 	return SelectItem{}, false
 }
 
 // SetValue 按值选中条目(单选语义: 先清空其它选中), 不触发 OnChange。
+// 可编辑模式下, 数据里没有的值会以自定义值保留(Text=Value=v)。
 func (c *Combobox) SetValue(v string) *Combobox {
 	if c == nil {
 		return c
 	}
 	c.picked = map[string]bool{}
+	c.hasCustom, c.custom = false, SelectItem{}
 	if v != "" {
 		c.picked[v] = true
+		if c.editable && !c.hasItemValue(v) {
+			c.hasCustom, c.custom = true, SelectItem{Value: v, Text: v}
+		}
 	}
 	c.syncPicked()
 	c.invalidateTriggerHits()
@@ -674,6 +748,7 @@ func (c *Combobox) SetValues(vs ...string) *Combobox {
 		return c
 	}
 	c.picked = map[string]bool{}
+	c.hasCustom, c.custom = false, SelectItem{}
 	for _, v := range vs {
 		c.picked[v] = true
 	}
@@ -693,7 +768,8 @@ func (c *Combobox) OnChange(fn func(items []SelectItem)) *Combobox {
 	return c
 }
 
-// syncPicked 清掉数据里已经不存在的值。
+// syncPicked 清掉数据里已经不存在的值; 可编辑组合框提交的自定义值单独保留,
+// 数据里出现同值条目时以数据条目为准(自定义值退场, 选中的 value 不变)。
 func (c *Combobox) syncPicked() {
 	exist := map[string]bool{}
 	for _, g := range c.groups {
@@ -701,11 +777,98 @@ func (c *Combobox) syncPicked() {
 			exist[it.Value] = true
 		}
 	}
+	if c.hasCustom {
+		// 未被选中或数据里已经有同值条目: 自定义值不再需要
+		if !c.picked[c.custom.Value] || exist[c.custom.Value] {
+			c.hasCustom, c.custom = false, SelectItem{}
+		}
+	}
 	for v := range c.picked {
-		if !exist[v] {
+		if !exist[v] && !(c.hasCustom && v == c.custom.Value) {
 			delete(c.picked, v)
 		}
 	}
+}
+
+// hasItemValue 报告数据里是否有该 value(精确匹配)。
+func (c *Combobox) hasItemValue(v string) bool {
+	for _, g := range c.groups {
+		for _, it := range g.Items {
+			if it.Value == v {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// itemByText 按显示文字或程序值精确查找条目(不区分大小写), 可编辑组合框提交时用。
+func (c *Combobox) itemByText(text string) (SelectItem, bool) {
+	lt := strings.ToLower(text)
+	for _, g := range c.groups {
+		for _, it := range g.Items {
+			if strings.ToLower(it.Value) == lt || strings.ToLower(selectItemLabel(it)) == lt {
+				return it, true
+			}
+		}
+	}
+	return SelectItem{}, false
+}
+
+// setTypedValue 把一段文字落成选中值: 精确命中已有条目时选该条目(不覆盖为自定义值),
+// 否则作为自定义值(Text=Value=文字)。返回是否真的改动了状态。
+func (c *Combobox) setTypedValue(text string) bool {
+	if c == nil || c.multiple {
+		return false
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if it, ok := c.itemByText(text); ok {
+		if it.Disabled {
+			return false
+		}
+		if len(c.picked) == 1 && c.picked[it.Value] && !c.hasCustom {
+			return false
+		}
+		c.picked = map[string]bool{it.Value: true}
+		c.hasCustom, c.custom = false, SelectItem{}
+		return true
+	}
+	if c.hasCustom && c.custom.Value == text && c.picked[text] {
+		return false
+	}
+	c.hasCustom = true
+	c.custom = SelectItem{Value: text, Text: text}
+	c.picked = map[string]bool{text: true}
+	return true
+}
+
+// commitEditable 把可编辑组合框输入框里的文字提交为选中值(Enter / 失焦 / 点触发区外):
+// 空文字 = 清空值; 否则见 setTypedValue。返回是否真的改动了选中值。
+func (c *Combobox) commitEditable() bool {
+	if c == nil || c.inputEdit == nil || !c.editable {
+		return false
+	}
+	if strings.TrimSpace(c.inputEdit.GetText()) == "" {
+		if len(c.picked) == 0 {
+			c.syncInputText() // 只有空白: 把输入框恢复成空(去掉空格)
+			return false
+		}
+		c.clearPicked()
+		return true
+	}
+	if !c.setTypedValue(c.inputEdit.GetText()) {
+		c.syncInputText() // 没改动(或精确命中禁用条目): 文字恢复成已选标签
+		return false
+	}
+	c.invalidateTriggerHits()
+	c.Redraw(false)
+	c.refreshRows()
+	c.syncInputText()
+	c.notify()
+	return true
 }
 
 // SetInvalid 设置/清除校验失败态。
@@ -821,8 +984,9 @@ func (c *Combobox) showInputPopup() *Combobox {
 }
 
 // SetQuery 设置搜索词并立即过滤(程序化驱动, 等价于用户在搜索框里输入)。
+// 可编辑组合框没有搜索功能, 不适用(要设值用 SetValue)。
 func (c *Combobox) SetQuery(q string) *Combobox {
-	if c == nil {
+	if c == nil || c.editable {
 		return c
 	}
 	c.query = q
@@ -1149,8 +1313,13 @@ func (c *Combobox) rowOfPicked() int32 {
 //     勾与高亮对不上的状态, 更不会让一次误按 Enter 把值改成第一项;
 //   - 有搜索词且 autoHighlight 开着时落到第一条匹配项(输入即过滤, Enter 直接选中);
 //     关掉(对齐上游 base combobox 默认)则不高亮, 由 ↓/Home/End 或悬停点亮。
+//   - 可编辑组合框没有搜索词、文字也可能与已选值不同: 打开时不预亮任何条目,
+//     把 Enter 留给"提交输入的文字"; 要选条目按 ↓ 或悬停。
 func (c *Combobox) initialActive() int32 {
 	if strings.TrimSpace(c.query) == "" {
+		if c.editable {
+			return -1
+		}
 		if i := c.rowOfPicked(); i >= 0 {
 			return i
 		}
@@ -1286,6 +1455,7 @@ func (c *Combobox) chooseRow(r *comboboxRow) {
 		c.refreshRows()
 	} else {
 		c.picked = map[string]bool{r.item.Value: true}
+		c.hasCustom, c.custom = false, SelectItem{}
 	}
 	c.hoverChip = -1
 	c.invalidateTriggerHits()
@@ -1329,6 +1499,9 @@ func (c *Combobox) removePicked(v string) {
 		return
 	}
 	delete(c.picked, v)
+	if c.hasCustom && c.custom.Value == v {
+		c.hasCustom, c.custom = false, SelectItem{}
+	}
 	c.hoverChip = -1
 	c.invalidateTriggerHits()
 	c.Redraw(false)
@@ -1343,6 +1516,7 @@ func (c *Combobox) clearPicked() {
 		return
 	}
 	c.picked = map[string]bool{}
+	c.hasCustom, c.custom = false, SelectItem{}
 	c.hoverChip = -1
 	c.invalidateTriggerHits()
 	c.Redraw(false)
