@@ -46,6 +46,31 @@ func buildPopoverCard(body *widget.LayoutEle) {
 			ui.PopoverDescription(h.Handle, "对齐触发区左缘后再向左偏移 8px。")
 		}))
 
+	// 受控开合: 触发区只发"意图", 状态由 OnOpenChange 里的 SetOpen 决定
+	ctrlState := ui.NewLabel(0, 0, 0, 20, "受控开合: 已关闭", vpop.Handle).SetMuted().SetFontSize(14)
+	ctrlBtn := ui.NewButton(0, 0, 0, 0, "受控开合", popRow.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonHasPopup(),
+		ui.WithButtonTrailingIcon(icons.IconChevronDown))
+	xui.ItemWidth(ctrlBtn, 120)
+	var ctrlPop *ui.Popover
+	ctrlPop = ui.NewPopover(ctrlBtn.Handle,
+		ui.WithPopoverControlled(true),
+		ui.WithPopoverOnOpenChange(func(open bool) {
+			ctrlPop.SetOpen(open)
+			if open {
+				ctrlState.SetText("受控开合: 已打开")
+			} else {
+				ctrlState.SetText("受控开合: 已关闭")
+			}
+			ctrlState.Redraw()
+		}),
+		ui.WithPopoverContent(func(c int) {
+			h := ui.PopoverHeader(c)
+			ui.PopoverTitle(h.Handle, "受控开合")
+			ui.PopoverDescription(h.Handle, "触发区只发意图, SetOpen 决定状态。")
+		}))
+	xui.ItemFill(ctrlState)
+
 	hoverBtn := ui.NewButton(0, 0, 0, 0, "悬停 @xui 查看资料", vpop.Handle, ui.WithVariant(ui.ButtonLink))
 	xui.ItemWidth(hoverBtn, 160)
 	ui.NewHoverCard(hoverBtn.Handle, ui.WithHoverCardContent(func(c int) {

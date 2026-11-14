@@ -26,6 +26,8 @@ type Progress struct {
 	max           float64
 	indeterminate bool
 	indicator     func(*xui.Theme) xui.Color // 指示器颜色解析器(nil = Primary)
+	track         func(*xui.Theme) xui.Color // 轨道颜色解析器(nil = Muted)
+	radius        int32                      // 圆角覆盖(0 = 高度的一半, 胶囊)
 }
 
 // progressRange 是内部进度范围: 用千分比保留 0.1% 精度, 对外 API 是实际值域。
@@ -71,6 +73,30 @@ func WithProgressIndicatorColorFunc(fn func(*xui.Theme) xui.Color) ProgressOptio
 	return func(p *Progress) {
 		if fn != nil {
 			p.indicator = fn
+		}
+	}
+}
+
+// WithProgressTrackColor 覆盖轨道颜色(上游 Track 是独立部件, 可传 className 改底色)。
+func WithProgressTrackColor(c xui.Color) ProgressOption {
+	return func(p *Progress) { p.track = func(*xui.Theme) xui.Color { return c } }
+}
+
+// WithProgressTrackColorFunc 用主题解析器取轨道颜色(每次绘制实时求值)。
+func WithProgressTrackColorFunc(fn func(*xui.Theme) xui.Color) ProgressOption {
+	return func(p *Progress) {
+		if fn != nil {
+			p.track = fn
+		}
+	}
+}
+
+// WithProgressRadius 覆盖轨道与指示器的圆角(默认 = 高度的一半, 即胶囊; 传 0 恢复胶囊)。
+// 上游通过 Track / Indicator 的 className 改 rounded-*, Go 侧收敛成这一个数。
+func WithProgressRadius(r int32) ProgressOption {
+	return func(p *Progress) {
+		if r > 0 {
+			p.radius = r
 		}
 	}
 }
@@ -210,6 +236,32 @@ func (p *Progress) SetIndicatorColorFunc(fn func(*xui.Theme) xui.Color) *Progres
 	return p
 }
 
+// SetTrackColorFunc 用主题解析器取轨道颜色; 传 nil 恢复 Muted。
+func (p *Progress) SetTrackColorFunc(fn func(*xui.Theme) xui.Color) *Progress {
+	if p == nil {
+		return p
+	}
+	p.track = fn
+	p.Redraw(false)
+	return p
+}
+
+// SetRadius 覆盖圆角(<=0 恢复胶囊)。
+func (p *Progress) SetRadius(r int32) *Progress {
+	if p == nil {
+		return p
+	}
+	if r < 0 {
+		r = 0
+	}
+	if p.radius == r {
+		return p
+	}
+	p.radius = r
+	p.Redraw(false)
+	return p
+}
+
 // OnChange 注册进度变化回调(v 为 0 ~ Max 的实际值)。
 func (p *Progress) OnChange(fn func(v float64)) *Progress {
 	if fn == nil {
@@ -249,9 +301,16 @@ func (p *Progress) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	h := pt.H()
 	radius := h / 2
+	if p.radius > 0 && p.radius < radius {
+		radius = p.radius
+	}
 
-	// 轨道: bg-muted
-	pt.FillRound(&pt.Rc, t.Muted, radius)
+	// 轨道: bg-muted(可覆盖)
+	trackColor := t.Muted
+	if p.track != nil {
+		trackColor = p.track(t)
+	}
+	pt.FillRound(&pt.Rc, trackColor, radius)
 
 	trackW := pt.W()
 	if trackW <= 0 {
@@ -314,6 +373,8 @@ type ProgressField struct {
 	max           float64
 	indeterminate bool
 	indicator     func(*xui.Theme) xui.Color
+	track         func(*xui.Theme) xui.Color
+	radius        int32
 }
 
 // ProgressFieldOption 复合进度条配置项。
@@ -356,6 +417,20 @@ func WithProgressFieldIndeterminate() ProgressFieldOption {
 // WithProgressFieldIndicatorColor 覆盖指示器颜色(固定色)。
 func WithProgressFieldIndicatorColor(c xui.Color) ProgressFieldOption {
 	return func(pf *ProgressField) { pf.indicator = func(*xui.Theme) xui.Color { return c } }
+}
+
+// WithProgressFieldTrackColor 覆盖轨道颜色。
+func WithProgressFieldTrackColor(c xui.Color) ProgressFieldOption {
+	return func(pf *ProgressField) { pf.track = func(*xui.Theme) xui.Color { return c } }
+}
+
+// WithProgressFieldRadius 覆盖圆角(默认胶囊)。
+func WithProgressFieldRadius(r int32) ProgressFieldOption {
+	return func(pf *ProgressField) {
+		if r > 0 {
+			pf.radius = r
+		}
+	}
 }
 
 // NewProgressField 创建带标题与百分比文本的进度条。cy 传 0 时用 32(标题 20 + 间距 8 + 条 4)。
@@ -412,6 +487,12 @@ func NewProgressField(x, y, cx, cy int32, hParent int, opts ...ProgressFieldOpti
 	xui.ItemFill(pf.bar)
 	if pf.indicator != nil {
 		pf.bar.SetIndicatorColorFunc(pf.indicator)
+	}
+	if pf.track != nil {
+		pf.bar.SetTrackColorFunc(pf.track)
+	}
+	if pf.radius > 0 {
+		pf.bar.SetRadius(pf.radius)
 	}
 	pf.bar.SetValue(pf.initial)
 	pf.syncValueText(pf.bar.Value(), pf.bar.Max())

@@ -87,6 +87,31 @@ func WithPopoverKeepOnBlur(keep bool) PopoverOption {
 	return func(p *Popover) { p.keepOnBlur = keep }
 }
 
+// WithPopoverInitialFocus 指定打开后聚焦的元素(默认聚焦内容区第一个可聚焦控件,
+// 对应 Base UI Popup 的 initialFocus)。
+func WithPopoverInitialFocus(hEle int) PopoverOption {
+	return func(p *Popover) { p.initialFocus = hEle }
+}
+
+// WithPopoverFinalFocus 指定关闭后聚焦的元素(通常是打开它的触发区)。
+// 不指定时: 只有 ESC 关闭才把焦点还给触发区 —— 点窗口其它控件关掉时不抢焦点
+// (那会把用户刚点的输入框焦点抢走), 口径同 Base UI Popup 的 finalFocus。
+func WithPopoverFinalFocus(hEle int) PopoverOption {
+	return func(p *Popover) { p.finalFocus = hEle }
+}
+
+// WithPopoverDefaultOpen 构造完成后立即展开(对应 Base UI Root 的 defaultOpen);
+// 内容在创建时就构建, 需要按窗口宽度算内容时请改用 Open。
+func WithPopoverDefaultOpen() PopoverOption {
+	return func(p *Popover) { p.defaultOpen = true }
+}
+
+// WithPopoverControlled 受控模式(对应 Base UI Root 的 open / onOpenChange 组合):
+// 点触发区只把**意图**通过 OnOpenChange 发出去, 实际开合由调用方决定(Open / Close / SetOpen)。
+func WithPopoverControlled(b bool) PopoverOption {
+	return func(p *Popover) { p.controlled = b }
+}
+
 // Popover 点击触发的通用弹出卡片, 对应 shadcn popover.tsx。
 //
 // 与 shadcn 对齐:
@@ -117,6 +142,11 @@ type Popover struct {
 	align       PopoverAlign
 	alignOffset int32
 
+	initialFocus int
+	finalFocus   int
+	defaultOpen  bool
+	controlled   bool
+
 	panel      *popoverPanel
 	content    *widget.LayoutEle
 	built      bool
@@ -141,28 +171,27 @@ func NewPopover(hTrigger int, opts ...PopoverOption) *Popover {
 		o(p)
 	}
 
-	toggle := func() {
-		if p.panel != nil && p.panel.RecentlyClosed() {
-			return
-		}
-		if p.IsOpen() {
-			p.Close()
-			return
-		}
-		p.Open()
-	}
-	// 原生按钮同时支持鼠标点击与空格/回车; 普通元素只有鼠标事件可借。
+	// 原生按钮同时支持鼠标点击与空格/回车; 普通元素只有鼠标事件可借, 键盘激活自己补
+	// (对应 Base UI Trigger 的键盘行为: Enter / 空格开合)。
 	if xc.XObj_GetType(hTrigger) == xcc.XC_BUTTON {
 		if btn := widget.NewButtonByHandle(hTrigger); btn != nil {
 			btn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
-				toggle()
+				p.toggle()
 				return 0
 			})
 		}
 	} else if ele := widget.NewElementByHandle(hTrigger); ele != nil {
 		ele.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 			xui.NotePointerPress()
-			toggle()
+			p.toggle()
+			return 0
+		})
+		ele.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
+			// VK_RETURN / VK_SPACE: 普通元素不像按钮那样自带键盘激活
+			if xui.StateOf(hEle).Focused && (wParam == 0x0D || wParam == 0x20) {
+				p.toggle()
+				*pbHandled = true
+			}
 			return 0
 		})
 	}
@@ -175,7 +204,50 @@ func NewPopover(hTrigger int, opts ...PopoverOption) *Popover {
 			return 0
 		})
 	}
+	if p.defaultOpen {
+		p.Open()
+	}
 	return p
+}
+
+// toggle 处理触发区的开合: 受控模式下只广播意图, 由调用方调 Open / Close。
+func (p *Popover) toggle() {
+	if p == nil {
+		return
+	}
+	if p.panel != nil && p.panel.RecentlyClosed() {
+		return
+	}
+	open := !p.IsOpen()
+	if p.controlled {
+		p.notify(open)
+		return
+	}
+	p.SetOpen(open)
+}
+
+// applyInitialFocus 打开后落焦点: 指定了 initialFocus 就用它, 否则聚焦内容区第一个
+// 可聚焦控件(同 Base UI Popup 的默认行为)。
+func (p *Popover) applyInitialFocus() {
+	if p == nil || p.content == nil {
+		return
+	}
+	if h := p.initialFocus; h != 0 && focusElement(h) {
+		return
+	}
+	focusFirstIn(p.content.Handle)
+}
+
+// applyFinalFocus 关闭后还焦点: 指定了 finalFocus 就聚焦它, 否则还给触发区。
+func (p *Popover) applyFinalFocus() {
+	if p == nil {
+		return
+	}
+	if h := p.finalFocus; h != 0 {
+		focusElement(h)
+		return
+	}
+	focusElement(p.trigger)
 }
 
 // Content 返回内容容器句柄(首次调用时构建内容)。未设置构建回调时返回 0。
@@ -200,6 +272,7 @@ func (p *Popover) Open() *Popover {
 	x, y := p.placement()
 	p.panel.ShowAt(p.trigger, x, y)
 	p.notify(true)
+	p.applyInitialFocus()
 	return p
 }
 
@@ -307,12 +380,14 @@ func (p *Popover) ensureBuilt() bool {
 			})
 		}
 	}
-	panel.OnEsc = func() {
-		if t := widget.NewElementByHandle(p.trigger); t != nil {
-			t.SetFocus()
+	// ESC 是键盘关闭, 焦点必须还给触发区; 点外部关掉时不抢焦点(见 WithPopoverFinalFocus)
+	panel.OnEsc = func() { p.applyFinalFocus() }
+	panel.OnHide = func() {
+		if p.finalFocus != 0 {
+			focusElement(p.finalFocus)
 		}
+		p.notify(false)
 	}
-	panel.OnHide = func() { p.notify(false) }
 	if p.build != nil {
 		p.build(content.Handle)
 	}

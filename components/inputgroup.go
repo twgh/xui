@@ -75,6 +75,7 @@ type InputGroup struct {
 	input              *Input
 	addons             []*InputGroupAddon
 	buttons            []*Button
+	extra              []int // AttachControl 接进来的外部控件句柄
 	invalid            bool
 	disabled           bool
 	block              bool // 有 block addon(外层变 Auto 高)
@@ -355,6 +356,9 @@ func (g *InputGroup) SetDisabled(v bool) *InputGroup {
 	for _, b := range g.buttons {
 		b.Enable(!v)
 	}
+	for _, h := range g.extra {
+		xc.XEle_Enable(h, !v)
+	}
 	// addon 内容整体 50%(radix: group-data-[disabled=true]/input-group:opacity-50)。
 	// 逐个 SetSubtreeAlpha 而不是 Show(false): 禁用时内容仍在, 只是变淡。
 	for _, a := range g.addons {
@@ -386,17 +390,74 @@ func (g *InputGroup) SetFieldState(invalid, disabled bool) {
 // FieldDisabled 实现 FieldControl。
 func (g *InputGroup) FieldDisabled() bool { return g == nil || g.Disabled() }
 
-// Focus 把焦点放到组内输入框。
-func (g *InputGroup) Focus() *InputGroup {
-	if g != nil && g.input != nil {
-		g.input.SetFocus()
+// AttachControl 把外部控件接进组(对应 input-group.tsx 的 `data-slot=input-group-control`):
+// 焦点环判断、Focus() 落点、SetDisabled 的启用状态都把它算进来 —— 第三方输入控件(如可伸缩
+// 文本域)放进 Content() 后仍能吃到容器的焦点/禁用语义。控件本身的聚焦能力由调用方保证。
+func (g *InputGroup) AttachControl(hEle int) *InputGroup {
+	if g == nil || hEle == 0 || hEle == g.controlHandle() {
+		return g
+	}
+	for _, h := range g.extra {
+		if h == hEle {
+			return g
+		}
+	}
+	g.extra = append(g.extra, hEle)
+	if g.disabled {
+		xc.XEle_Enable(hEle, false)
 	}
 	return g
 }
 
-// focused 判断组内输入框是否持有焦点(内层是裸输入, 环由容器按这个状态画)。
+// controlHandle 返回组内"主控件"的句柄(裸输入; 没有时 0)。
+func (g *InputGroup) controlHandle() int {
+	if g == nil || g.input == nil {
+		return 0
+	}
+	return g.input.Handle
+}
+
+// Controls 返回已接进组的全部控件句柄(主控件在前)。
+func (g *InputGroup) Controls() []int {
+	if g == nil {
+		return nil
+	}
+	out := make([]int, 0, 1+len(g.extra))
+	if h := g.controlHandle(); h != 0 {
+		out = append(out, h)
+	}
+	return append(out, g.extra...)
+}
+
+// Focus 把焦点放到组内输入框(没有内层输入时落到第一个已接控件)。
+func (g *InputGroup) Focus() *InputGroup {
+	if g != nil && g.input != nil {
+		g.input.SetFocus()
+	} else if g != nil {
+		for _, h := range g.extra {
+			if xui.FocusElement(h) {
+				break
+			}
+		}
+	}
+	return g
+}
+
+// focused 判断组内是否有控件持有焦点(内层是裸输入, 环由容器按这个状态画;
+// 已接的外部控件同样算)。
 func (g *InputGroup) focused() bool {
-	return g != nil && g.input != nil && xui.StateOf(g.input.Handle).Focused
+	if g == nil {
+		return false
+	}
+	if g.input != nil && xui.StateOf(g.input.Handle).Focused {
+		return true
+	}
+	for _, h := range g.extra {
+		if xui.StateOf(h).Focused {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *InputGroup) onPaint(hEle int, hDraw int, pbHandled *bool) int {

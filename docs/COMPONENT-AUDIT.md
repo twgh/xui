@@ -34,11 +34,11 @@
 | 16 | Alert | `alert` | 已核查 | 结论见第七节;2 项可实现 |
 | 17 | Table | `table` | 已核查 | 结论见第七节;3 项可实现 |
 | 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现;官方是组合模式,差异见 DESIGN 第七节 |
-| 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现,PO1 alignOffset 已落地(见第十节);本批开合控制最完整 |
-| 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min 已落地(见第十节) |
+| 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现,PO1/PO2/PO3 已落地(见第十节);本批开合控制最完整 |
+| 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min 与 PR3 轨道配色/圆角已落地(见第十节) |
 | 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL4 错误区同源已落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
-| 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现,IG1 addon 聚焦已落地(见第十节);11 个官方示例仅缺 Custom Input |
-| 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1 徽标配色与尺寸已落地(见第十节) |
+| 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现,IG1/IG2 已落地(见第十节);11 个官方示例仅缺 Custom Input |
+| 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1/AV2/AV4 已落地(见第十节) |
 | 24 | Accordion | `accordion` | 待核查 | 下一轮起点 |
 | 25 | Slider | `slider` | 待核查 | |
 | 26 | Alert Dialog | `alert-dialog` | 待核查 | |
@@ -527,4 +527,15 @@
 | AV1 | Avatar | `WithAvatarBadgeColor` / `WithAvatarBadgeColorFunc` / `WithAvatarBadgeIconColor` / `WithAvatarBadgeSize` + 运行时 `SetBadgeColor/SetBadgeIconColor/SetBadgeSize`;自定义底色时图标色按亮度自动挑 |
 | PR1 | Progress | `WithProgressMin` / `SetMin` / `Min()` + `ProgressField` 同款;百分比改 `(value−min)/(max−min)`, 支持负值域 |
 
-**下一批建议**: PO2 / PO3 / PR2 / PR3 / FL1 / FL2 / IG2 / AV2 / AV3 / AV4(按台账里的先后);I3 / S9 / L3 / RG3 / FL3 是同一套 Field 校验基础设施, 必须同批设计。
+**第三批**(对话框/弹层交互与展示控件的小步补齐):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| PO2 | Popover | 打开后默认聚焦内容区首个可聚焦控件(`WithPopoverInitialFocus` 可指定);关闭时只有 ESC 或显式 `WithPopoverFinalFocus` 才搬回焦点,点其它控件关掉不抢焦点 |
+| PO3 | Popover | 非 Button 触发区补 Enter/空格开合;`WithPopoverDefaultOpen()`;`WithPopoverControlled(true)` = 触发区只发意图、由 `SetOpen` 定状态 |
+| IG2 | Input Group | `AttachControl(hEle)` / `Controls()`:外部控件吃到容器的焦点环判断、`Focus()` 落点与禁用态(对应 `data-slot=input-group-control`) |
+| AV2 | Avatar | `SetIcon(path)` + `AvatarGroup.AddCountIcon(icon)`:计数头像可放图标(上游 Avatar Group with Icon) |
+| AV4 | Avatar | 运行时 `SetSize(AvatarSize)`(连布局项一起改 + 重建圆形蒙版)与 `SetRing(bool)` |
+| PR3 | Progress | 轨道配色 `WithProgressTrackColor/[...Func]`、`WithProgressRadius`,运行时 `SetTrackColorFunc/SetRadius`;`ProgressField` 同款 |
+
+**下一批建议**: PR2 指示器宽度过渡 → FL1 `orientation=responsive` → FL2 Choice Card → AV3 头像作触发区;I3 / S9 / L3 / RG3 / FL3 需同批设计;PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求。

@@ -169,12 +169,31 @@ func buildAvatarCard(parent int) {
 		ui.WithAvatarBadge(icons.IconCheck), ui.WithAvatarBadgeColor(xui.Hex("#eab308")),
 		ui.WithAvatarBadgeIconColor(xui.Hex("#1f2937")))
 
-	xui.ItemFill(hint(vav.Handle, "叠放组(-space-x-2) + 计数"))
+	xui.ItemFill(hint(vav.Handle, "运行时改尺寸 / 色环(SetSize 会按新直径重建圆形蒙版)"))
+	rtRow := xui.HStack(vav.Handle, 40, 12)
+	rtAvatar := ui.NewAvatar(0, 0, 0, 0, rtRow.Handle, "RT", ui.WithAvatarImageData(demoAvatar()),
+		ui.WithAvatarBadge(icons.IconCheck))
+	rtBtn := ui.NewButton(0, 0, 0, 0, "循环改尺寸", rtRow.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+	xui.ItemWidth(rtBtn, 110)
+	rtSizes := []ui.AvatarSize{ui.AvatarSizeSm, ui.AvatarSizeDefault, ui.AvatarSizeLg}
+	rtIdx := 1
+	rtNames := []string{"sm", "default", "lg"}
+	rtBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		rtIdx = (rtIdx + 1) % len(rtSizes)
+		rtAvatar.SetSize(rtSizes[rtIdx])
+		rtAvatar.SetRing(rtIdx == 2)
+		rtBtn.SetText("当前: " + rtNames[rtIdx])
+		return 0
+	})
+
+	xui.ItemFill(hint(vav.Handle, "叠放组(-space-x-2) + 计数 / 图标计数"))
 	grp := ui.NewAvatarGroup(vav.Handle)
 	grp.Add("A")
 	grp.Add("B")
 	grp.Add("C")
 	grp.AddCount(3)
+	grp.AddCountIcon(icons.IconPlus)
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 20,
 		"AvatarGroup 用横向布局的负间距叠放; 组内头像默认带 2px 背景色环", vav.Handle).SetMuted().SetFontSize(14))
 }

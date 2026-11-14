@@ -244,7 +244,7 @@
       "deps": ["button", "collapsible", "separator"]
     },
     "avatar": {
-      "files": ["avatar.go"],
+      "files": ["avatar.go", "group.go"],
       "deps": []
     },
     "popover": {

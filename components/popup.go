@@ -144,6 +144,37 @@ func popupCrossV(aT, aB, h int32, align PopoverAlign) int32 {
 	}
 }
 
+// focusElement 把焦点放到指定元素(元素有效、可见且允许聚焦时), 返回是否成功。
+//
+// 弹层组件的 initialFocus / finalFocus 共用它; 放在 popup.go 是因为 popover / hover-card
+// 等组件的安装闭包都带这一份(见 registry.json)。
+func focusElement(h int) bool {
+	if h == 0 || !xc.XC_IsHXCGUI(h, xcc.XC_ELE) || !xc.XWidget_IsShow(h) || !xc.XEle_IsEnableFocus(h) {
+		return false
+	}
+	xui.FocusElement(h)
+	return true
+}
+
+// focusFirstIn 聚焦容器里第一个可聚焦控件(深度优先, 跳过隐藏项), 返回是否找到。
+func focusFirstIn(hParent int) bool {
+	n := xc.XEle_GetChildCount(hParent)
+	for i := int32(0); i < n; i++ {
+		h := xc.XEle_GetChildByIndex(hParent, i)
+		if h == 0 || !xc.XWidget_IsShow(h) {
+			continue
+		}
+		if xc.XEle_IsEnableFocus(h) && xc.XEle_IsSwitchFocus(h) {
+			xui.FocusElement(h)
+			return true
+		}
+		if focusFirstIn(h) {
+			return true
+		}
+	}
+	return false
+}
+
 // screenBottom/screenRight 返回触发区所在显示器的逻辑工作区边界(取不到时用整屏兜底)。
 func screenBottom(hTrigger int) int32 {
 	if hWnd := xc.XWidget_GetHWINDOW(hTrigger); hWnd > 0 {

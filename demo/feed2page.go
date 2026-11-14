@@ -191,6 +191,13 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 		ui.WithProgressFieldTitle("上传进度"), ui.WithProgressFieldValue(66))
 	xui.ItemFill(pf)
 
+	xui.ItemFill(hint(v4.Handle, "轨道配色 / 圆角可配(Track 是独立部件, 上游可传 className)"))
+	pTrack := ui.NewProgress(0, 0, 0, 0, v4.Handle, ui.WithProgressRadius(3),
+		ui.WithProgressTrackColor(xui.Hex("#e5e7eb")),
+		ui.WithProgressIndicatorColorFunc(func(t *xui.Theme) xui.Color { return t.Chart3 }))
+	xui.ItemFill(pTrack)
+	pTrack.SetValue(55)
+
 	xui.ItemFill(hint(v4.Handle, "不确定态(短条往返) / 指示器跟随主题色"))
 	pInd := ui.NewProgress(0, 0, 0, 0, v4.Handle, ui.WithProgressIndeterminate())
 	xui.ItemFill(pInd)

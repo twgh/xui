@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查清单第三批: Popover 焦点与受控 / Input Group 自定义控件 / Avatar 运行时尺寸与图标 / Progress 轨道配色**(2026-11-14, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md)):
+  - **Popover(PO2/PO3)**: 打开后默认聚焦内容区第一个可聚焦控件(深度优先, 跳过隐藏项), `WithPopoverInitialFocus(hEle)` 可指定; 关闭时**只有 ESC 或显式 `finalFocus` 才把焦点搬回触发区** —— 点窗口里别的控件把弹层关掉时不抢焦点(那会把用户刚点的输入框抢走), 口径同 Base UI Popup 的 `finalFocus`。非 Button 触发区补 Enter/空格开合; 新增 `WithPopoverDefaultOpen()` 与 `WithPopoverControlled(true)`(触发区只通过 `OnOpenChange` 发意图, 实际状态由调用方 `SetOpen` 决定)。
+  - **Input Group(IG2)**: `AttachControl(hEle)` / `Controls()` 把外部控件接进组 —— 焦点环判断、`Focus()` 落点、`SetDisabled` 的启用状态都把它算进来(对应 `data-slot=input-group-control` 的 Custom Input)。
+  - **Avatar(AV2/AV4)**: 运行时 `SetSize(AvatarSize)`(连布局项一起改, 并按新直径重建圆形蒙版 —— 只改矩形会被父级下次布局压回原尺寸)、`SetRing(bool)`; `SetIcon(path)` 让无图头像居中放图标, `AvatarGroup.AddCountIcon(icon)` 对应上游 "Avatar Group with Icon"。
+  - **Progress(PR3)**: 轨道是独立部件, 补 `WithProgressTrackColor` / `WithProgressTrackColorFunc` / `WithProgressRadius` 与运行时 `SetTrackColorFunc` / `SetRadius`,`ProgressField` 同款(`WithProgressFieldTrackColor` / `WithProgressFieldRadius`)。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 新增 `TestAvatarBadgeOptions` / `TestAvatarIconOption` / `TestProgressStyleOptions`; 临时项目 `add popover` / `add input-group` / `add avatar`(新增 `group.go` 进闭包)/ `add progress` 与 `add --all` 后 `go build ./ui` 均通过; demo 150% DPI 实测 —— 受控弹层的状态标签随开合变化、受控开关由 `SetOpen` 落地、卡片不越界; 头像 `SetSize` 实测 sm/default 两态直径 48 与 54 物理像素(default 32 / lg 40 含 2px 环)—— 修复前只改矩形被父级布局压回;**量测方式**: 用饱和像素包围盒量照片区, 不靠目测; 图标计数头像(Plus)与 "+3" 并排; 自定义轨道色 + 圆角 3 的进度条与默认胶囊条同屏对比。
+  - **登记**: `registry.json` 给 `avatar` 加上 `group.go`(`SetSize` 复用共享的 `reflowAfterResize`); `runtime` / `cliChange` 不动(未打 tag)。
+
 - ✅ **组件特性核查清单第二批: Popover / Input Group / Field / Avatar / Progress 补齐**(2026-11-14, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的实现顺序建议):
   - **Popover(PO1)**: `popupPosition` 拆出 `popupPositionOffset`, 支持 radix 的 `alignOffset` —— 在 align 之上沿交叉轴平移(上下方位正数向右、左右方位正数向下, 口径同 Floating UI 的 `alignmentAxis`), 偏移在摆放之后、夹进显示器工作区之前应用, 贴边仍会被夹回; 新增 `WithPopoverAlignOffset(px)`。
   - **Input Group(IG1)**: 点 inline addon 的文字/图标/空白区聚焦输入框(对应上游 `InputGroupAddon.onClick` 的 `querySelector('input').focus()`)。布局元素默认鼠标穿透, 这里显式 `EnableMouseThrough(false)` 后挂 `LButtonUp`(DESIGN 185); 按钮是独立命中目标, 事件不会冒泡到 addon, 点击语义不变。

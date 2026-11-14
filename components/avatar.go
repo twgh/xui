@@ -122,6 +122,8 @@ type Avatar struct {
 	badgeIconColor func(*xui.Theme) xui.Color // 徽标图标色(nil = 按对比度挑)
 	badgeSize      int32                      // 徽标直径覆盖(0 = 跟随尺寸档)
 
+	icon string // 有图/无图时的居中图标(替代 fallback 文字, 供计数头像放 Plus 用)
+
 	imagePath string
 	imageData image.Image
 	imgHandle int
@@ -191,6 +193,17 @@ func (a *Avatar) SetFallback(s string) *Avatar {
 	return a
 }
 
+// SetIcon 设置无图时居中显示的图标(lucide path / 整段 SVG), 传空串回到 fallback 文字。
+// 对应上游"头像里放图标"的写法(如 AvatarGroupCount 里的 Plus)。
+func (a *Avatar) SetIcon(path string) *Avatar {
+	if a == nil {
+		return a
+	}
+	a.icon = path
+	a.Redraw(false)
+	return a
+}
+
 // SetBadge 开关右下角徽标; icon 为空时画纯色圆点。
 func (a *Avatar) SetBadge(on bool, icon string) *Avatar {
 	if a == nil {
@@ -230,6 +243,43 @@ func (a *Avatar) SetBadgeSize(d int32) *Avatar {
 		d = 0
 	}
 	a.badgeSize = d
+	a.Redraw(true)
+	return a
+}
+
+// SetSize 运行时切尺寸档(sm / default / lg): 重设元素边长, 并按新直径重建圆形图片
+// (蒙版是 CPU 侧按直径生成的, 不重建的话放大后会糊)。与构造期的 WithAvatarSize 等价。
+func (a *Avatar) SetSize(s AvatarSize) *Avatar {
+	if a == nil || a.size == s {
+		return a
+	}
+	d := s.px()
+	var old xc.RECT
+	xc.XEle_GetWndClientRect(a.Handle, &old)
+	var pw, ph int32
+	if p := xc.XWidget_GetParentEle(a.Handle); p != 0 {
+		pw, ph = xc.XEle_GetWidth(p), xc.XEle_GetHeight(p)
+	}
+	a.size = s
+	// 元素矩形与布局项一起改: 只改矩形的话父级下一次布局会按旧的布局项把尺寸压回去
+	a.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, d)
+	a.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, d)
+	a.SetWidth(d)
+	a.SetHeight(d)
+	// 圆形图片按元素宽度生成, 直径变了必须重建(否则缩放糊边)
+	a.releaseImage()
+	a.syncImage()
+	reflowAfterResize(a.Handle, old, pw, ph)
+	a.Redraw(true)
+	return a
+}
+
+// SetRing 开/关头像外圈的 2px 背景色环(叠放组用它把相邻头像隔开)。
+func (a *Avatar) SetRing(on bool) *Avatar {
+	if a == nil || a.ring == on {
+		return a
+	}
+	a.ring = on
 	a.Redraw(true)
 	return a
 }
@@ -285,17 +335,32 @@ func (a *Avatar) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	} else {
 		p.Draw.SetBrushColor(uint32(t.Muted))
 		p.Draw.FillEllipse(&rc)
-		size := int32(14)
-		if a.size == AvatarSizeSm || elemW <= 28 {
-			size = 12
+		if a.icon != "" {
+			// 图标版(上游 AvatarGroupCount 里放 Plus 之类): 占直径的 55%, 居中
+			d := (rc.Right - rc.Left) * 55 / 100
+			if d < 8 {
+				d = 8
+			}
+			ir := xc.RECT{
+				Left:   rc.Left + (rc.Right-rc.Left-d)/2,
+				Top:    rc.Top + (rc.Bottom-rc.Top-d)/2,
+				Right:  rc.Left + (rc.Right-rc.Left-d)/2 + d,
+				Bottom: rc.Top + (rc.Bottom-rc.Top-d)/2 + d,
+			}
+			p.Icon(a.icon, &ir, t.MutedForeground, 2)
+		} else {
+			size := int32(14)
+			if a.size == AvatarSizeSm || elemW <= 28 {
+				size = 12
+			}
+			spec := t.FontDefault
+			spec.Size = size
+			if f := xui.FontHandle(spec); f != 0 {
+				p.Draw.SetFont(f)
+			}
+			p.Text(a.fallback, &rc, t.MutedForeground,
+				xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 		}
-		spec := t.FontDefault
-		spec.Size = size
-		if f := xui.FontHandle(spec); f != 0 {
-			p.Draw.SetFont(f)
-		}
-		p.Text(a.fallback, &rc, t.MutedForeground,
-			xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 	}
 
 	if a.badge {
@@ -424,6 +489,15 @@ func (g *AvatarGroup) Add(fallback string, opts ...AvatarOption) *Avatar {
 // AddCount 加一个 "+N" 计数头像。
 func (g *AvatarGroup) AddCount(n int) *Avatar {
 	return g.Add("+" + itoa(n))
+}
+
+// AddCountIcon 加一个只放图标的计数头像(对应上游 Avatar Group with Icon 示例)。
+func (g *AvatarGroup) AddCountIcon(icon string) *Avatar {
+	a := g.Add("")
+	if a != nil {
+		a.SetIcon(icon)
+	}
+	return a
 }
 
 // itoa 是 strconv.Itoa 的小包装, 避免组件文件为一个数字引入 strconv。
