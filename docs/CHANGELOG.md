@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复: 过渡到位帧残留 + 按钮缩小残影**(2026-11-14, 用户反馈):
+  - **复选组全选/取消全选后停在中间色**(`anim.go` 的 `hoverTick`): 普通 `Hover/HoverItem` 的终值由组件 paint 现读, 到位那一帧 `itemsActive` 已为 false 且没有 apply 回调, 原逻辑跳过了最后一次重绘 —— 屏幕停在接近终值的上一帧, 勾选态黑↔白的大色差表现成"灰底/半截勾号", 鼠标再动一下才恢复。修法: tick 记录本帧是否有条目刚 settled, `settledNow` 一并触发最终重绘(元素 owner 重绘元素, 窗口 owner 整窗重绘), 定时器照常停; 淡入淡出/弹层的 apply 行为不变。踩坑记入第八节 199。
+  - **按钮 Lg→Xs 残留大号底色**(`group.go` 的 `reflowAfterResize`): `SetSize` 改小元素矩形后, 新矩形之外的旧像素不属于任何重绘区域, 自绘底色留在画布上。修法: 尺寸变更并沿祖先链重排后, 比较直接父级尺寸 —— 没变(固定行)只重绘新旧元素矩形的并集(`XWnd_RedrawRect`, 外扩 2px); 父级尺寸变了(Auto 链整体移动)才整窗重绘。布局壳是透明的, 重绘父元素擦不掉旧像素。踩坑记入第八节 200。
+  - **进基础3时分栏左右跳动**(`resizable.go` 的 `mainSize`): 隐藏页上保留的旧宽/旧高让第一次 `syncLayout` 按旧主轴算像素宽, 父级重排后又按新主轴算回来, 日志里主尺寸在 1144/1086 间交替 4 次(约 50ms), 分隔条来回跳。修法: 主轴尺寸取自身与直接父级的较小值 —— Fill 时父级是真实可用空间, 带外边距/Fixed 时自身更小仍以自身为准; 第一次 sync 就按正确宽度落位。踩坑记入第八节 201。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 临时项目 77 个可安装名逐个 `add` + `go build ./ui` 及 `add --all` 通过; demo 150% DPI 亮/暗实测 —— 父项全选→取消全选→单击子项半选, 每次操作后立即截图均为干净终态(修复前残留中间灰, 强制 MouseMove 后才正常); 运行时尺寸按钮 Default→Lg→Xs 切换后旧尺寸残影消失(亮/暗); 基础3 进出页的调试日志显示主尺寸恒为 1086、面板宽只应用一次, 分隔条不再跳动。
+  - **登记**: 本次改了运行时 `anim.go` 与组件 `resizable.go` / `group.go`, **发布时必须照常把 `registry.runtime` 抬到新 tag**(本次未打 tag, 暂不动); `cliChange` 不动(CLI 行为未改)。
+
 - ✅ **Checkbox 语义补齐 + CheckboxGroup / Field 状态联动 + Button 运行时尺寸与链接**(2026-11-14, 用户提供的可实现项清单):
   - **Checkbox**: 补 `WithCheckboxChecked`(defaultChecked)/`WithCheckboxReadOnly`/`WithCheckboxDisabled` 与运行时 `SetReadOnly`/`SetDisabled`;新增可否决的 `OnCheckedChange(func(checked bool) bool)` —— 鼠标/空格/`Toggle` 走同一条路径, 任一回调返回 false 即取消本次切换, 程序化 `SetChecked` 不经过否决;只读保留焦点与键盘可达性(不同于 `Enable(false)`);纯指示器(无文字)默认元素 40×32, 点击热区约等于 `after:-inset-x-3 -inset-y-2`;有文字时按文字自动量宽(新增 `FitWidth`);`SetFocusRingProxy` 把键盘焦点环交给外层卡片/FieldLabel(对应上游 `group-has-[:focus-visible]/field-label:ring-0`);选中/未选配色改用 `xui.HoverItem` + `Fade` 过渡(transition-colors)。
   - **CheckboxGroup**(`components/checkboxgroup.go`): 竖向组 + `Add(value,text,opts...)` / `Attach(c,value)` / `SetParent(parentCheckbox)` + `Values/SetValues/OnChange`;父项三态(全选/半选/未选)与子项双向联动, 组值只在集合真正变化时通知;`SetDisabled/SetInvalid/SetSpacing/SetFocusRingProxy` 级联条目;实现 `FieldControl`, 可被 Field 直接 `Attach`。

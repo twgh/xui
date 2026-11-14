@@ -295,6 +295,12 @@ func (b *Button) SetSize(s ButtonSize) *Button {
 	if b == nil || b.size == s {
 		return b
 	}
+	var oldRect xc.RECT
+	xc.XEle_GetWndClientRect(b.Handle, &oldRect)
+	var parentW, parentH int32
+	if p := xc.XWidget_GetParentEle(b.Handle); p != 0 {
+		parentW, parentH = xc.XEle_GetWidth(p), xc.XEle_GetHeight(p)
+	}
 	b.size = s
 	sp := buttonSpecs[s]
 	b.SetHeight(sp.height + pressShift)
@@ -303,7 +309,7 @@ func (b *Button) SetSize(s ButtonSize) *Button {
 	} else if b.autoWidth {
 		b.SetWidth(b.naturalWidth(xui.Current()))
 	}
-	reflowAfterResize(b.Handle)
+	reflowAfterResize(b.Handle, oldRect, parentW, parentH)
 	b.Redraw(false)
 	return b
 }

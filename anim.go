@@ -553,6 +553,11 @@ func hoverTick(hOwner int) {
 	}
 	spinActive := len(o.spins) > 0
 	itemsActive := false
+	// settledNow: 本帧有过渡刚到位。普通 Hover/Fade 没有 apply 回调, 绘制的值
+	// 由组件在 paint 里现读; 若这一帧不补重绘, 屏幕上停的是上一帧(接近但没到
+	// 终值)的像素 —— 勾选态这种黑→白的大色差会明显残留半灰的旧色, 要等下一次
+	// 无关重绘才"突然变正常"(见 DESIGN 第八节 199)。
+	settledNow := false
 	type callback struct {
 		fn func(float64)
 		v  float64
@@ -576,6 +581,7 @@ func hoverTick(hOwner int) {
 		}
 		if !it.settled {
 			it.settled = true
+			settledNow = true
 			if it.done != nil {
 				dones = append(dones, callback{it.done, v})
 			}
@@ -618,15 +624,16 @@ func hoverTick(hOwner int) {
 		c.fn(c.v)
 	}
 	// 最后一帧也必须重绘: 到位那一帧 active 已经是 false(定时器也停了), 但 apply
-	// 刚把终态(如 alpha=255)写进属性 —— 不重绘的话屏幕上留的还是倒数第二帧的半透明
-	// 内容, 要等下一次无关重绘才"突然变实"(弹层淡入停在半透明的根因)。
+	// 刚把终态(如 alpha=255)写进属性, 或者组件的 paint 还等着读 Hover/Fade 的终值 ——
+	// 不重绘的话屏幕上留的还是倒数第二帧的半透明/半灰内容, 要等下一次无关重绘才
+	// "突然变实"(弹层淡入停在半透明的根因; 勾选态残留中间色同源, 见第八节 199)。
 	// 连续动画只重绘动画元素所在的矩形分组; 在场过渡/直接挂窗口的动画才整窗重绘。
 	// 逐个 XEle_Redraw 每次都会触达窗口合成, 多个元素反而更贵(见 DESIGN 第八节 106)。
-	if active || len(applies) > 0 {
+	if active || len(applies) > 0 || settledNow {
 		switch {
 		case xc.XC_IsHELE(hOwner):
 			xc.XEle_Redraw(hOwner, true)
-		case itemsActive || len(applies) > 0 || directSpin:
+		case itemsActive || len(applies) > 0 || directSpin || settledNow:
 			// 在场过渡/直接挂窗口的动画: 整窗重绘。
 			xc.XWnd_Redraw(hOwner, true)
 		case len(spinEles) > 0:

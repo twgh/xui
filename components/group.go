@@ -95,7 +95,10 @@ func groupCorners(hEle int, radius int32) xui.Corners {
 // Auto 高的卡片/行只改子元素尺寸不会自己长高, 遇到 ScrollArea 的框架交给框架排。
 // 与 Label 的折行重排同口径(reflowAfterTextHeight), 放在 group.go 是因为
 // button.go 依赖本文件、但不应额外依赖 label.go。
-func reflowAfterResize(hEle int) {
+//
+// oldRc / parentW / parentH 是尺寸变化前的元素矩形与直接父级尺寸: 重排后据此
+// 决定重绘范围(见 repaintResize)。
+func reflowAfterResize(hEle int, oldRc xc.RECT, parentW, parentH int32) {
 	if hEle == 0 || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
 		return
 	}
@@ -118,4 +121,55 @@ func reflowAfterResize(hEle int) {
 		}
 		break
 	}
+	repaintResize(hEle, oldRc, parentW, parentH)
+}
+
+// repaintResize 重绘尺寸变化影响的区域。
+//
+// 元素变小后, 新矩形之外的旧像素不会被元素自身的 Redraw 覆盖(自绘底色会留下
+// 大号尺寸的残影, 见 DESIGN 第八节 200)。最小代价是只重绘新旧矩形的并集:
+//   - 直接父级尺寸没变 → 元素仍占同一个布局槽, 兄弟不会被顶动, 只刷新这块矩形;
+//   - 父级尺寸变了(Auto 高的行/卡片) → 下面的兄弟可能整体移动, 它们腾出的旧位置
+//     不在元素矩形内, 无法安全枚举, 才退回整窗重绘。
+//
+// 不要只重绘父元素: 布局壳( LayoutEle )通常是透明的, 自己什么也不画, 擦不掉
+// 旧像素; 真正需要刷新的是窗口表面。
+func repaintResize(hEle int, oldRc xc.RECT, parentW, parentH int32) {
+	hwnd := xc.XWidget_GetHWND(hEle)
+	if hwnd == 0 {
+		return
+	}
+	hw := xc.XC_hWindowFromHWnd(hwnd)
+	if hw == 0 {
+		return
+	}
+	if p := xc.XWidget_GetParentEle(hEle); p != 0 {
+		if xc.XEle_GetWidth(p) != parentW || xc.XEle_GetHeight(p) != parentH {
+			xc.XWnd_Redraw(hw, false)
+			return
+		}
+	}
+	var newRc xc.RECT
+	xc.XEle_GetWndClientRect(hEle, &newRc)
+	rc := xc.RECT{
+		Left:   minInt32(oldRc.Left, newRc.Left) - 2,
+		Top:    minInt32(oldRc.Top, newRc.Top) - 2,
+		Right:  maxInt32(oldRc.Right, newRc.Right) + 2,
+		Bottom: maxInt32(oldRc.Bottom, newRc.Bottom) + 2,
+	}
+	xc.XWnd_RedrawRect(hw, &rc, false)
+}
+
+func minInt32(a, b int32) int32 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt32(a, b int32) int32 {
+	if a > b {
+		return a
+	}
+	return b
 }

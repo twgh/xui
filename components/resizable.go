@@ -622,10 +622,24 @@ func resizablePixelWidths(sizes []float64, avail int32) []int32 {
 // ===== 布局 =====
 
 func (g *ResizableGroup) mainSize() int32 {
+	main := g.GetWidth()
 	if g.vertical {
-		return g.GetHeight()
+		main = g.GetHeight()
 	}
-	return g.GetWidth()
+	// 分组自己的尺寸可能比父级慢一拍: 页面刚显示时, 之前隐藏状态留下的旧宽/旧高
+	// 会让面板先按旧主轴算一次像素宽, 等父级重排后又按新主轴算回来 —— 分隔条
+	// 来回跳几下(见 DESIGN 第八节 201)。父级已在本轮布局后, 取两者的较小值:
+	// Fill 时父级是真实可用空间, 带外边距 / Fixed 时分组自己更小, 仍以它为准。
+	if p := g.GetParentEle(); p != 0 {
+		if g.vertical {
+			if ph := xc.XEle_GetHeight(p); ph > 0 && ph < main {
+				main = ph
+			}
+		} else if pw := xc.XEle_GetWidth(p); pw > 0 && pw < main {
+			main = pw
+		}
+	}
+	return main
 }
 
 func (g *ResizableGroup) availSize(main int32) int32 {
