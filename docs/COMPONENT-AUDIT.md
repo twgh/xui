@@ -38,7 +38,7 @@
 | 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min 与 PR3 轨道配色/圆角已落地(见第十节) |
 | 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL4 错误区同源已落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
 | 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现,IG1/IG2 已落地(见第十节);11 个官方示例仅缺 Custom Input |
-| 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1/AV2/AV4 已落地(见第十节) |
+| 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1/AV2/AV3/AV4 已落地(见第十节) |
 | 24 | Accordion | `accordion` | 待核查 | 下一轮起点 |
 | 25 | Slider | `slider` | 待核查 | |
 | 26 | Alert Dialog | `alert-dialog` | 待核查 | |
@@ -536,6 +536,7 @@
 | IG2 | Input Group | `AttachControl(hEle)` / `Controls()`:外部控件吃到容器的焦点环判断、`Focus()` 落点与禁用态(对应 `data-slot=input-group-control`) |
 | AV2 | Avatar | `SetIcon(path)` + `AvatarGroup.AddCountIcon(icon)`:计数头像可放图标(上游 Avatar Group with Icon) |
 | AV4 | Avatar | 运行时 `SetSize(AvatarSize)`(连布局项一起改 + 重建圆形蒙版)与 `SetRing(bool)` |
+| AV3 | Avatar | `WithAvatarInteractive()` / `SetInteractive(bool)`:打开焦点与 Tab, 作 Popover/Menu 触发区;键盘焦点环画在圆内侧 2px |
 | PR3 | Progress | 轨道配色 `WithProgressTrackColor/[...Func]`、`WithProgressRadius`,运行时 `SetTrackColorFunc/SetRadius`;`ProgressField` 同款 |
 
 **下一批建议**: PR2 指示器宽度过渡 → FL1 `orientation=responsive` → FL2 Choice Card → AV3 头像作触发区;I3 / S9 / L3 / RG3 / FL3 需同批设计;PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求。

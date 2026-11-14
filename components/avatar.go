@@ -70,6 +70,11 @@ func WithAvatarImageData(img image.Image) AvatarOption {
 // WithAvatarRing 在头像外圈画 2px 背景色环(头像组里用它把相邻头像隔开)。
 func WithAvatarRing() AvatarOption { return func(a *Avatar) { a.ring = true } }
 
+// WithAvatarInteractive 让头像可交互(可聚焦 + 可 Tab 到, 键盘焦点画内侧 2px 环),
+// 用作 Popover / Menu 的触发区(对应上游把 Avatar 放进 DropdownMenuTrigger 的示例)。
+// 头像元素尺寸就是直径, 环只能画在圆内侧, 所以是"内描边"而不是外扩环带。
+func WithAvatarInteractive() AvatarOption { return func(a *Avatar) { a.interactive = true } }
+
 // WithAvatarBadge 在右下角显示状态徽标; icon 可为空(纯色圆点)或 lucide path。
 func WithAvatarBadge(icon string) AvatarOption {
 	return func(a *Avatar) { a.badge = true; a.badgeIcon = icon }
@@ -112,11 +117,12 @@ func WithAvatarBadgeSize(d int32) AvatarOption {
 // 圆形蒙版按 4 倍逻辑尺寸生成, 高 DPI 下缩放依然平滑。
 type Avatar struct {
 	*widget.Element
-	size      AvatarSize
-	fallback  string
-	ring      bool
-	badge     bool
-	badgeIcon string
+	size        AvatarSize
+	fallback    string
+	ring        bool
+	badge       bool
+	badgeIcon   string
+	interactive bool
 
 	badgeColor     func(*xui.Theme) xui.Color // 徽标底色(nil = Primary)
 	badgeIconColor func(*xui.Theme) xui.Color // 徽标图标色(nil = 按对比度挑)
@@ -149,8 +155,9 @@ func NewAvatar(x, y, cx, cy int32, hParent int, fallback string, opts ...AvatarO
 	a.Element = ele
 	ele.EnableBkTransparent(true)
 	ele.EnableDrawBorder(false)
-	ele.EnableFocus(false)
-	ele.EnableSwitchFocus(false)
+	// 默认纯展示: 不接焦点也不进 Tab; WithAvatarInteractive 时才打开(当触发区用)
+	ele.EnableFocus(a.interactive)
+	ele.EnableSwitchFocus(a.interactive)
 	ele.AddEvent_Paint(a.onPaint)
 	ele.AddEvent_Destroy(func(hEle int, pbHandled *bool) int {
 		a.releaseImage()
@@ -274,6 +281,18 @@ func (a *Avatar) SetSize(s AvatarSize) *Avatar {
 	return a
 }
 
+// SetInteractive 运行时开关"可交互"(可聚焦 / 进 Tab / 画焦点环), 用作弹层触发区时打开。
+func (a *Avatar) SetInteractive(on bool) *Avatar {
+	if a == nil || a.interactive == on {
+		return a
+	}
+	a.interactive = on
+	xc.XEle_EnableFocus(a.Handle, on)
+	xc.XEle_EnableSwitchFocus(a.Handle, on)
+	a.Redraw(true)
+	return a
+}
+
 // SetRing 开/关头像外圈的 2px 背景色环(叠放组用它把相邻头像隔开)。
 func (a *Avatar) SetRing(on bool) *Avatar {
 	if a == nil || a.ring == on {
@@ -323,6 +342,13 @@ func (a *Avatar) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	rc := p.Rc
 	elemW := rc.Right - rc.Left
+	// 可交互头像的键盘焦点环: 画在圆内侧 2px(元素尺寸就是直径, 环带没有外侧空间;
+	// 与 Switch 那种"元素比可见形状大 3px"的做法不同, 这里改成内描边)
+	if a.interactive && xui.StateOf(hEle).Focused {
+		p.Draw.SetBrushColor(uint32(t.Ring))
+		p.Draw.FillEllipse(&rc)
+		rc = insetRect(rc, 2)
+	}
 	if a.ring {
 		// ring-2 ring-background: 画在头像内侧, 避免子元素被父矩形裁掉
 		p.Draw.SetBrushColor(uint32(t.Background))

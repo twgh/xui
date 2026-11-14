@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **Avatar 可交互 `WithAvatarInteractive`(作弹层触发区)**(2026-11-14, 台账 AV3):
+  - **组件**: 头像默认是纯展示(不接焦点、不进 Tab); 新增 `WithAvatarInteractive()` / `SetInteractive(bool)` 打开焦点与 Tab, 配合已有的 `NewPopover(avatar.Handle)` / `Menu.PopupAtElementRect` 即成"点头像弹资料卡"(上游把 Avatar 放进 DropdownMenuTrigger 的写法)。普通元素的触发区在 Popover 侧已补 Enter/空格开合, 键盘可达。
+  - **焦点环为什么画在内侧**: 头像元素尺寸就是直径, 没有像 Switch 那样"元素比可见形状大 3px"的余量, 外扩会画到父容器上; 所以交互态获焦时先用 Ring 色铺满圆、再把内容内缩 2px, 留出一圈内描边(仅键盘焦点可见, 鼠标点击不画)。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 临时项目 `add avatar` + `go build ./ui` 通过; demo 基础2 新增"可交互头像"一例, 150% DPI 实测点它弹出资料卡(标题/描述/按钮), 弹层复用 Popover 的初始焦点与 ESC 关闭。
+  - **登记**: 无新增文件(`avatar` 闭包仍为 avatar.go + group.go); `runtime` / `cliChange` 不动。
+
 - ✅ **组件特性核查清单第三批: Popover 焦点与受控 / Input Group 自定义控件 / Avatar 运行时尺寸与图标 / Progress 轨道配色**(2026-11-14, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md)):
   - **Popover(PO2/PO3)**: 打开后默认聚焦内容区第一个可聚焦控件(深度优先, 跳过隐藏项), `WithPopoverInitialFocus(hEle)` 可指定; 关闭时**只有 ESC 或显式 `finalFocus` 才把焦点搬回触发区** —— 点窗口里别的控件把弹层关掉时不抢焦点(那会把用户刚点的输入框抢走), 口径同 Base UI Popup 的 `finalFocus`。非 Button 触发区补 Enter/空格开合; 新增 `WithPopoverDefaultOpen()` 与 `WithPopoverControlled(true)`(触发区只通过 `OnOpenChange` 发意图, 实际状态由调用方 `SetOpen` 决定)。
   - **Input Group(IG2)**: `AttachControl(hEle)` / `Controls()` 把外部控件接进组 —— 焦点环判断、`Focus()` 落点、`SetDisabled` 的启用状态都把它算进来(对应 `data-slot=input-group-control` 的 Custom Input)。

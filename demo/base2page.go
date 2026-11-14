@@ -187,6 +187,19 @@ func buildAvatarCard(parent int) {
 		return 0
 	})
 
+	xui.ItemFill(hint(vav.Handle, "可交互头像(作 Popover 触发区: 点它或聚焦后 Enter/空格)"))
+	trigRow := xui.HStack(vav.Handle, 40, 12)
+	trigAvatar := ui.NewAvatar(0, 0, 0, 0, trigRow.Handle, "TW",
+		ui.WithAvatarImageData(demoAvatar()), ui.WithAvatarInteractive(), ui.WithAvatarBadge(icons.IconCheck))
+	ui.NewPopover(trigAvatar.Handle, ui.WithPopoverAlign(ui.PopoverAlignStart),
+		ui.WithPopoverContent(func(c int) {
+			h := ui.PopoverHeader(c)
+			ui.PopoverTitle(h.Handle, "twgh")
+			ui.PopoverDescription(h.Handle, "点头像或聚焦后按 Enter / 空格打开。")
+			ui.NewButton(0, 0, 96, 0, "查看资料", c,
+				ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+		}))
+
 	xui.ItemFill(hint(vav.Handle, "叠放组(-space-x-2) + 计数 / 图标计数"))
 	grp := ui.NewAvatarGroup(vav.Handle)
 	grp.Add("A")
