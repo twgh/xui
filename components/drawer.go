@@ -265,8 +265,9 @@ func (d *Dialog) onGrabberUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *boo
 		// 拖拽关闭: 先把模态状态收掉(键盘/遮罩立即失效), 再从当前位置滑出。
 		d.open = false
 		d.popModal()
+		d.notifyOpenChange(false)
 		xc.XWnd_SetFocusEle(d.hWnd, 0)
-		restoreModalFocus(d.hWnd)
+		d.applyFinalFocus()
 		d.animateSheetClose(d.slideX, d.slideY)
 		for _, fn := range d.onClose {
 			fn()

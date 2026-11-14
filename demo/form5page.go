@@ -49,6 +49,17 @@ func buildForm5Page(body *widget.LayoutEle) {
 	grpDis.AddItem("a", "选项 A")
 	grpDis.AddItem("b", "选项 B")
 
+	xui.ItemFill(hint(vGrp.Handle, "整组只读 / 否决换选(未保存内容禁止切换)"))
+	grpRO := ui.NewRadioGroup(vGrp.Handle, ui.WithRadioGroupValue("a"), ui.WithRadioGroupReadOnly())
+	xui.ItemFill(grpRO)
+	grpRO.AddItem("a", "只读 A(点 B 不会换)")
+	grpRO.AddItem("b", "只读 B")
+	grpVeto := ui.NewRadioGroup(vGrp.Handle, ui.WithRadioGroupValue("keep"))
+	xui.ItemFill(grpVeto)
+	grpVeto.AddItem("keep", "保持此项(换选被否决)")
+	grpVeto.AddItem("other", "换不过去")
+	grpVeto.OnValueChangeVeto(func(v string) bool { return v == "keep" })
+
 	xui.ItemFill(hint(vGrp.Handle, "校验失败(aria-invalid 常驻红环, 可切换)"))
 	grpInv := ui.NewRadioGroup(vGrp.Handle, ui.WithRadioGroupInvalid())
 	xui.ItemFill(grpInv)
@@ -134,6 +145,13 @@ func buildForm5Page(body *widget.LayoutEle) {
 		ui.WithCheckboxChecked(true))
 	xui.ItemFill(vetoCB)
 	vetoCB.OnCheckedChange(func(checked bool) bool { return checked }) // 取消操作一律否决
+
+	xui.ItemFill(hint(vCB.Handle, "标签关联(<label for>): 点文字聚焦并切换"))
+	labRow := xui.HStack(vCB.Handle, 24, 8)
+	cbLab := ui.NewCheckbox(0, 0, 0, 0, "", labRow.Handle)
+	labText := ui.NewLabel(0, 0, 0, 24, "点这段文字也能切换复选框", labRow.Handle)
+	xui.ItemWidth(labText, 200)
+	labText.BindToggle(cbLab.Handle, func() { cbLab.Toggle() })
 
 	xui.ItemFill(hint(vCB.Handle, "组级禁用(父项与子项一起变淡)"))
 	cbGrpDis := ui.NewCheckboxGroup(vCB.Handle,

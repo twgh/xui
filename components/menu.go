@@ -79,6 +79,8 @@ type Menu struct {
 	// 显式弹层宽(Width 设置, 对应 shadcn 在 Content 上加 className="w-56" 这类
 	// 覆盖); 0 = 走组件默认(max(触发区宽, 128))。
 	width int32
+
+	opens []func(bool) // OnOpenChange 注册的开合回调
 }
 
 // NewMenu 创建下拉菜单。菜单是一次性对象: 弹出关闭后原生菜单即销毁,
@@ -336,8 +338,28 @@ func (m *Menu) popup(hWindow int) {
 		dpi = 96
 	}
 	gap := int32(math.Round(float64(menuSideOffset) * float64(dpi) / 96))
+	m.notifyOpenChange(true) // 弹出前通知, 回调里可先把触发区置成展开态并重绘
 	m.m.Popup(xc.XWnd_GetHWND(hWindow), m.anchor.Left, m.anchor.Bottom+gap, 0,
 		xcc.Menu_Popup_Position_Left_Top)
+	m.notifyOpenChange(false) // Popup 阻塞, 返回即已关闭
+}
+
+// OnOpenChange 注册菜单开合回调(对应 Base UI Menu Root 的 onOpenChange):
+// true 在弹层出现前触发, false 在菜单关闭后触发。原生的弹出是阻塞的, 所以
+// 这条回调只覆盖"这一次弹出", 不表达跨次的受控状态。
+func (m *Menu) OnOpenChange(fn func(open bool)) *Menu {
+	if m == nil || fn == nil {
+		return m
+	}
+	m.opens = append(m.opens, fn)
+	return m
+}
+
+// notifyOpenChange 广播开合状态。
+func (m *Menu) notifyOpenChange(open bool) {
+	for _, fn := range m.opens {
+		fn(open)
+	}
 }
 
 // build 创建原生菜单并同步条目。
@@ -347,7 +369,7 @@ func (m *Menu) build(hWindow int) *widget.Menu {
 	menu := widget.NewMenu()
 	menu.SetAutoDestroy(true)
 	menu.SetItemHeight(menuRowH) // 条目 = text-sm(20) + py-1(4×2); 子菜单行偏移也用它(见 rowBodyTop)
-	menu.SetLeftWidth(0)   // 不留原生左侧图标条: 前置图标与右侧勾/箭头都由自绘负责
+	menu.SetLeftWidth(0)         // 不留原生左侧图标条: 前置图标与右侧勾/箭头都由自绘负责
 	// p-1(4px): 默认边距是 3, 条目高亮距弹层左右边缘原差 1px; 设 4 后条目盒
 	// 与 shadcn 完全一致(内容内缩 4, 文字再 px-1.5)。
 	menu.SetBorderSize(4, 4, 4, 4)

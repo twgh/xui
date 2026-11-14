@@ -40,9 +40,11 @@ type Switch struct {
 	size     SwitchSize
 	invalid  bool
 	disabled bool
+	readOnly bool // 用户不可切换, 程序化 SetChecked 仍生效(对应 Base UI 的 readOnly)
 	// focusRingProxy: 由外层标签/选择卡片代理键盘焦点环(同 Checkbox)。
 	focusRingProxy bool
 	changes        []func(checked bool)
+	vetoes         []func(checked bool) bool
 }
 
 // SwitchOption 开关配置项。
@@ -60,6 +62,10 @@ func WithSwitchDisabled() SwitchOption { return func(sw *Switch) { sw.disabled =
 // WithSwitchInvalid 初始即为校验失败态(对应 shadcn 的 aria-invalid):
 // 轨道描边 destructive + ring-3 destructive/20(暗色 /50、/40), 常驻不要求焦点。
 func WithSwitchInvalid() SwitchOption { return func(sw *Switch) { sw.invalid = true } }
+
+// WithSwitchReadOnly 用户不可切换, 但保留焦点与键盘可达性
+// (对应 Base UI Switch Root 的 readOnly; 程序化 SetChecked 仍然生效)。
+func WithSwitchReadOnly() SwitchOption { return func(sw *Switch) { sw.readOnly = true } }
 
 // NewSwitch 创建开关。元素尺寸 = 轨道 + 每边 switchRingPad。
 func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
@@ -88,7 +94,14 @@ func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
 		return 0
 	})
 	// 原生勾选不会自动失效重绘; 鼠标点击经 XE_BUTTON_CHECK 补重绘并通知监听者。
+	// 原生勾选在通知到达时已经发生, 事件没有否决能力: readOnly 与 OnCheckedChange
+	// 返回 false 都要在这里把状态回滚(同 Checkbox, 见 DESIGN 第八节 198)。
 	sw.AddEvent_Button_Check(func(hEle int, bCheck bool, pbHandled *bool) int {
+		if sw.readOnly || !sw.allowChange(bCheck) {
+			sw.SetCheck(!bCheck)
+			sw.Redraw(false)
+			return 0
+		}
 		sw.Redraw(false)
 		sw.notifyChange(bCheck)
 		return 0
@@ -98,9 +111,9 @@ func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
 	sw.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
 		const vkSpace = 0x20
 		if wParam == vkSpace && sw.IsEnable() {
-			sw.SetCheck(!sw.IsCheck())
-			sw.Redraw(false)
-			sw.notifyChange(sw.IsCheck())
+			if !sw.readOnly {
+				sw.toggleNotify()
+			}
 			*pbHandled = true
 		}
 		return 0
@@ -123,15 +136,39 @@ func (s *Switch) SetChecked(v bool) *Switch {
 }
 
 // Toggle 切换选中状态并触发 OnChange(与点击/空格同一路径)。
+// 禁用或只读时为空操作。
 func (s *Switch) Toggle() *Switch {
-	if s.disabled {
+	if s == nil || s.disabled || s.readOnly {
 		return s
 	}
-	s.SetCheck(!s.IsCheck())
-	s.Redraw(false)
-	s.notifyChange(s.IsCheck())
+	s.toggleNotify()
 	return s
 }
+
+// toggleNotify 键盘/Toggle 的统一路径: 先问否决回调, 放行后写状态并通知监听者。
+func (s *Switch) toggleNotify() {
+	next := !s.IsCheck()
+	if !s.allowChange(next) {
+		return
+	}
+	s.SetCheck(next)
+	s.Redraw(false)
+	s.notifyChange(next)
+}
+
+// SetReadOnly 设置只读: 用户点击/空格不再切换, 焦点与 Tab 可达性保留;
+// 程序化 SetChecked 仍然生效(同 Base UI 的 readOnly)。
+func (s *Switch) SetReadOnly(v bool) *Switch {
+	if s == nil || s.readOnly == v {
+		return s
+	}
+	s.readOnly = v
+	s.Redraw(false)
+	return s
+}
+
+// ReadOnly 报告用户是否被禁止切换。
+func (s *Switch) ReadOnly() bool { return s != nil && s.readOnly }
 
 // SetDisabled 设置禁用态(对应 radix 的 disabled): 不可点击、不可聚焦, 轨道与滑块一起乘 50%。
 func (s *Switch) SetDisabled(v bool) *Switch {
@@ -191,6 +228,27 @@ func (s *Switch) OnChange(fn func(checked bool)) *Switch {
 	}
 	s.changes = append(s.changes, fn)
 	return s
+}
+
+// OnCheckedChange 注册"可否决"的选中变化回调(对应 Base UI Switch 的 onCheckedChange):
+// 在状态落地**之前**调用, 任一回调返回 false 即取消本次切换; 全部放行后状态照常写入
+// 并继续触发 OnChange。鼠标、空格与 Toggle 走同一条路径。
+// 程序化 SetChecked 不触发否决(同受控组件的 setState 语义)。
+func (s *Switch) OnCheckedChange(fn func(checked bool) bool) *Switch {
+	if s == nil || fn == nil {
+		return s
+	}
+	s.vetoes = append(s.vetoes, fn)
+	return s
+}
+
+func (s *Switch) allowChange(next bool) bool {
+	for _, fn := range s.vetoes {
+		if !fn(next) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Switch) notifyChange(checked bool) {

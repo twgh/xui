@@ -25,6 +25,7 @@ type Label struct {
 	size        int32                      // 字号覆盖(逻辑像素; 0 = 主题默认)
 	colorFn     func(*xui.Theme) xui.Color // 语义字色解析器(实时取令牌; nil = 默认规则)
 	textC       uint32                     // 上次下发给原生的字色(避免在 paint 里反复设置)
+	invalid     bool                       // 校验失败态(字色走 Destructive, 同 aria-invalid)
 	autoWrap    bool                       // SetAutoWrap: 高度随折行结果自撑
 	wrapW       int32                      // 上次量高时的元素宽
 	wrapH       int32                      // 上次写回的折行高度
@@ -69,6 +70,85 @@ func (l *Label) SetMuted() *Label {
 	l.muted = true
 	l.applyTheme(xui.Current())
 	return l
+}
+
+// BindFor 点击标签时聚焦目标控件, 对齐浏览器 `<label for="...">` 的语义
+// (对应官方 Label 页的 Usage: `<Label htmlFor="email">`)。
+//
+// 只做聚焦; 复选框/开关这类"点文字也要切换"的控件用 BindToggle。
+// 目标元素被禁用时不动作(浏览器里 label 也不会激活禁用的控件)。
+func (l *Label) BindFor(hEle int) *Label {
+	if l == nil || hEle == 0 {
+		return l
+	}
+	l.Button.AddEvent_BnClick(func(h int, pbHandled *bool) int {
+		focusBoundControl(hEle)
+		return 0
+	})
+	return l
+}
+
+// BindToggle 点击标签时聚焦目标控件并执行 toggle, 用于 Choice Card 这类"整行可点"的场景
+// (官方 Radio Group / Checkbox 的 Choice Card 示例): toggle 一般传控件的 Toggle 方法,
+// 例如 `ui.NewLabel(...).BindToggle(cb.Handle, func() { cb.Toggle() })`。
+//
+// 目标元素被禁用时不动作。
+func (l *Label) BindToggle(hEle int, toggle func()) *Label {
+	if l == nil || hEle == 0 {
+		return l
+	}
+	l.Button.AddEvent_BnClick(func(h int, pbHandled *bool) int {
+		if focusBoundControl(hEle) && toggle != nil {
+			toggle()
+		}
+		return 0
+	})
+	return l
+}
+
+// focusBoundControl 聚焦被标签关联的控件, 返回是否已启用(禁用时不聚焦也不切换)。
+func focusBoundControl(hEle int) bool {
+	if hEle == 0 || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
+		return false
+	}
+	if !xc.XEle_IsEnable(hEle) {
+		return false
+	}
+	xui.FocusElement(hEle)
+	return true
+}
+
+// SetDisabled 设置独立标签的禁用态(对应 label.tsx 的 `peer-disabled:opacity-50`):
+// 文字按卡片底色对半混, 与 Field 内标签的禁用口径一致。
+func (l *Label) SetDisabled(b bool) *Label {
+	if l == nil {
+		return l
+	}
+	l.Enable(!b)
+	l.syncTextColor()
+	l.Redraw(false)
+	return l
+}
+
+// Disabled 报告标签是否处于禁用态。
+func (l *Label) Disabled() bool {
+	return l != nil && !l.IsEnable()
+}
+
+// SetInvalid 设置校验失败态(对应 label 的 `aria-invalid`): 字色改破坏性色。
+// Field 内的标签由 Field 统一联动, 独立的 Label 用这个方法。
+func (l *Label) SetInvalid(b bool) *Label {
+	if l == nil {
+		return l
+	}
+	l.invalid = b
+	l.applyTheme(xui.Current())
+	return l
+}
+
+// Invalid 报告标签是否处于校验失败态。
+func (l *Label) Invalid() bool {
+	return l != nil && l.invalid
 }
 
 // SetBold 使用主题字体的粗体(标题用, 字号 +1, 更接近浏览器 font-semibold 观感)。
@@ -267,6 +347,13 @@ func (l *Label) SetAlignLeft() *Label {
 	return l
 }
 
+// SetAlignRight 水平右对齐(表单行尾、数值列用)。
+func (l *Label) SetAlignRight() *Label {
+	f := l.GetTextAlign() &^ (xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Center)
+	l.SetTextAlign(f | xcc.TextAlignFlag_Right)
+	return l
+}
+
 func (l *Label) applyTheme(t *xui.Theme) {
 	spec := t.FontDefault
 	if l.size > 0 {
@@ -299,6 +386,8 @@ func (l *Label) syncTextColor() {
 	c := t.Foreground
 	if l.colorFn != nil {
 		c = l.colorFn(t)
+	} else if l.invalid {
+		c = t.Destructive
 	} else if l.muted {
 		c = t.MutedForeground
 	}

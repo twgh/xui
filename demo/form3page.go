@@ -101,6 +101,11 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	fPushNotify.Label("推送通知")
 	fPushNotify.Attach(ui.NewSwitch(0, 0, fPushNotify.Handle))
 
+	fRoNotify := ui.NewField(0, 0, 0, 0, grp.Handle, ui.WithFieldOrientation(ui.FieldHorizontal))
+	xui.ItemFill(fRoNotify)
+	fRoNotify.Label("短信通知(只读)")
+	fRoNotify.Attach(ui.NewSwitch(0, 0, fRoNotify.Handle, ui.WithSwitchChecked(true), ui.WithSwitchReadOnly()))
+
 	ui.NewFieldSeparator(0, 0, 0, 0, grp.Handle, "或")
 
 	fUpdates := ui.NewField(0, 0, 0, 0, grp.Handle, ui.WithFieldOrientation(ui.FieldHorizontal))

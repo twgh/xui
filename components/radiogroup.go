@@ -33,9 +33,12 @@ type RadioGroup struct {
 	spacing        int32
 	disabled       bool
 	invalid        bool
+	readOnly       bool   // 用户不可换选(程序化 SetValue 仍生效)
+	committed      string // 最近一次被接受的组值(只读/否决时据此还原)
 	initial        string
 	disabledOwn    map[*Radio]bool
 	cb             func(value string)
+	vetoes         []func(value string) bool
 	applying       bool
 	focusRingProxy bool
 }
@@ -56,6 +59,12 @@ func WithRadioGroupDisabled() RadioGroupOption {
 // WithRadioGroupInvalid 让整组初始为校验失败态(每个条目画红边框 + 红环)。
 func WithRadioGroupInvalid() RadioGroupOption {
 	return func(g *RadioGroup) { g.invalid = true }
+}
+
+// WithRadioGroupReadOnly 整组只读: 用户点击/方向键不再换选, 程序化 SetValue 仍生效
+// (对应 Base UI RadioGroup 的 readOnly)。
+func WithRadioGroupReadOnly() RadioGroupOption {
+	return func(g *RadioGroup) { g.readOnly = true }
 }
 
 // WithRadioGroupSpacing 设置条目间距(逻辑像素; 默认 8 = gap-2)。
@@ -130,6 +139,7 @@ func (g *RadioGroup) Attach(r *Radio, value string) *Radio {
 		g.applying = true
 		g.syncSelection(r)
 		g.applying = false
+		g.committed = value
 	}
 	if g.initial != "" && value == g.initial {
 		g.SetValue(g.initial)
@@ -173,10 +183,12 @@ func (g *RadioGroup) SetValue(value string) *RadioGroup {
 	if target != nil {
 		target.SetSelected(true)
 		g.syncSelection(target)
+		g.committed = value
 	} else {
 		for _, it := range g.items {
 			it.SetSelected(false)
 		}
+		g.committed = ""
 	}
 	g.applying = false
 	return g
@@ -189,6 +201,56 @@ func (g *RadioGroup) OnChange(fn func(value string)) *RadioGroup {
 	}
 	g.cb = fn
 	return g
+}
+
+// OnValueChangeVeto 注册"可否决"的换选回调(对应 Base UI onValueChange 的
+// eventDetails.cancel()): 在组值落地**之前**调用, 返回 false 即取消这次换选并还原
+// 到上一个被接受的值。鼠标、空格与方向键走同一条路径; SetValue 不经过否决。
+func (g *RadioGroup) OnValueChangeVeto(fn func(value string) bool) *RadioGroup {
+	if g == nil || fn == nil {
+		return g
+	}
+	g.vetoes = append(g.vetoes, fn)
+	return g
+}
+
+// SetReadOnly 设置整组只读: 用户点击/空格/方向键都不再换选, 程序化 SetValue 仍生效。
+func (g *RadioGroup) SetReadOnly(v bool) *RadioGroup {
+	if g == nil || g.readOnly == v {
+		return g
+	}
+	g.readOnly = v
+	return g
+}
+
+// ReadOnly 报告整组是否只读。
+func (g *RadioGroup) ReadOnly() bool { return g != nil && g.readOnly }
+
+// allowChange 依次询问换选否决回调。
+func (g *RadioGroup) allowChange(value string) bool {
+	for _, fn := range g.vetoes {
+		if !fn(value) {
+			return false
+		}
+	}
+	return true
+}
+
+// restoreCommitted 把组值还原到最近一次被接受的值(去掉刚被用户选中、但未被接受的项)。
+// 同父项的互斥由原生逻辑处理, 这里只需要"重新选回原值"。
+func (g *RadioGroup) restoreCommitted(item *Radio) {
+	g.applying = true
+	if item != nil {
+		item.SetSelected(false)
+	}
+	if g.committed != "" {
+		g.SetValue(g.committed)
+	} else {
+		for _, it := range g.items {
+			it.SetSelected(false)
+		}
+	}
+	g.applying = false
 }
 
 // SetDisabled 禁用/启用整组。禁用时记下组内条目各自原有的禁用状态, 重新启用后恢复
@@ -281,6 +343,12 @@ func (g *RadioGroup) onItemSelected(item *Radio, on bool) {
 	if g.applying || !on {
 		return
 	}
+	// 只读与否决: 原生已经先把勾选位改掉了(同父项还把上一项取消了), 这里统一还原。
+	if g.readOnly || !g.allowChange(item.value) {
+		g.restoreCommitted(item)
+		return
+	}
+	g.committed = item.value
 	g.syncSelection(item)
 	if g.cb != nil {
 		g.cb(item.value)
@@ -332,7 +400,10 @@ func (g *RadioGroup) onItemKeyDown(item *Radio, wParam uintptr, pbHandled *bool)
 	}
 	*pbHandled = true
 	xui.NoteKeyboard() // 方向键搬过去的焦点要画焦点框
-	g.items[next].setSelectedNotify(true)
+	// 只读: 方向键只搬焦点, 不改组值(上游 readOnly 的语义是不让选, 焦点仍可移动)
+	if !g.readOnly {
+		g.items[next].setSelectedNotify(true)
+	}
 	focusRadio(g.items[next].Handle)
 	return 0
 }

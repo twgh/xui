@@ -33,6 +33,7 @@ type Select struct {
 	active        int32 // 键盘高亮条目在 flat 里的索引(-1 无)
 	pendingScroll int32 // Open 落位后要应用的滚动位(item-aligned)
 	changes       []func(item SelectItem)
+	opens         []func(open bool) // OnOpenChange 注册的开合回调
 }
 
 type selectRowKind int32
@@ -273,6 +274,7 @@ func (s *Select) Open() *Select {
 	}
 	// 打开时把焦点/高亮放到选中条目(radix 内容获得焦点, 选中项 bg-accent)
 	s.setActive(s.rowOfValue(s.value), s.pendingScroll <= 0)
+	s.notifyOpen(true)
 	return s
 }
 
@@ -286,6 +288,23 @@ func (s *Select) Close() *Select {
 
 // IsOpen 返回弹层是否打开。
 func (s *Select) IsOpen() bool { return s != nil && s.panel != nil && s.panel.IsOpen() }
+
+// OnOpenChange 注册开合回调(对应 Base UI Select Root 的 onOpenChange):
+// Open 后通知 true; ESC / 失焦 / 点外部 / Close 关闭后通知 false(四条路径统一走弹层的 OnHide)。
+func (s *Select) OnOpenChange(fn func(open bool)) *Select {
+	if s == nil || fn == nil {
+		return s
+	}
+	s.opens = append(s.opens, fn)
+	return s
+}
+
+// notifyOpen 广播开合状态。
+func (s *Select) notifyOpen(open bool) {
+	for _, fn := range s.opens {
+		fn(open)
+	}
+}
 
 // build 构建弹层窗口 + 行(数据变化后 built=false, 下次 Open 重建)。
 func (s *Select) build() {
@@ -303,6 +322,8 @@ func (s *Select) build() {
 		return
 	}
 	s.panel = panel
+	// 关闭统一走弹层的 OnHide(ESC / 失焦 / 点外部 / Close 都会走), 在这里补开合通知
+	panel.OnHide = func() { s.notifyOpen(false) }
 
 	// 视口内缩 p-1(4): 条目高亮距卡片边缘 4px(同 Content 的 p-1 组内边距)
 	s.scroll = NewScrollArea(selectPad, selectPad, cw-selectPad*2, ch-selectPad*2, panel.Content())

@@ -51,3 +51,14 @@ func TestMenuDispatch(t *testing.T) {
 		t.Error("normal item onSelect not called")
 	}
 }
+
+func TestMenuOnOpenChange(t *testing.T) {
+	m := NewMenu()
+	var got []bool
+	m.OnOpenChange(func(open bool) { got = append(got, open) })
+	m.notifyOpenChange(true)
+	m.notifyOpenChange(false)
+	if len(got) != 2 || !got[0] || got[1] {
+		t.Fatalf("OnOpenChange 收到 %v, want [true false]", got)
+	}
+}

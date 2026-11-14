@@ -5,6 +5,19 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查清单第一批落地: Card / Dialog / Label / Select / Menu / Input / Switch / RadioGroup 的语义补齐**(2026-11-14, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的「未实现但可实现」清单):
+  - **Card**: `WithCardSpacing(px)` / `SetSpacing(px)` 支持 `--card-spacing` 任意值(16/20/24/32), 一次同步内容区左右内距、上下外边距与页脚内距(`Card.Padding` 字段单独改不会下发, 一直是易错点); 新增 `CardFooter.SetPadding(px)`; **有页脚时内容区底部内距归 0**(上游 `has-data-[slot=card-footer]:pb-0`), 内容与页脚之间不再多出一整段内距。
+  - **Dialog**: `OnOpenChange(func(bool))` 统一 Show / Hide / SetOpen / ESC / 点遮罩 / 关闭钮 / Close 全部路径(同一状态不重复通知), `SetOpen(bool)` 作受控入口; `WithDialogDismissOutside(bool)` 与 `WithDialogEscClose(bool)` 分别开关遮罩 / ESC 关闭(前者等价于 Base UI 的 `disablePointerDismissal` 取反); `OnClosing(func() bool)` 可否决关闭("未保存内容"拦下 ESC / 遮罩 / X), 程序化 `Hide` / `SetOpen(false)` 不经过否决; `WithDialogInitialFocus` / `WithDialogFinalFocus` 指定打开与关闭后的焦点(未指定时关闭仍还焦点给下层模态)。Sheet / Drawer 的滑出与拖拽关闭同样走这套回调与焦点还原。
+  - **Label**: `BindFor(hEle)` 点击标签聚焦目标控件(= `htmlFor`, 目标禁用不响应), `BindToggle(hEle, fn)` 聚焦后再切换(Choice Card 整块可点); 独立 Label 补 `SetDisabled` / `Disabled`(字色按 `peer-disabled:opacity-50` 变淡)、`SetInvalid` / `Invalid`(字色转破坏性色)、`SetAlignRight`。
+  - **Select / Menu**: 补 `OnOpenChange(func(bool))` —— Select 打开后通知 true, ESC / 失焦 / 点外部 / Close 统一经弹层 `OnHide` 通知 false; Menu 在弹出前通知 true、关闭后通知 false(原生 Popup 阻塞, 只描述这一次弹出)。
+  - **Input / Textarea**: `WithInputReadOnly` / `SetReadOnly` / `ReadOnly` 走原生 `XEdit_EnableReadOnly`(可聚焦、可选中复制、打不进字), 与禁用(`SetDisabled` / `Disabled`, 同时关焦点与键盘)分成两档; `SetFieldState` 收敛到 `SetInvalid` + `SetDisabled`。Textarea 内嵌 `*Input`, 两个能力自动继承。
+  - **Switch**: `WithSwitchReadOnly` / `SetReadOnly` / `ReadOnly`; `OnCheckedChange(func(checked bool) bool)` 可否决(鼠标 / 空格 / `Toggle` 同一条路径, 程序化 `SetChecked` 不经过否决)。
+  - **Radio / RadioGroup**: 条目 `WithRadioReadOnly` / `SetReadOnly`; 组 `WithRadioGroupReadOnly` / `SetReadOnly` 与 `OnValueChangeVeto(func(value string) bool)`。组级只读/否决要**还原到上一个被接受的值**(`committed`), 不能只把新项退回去 —— 同父项的原生互斥已经把原选项取消了, 只退回新项会变成谁都没选。只读组的方向键仍搬焦点但不改变组值。
+  - **踩到的坑**: 原生 Check 类按钮的勾选位在 `XE_BUTTON_CHECK` 到达前已经改完, 只读与否决都只能在事件里回滚(同 Checkbox, 第八节 198); 单选组的回滚必须由**组**来做, 条目自己回滚会留下空选状态。
+  - **已知未做(留待后续批次)**: 弹层的开合动画与 `alignItemWithTrigger` 定位开关、Dialog 的 `DialogHeader`/`DialogFooter` 任意内容槽、Input 的 `maxLength` / 文件输入形态、Field 层的必填与组级校验、Tooltip 的 `disableHoverableContent` / `arrowPadding` —— 逐项状态见台账。
+  - **demo**: 表单1 输入框卡补只读态(并排展示禁用), 表单3 通知分组补只读开关, 表单5 单选组补整组只读 / 否决换选、复选卡补标签关联(`BindToggle`)。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 新增纯逻辑用例 `TestDialogCanCloseVeto` / `TestDialogOnOpenChange` / `TestMenuOnOpenChange` / `TestSwitchReadOnlyOption` / `TestSwitchAllowChange` / `TestRadioGroupVetoAndReadOnly` / `TestCardSpacingOption` / `TestCardFooterPaddingOption`; 临时项目单组件 `add card` / `add dialog` 与 `add --all` 后 `go build ./ui` 均通过; demo 150% DPI 实测 —— 卡片页脚与按钮之间的间距等于页脚上内边距(约 16 逻辑像素, 修复前多出一整段内距), 只读输入框点进去有插入符但键入 `XYZ` 文本不变, 只读开关点击后保持选中、普通开关点击正常切换(对照), 只读单选组点 B 仍停在 A, 点标签文字可切换复选框。亮/暗两套主题下核过卡片与表单页。
+
 - ✅ **Combobox 可编辑组合框 `WithComboboxEditable`**(2026-11-14, 用户反馈: 需要一个可编辑的组合框, 输入框不负责搜索):
   - **组件**: 独立选项(不依赖 `WithComboboxInput`), 单选把触发区换成可编辑原生输入框 —— 接受任意文字, **打字不搜索、不过滤、也不自动打开列表**; 点右侧箭头或 ↓ 才展开固定选项的全量列表(打开不预亮条目, Enter 留给提交文字; ↓ 再点亮第一项)。文字在 Enter / 失焦 / 点触发区外时提交: 与某条目的 Text/Value 精确相等(不区分大小写)时选中该条目, 否则整段文字作为自定义值(`SelectItem{Value: 文字, Text: 文字}`, OnChange 正常回传); 提交空文字 = 清空值; ESC 放弃未提交的文字(恢复原值); 箭头收起列表时也提交。与 `WithComboboxInput` 互斥、后写的生效(前者是边打字边过滤的自动补全), 多选忽略本项。
   - **数据模型**: 自定义值不进 `groups`, 单独记录在 `hasCustom/custom`; `Value/Selected/Values/OnChange` 都带上它; 数据里后来出现同值条目时以数据条目为准。

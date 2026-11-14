@@ -594,7 +594,11 @@ func (d *Dialog) paintSheet(p *xui.Painter) {
 
 // showSheet 打开面板: 先按最终位置排版, 再整体推到屏幕外, 由 Presence 逐帧滑入。
 func (d *Dialog) showSheet() *Dialog {
+	was := d.open
 	d.open = true
+	if !was {
+		d.notifyOpenChange(true)
+	}
 	d.pushModal()
 	d.slideX, d.slideY = 0, 0
 	d.appliedDX, d.appliedDY = 0, 0
@@ -643,9 +647,10 @@ func (d *Dialog) showSheet() *Dialog {
 func (d *Dialog) hideSheet() *Dialog {
 	d.open = false
 	d.popModal()
+	d.notifyOpenChange(false)
 	d.suspended = false
 	xc.XWnd_SetFocusEle(d.hWnd, 0)
-	restoreModalFocus(d.hWnd)
+	d.applyFinalFocus()
 	d.animateSheetClose(d.slideX, d.slideY)
 	return d
 }

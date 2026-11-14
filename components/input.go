@@ -123,6 +123,7 @@ type Input struct {
 	placeholder string
 	multiline   bool
 	invalid     bool
+	readOnly    bool
 	textColor   uint32 // 上次下发给原生 Edit 的字色(避免在 paint 里反复设置)
 	// bare: 裸输入(见 WithInputBare)。不画壳体/焦点环/校验环, 由外层容器(Input Group)负责;
 	// 左右内边距也改由外层按 addon 位置设置(setBareInsets)。
@@ -177,6 +178,10 @@ func WithInputBare() InputOption { return func(i *Input) { i.bare = true } }
 // WithInputInvalid 设置校验失败态(对应 shadcn 的 aria-invalid):
 // border-destructive + ring-3 destructive/20(暗色 /40)。与聚焦同时成立时红色优先。
 func WithInputInvalid() InputOption { return func(i *Input) { i.invalid = true } }
+
+// WithInputReadOnly 只读(对应原生 `<input readOnly>`): 可聚焦、可选文字、可复制,
+// 但编辑不进去。与禁用(Enable(false))的区别是外观不灰、仍能接收焦点与键盘导航。
+func WithInputReadOnly() InputOption { return func(i *Input) { i.readOnly = true } }
 
 // WithLeadingIcon 在文字区左侧嵌一枚图标(lucide path, 如 icons.IconSearch)。
 // 图标 size-4(16), 颜色 muted-foreground(禁用时再乘 50%)。
@@ -293,6 +298,9 @@ func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
 	// 灭掉原生外观
 	in.EnableBkTransparent(true)
 	in.EnableDrawBorder(false).EnableDrawFocus(false)
+	// 只读: 走原生 Edit 的只读位(可聚焦 / 可选可复制, 只是打不进字)。
+	// 不能用 Enable(false) 代替 —— 那会把焦点、选中与复制能力一起关掉。
+	in.EnableReadOnly(in.readOnly)
 	// 关掉"获得焦点自动全选"(xcgui 默认开): 内嵌按钮点完都要把焦点交回输入框,
 	// 全选会留下蓝色的选中态, 取消选中后还可能残留一层没擦掉的选中文字。
 	in.EnableAutoSelAll(false)
@@ -971,14 +979,41 @@ func (i *Input) SetInvalid(v bool) *Input {
 // Invalid 返回当前是否处于校验失败态。
 func (i *Input) Invalid() bool { return i.invalid }
 
+// SetReadOnly 运行时切换只读(见 WithInputReadOnly)。
+func (i *Input) SetReadOnly(b bool) *Input {
+	if i == nil || i.readOnly == b {
+		return i
+	}
+	i.readOnly = b
+	i.EnableReadOnly(b)
+	i.Redraw(false)
+	return i
+}
+
+// ReadOnly 报告是否只读。
+func (i *Input) ReadOnly() bool { return i != nil && i.readOnly }
+
+// SetDisabled 设置禁用态(与 Button / Select 的同名方法一致):
+// 关闭 Enable 与焦点能力, 文字按卡片底色对半混(对应 disabled:opacity-50)。
+func (i *Input) SetDisabled(b bool) *Input {
+	if i == nil {
+		return i
+	}
+	i.Enable(!b)
+	i.EnableFocus(!b)
+	i.EnableSwitchFocus(!b)
+	i.syncTextColor()
+	i.Redraw(false)
+	return i
+}
+
+// Disabled 报告是否禁用。
+func (i *Input) Disabled() bool { return i == nil || !i.IsEnable() }
+
 // SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
 func (i *Input) SetFieldState(invalid, disabled bool) {
 	i.SetInvalid(invalid)
-	i.Enable(!disabled)
-	i.EnableFocus(!disabled)
-	i.EnableSwitchFocus(!disabled)
-	i.syncTextColor()
-	i.Redraw(false)
+	i.SetDisabled(disabled)
 }
 
 // FieldDisabled 实现 FieldControl。

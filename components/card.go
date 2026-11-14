@@ -23,6 +23,14 @@ type CardOption func(*Card)
 // WithCardSize 设置卡片尺寸预设(sm = 内边距 12)。
 func WithCardSize(s CardSize) CardOption { return func(c *Card) { c.size = s } }
 
+// WithCardSpacing 直接设置卡片的内边距 / 段间距(对应上游 `--card-spacing` 任意值, 如 16/20/24/32)。
+//
+// 它同时作用于内容区的左右内距与上下外边距、以及页脚的内边距 —— 单独改 `Card.Padding`
+// 字段不会同步这些, 布局会错位。与 WithCardSize 一起用时后写的生效。
+func WithCardSpacing(px int32) CardOption {
+	return func(c *Card) { c.spacing = px; c.spacingSet = true }
+}
+
 // Card 自绘卡片容器: 圆角面板 + 边框, 自带标题/说明/页脚类型的静态排版助手。
 //
 // 与 shadcn card.tsx 对齐: rounded-xl, bg-card, ring-1 ring-foreground/10
@@ -34,9 +42,12 @@ func WithCardSize(s CardSize) CardOption { return func(c *Card) { c.size = s } }
 // 卡片若要按内容自撑高度, 把布局项高度声明成 `xcc.Layout_Size_Auto` 即可。
 type Card struct {
 	*widget.LayoutEle
-	Padding int32 // 内容内边距(逻辑像素)
-	size    CardSize
-	stack   *widget.LayoutEle // 内容区(懒建, 只建一个)
+	Padding    int32 // 内容内边距(逻辑像素)
+	size       CardSize
+	stack      *widget.LayoutEle // 内容区(懒建, 只建一个)
+	footer     *CardFooter       // 页脚(Footer 建的; 有页脚时内容区底部内距归 0)
+	spacing    int32             // WithCardSpacing 的显式值(0 = 未设置)
+	spacingSet bool
 }
 
 // NewCard 创建卡片。cx/cy 是卡片尺寸(放进布局时由布局项声明覆盖); opts 见 WithCardSize。
@@ -45,12 +56,16 @@ func NewCard(x, y, cx, cy int32, hParent int, opts ...CardOption) *Card {
 	if ele == nil {
 		return nil
 	}
-	c := &Card{LayoutEle: ele, Padding: 16}
+	c := &Card{LayoutEle: ele}
 	for _, o := range opts {
 		o(c)
 	}
+	c.Padding = 16
 	if c.size == CardSizeSm {
 		c.Padding = 12
+	}
+	if c.spacingSet && c.spacing > 0 {
+		c.Padding = c.spacing
 	}
 	// 竖直流式 + 关掉"纵向溢出换列": LayoutEle 在主轴放不下下一项时会把它甩到下一列
 	// (x += 容器宽度, y = 0), 表现为控件整块消失(实测, 见 DESIGN 第八节 41)。
@@ -86,7 +101,58 @@ func (c *Card) TitleSize() int32 {
 	return 16
 }
 
-// Footer 创建与卡片尺寸匹配的页脚(内边距跟随卡片: default 16 / sm 12),
+// SetSpacing 运行时改卡片内边距 / 段间距(对应上游 `--card-spacing`), 并同步内容区与页脚后重排。
+//
+// 只改 `Card.Padding` 字段不会同步内容区与页脚的内距(它们各自记着自己的值), 界面会错位,
+// 改间距一律走这里。
+func (c *Card) SetSpacing(px int32) *Card {
+	if c == nil {
+		return nil
+	}
+	if px < 0 {
+		px = 0
+	}
+	c.spacing, c.spacingSet = px, true
+	c.Padding = px
+	c.syncSpacing()
+	return c
+}
+
+// Spacing 返回当前内边距 / 段间距(= 字段 Padding 的当前值)。
+func (c *Card) Spacing() int32 {
+	if c == nil {
+		return 0
+	}
+	return c.Padding
+}
+
+// syncSpacing 把 Padding 下发到内容区(左右内距、上边距与下边距)和页脚内距, 然后重排。
+//
+// 内容区的下边距在有页脚时归 0: 上游 card.tsx 用 `has-data-[slot=card-footer]:pb-0`
+// 去掉卡片底部内距 —— 页脚自带 padding, 否则内容与页脚之间会多出一整段内距。
+func (c *Card) syncSpacing() {
+	if c == nil {
+		return
+	}
+	if c.stack != nil && xc.XC_IsHXCGUI(c.stack.Handle, xcc.XC_ELE) {
+		// 先设元素 padding(左右)再设布局项外边距(上下) —— 顺序无要求, 但两处都要设,
+		// 否则卡片被 Fill 宽排过后子项会按卡片全宽解析而向右溢出(见 DESIGN 第八节 129)。
+		c.stack.SetPadding(c.Padding, 0, c.Padding, 0)
+		bottom := c.Padding
+		if c.footer != nil {
+			bottom = 0
+		}
+		c.stack.LayoutItem_SetMargin(0, c.Padding, 0, bottom)
+		c.stack.AdjustLayout()
+	}
+	if c.footer != nil {
+		c.footer.SetPadding(c.Padding)
+	}
+	c.AdjustLayout()
+	c.Redraw(false)
+}
+
+// Footer 创建与卡片尺寸匹配的页脚(内边距跟随卡片: default 16 / sm 12, 或 WithCardSpacing 的值),
 // 并以 Fill 宽作为卡片的布局项 —— 通常直接用它, 不必再算 NewCardFooter 的参数。
 func (c *Card) Footer(cy int32) *CardFooter {
 	if c == nil {
@@ -97,6 +163,8 @@ func (c *Card) Footer(cy int32) *CardFooter {
 		return nil
 	}
 	xui.ItemFill(f)
+	c.footer = f
+	c.syncSpacing() // 有页脚了: 内容区底部内距归 0(见 syncSpacing)
 	return f
 }
 
@@ -124,8 +192,12 @@ func (c *Card) ContentStack(space int32) *widget.LayoutEle {
 		l.EnableAutoWrap(false)
 		l.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 		l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-		l.LayoutItem_SetMargin(0, c.Padding, 0, c.Padding) // 上下用外边距, 计入卡片 Auto 高度
-		l.SetPadding(c.Padding, 0, c.Padding, 0)           // 左右用元素 padding, 约束子项 Fill 宽
+		bottom := c.Padding
+		if c.footer != nil {
+			bottom = 0 // 页脚自带内距, 内容区下边距归 0(见 syncSpacing)
+		}
+		l.LayoutItem_SetMargin(0, c.Padding, 0, bottom) // 上下用外边距, 计入卡片 Auto 高度
+		l.SetPadding(c.Padding, 0, c.Padding, 0)        // 左右用元素 padding, 约束子项 Fill 宽
 		c.stack = l
 	}
 	c.stack.SetSpace(space)
@@ -356,6 +428,24 @@ func NewCardFooter(x, y, cx, cy int32, hParent int, opts ...CardFooterOption) *C
 
 	ele.AddEvent_Paint(f.onPaint)
 	xui.AttachWindow(ele.Handle)
+	return f
+}
+
+// SetPadding 运行时改页脚内边距(对应上游 p-(--card-spacing)), 并重排。
+// 用 Card.Footer 建的页脚会被 Card.SetSpacing 自动同步, 不需要单独调用。
+func (f *CardFooter) SetPadding(px int32) *CardFooter {
+	if f == nil || f.content == nil {
+		return f
+	}
+	if px < 0 {
+		px = 0
+	}
+	f.Padding = px
+	f.content.LayoutItem_SetMargin(0, px, 0, px)
+	f.content.SetPadding(px, 0, px, 0)
+	f.content.AdjustLayout()
+	f.AdjustLayout()
+	f.Redraw(false)
 	return f
 }
 

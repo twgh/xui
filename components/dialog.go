@@ -133,6 +133,11 @@ type Dialog struct {
 	mediaTone      AlertDialogMediaTone
 	dismissOutside bool
 	initialFocus   int
+	finalFocus     int  // 关闭后聚焦的元素(0 = 挨个还焦点给下层模态)
+	escClose       bool // ESC 是否关闭(默认 true)
+
+	onOpenChange []func(bool)  // 开合状态变化(Show / Hide / ESC / 遮罩 / 关闭钮 都会走)
+	onClosing    []func() bool // 关闭前的否决回调: 返回 false 拦下这次关闭
 
 	// 可滚动内容: 内容区外包一个 ScrollArea, 头部/页脚固定(对应文档的
 	// "Scrollable Content / With Sticky Footer")。scrollMax <= 0 时用 70vh。
@@ -194,6 +199,30 @@ func WithDialogScroll(maxHeight int32) DialogOption {
 	return func(d *Dialog) { d.scrollOn = true; d.scrollMax = maxHeight }
 }
 
+// WithDialogDismissOutside 点遮罩是否关闭(默认 true, 对应 Base UI 的 disablePointerDismissal 取反)。
+// AlertDialog 恒为 false(它的交互约定不允许点外部关闭)。
+func WithDialogDismissOutside(b bool) DialogOption {
+	return func(d *Dialog) { d.dismissOutside = b }
+}
+
+// WithDialogEscClose ESC 是否关闭对话框(默认 true, 对应 Base UI 的 closeOnEscape)。
+// 关掉后 ESC 不再被对话框吃掉, 键盘事件继续向下传。
+func WithDialogEscClose(b bool) DialogOption {
+	return func(d *Dialog) { d.escClose = b }
+}
+
+// WithDialogInitialFocus 指定打开时聚焦的元素(默认聚焦内容区第一个可聚焦控件)。
+// 对应 Base UI Popup 的 initialFocus。
+func WithDialogInitialFocus(hEle int) DialogOption {
+	return func(d *Dialog) { d.initialFocus = hEle }
+}
+
+// WithDialogFinalFocus 指定关闭后聚焦的元素(通常是打开它的那个触发按钮)。
+// 不设置时: 上层还叠着别的对话框就把焦点还给它, 否则焦点留在窗口上。
+func WithDialogFinalFocus(hEle int) DialogOption {
+	return func(d *Dialog) { d.finalFocus = hEle }
+}
+
 // NewDialog 创建对话框(默认隐藏)。hWnd 为宿主窗口句柄, 对话框覆盖整个窗口。
 func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	win := app.NewWindowByHandle(hWnd)
@@ -201,7 +230,7 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 		return nil
 	}
 	d := &Dialog{hWnd: hWnd, win: win, width: dlgDefaultW, showClose: true,
-		dismissOutside: true, fadeKey: xui.NextPresenceKey()}
+		dismissOutside: true, escClose: true, fadeKey: xui.NextPresenceKey()}
 	for _, o := range opts {
 		o(d)
 	}
@@ -580,7 +609,11 @@ func (d *Dialog) Show() *Dialog {
 	if d.sheet {
 		return d.showSheet()
 	}
+	was := d.open
 	d.open = true
+	if !was {
+		d.notifyOpenChange(true)
+	}
 	d.pushModal()
 	d.materialize()
 	if d.scroll != nil {
@@ -634,12 +667,14 @@ func (d *Dialog) Hide() *Dialog {
 	}
 	d.open = false
 	d.popModal()
+	d.notifyOpenChange(false)
 	// 清焦点: 插入符随焦点消失, 淡出的 100ms 里不会闪现全亮度的插入符,
 	// 也避免键盘输入继续打进正在消失的输入框
 	d.suspended = false // 挂起中被隐藏(如还原前按了 ESC): 清标记, 否则下次最小化不会挂起
 	xc.XWnd_SetFocusEle(d.hWnd, 0)
-	// 叠在别的对话框上时(如对话框里再开 AlertDialog), 关闭后把焦点还给下层
-	restoreModalFocus(d.hWnd)
+	// 叠在别的对话框上时(如对话框里再开 AlertDialog), 关闭后把焦点还给下层;
+	// 指定了 finalFocus 时优先还给它(对应 Base UI 的 finalFocus)
+	d.applyFinalFocus()
 	xui.Presence(d.hWnd, d.fadeKey, false, xui.PopupDuration, d.applyFade, func(v float64) {
 		showEleTree(d.overlay.Handle, false)
 		if d.backdrop != nil {
@@ -685,8 +720,13 @@ func (d *Dialog) setCaretWidthOf(hEle int, w int32) {
 }
 
 // Close 关闭对话框并触发关闭回调。
+// 注册过 OnClosing 且任一回调返回 false 时不关闭(对应 Base UI 的 eventDetails.cancel,
+// 用于"有未保存内容"时拦下 ESC / 遮罩 / 关闭钮)。
 func (d *Dialog) Close() *Dialog {
 	if d == nil || !d.open {
+		return d
+	}
+	if !d.canClose() {
 		return d
 	}
 	d.Hide()
@@ -699,6 +739,72 @@ func (d *Dialog) Close() *Dialog {
 // IsOpen 报告对话框是否打开。
 func (d *Dialog) IsOpen() bool {
 	return d != nil && d.open
+}
+
+// SetOpen 受控开合入口: true 打开, false 关闭(不触发 OnClose, 也不经过 OnClosing 否决)。
+// 开合状态变化照常通知 OnOpenChange。
+func (d *Dialog) SetOpen(open bool) *Dialog {
+	if d == nil {
+		return d
+	}
+	if open {
+		return d.Show()
+	}
+	return d.Hide()
+}
+
+// OnOpenChange 注册开合状态回调(对应 Base UI Dialog Root 的 onOpenChange):
+// Show / SetOpen(true) 通知 true; Hide / SetOpen(false) / ESC / 点遮罩 / 关闭钮 / Close
+// 通知 false。重复打开或重复关闭同一状态不会重复通知。
+func (d *Dialog) OnOpenChange(fn func(open bool)) *Dialog {
+	if d == nil || fn == nil {
+		return d
+	}
+	d.onOpenChange = append(d.onOpenChange, fn)
+	return d
+}
+
+// OnClosing 注册关闭前回调, 返回 false 拦下这次关闭(ESC / 点遮罩 / 关闭钮 / Close)。
+// 多个回调时任一否决即生效; 程序化 Hide / SetOpen(false) 不经过它。
+func (d *Dialog) OnClosing(fn func() bool) *Dialog {
+	if d == nil || fn == nil {
+		return d
+	}
+	d.onClosing = append(d.onClosing, fn)
+	return d
+}
+
+// canClose 依次询问关闭否决回调。
+func (d *Dialog) canClose() bool {
+	for _, fn := range d.onClosing {
+		if !fn() {
+			return false
+		}
+	}
+	return true
+}
+
+// notifyOpenChange 广播开合状态(内部用; 调用方保证状态确实变了)。
+func (d *Dialog) notifyOpenChange(open bool) {
+	for _, fn := range d.onOpenChange {
+		fn(open)
+	}
+}
+
+// applyFinalFocus 关闭之后还原焦点: 指定了 finalFocus 就聚焦它, 否则交给下层模态。
+func (d *Dialog) applyFinalFocus() {
+	if d == nil {
+		return
+	}
+	if h := d.finalFocus; h != 0 && xc.XC_IsHXCGUI(h, xcc.XC_ELE) && xc.XWidget_IsShow(h) {
+		if xc.XEle_IsEnableFocus(h) {
+			d.setCaretWidthOf(h, 1)
+			xc.XWnd_SetFocusEle(d.hWnd, h)
+			xc.XEle_Redraw(h, false)
+			return
+		}
+	}
+	restoreModalFocus(d.hWnd)
 }
 
 // layout 计算面板与全部子元素的位置。遮罩元素铺满 Body(内容区, 见下), 面板在遮罩内居中;
@@ -1101,6 +1207,9 @@ func (d *Dialog) onWindowKeyDown(hWindow int, wParam, lParam uintptr, pbHandled 
 	}
 	switch wParam {
 	case vkDlgEscape:
+		if !d.escClose {
+			break
+		}
 		*pbHandled = true
 		d.Close()
 	case vkDlgTab:

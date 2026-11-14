@@ -29,3 +29,24 @@ func TestRadioNextEnabled(t *testing.T) {
 		}
 	}
 }
+
+func TestRadioGroupVetoAndReadOnly(t *testing.T) {
+	g := &RadioGroup{}
+	if g.ReadOnly() {
+		t.Fatal("新建组默认不是只读")
+	}
+	if !g.allowChange("a") {
+		t.Fatal("没有 OnValueChangeVeto 时一律放行")
+	}
+	g.OnValueChangeVeto(func(v string) bool { return v == "keep" })
+	if !g.allowChange("keep") {
+		t.Fatal("keep 应放行")
+	}
+	if g.allowChange("other") {
+		t.Fatal("other 应被否决")
+	}
+	WithRadioGroupReadOnly()(g)
+	if !g.ReadOnly() {
+		t.Fatal("WithRadioGroupReadOnly 未生效")
+	}
+}

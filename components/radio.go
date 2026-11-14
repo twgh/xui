@@ -16,6 +16,7 @@ type Radio struct {
 	*widget.Button
 	BoxSize  int32 // 圆形指示器直径(逻辑像素)
 	invalid  bool
+	readOnly bool   // 用户不可选中, 程序化 SetSelected 仍生效(对应 Base UI 的 readOnly)
 	value    string // 所属 RadioGroup 的值(Attach 写入; 独立使用时为空)
 	backdrop func(t *xui.Theme) xui.Color
 	changes  []func(selected bool)
@@ -30,6 +31,13 @@ type RadioOption func(*Radio)
 // border-destructive + ring-3 destructive/20(暗色 /40), 常驻不要求焦点。
 func WithRadioInvalid() RadioOption {
 	return func(r *Radio) { r.invalid = true }
+}
+
+// WithRadioReadOnly 用户不可选中该项, 但保留焦点与键盘可达性
+// (对应 Base UI Radio Root 的 readOnly; 程序化 SetSelected 仍然生效)。
+// 组级只读用 RadioGroup.SetReadOnly, 不用给每项设这个。
+func WithRadioReadOnly() RadioOption {
+	return func(r *Radio) { r.readOnly = true }
 }
 
 // NewRadio 创建单选按钮。cy 传 0 时使用默认行高 24。同组互斥由 xcgui 按父容器自动管理。
@@ -56,7 +64,14 @@ func NewRadio(x, y, cx, cy int32, text string, hParent int, opts ...RadioOption)
 		return 0
 	})
 	// 原生勾选不会自动失效重绘; 鼠标点击经 XE_BUTTON_CHECK 补重绘并通知监听者。
+	// 原生勾选在通知到达时已经发生: 条目只读要在这里把勾选位回滚(同 Checkbox,
+	// 见 DESIGN 第八节 198), 组级只读由 RadioGroup 统一还原(它要顾及同父项互斥)。
 	r.AddEvent_Button_Check(func(hEle int, bCheck bool, pbHandled *bool) int {
+		if r.readOnly && bCheck {
+			r.SetCheck(false)
+			r.Redraw(false)
+			return 0
+		}
 		r.Redraw(false)
 		r.notifyChange(bCheck)
 		return 0
@@ -65,7 +80,9 @@ func NewRadio(x, y, cx, cy int32, text string, hParent int, opts ...RadioOption)
 	r.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
 		const vkSpace = 0x20
 		if wParam == vkSpace && r.IsEnable() {
-			r.setSelectedNotify(true)
+			if !r.readOnly {
+				r.setSelectedNotify(true)
+			}
 			*pbHandled = true
 		}
 		return 0
@@ -79,12 +96,26 @@ func (r *Radio) Selected() bool { return r.IsCheck() }
 // Select 选中该项并触发 OnChange(与鼠标点击/空格等价), 已选中时为空操作。
 // 用于"整块区域可点"的场景(如选择卡片的卡片本体), 让外部点击走与点击指示器相同的路径。
 func (r *Radio) Select() *Radio {
-	if r == nil || r.IsCheck() {
+	if r == nil || r.IsCheck() || r.readOnly {
 		return r
 	}
 	r.setSelectedNotify(true)
 	return r
 }
+
+// SetReadOnly 设置条目只读: 用户点击/空格不再选中, 焦点与 Tab 可达性保留;
+// 程序化 SetSelected 仍然生效(同 Base UI 的 readOnly)。
+func (r *Radio) SetReadOnly(v bool) *Radio {
+	if r == nil || r.readOnly == v {
+		return r
+	}
+	r.readOnly = v
+	r.Redraw(false)
+	return r
+}
+
+// ReadOnly 报告条目是否只读。
+func (r *Radio) ReadOnly() bool { return r != nil && r.readOnly }
 
 // SetBackdrop 指定绘制开头铺的宿主底色(默认按"放在 Card 上"用 t.Card)。
 // 组件是自绘的局部形状, 重绘不擦底, 必须先铺宿主底色; 放进有底色的容器

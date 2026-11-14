@@ -10,25 +10,25 @@
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
-> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#23(#1 / #3 / #5 的补齐已落地,其余 20 个出清单待确认),**下一轮从 #24 Accordion 起**。
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#23(#1 / #3 / #5 与第一批 16 个条目已落地,见第十节;其余条目仍出清单待确认),**下一轮核查从 #24 Accordion 起**。
 
 ## 一、按常用性排序的总表
 
 | # | 官方组件 | 本库 key / 实现 | 状态 | 备注 |
 |---:|---|---|---|---|
 | 1 | Button | `button` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 2 | Input | `input` | 已核查 | 结论见第三节;8 项可实现,清单待确认 |
+| 2 | Input | `input` | 已核查 | 结论见第三节;8 项可实现,I2 / I7 已落地(见第十节) |
 | 3 | Checkbox | `checkbox` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 4 | Select | `select` | 已核查 | 结论见第四节;9 项可实现,清单待确认 |
+| 4 | Select | `select` | 已核查 | 结论见第四节;9 项可实现,S3 已落地(见第十节) |
 | 5 | Combobox | `combobox` | 已核查 | 三批补齐,见 `23bdfc5` / `725d329` / `7441a77` |
-| 6 | Dialog | `dialog` | 已核查 | 结论见第五节;6 项可实现,清单待确认 |
-| 7 | Card | `card` | 已核查 | 结论见第五节;5 项可实现,含 1 项能力边界重评估 |
-| 8 | Label | `label` | 已核查 | 结论见第五节;4 项可实现 |
-| 9 | Textarea | `textarea` | 已核查 | 结论见第六节;与 Input 同源 + 3 项特有 |
+| 6 | Dialog | `dialog` | 已核查 | 结论见第五节;6 项可实现,D1 / D2 / D3 已落地(见第十节) |
+| 7 | Card | `card` | 已核查 | 结论见第五节;5 项可实现(含 1 项能力边界重评估),C1 / C2 已落地(见第十节) |
+| 8 | Label | `label` | 已核查 | 结论见第五节;4 项可实现,L1 / L2 / L4 已落地(见第十节) |
+| 9 | Textarea | `textarea` | 已核查 | 结论见第六节;与 Input 同源 + 3 项特有,TA1(随 Input 的 I2 / I7)已落地 |
 | 10 | Tabs | `tabs` | 已核查 | 结论见第六节;4 项可实现 |
-| 11 | Switch | `switch` | 已核查 | 结论见第六节;3 项可实现 |
-| 12 | Radio Group | `radio-group` | 已核查 | 结论见第六节;3 项可实现(+1 扩展) |
-| 13 | Dropdown Menu | `menu` | 已核查 | 结论见第六节;5 项可实现;#56 Context Menu 同一实现 |
+| 11 | Switch | `switch` | 已核查 | 结论见第六节;3 项可实现,SW1 / SW2 已落地(见第十节) |
+| 12 | Radio Group | `radio-group` | 已核查 | 结论见第六节;3 项可实现(+1 扩展),RG1 / RG2 已落地(见第十节) |
+| 13 | Dropdown Menu | `menu` | 已核查 | 结论见第六节;5 项可实现,DM1 已落地(见第十节);#56 Context Menu 同一实现 |
 | 14 | Tooltip | `tooltip` | 已核查 | 结论见第七节;3 项可实现 |
 | 15 | Badge | `badge` | 已核查 | 结论见第七节;3 项可实现;文件 `separator.go` |
 | 16 | Alert | `alert` | 已核查 | 结论见第七节;2 项可实现 |
@@ -491,3 +491,28 @@
 3. **需先确认需求或成本较高**:S5 多选、S7 滚动箭头、S6 悬停开关、I6 原生 Edit 视觉 API、I8 demo 对照。
 
 实现时按仓库固定流程:先查 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build ./...` / `go vet ./...` / `go test ./...`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。本轮**只核查,未改任何组件代码**。
+
+## 十、实现进度(已落地条目)
+
+第一批按「高优先、小改动」选的跨组件一致性条目,已全部落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| C2 | Card | 有页脚时内容区底部内距归 0(`has-data-[slot=card-footer]:pb-0` 等价) |
+| C1 | Card | `WithCardSpacing(px)` / `SetSpacing(px)` 任意 `--card-spacing`,同步内容区与页脚;`CardFooter.SetPadding` |
+| D1 | Dialog | `OnOpenChange` 统一 Show / Hide / SetOpen / ESC / 遮罩 / 关闭钮 / Close;`SetOpen` 受控入口 |
+| D2 | Dialog | `WithDialogDismissOutside` / `WithDialogEscClose` / `OnClosing`(可否决关闭) |
+| D3 | Dialog | `WithDialogInitialFocus` / `WithDialogFinalFocus`(未指定时仍还焦点给下层模态) |
+| L1 | Label | `BindFor(hEle)`(= `htmlFor` 聚焦)、`BindToggle(hEle, fn)`(聚焦 + 切换) |
+| L2 | Label | `SetDisabled` / `Disabled`(peer-disabled 变淡)、`SetInvalid` / `Invalid`(破坏性字色) |
+| L4 | Label | `SetAlignRight` |
+| S3 | Select | `OnOpenChange`(打开后 true; ESC / 失焦 / 点外部 / Close 经弹层 `OnHide` 通知 false) |
+| DM1 | Menu | `OnOpenChange`(弹出前 true / 关闭后 false);`ContextMenu` 口径不变 |
+| I2 | Input / Textarea | `WithInputReadOnly` / `SetReadOnly` / `ReadOnly`(原生 `XEdit_EnableReadOnly`) |
+| I7 | Input / Textarea | `SetDisabled` / `Disabled`;`SetFieldState` 收敛到 `SetInvalid` + `SetDisabled` |
+| SW1 | Switch | `WithSwitchReadOnly` / `SetReadOnly` / `ReadOnly` |
+| SW2 | Switch | `OnCheckedChange(func(bool) bool)` 可否决(鼠标 / 空格 / Toggle 同路径) |
+| RG1 | Radio / RadioGroup | 条目与组级 `readOnly`(组级还原上一个被接受的值;方向键仍搬焦点) |
+| RG2 | RadioGroup | `OnValueChangeVeto(func(string) bool)` |
+
+**下一批建议**(沿用第八节的顺序建议): PO1 `alignOffset` → IG1 addon 聚焦输入框 → FL4 Field 与 FieldError 绑定 → AV1 徽标配色 → PR1 progress `min`; 随后 PO2 / PO3 / PR2 / PR3 / FL1 / FL2 / IG2 / AV2 / AV3 / AV4。I3 / S9 / L3 / RG3 / FL3 是同一套 Field 校验基础设施, 必须同批设计。
