@@ -13,11 +13,11 @@ import (
 const (
 	sheetPad        int32 = 16  // p-4 / SheetHeader/SheetFooter 的内边距
 	sheetGap        int32 = 16  // gap-4: 头部/内容/页脚之间
-	sheetHeadGap    int32 = 6   // SheetHeader 的 gap-1.5
+	sheetHeadGap    int32 = 2   // SheetHeader 的 gap-0.5(base-nova)
 	sheetTitleH     int32 = 24  // text-base 默认行高(1.5rem)
 	sheetDescH      int32 = 20  // text-sm 默认行高(1.25rem)
-	sheetCloseSize  int32 = 28  // 关闭按钮点击区(幽灵图标按钮)
-	sheetCloseOff   int32 = 16  // top-4 right-4
+	sheetCloseSize  int32 = 28  // 关闭按钮点击区(icon-sm = size-7)
+	sheetCloseOff   int32 = 12  // top-3 right-3
 	sheetMaxW       int32 = 384 // sm:max-w-sm(24rem)
 	sheetBtnH       int32 = 32  // 页脚按钮 h-8
 	sheetFooterGap  int32 = 8   // SheetFooter 的 gap-2
@@ -48,8 +48,8 @@ const (
 // Sheet 从窗口边缘滑出的面板(遮罩 + 侧边内容), 语义对齐 shadcn sheet.tsx:
 //   - 遮罩 bg-black/50, 点遮罩 / ESC / 右上角 X 关闭; Tab 焦点陷阱与 Dialog 相同;
 //   - 左/右面板占满内容区高, 宽 min(3/4, sm:max-w-sm=384); 上/下面板宽度铺满, 高按内容自撑;
-//   - 面板 bg-background, 贴边侧画 1px border(border-l / border-r / border-b / border-t);
-//   - 头部 p-4、标题 text-base 中等字重 + 描述 text-sm muted(gap-1.5);
+//   - 面板 bg-popover(base-nova 的 sheet.tsx), 贴边侧画 1px border(border-l / border-r / border-b / border-t);
+//   - 头部 p-4、标题 text-base 中等字重 + 描述 text-sm muted(gap-0.5);
 //   - 页脚在底部, 按钮纵向排列、等宽铺满(gap-2, p-4);
 //   - 进场从贴边侧滑入 + 遮罩淡入, 退场反向滑出。
 //
@@ -257,6 +257,32 @@ func (s *Sheet) IsOpen() bool {
 func (s *Sheet) OnClose(fn func()) *Sheet {
 	if s != nil {
 		s.d.OnClose(fn)
+	}
+	return s
+}
+
+// OnOpenChange 注册开合状态回调(Show / Hide / ESC / 点遮罩 / 关闭钮 / Close 都走),
+// 语义同 Dialog.OnOpenChange —— 同一状态不重复通知。
+func (s *Sheet) OnOpenChange(fn func(open bool)) *Sheet {
+	if s != nil {
+		s.d.OnOpenChange(fn)
+	}
+	return s
+}
+
+// OnClosing 注册关闭前的否决回调(返回 false 拦下这次 ESC / 点遮罩 / 关闭钮),
+// 程序化 Hide / SetOpen(false) 不经过 —— 用于"未保存内容"提醒。
+func (s *Sheet) OnClosing(fn func() bool) *Sheet {
+	if s != nil {
+		s.d.OnClosing(fn)
+	}
+	return s
+}
+
+// SetOpen 受控入口: true 打开、false 关闭(false 不触发 OnClose, 同 Dialog)。
+func (s *Sheet) SetOpen(open bool) *Sheet {
+	if s != nil {
+		s.d.SetOpen(open)
 	}
 	return s
 }
@@ -578,7 +604,12 @@ func (d *Dialog) paintSheet(p *xui.Painter) {
 	if bottomRound {
 		radius = t.RadiusLg()
 	}
-	p.FillRound(&panel, t.Background, radius)
+	// 面板底色: Sheet 是 bg-popover(base-nova 的 sheet.tsx), Drawer(vaul 形态)仍用页面底色。
+	panelBg := t.Background
+	if !d.drawer {
+		panelBg = t.Popover
+	}
+	p.FillRound(&panel, panelBg, radius)
 	switch d.sheetSide {
 	case SheetLeft:
 		p.Line(panel.Right-1, panel.Top, panel.Right-1, panel.Bottom, t.Border, 1)

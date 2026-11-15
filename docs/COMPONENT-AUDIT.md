@@ -10,7 +10,7 @@
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
-> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#23(逐组件结论见各节,实现进度见第十节),**下一轮核查从 #24 Accordion 起**。
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#30(逐组件结论见各节,实现进度见第十节),**下一轮核查从 #31 Toast 起**。
 
 ## 一、按常用性排序的总表
 
@@ -39,14 +39,14 @@
 | 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL1 / FL2 / FL3 / FL4 已全部落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
 | 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现,IG1/IG2 已落地(见第十节);11 个官方示例仅缺 Custom Input |
 | 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1/AV2/AV3/AV4 已落地(见第十节) |
-| 24 | Accordion | `accordion` | 待核查 | 下一轮起点 |
-| 25 | Slider | `slider` | 待核查 | |
-| 26 | Alert Dialog | `alert-dialog` | 待核查 | |
-| 27 | Sheet | `sheet` | 待核查 | |
-| 28 | Separator | `separator` | 待核查 | |
-| 29 | Skeleton | `skeleton` | 待核查 | |
-| 30 | Scroll Area | `scroll-area` | 待核查 | |
-| 31 | Toast | `toast` | 待核查 | sonner 形态 |
+| 24 | Accordion | `accordion` | 已核查 | 结论见第八之二节;ACC1 / ACC2 / ACC3 已落地;余 Trigger 内容槽与 demo 缺口 |
+| 25 | Slider | `slider` | 已核查 | 结论见第八之二节;SL1 / SL2 / SL3 已落地;余碰撞策略与单滑块禁用 |
+| 26 | Alert Dialog | `alert-dialog` | 已核查 | 结论见第八之二节;AD1 已落地;其余与 Dialog D4 / D5 同源 |
+| 27 | Sheet | `sheet` | 已核查 | 结论见第八之二节;SH1~SH4 已落地;余内容槽与遮罩配色 |
+| 28 | Separator | `separator` | 已核查 | 结论见第八之二节;SEP1 / SEP2 已落地;余 demo 对照 |
+| 29 | Skeleton | `skeleton` | 已核查 | 结论见第八之二节;SK1 已落地(配色改 bg-muted);余示例卡 |
+| 30 | Scroll Area | `scroll-area` | 已核查 | 结论见第八之二节;SA1 已落地(滚动条常显);余横向滚动 |
+| 31 | Toast | `toast` | 待核查 | sonner 形态;下一轮起点 |
 | 32 | Toggle | `toggle` | 待核查 | |
 | 33 | Toggle Group | `toggle-group` | 待核查 | |
 | 34 | Pagination | `pagination` | 待核查 | |
@@ -484,6 +484,132 @@
 
 **本批实现顺序建议**:PO1 → IG1 → FL4 → AV1 → PR1(小改动、收益明确);随后 PO2 / PO3 / PR2 / PR3 / FL1 / FL2 / IG2 / AV2 / AV3 / AV4;FL3 与 Input I3 / Select S9 / Label L3 必须同批设计;PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求。PO1 与 Menu DM2、PO2 与 Dialog D3、PO5 与 Tooltip TT2、FL2 与 Label L1、AV3 与 Label L1 都建议共用同一套 API 形态,避免各写一份。
 
+## 八之二、追加核查:#24 Accordion ~ #30 Scroll Area
+
+依据:官方 `base/accordion`、`base/slider`、`base/alert-dialog`、`base/sheet`、`base/separator`、`base/skeleton`、`base/scroll-area` 七页(示例清单与正文行为说明),Base UI **v1.9.0** 的 Accordion / Slider Root·Item·Thumb props 表(含 `onValueChange` / `onOpenChange` 的 `eventDetails.cancel()`、`thumbAlignment`、`largeStep`),本地 base-nova 的 `accordion.tsx` / `slider.tsx` / `sheet.tsx` / `separator.tsx` / `skeleton.tsx` / `scroll-area.tsx`(alerts-dialog.tsx 本地未装,按官方页 + Base UI Dialog 比对),本库 `accordion.go` / `slider.go` / `alertdialog.go` / `sheet.go` / `dialog.go` / `separator.go` / `skeleton.go` / `scrollarea.go` / `scrollbar.go`,DESIGN 第四节末语义表与第七节差异表。RTL 七页都有示例,按约定排除。
+
+### Accordion(#24)
+
+**官方页**:Basic(`defaultValue` 数组)/ Multiple / Disabled / Borders / Card / RTL(排除) / API → Base UI。tsx:root `flex w-full flex-col`;item `not-last:border-b`;trigger `py-2.5 text-sm hover:underline focus-visible:ring-3 aria-disabled:opacity-50` + 两枚 chevron 互换;content `data-open:animate-accordion-down` + 内层 div `pb-2.5`。
+
+**已具备**:single(可全收)/ multiple、条目禁用、条目间 1px 分隔线(末项没有)、高度过渡 200ms(Collapsible)、hover 下划线、focus-visible 环、空格/回车切换、`Value/SetValue/OnChange`、箭头图标互换、内容 `pb-2.5`、面板常驻(等价 `keepMounted`)。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| ACC1 | 根级 `disabled` | Root props(`false` = 忽略全部用户交互) | 只有条目级;无法整组禁用 | `WithAccordionDisabled` / `SetDisabled` / `Disabled`:整组禁用与条目自身禁用分开记录,启用后各自恢复 | 小 / **高** |
+| ACC2 | `onValueChange` 可否决 | Root 的 `eventDetails.cancel()` | `OnChange` 只通知,点开即展开 | `OnValueChangeVeto(func(next []string) bool)`,参数是"将要变成的完整集合"(single 互斥已算进去);程序化 `SetValue` 不经过 | 小 / **高** |
+| ACC3 | Item `onOpenChange` 可否决 | Item 的 `eventDetails.cancel()` | 无条目级钩子 | `OnOpenChangeVeto(func(open bool) bool)`;被否决时把原生 Check 的勾选位翻回去(同 Checkbox, 第八节 198) | 小 / **高** |
+| ACC4 | 触发区放任意内容 | Trigger 的 `children` | 触发区是 Button,只能文字 + 图标 | `Trigger()` 已能改文字/图标;要放任意控件需给条目加内容槽(与 D4 / SH1 同一形态) | 中 / 低 |
+| ACC5 | Borders / Card 示例 | 官方两例(`border` + `last:border-b-0`;Accordion 放进 Card) | 组件能组合,缺 demo 对照 | 只补 demo | 小 / 低(非功能缺口) |
+
+**明确不做**:RTL;`hiddenUntilFound`(浏览器页内查找专属);`orientation` / `loopFocus`(Base UI 已标废弃);`render` / `data-slot`。
+
+### Slider(#25)
+
+**官方页**:Range / Multiple Thumbs / Vertical / Controlled / Disabled / RTL(排除)。tsx 明确写 `thumbAlignment="edge"`;Base UI Root 还有 `thumbCollisionBehavior` / `largeStep` / `minStepsBetweenValues` / `format` / `locale`。
+
+**已具备**:值数组(单值/范围/多滑块)、`min/max/step`、垂直、禁用、`minStepsBetweenValues`、`inverted`(本库扩展)、`onValueChange` / `onValueCommitted`、点击跳转 + 拖拽 + 键盘(方向键/Home/End)、hover/拖动/焦点 ring、`FieldControl`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| SL1 | `thumbAlignment="edge"` | tsx 显式设置;Base UI 默认 `center` | 滑块**中心**贴轨道端点(radix 老语义),两端溢出半个身位 | 轴区间改"两端各内缩半个滑块",`pointValue` / `thumbAt` / 指示器同口径;保留 `WithSliderThumbAlignment(SliderThumbCenter)` 回退 | 小-中 / **高** |
+| SL2 | `largeStep` | Root props(默认 10;PageUp/Down 与 Shift+方向键) | PageUp/Down = step×10,Shift 无效 | `WithSliderLargeStep` + `normalStep/largeStepValue` 两个纯函数;Shift 用 `wapi.GetAsyncKeyState` | 小 / 中 |
+| SL3 | 禁用时滑块也变淡 | Control 整体 `opacity-50` | 只淡轨道与已完成区间,滑块保持全亮 | 滑块白底与 border-ring 描边一起 `WithAlpha(alpha)` | 极小 / 中 |
+| SL4 | `thumbCollisionBehavior` | Root props:`push`(默认)/`swap`/`none` | 相邻滑块互相夹住(等价 `none`) | 拖动时把被撞的相邻滑块一起推(`push`)、或交换索引(`swap`);需改 `setValueAt` 的夹取逻辑 | 中 / 中 |
+| SL5 | 单滑块 `disabled` | Thumb props | 只能整组禁用 | 每滑块一个禁用位,命中/键盘/绘制分别判定 | 小-中 / 低 |
+
+**明确不做**:RTL;`format` / `locale` / `getAriaValueText`(Intl 与无障碍元数据);每 thumb 独立 roving tabindex(已记第七节差异);`name` / `form` 表单提交。
+
+### Alert Dialog(#26)
+
+**官方页**:Basic / Small(`size="sm"`)/ Media / Small with Media / Destructive / RTL(排除) / API(仅列出 `size`)。Composition = Trigger + Content(Header[Media/Title/Description] + Footer[Cancel/Action])。
+
+**已具备**:`size` 两档(default 左对齐头 + 右对齐页脚 / sm 居中头 + 等宽双列页脚)、media 媒体块(40×40 + size-6 图标 + muted / destructive 两档)、Cancel 默认聚焦、点遮罩不关闭、ESC 关闭、`BindTrigger`、`AddAction` 任意变体、`OnClose`、与 Dialog 共用遮罩/焦点陷阱/模态栈/100ms 淡入。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| AD1 | `OnOpenChange` / `SetOpen` | Base UI Dialog Root(AlertDialog 复用) | 只有 `OnClose`,与 Dialog / Sheet 口径不一致 | 转发 `d.OnOpenChange` / `d.SetOpen` | 极小 / **高** |
+| AD2 | media 放任意图片 | `AlertDialogMedia` 可放图标或图片 | 只能给 icon path / SVG | 加 `SetMediaImage(path)` 走图片句柄(同 Avatar 的加载路径) | 中 / 低 |
+| AD3 | Header / Footer 任意内容槽 | Composition 的容器部件 | 头部只有标题/描述,页脚只有按钮 | 同 Dialog D4:导出容器或 `Title()/Description()` | 中 / 中 |
+| AD4 | 遮罩 / 面板样式可配 | Overlay 可传 className | 遮罩固定黑 10%、内边距固定 | 同 Dialog D5 | 小-中 / 低-中 |
+
+**明确不做**:RTL;zoom-in-95 与 text-balance(能力边界);`render` / `aria-*`。**不计入**:Initial Focus / Final Focus / 可否决关闭 —— D3 已给 AlertDialog 用(Cancel 聚焦),`OnClosing` 也已在 Dialog 侧可用。
+
+### Sheet(#27)
+
+**官方页**:Side / No Close Button / RTL(排除) / API → Base UI Dialog(`side`、`showCloseButton`)。tsx:面板 **bg-popover**、`gap-4`、关闭钮 **top-3 right-3 + icon-sm**、SheetHeader **`gap-0.5`**、SheetFooter `gap-2 p-4`、四向平移 2.5rem + 200ms。
+
+**已具备**:四向面板(左右 3/4 + max-w-sm、上下按内容自撑)、面板滑入/滑出、遮罩淡入、页脚纵向铺满、Tab 焦点陷阱与模态栈、`WithSheetWidth/CloseButton/Duration`、`BindTrigger/BindClose`、`OnClose`、`Content/ContentWidth`、`AddFooter`。
+
+**未实现但可实现 / 本批修正**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| SH1 | `OnOpenChange` | Base UI Dialog Root | 只有 `OnClose` | 转发 `Dialog.OnOpenChange`(同一状态不重复通知) | 极小 / **高** |
+| SH2 | `OnClosing` 可否决 | Dialog 的关闭拦截 | 无 | 转发 `Dialog.OnClosing`("未保存内容") | 极小 / 高 |
+| SH3 | `SetOpen` 受控入口 | Root 的 `open` | 只有 Show/Hide/Close | 转发 `Dialog.SetOpen` | 极小 / 中 |
+| SH4 | 关闭钮位置与面板底色 | tsx:`top-3 right-3`、`bg-popover`、Header `gap-0.5` | `top-4 right-4`、`bg-background`、`gap-1.5`(radix 旧值) | 常量改 12 / 2,Sheet 面板取 `t.Popover`(Drawer 仍用 Background) | 小 / **高**(肉眼可见的对齐) |
+| SH5 | Header / Footer 任意内容槽 | Composition | 头部两条文字 + 页脚按钮 | 同 Dialog D4 | 中 / 中 |
+| SH6 | 遮罩 / 面板样式可配 | Overlay / Popup 的 className | 遮罩固定黑 10%(本库为黑 50) | 同 Dialog D5 | 小-中 / 低-中 |
+| SH7 | 进场位移量对齐 2.5rem + opacity | tsx 的 `data-starting-style:translate-x-[2.5rem]` | 从整块面板宽滑入(300ms) | 改小位移 + 同时淡入;属观感选项,先确认需求 | 小 / 低-中 |
+
+**明确不做**:RTL;shadow-lg(元素无圆角投影);内容超面板高自动滚动(裁剪,已在第七节);`render` / `aria-*`。
+
+### Separator(#28)
+
+**官方页**:Vertical / Menu / List / RTL(排除) / API → Base UI Separator(`orientation`)。
+
+**已具备**:水平/垂直、1 逻辑像素并按**整设备像素**对齐(150% DPI 不会一粗一细)、`WithSeparatorVertical/Orientation`、布局项可声明长度。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| SEP1 | 颜色可覆盖 | tsx 的 `bg-border` 可被 className 换掉 | 恒 `t.Border` | `WithSeparatorColor` / `SetColor` / `Color()`(传 `xui.None` 回到令牌) | 极小 / 中 |
+| SEP2 | 垂直 `self-stretch` | tsx 的 `data-vertical:self-stretch` | 垂直必须给高度(cx),传 0 就是 0 高 | `WithSeparatorStretch()` 设布局项高度 Fill(父级是布局容器时撑满) | 小 / 中 |
+| SEP3 | Menu / List 示例 | 官方两例 | 组件能组合,缺 demo | 只补 demo | 小 / 低 |
+
+**明确不做**:RTL;`decorative` / `role` / `aria-orientation`(无障碍 DOM 元数据)。
+
+### Skeleton(#29)
+
+**官方页**:默认示例 + Avatar / Card / Text / Form / Table / RTL(排除);**没有 API Reference**,tsx 只有 `animate-pulse rounded-md bg-muted`。
+
+**已具备**:圆角(主题 RadiusMd / 自定义 / 圆形)、`bg-*` 可换成窗口底色(`WithSkeletonOnBackground`)、静态模式、2s 脉冲(1 → 0.5 → 1,运行时 `xui.Pulse`)、宽高交给调用方/布局。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| SK1 | 底色用 `bg-muted` | tsx(`radix-nova` 时代是 `bg-accent`) | 取 `t.Accent` | 改 `t.Muted`;默认主题两者同值,自定义主题才看得出差别 | 极小 / **高** |
+| SK2 | 五种示例组合 | Avatar / Card / Text / Form / Table | 组件能拼,缺同构 demo | 只补 demo(卡片骨架 / 表格骨架) | 小 / 低 |
+
+**明确不做**:RTL;`className` / `data-slot`。
+
+### Scroll Area(#30)
+
+**官方页**:默认示例 / Horizontal / RTL(排除) / API → Base UI。tsx:Root `relative`、Viewport `size-full rounded-[inherit] focus-visible:ring-3`、ScrollBar 10px(`w-2.5 p-px`)+ thumb `rounded-full bg-border`、Corner。
+
+**已具备**:纵向滚动(内容 Auto 高、超出视口即滚)、滚动条 hover 显隐(150ms 元素 alpha,不改布局宽)、10px 轨道 + 8px 圆头滑块、轨道透明、滑块悬停不换色、滚轮冒泡、`ScrollToTop`、`SetContentFill`(铺满型页面)、首帧滚动条宽度自愈。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| SA1 | 滚动条常显 | `type="always"`(桌面习惯) | 恒"悬停才显示" | `WithScrollAreaScrollbarAlways()`:alpha 拉满、不挂悬停判定;内容不足仍由原生自动隐藏 | 小 / **高** |
+| SA2 | 横向滚动 | 官方 Horizontal 示例 + ScrollBar 的 `orientation` | 明确只做纵向 | 加 `WithScrollAreaHorizontal`/横向 ScrollArea:内容区改 Auto 宽、`ShowSBarH(true)`;需要同步自愈闸门与滚动条皮肤 | 中-高 / 中 |
+| SA3 | `ScrollTo(hEle)` / `ScrollIntoView` | 上游无(浏览器原生) | 只能 `ScrollToTop` / `ScrollPosYV` | 读目标元素相对内容区的 y,调 `ScrollPosYV`;本库扩展 | 小-中 / 低-中 |
+
+**明确不做**:RTL;视口 focus-visible 环与键盘滚动(容器不进 xcgui 的 Tab 链,第八节 157);`rounded-[inherit]` 圆角裁剪(能力边界);Corner(只纵向时不存在);`size-full` / `data-slot`。
+
+**本批实现顺序建议**:ACC1 → ACC2 → ACC3 → SL1 → SL2 → SL3 → SK1 → SEP1 → SEP2 → SA1 → SH1~SH4 → AD1(本批已全部落地,见第十节);ACC4 / AD3 / SH5 是同一形态(内容槽)建议一起设计;SL4 / SL5 / SA2 / SH7 需先确认需求或成本较高。
+
 ## 九、实现顺序建议(仅 Input / Select 批次, 待确认后执行)
 
 1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化。
@@ -494,7 +620,7 @@
 
 ## 十、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~六批已落地。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~七批已落地。
 
 **第一批**:
 
@@ -571,4 +697,22 @@
 | AL1 | Alert | `WithAlertColors(bg, border, fore, desc)` / `SetColors`: 四层配色直接覆盖, 不随变体与主题取色 |
 | DT2 | Data Table | `WithDataTableEmptyText(s)` / `SetEmptyText`: 空态与"无匹配"文案可覆盖(默认仍是内置两句) |
 
-**下一批建议**: 余下条目中 PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求再动手(定位策略 / 箭头 / 模态焦点圈禁 / 独立 Progress 部件 / 头像加载状态); S1 / S2 / S5 / DL4~6 / TB3 / DM2~5 / TT1~3 / TBL1~3 / DT3 等中等改动按组件集中排; 其余小改动可随时排; 下一轮核查从 #24 Accordion 起。
+**第七批**(#24~#30 首轮核查的高优先小改动, 跨 7 个组件; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| ACC1 | Accordion | `WithAccordionDisabled` / `SetDisabled` / `Disabled`: 整组禁用只忽略用户交互(点击 / 空格回车 / Toggle), 程序化 `SetValue` / `SetOpen` 仍生效; 条目自身的禁用状态独立记录, 整组启用后各自恢复 |
+| ACC2 | Accordion | `OnValueChangeVeto(func(next []string) bool)`(Root 的 `eventDetails.cancel()`): 参数是"将要变成的完整集合"(single 互斥已算进去), 一次交互只问一次; 程序化路径不经过 |
+| ACC3 | Accordion | 条目 `OnOpenChangeVeto(func(open bool) bool)`(Item 的 cancel); 被否决时把触发区原生 Check 的勾选位翻回去, 不会留下"亮了但没展开" |
+| SL1 | Slider | 两端对齐改为 Base UI 的 `thumbAlignment="edge"`(对齐 tsx): 值在 min/max 时滑块**边缘**贴轨道端点、不再溢出; `WithSliderThumbAlignment(SliderThumbCenter)` 回到"中心贴端点"的旧语义; 轴区间抽成纯函数 `sliderAxisSpan`(点击跳转 / 拖动 / 命中 / 绘制同口径) |
+| SL2 | Slider | `WithSliderLargeStep` + `Shift+方向键` 与 PageUp·PageDown 走大步进(默认 step×10, 连续模式为值域一半, 与旧行为一致) |
+| SL3 | Slider | 禁用时滑块的白底与 border-ring 描边也逐层乘 50%(上游是 Control 整体 `opacity-50`, 原来只淡轨道) |
+| SK1 | Skeleton | 底色由 `Accent` 改 `Muted`(base-nova 的 `bg-muted`); 默认主题两者同值, 自定义主题才看得出差别 |
+| SEP1 | Separator | `WithSeparatorColor` / `SetColor` / `Color()`: 覆盖线色, 传 `xui.None` 回到 Border 令牌 |
+| SEP2 | Separator | `WithSeparatorStretch()`: 垂直分隔线在布局里撑满父级高(= `self-stretch`), 长度参数可传 0 |
+| SA1 | ScrollArea | `WithScrollAreaScrollbarAlways()`: 滚动条常显(对应 `type="always"`), alpha 拉满且不挂悬停判定, 内容不足时仍由原生自动隐藏 |
+| SH1~SH3 | Sheet | 转发 `OnOpenChange` / `OnClosing` / `SetOpen`: 与 Dialog 同一套开合与"未保存内容"否决语义 |
+| SH4 | Sheet | 对齐 base-nova: 关闭钮 `top-3 right-3`(12)、SheetHeader 间距 `gap-0.5`(2)、面板底色 `bg-popover`(Drawer 仍用页面底色) |
+| AD1 | AlertDialog | 转发 `OnOpenChange` / `SetOpen`: 与 Dialog / Sheet 口径统一 |
+
+**下一批建议**: 余下条目中 PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求再动手(定位策略 / 箭头 / 模态焦点圈禁 / 独立 Progress 部件 / 头像加载状态); S1 / S2 / S5 / DL4~6 / TB3 / DM2~5 / TT1~3 / TBL1~3 / DT3 等中等改动按组件集中排; 其余小改动可随时排; ACC4 / AD3 / SH5 是同一形态(面板内容槽), SL4 / SL5 / SA2 / SH7 需先确认需求; 下一轮核查从 #31 Toast 起。

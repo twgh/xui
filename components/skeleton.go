@@ -31,13 +31,13 @@ func WithSkeletonStatic() SkeletonOption {
 	return func(s *Skeleton) { s.pulse = false }
 }
 
-// Skeleton 骨架屏占位块: 圆角矩形 + bg-accent + 2s 脉冲(animate-pulse)。
+// Skeleton 骨架屏占位块: 圆角矩形 + bg-muted + 2s 脉冲(animate-pulse)。
 //
 // 尺寸完全由调用方给(宽高是设计稿常量), 常用组合是头像用 WithSkeletonCircle,
 // 文本行走布局里固定宽高。脉冲走运行时 xui.Pulse, 不要自己起定时器;
 // SetAnimationScale(0) 会冻结脉冲, 便于截图对比。
 //
-// 颜色按"放在 Card 上"设计: 脉冲是**不透明**的 Accent 与 Card 混色(元素重绘
+// 颜色按"放在 Card 上"设计: 脉冲是**不透明**的 Muted 与 Card 混色(元素重绘
 // 不会擦掉上一帧, 直接用半透明色叠加会越叠越亮, 见 DESIGN 第八节 28)。
 // 放在窗口底色上时加 WithSkeletonOnBackground。
 type Skeleton struct {
@@ -107,6 +107,6 @@ func (s *Skeleton) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	} else if radius < 0 {
 		radius = t.RadiusMd()
 	}
-	p.FillRound(&p.Rc, base.Mix(t.Accent, opacity), radius)
+	p.FillRound(&p.Rc, base.Mix(t.Muted, opacity), radius)
 	return 0
 }

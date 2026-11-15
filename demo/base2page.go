@@ -117,7 +117,7 @@ func buildBase2Page(body *widget.LayoutEle) {
 	_, vsk := autoCard(xui.VStack(r3.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "骨架屏", vsk.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Skeleton: bg-accent + rounded-md, 2s 脉冲(1 → 0.5 → 1)", vsk.Handle))
+		"Skeleton: bg-muted + rounded-md, 2s 脉冲(1 → 0.5 → 1)", vsk.Handle))
 
 	xui.ItemFill(hint(vsk.Handle, "头像 + 两行文本"))
 	skRow := xui.HStack(vsk.Handle, 40, 12)

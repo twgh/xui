@@ -39,6 +39,8 @@ type ScrollArea struct {
 
 	content *widget.LayoutEle
 
+	alwaysBar bool // 滚动条常显(不随悬停淡入淡出)
+
 	// 首帧、以及滚动条显隐翻转的那一帧, 编排会把滚动条宽度多减一次 —— 子项右缘因此比视口
 	// 窄一个滚动条宽度(探针实测: 视口 772 时子项只有 760, 右侧多出 12px 空白)。再排一次
 	// 就正确, 这里用"上次看到的尺寸"做闸门自愈: 同一对尺寸只补排一次, 不会来回震荡。
@@ -46,13 +48,26 @@ type ScrollArea struct {
 	healing           bool
 }
 
+// ScrollAreaOption 滚动容器配置项。
+type ScrollAreaOption func(*ScrollArea)
+
+// WithScrollAreaScrollbarAlways 滚动条常显(不随鼠标移入淡入淡出), 对应桌面
+// "总是显示滚动条"的习惯(上游 ScrollArea 的 type="always")。内容不足时仍由
+// 原生自动隐藏, 不会出现"不能滚却挂着条"。
+func WithScrollAreaScrollbarAlways() ScrollAreaOption {
+	return func(s *ScrollArea) { s.alwaysBar = true }
+}
+
 // NewScrollArea 创建滚动容器。尺寸/布局项语义与普通容器相同(默认不接管尺寸, 用 LayoutItem_* 声明)。
-func NewScrollArea(x, y, cx, cy int32, hParent int) *ScrollArea {
+func NewScrollArea(x, y, cx, cy int32, hParent int, opts ...ScrollAreaOption) *ScrollArea {
 	lf := widget.NewLayoutFrame(x, y, cx, cy, hParent)
 	if lf == nil {
 		return nil
 	}
 	s := &ScrollArea{LayoutFrame: lf, lastFW: -1, lastViewW: -1}
+	for _, o := range opts {
+		o(s)
+	}
 
 	// 框架自己: 竖向流 + 关掉自动换列(换列会把溢出的控件甩到容器右边, 见 DESIGN 第八节 41)。
 	lf.EnableHorizon(false)
@@ -82,7 +97,14 @@ func NewScrollArea(x, y, cx, cy int32, hParent int) *ScrollArea {
 	xui.OnThemeChangeFor(lf.Handle, s.applyTheme)
 	s.applyTheme(xui.Current())
 	xui.AttachWindow(lf.Handle)
-	showScrollBarOnHover(lf.Handle, lf.GetScrollBarVObj())
+	if s.alwaysBar {
+		// 常显: 直接把滚动条子树 alpha 拉满, 不挂"悬停才显示"的窗口级判定。
+		if bar := lf.GetScrollBarVObj(); bar != nil && bar.Handle > 0 {
+			xui.SetSubtreeAlpha(255, bar.Handle)
+		}
+	} else {
+		showScrollBarOnHover(lf.Handle, lf.GetScrollBarVObj())
+	}
 	return s
 }
 

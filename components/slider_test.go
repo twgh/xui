@@ -92,6 +92,63 @@ func TestSliderMinGap(t *testing.T) {
 	}
 }
 
+func TestSliderEdgeAlignment(t *testing.T) {
+	// 水平 200 宽: edge 时滑块**边缘**贴轨道端点(轨道端点 = 元素内缩 sliderHalo)
+	start, length := sliderAxisSpan(200, false, true)
+	if want := sliderHalo + sliderThumb/2; start != want {
+		t.Fatalf("edge start = %d, want %d", start, want)
+	}
+	if want := 200 - 2*sliderHalo - sliderThumb; length != want {
+		t.Fatalf("edge length = %d, want %d", length, want)
+	}
+	if got := start - sliderThumb/2; got != sliderHalo {
+		t.Fatalf("f=0 时滑块左缘 = %d, want %d", got, sliderHalo)
+	}
+	if got := start + length + sliderThumb/2; got != 200-sliderHalo {
+		t.Fatalf("f=1 时滑块右缘 = %d, want %d", got, 200-sliderHalo)
+	}
+
+	// center(旧语义): 中心贴轨道端点
+	cs, cl := sliderAxisSpan(200, false, false)
+	if cs != sliderHalo || cl != 200-2*sliderHalo {
+		t.Fatalf("center span = (%d,%d), want (%d,%d)", cs, cl, sliderHalo, 200-2*sliderHalo)
+	}
+
+	// 垂直: 轴从底部起算, edge 同样内缩半个滑块
+	vs, vl := sliderAxisSpan(200, true, true)
+	if want := 200 - sliderHalo - sliderThumb/2; vs != want {
+		t.Fatalf("vertical edge start = %d, want %d", vs, want)
+	}
+	if want := 200 - 2*sliderHalo - sliderThumb; vl != want {
+		t.Fatalf("vertical edge length = %d, want %d", vl, want)
+	}
+
+	// 退化尺寸不产生负长度
+	if _, l := sliderAxisSpan(4, false, true); l != 0 {
+		t.Fatalf("过短元素 length = %d, want 0", l)
+	}
+}
+
+func TestSliderLargeStep(t *testing.T) {
+	// 未显式设置: 大步进 = step×10(旧行为); 连续模式为值域的一半
+	s := &Slider{min: 0, max: 100, step: 2}
+	if got := s.normalStep(); !almost(got, 2) {
+		t.Fatalf("normalStep = %v, want 2", got)
+	}
+	if got := s.largeStepValue(); !almost(got, 20) {
+		t.Fatalf("largeStepValue = %v, want 20", got)
+	}
+	c := &Slider{min: 0, max: 100}
+	if got := c.largeStepValue(); !almost(got, 50) {
+		t.Fatalf("连续模式 largeStepValue = %v, want 50", got)
+	}
+	// 显式 largeStep 优先
+	e := &Slider{min: 0, max: 100, step: 1, largeStep: 7}
+	if got := e.largeStepValue(); !almost(got, 7) {
+		t.Fatalf("显式 largeStepValue = %v, want 7", got)
+	}
+}
+
 func TestSliderValuesAccessors(t *testing.T) {
 	s := &Slider{min: 0, max: 100, values: []float64{10, 90}}
 	if got := s.Value(); !almost(got, 10) {

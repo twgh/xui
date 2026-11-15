@@ -24,6 +24,9 @@ const (
 type Separator struct {
 	*widget.Element
 	vertical bool
+	stretch  bool      // 垂直时在布局里撑满父级高(self-stretch)
+	color    xui.Color // 覆盖色(hasColor 为 false 时用主题 Border)
+	hasColor bool
 }
 
 // SeparatorOption 分隔线配置项。
@@ -37,6 +40,17 @@ func WithSeparatorVertical() SeparatorOption {
 // WithSeparatorOrientation 显式指定取向。
 func WithSeparatorOrientation(o SeparatorOrientation) SeparatorOption {
 	return func(s *Separator) { s.vertical = o == SeparatorVertical }
+}
+
+// WithSeparatorColor 覆盖线的颜色(默认 bg-border), 对应上游用 className 把 bg-border 换掉。
+func WithSeparatorColor(c xui.Color) SeparatorOption {
+	return func(s *Separator) { s.color, s.hasColor = c, true }
+}
+
+// WithSeparatorStretch 让垂直分隔线在布局里撑满父级可用高度(对应上游的 self-stretch)。
+// 水平线忽略此项; 垂直时可把 NewSeparator 的长度(cx)传 0, 高度交给布局(需父级是布局容器)。
+func WithSeparatorStretch() SeparatorOption {
+	return func(s *Separator) { s.stretch = true }
 }
 
 // NewSeparator 创建分隔线。cx 是长度(水平 = 宽, 垂直 = 高), 线粗固定 1 逻辑像素。
@@ -60,9 +74,34 @@ func NewSeparator(x, y, cx int32, hParent int, opts ...SeparatorOption) *Separat
 	// 2 行(实测)。必须关掉, 让下面的自绘全权负责。
 	ele.EnableBkTransparent(true)
 	ele.EnableDrawBorder(false)
+	if s.vertical && s.stretch {
+		ele.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
+	}
 	ele.AddEvent_Paint(s.onPaint)
 	xui.AttachWindow(ele.Handle)
 	return s
+}
+
+// SetColor 运行时改线的颜色; 传 xui.None 回到主题的 Border 令牌。
+func (s *Separator) SetColor(c xui.Color) *Separator {
+	if s == nil {
+		return s
+	}
+	if c == xui.None {
+		s.hasColor = false
+	} else {
+		s.color, s.hasColor = c, true
+	}
+	s.Redraw(false)
+	return s
+}
+
+// Color 返回当前覆盖色; 未覆盖时返回 xui.None(实际用主题 Border)。
+func (s *Separator) Color() xui.Color {
+	if s == nil || !s.hasColor {
+		return xui.None
+	}
+	return s.color
 }
 
 func (s *Separator) onPaint(hEle int, hDraw int, pbHandled *bool) int {
@@ -72,6 +111,10 @@ func (s *Separator) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	*pbHandled = true
 	t := xui.Current()
+	col := t.Border
+	if s.hasColor {
+		col = s.color
+	}
 	// 直接填充整个元素矩形(元素本身就是 1px 粗的细条): 用画线的话线宽沿路径居中,
 	// 贴在元素边缘的那一半会被元素裁剪掉 —— 实测 150% DPI 下只剩 1 个物理像素、
 	// 比 Border 令牌的观感淡一半(见 DESIGN 第八节 10)。
@@ -92,7 +135,7 @@ func (s *Separator) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			Right:  float32((c + 1) / sc),
 			Bottom: float32(p.Rc.Bottom),
 		}
-		p.Draw.FillRectColorF(&rc, uint32(t.Border))
+		p.Draw.FillRectColorF(&rc, uint32(col))
 		return 0
 	}
 	c := math.Floor(float64(p.Rc.Top+p.Rc.Bottom) / 2 * sc)
@@ -102,7 +145,7 @@ func (s *Separator) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		Right:  float32(p.Rc.Right),
 		Bottom: float32((c + 1) / sc),
 	}
-	p.Draw.FillRectColorF(&rc, uint32(t.Border))
+	p.Draw.FillRectColorF(&rc, uint32(col))
 	return 0
 }
 

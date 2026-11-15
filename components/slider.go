@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xui"
@@ -25,6 +26,17 @@ const (
 	sliderHalo int32 = sliderThumb/2 + sliderRingPad // 9
 	// sliderVerticalDefault 是垂直滑块的默认轨道长度(radix 的 data-vertical:min-h-40 = 160)。
 	sliderVerticalDefault int32 = 160
+)
+
+// SliderThumbAlignment 滑块在值域两端时的对齐方式, 对应 Base UI Slider 的 thumbAlignment。
+type SliderThumbAlignment int
+
+const (
+	// SliderThumbEdge 滑块**整体**落在轨道内(值在两端时边缘与轨道端点对齐),
+	// 对齐 shadcn slider.tsx 的 `thumbAlignment="edge"`(默认)。
+	SliderThumbEdge SliderThumbAlignment = iota
+	// SliderThumbCenter 滑块**中心**落在轨道端点(radix 老语义, 两端会溢出半个身位)。
+	SliderThumbCenter
 )
 
 // Slider 纯自绘滑动条(不使用原生 SliderBar)。
@@ -51,17 +63,19 @@ const (
 // 轨道绘制在元素内缩 sliderHalo 的位置——**视觉轨道长度仍等于入参 cx(垂直为 cy)**。
 type Slider struct {
 	*widget.Element
-	values     []float64 // 升序, 长度 = 滑块数量(radix 的 value 数组)
-	min        float64   // 值域下限(radix 的 min), 默认 0
-	max        float64   // 值域上限(radix 的 max), 默认 100
-	step       float64   // 步进(radix 的 step), 0 = 连续取值
-	vertical   bool      // orientation=vertical: 值从下往上增长
-	inverted   bool      // inverted: 反转取值方向(视觉与方向键一起反转)
-	disabled   bool      // data-disabled
-	minSteps   int       // minStepsBetweenThumbs: 相邻滑块至少相隔的步数
-	active     int       // 当前操作/键盘调整的滑块索引(焦点环画在它身上)
-	drag       int       // 拖动中的滑块索引, -1 = 未拖动
-	hoverThumb int       // 指针落在哪个滑块上(热区), -1 = 不在任何滑块上
+	values     []float64            // 升序, 长度 = 滑块数量(radix 的 value 数组)
+	min        float64              // 值域下限(radix 的 min), 默认 0
+	max        float64              // 值域上限(radix 的 max), 默认 100
+	step       float64              // 步进(radix 的 step), 0 = 连续取值
+	largeStep  float64              // 大步进(PageUp/Down 与 Shift+方向键), 0 = step×10
+	thumbAlign SliderThumbAlignment // 两端对齐方式, 默认 edge
+	vertical   bool                 // orientation=vertical: 值从下往上增长
+	inverted   bool                 // inverted: 反转取值方向(视觉与方向键一起反转)
+	disabled   bool                 // data-disabled
+	minSteps   int                  // minStepsBetweenThumbs: 相邻滑块至少相隔的步数
+	active     int                  // 当前操作/键盘调整的滑块索引(焦点环画在它身上)
+	drag       int                  // 拖动中的滑块索引, -1 = 未拖动
+	hoverThumb int                  // 指针落在哪个滑块上(热区), -1 = 不在任何滑块上
 	changes    []func([]float64)
 	commits    []func([]float64)
 }
@@ -129,6 +143,23 @@ func WithSliderMinStepsBetweenThumbs(n int) SliderOption {
 			s.minSteps = n
 		}
 	}
+}
+
+// WithSliderLargeStep 设置大步进(对应 Base UI 的 largeStep): PageUp / PageDown
+// 与 Shift+方向键按它移动。不设置时取 step×10(连续模式为值域的 1/2), 与旧行为一致。
+func WithSliderLargeStep(step float64) SliderOption {
+	return func(s *Slider) {
+		if step > 0 {
+			s.largeStep = step
+		}
+	}
+}
+
+// WithSliderThumbAlignment 设置滑块在值域两端时的对齐方式(对应 Base UI 的
+// thumbAlignment)。默认 SliderThumbEdge(shadcn tsx 的 thumbAlignment="edge"),
+// 传 SliderThumbCenter 回到"滑块中心贴轨道端点"的旧语义。
+func WithSliderThumbAlignment(a SliderThumbAlignment) SliderOption {
+	return func(s *Slider) { s.thumbAlign = a }
 }
 
 // NewSlider 创建滑动条。cx 是**可见轨道长度**(垂直时 cy 才是轨道长度); cy 传 0
@@ -269,6 +300,7 @@ func (s *Slider) onKeyDown(hEle int, wParam, lParam uintptr, pbHandled *bool) in
 		return 0
 	}
 	const (
+		vkShift    = 0x10
 		vkHome     = 0x24
 		vkEnd      = 0x23
 		vkLeft     = 0x25
@@ -278,15 +310,15 @@ func (s *Slider) onKeyDown(hEle int, wParam, lParam uintptr, pbHandled *bool) in
 		vkPageUp   = 0x21
 		vkPageDown = 0x22
 	)
-	span := s.max - s.min
-	// 连续模式沿用 ±5%(与旧版行为一致); 有 step 时一个步进 = step。
-	step := span / 20
-	if s.step > 0 {
-		step = s.step
-	}
+	step := s.normalStep()
 	if step <= 0 {
 		return 0
 	}
+	// Shift+方向键走大步进(对应 Base UI 的 largeStep)。
+	if wapi.GetAsyncKeyState(vkShift) < 0 {
+		step = s.largeStepValue()
+	}
+	large := s.largeStepValue()
 
 	newV := math.NaN()
 	switch wParam {
@@ -307,9 +339,9 @@ func (s *Slider) onKeyDown(hEle int, wParam, lParam uintptr, pbHandled *bool) in
 			newV = s.values[s.active] - step
 		}
 	case vkPageUp:
-		newV = s.values[s.active] + step*10
+		newV = s.values[s.active] + large
 	case vkPageDown:
-		newV = s.values[s.active] - step*10
+		newV = s.values[s.active] - large
 	case vkHome:
 		newV = s.min
 	case vkEnd:
@@ -480,6 +512,26 @@ func (s *Slider) notifyCommit() {
 	}
 }
 
+// normalStep 是一个方向键的步长: 有 step 用 step, 连续模式沿用值域的 ±5%。
+func (s *Slider) normalStep() float64 {
+	if s.step > 0 {
+		return s.step
+	}
+	return (s.max - s.min) / 20
+}
+
+// largeStepValue 是大步步长(PageUp/Pagedown 与 Shift+方向键):
+// 显式 largeStep 优先, 否则 step×10(连续模式即值域的一半), 与旧行为一致。
+func (s *Slider) largeStepValue() float64 {
+	if s.largeStep > 0 {
+		return s.largeStep
+	}
+	if v := s.normalStep() * 10; v > 0 {
+		return v
+	}
+	return 0
+}
+
 // unitStep 是一格的大小: 有 step 用 step, 连续时用值域的千分之一。
 func (s *Slider) unitStep() float64 {
 	if s.step > 0 {
@@ -615,18 +667,54 @@ func (s *Slider) trackLen() int32 {
 	return s.GetWidth() - sliderHalo*2
 }
 
+// alignEdge 报告是否按"滑块整体落在轨道内"对齐(默认)。
+func (s *Slider) alignEdge() bool { return s.thumbAlign != SliderThumbCenter }
+
+// axisSpan 返回滑块中心的取值区间(元素坐标, 沿轴): start = 值域下限对应的中心坐标,
+// length = 从下限到上限的位移。
+func (s *Slider) axisSpan() (start, length int32) {
+	if s.vertical {
+		return sliderAxisSpan(s.GetHeight(), true, s.alignEdge())
+	}
+	return sliderAxisSpan(s.GetWidth(), false, s.alignEdge())
+}
+
+// sliderAxisSpan 是轴区间的纯计算部分(total = 元素沿轴长度, 便于单元测试)。
+// edge 对齐时两端各内缩半个滑块 —— 值在 min/max 时滑块的**边缘**与轨道端点对齐
+// (上游 thumbAlignment="edge" 的语义), 不会溢出轨道; center 时中心贴端点。
+func sliderAxisSpan(total int32, vertical, edge bool) (start, length int32) {
+	length = total - sliderHalo*2
+	if vertical {
+		start = total - sliderHalo
+		if edge {
+			start -= sliderThumb / 2
+			length -= sliderThumb
+		}
+	} else {
+		start = sliderHalo
+		if edge {
+			start += sliderThumb / 2
+			length -= sliderThumb
+		}
+	}
+	if length < 0 {
+		length = 0
+	}
+	return start, length
+}
+
 // pointValue 把元素客户区坐标换算成值(拖动/点击轨道用)。
 func (s *Slider) pointValue(px, py int32) float64 {
-	length := s.trackLen()
+	start, length := s.axisSpan()
 	if length <= 0 {
 		return s.Value()
 	}
 	var f float64
 	if s.vertical {
 		// 底部 = 0, 顶部 = 1
-		f = float64(s.GetHeight()-sliderHalo-py) / float64(length)
+		f = float64(start-py) / float64(length)
 	} else {
-		f = float64(px-sliderHalo) / float64(length)
+		f = float64(px-start) / float64(length)
 	}
 	if f < 0 {
 		f = 0
@@ -638,15 +726,15 @@ func (s *Slider) pointValue(px, py int32) float64 {
 
 // thumbAxis 返回第 i 个滑块中心沿轴的坐标(水平 = x, 垂直 = y)。
 func (s *Slider) thumbAxis(i int) int32 {
-	length := s.trackLen()
+	start, length := s.axisSpan()
 	var f float64
 	if i >= 0 && i < len(s.values) {
 		f = s.geoFrac(s.values[i])
 	}
 	if s.vertical {
-		return s.GetHeight() - sliderHalo - int32(math.Round(f*float64(length)))
+		return start - int32(math.Round(f*float64(length)))
 	}
-	return sliderHalo + int32(math.Round(f*float64(length)))
+	return start + int32(math.Round(f*float64(length)))
 }
 
 // thumbAt 返回指针命中的滑块索引(-1 = 未命中)。热区 = 滑块半径 + 2px,
@@ -680,15 +768,15 @@ func (s *Slider) nearestThumb(px, py int32) int {
 	if len(s.values) == 0 {
 		return 0
 	}
-	length := s.trackLen()
+	start, length := s.axisSpan()
 	if length <= 0 {
 		return 0
 	}
 	var f float64
 	if s.vertical {
-		f = float64(s.GetHeight()-sliderHalo-py) / float64(length)
+		f = float64(start-py) / float64(length)
 	} else {
-		f = float64(px-sliderHalo) / float64(length)
+		f = float64(px-start) / float64(length)
 	}
 	if f < 0 {
 		f = 0
@@ -805,16 +893,19 @@ func (s *Slider) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			Bottom: center.Y + sliderThumb/2,
 		}
 		p.Draw.SetLineWidth(1)
-		// 滑块是"内容", 禁用(组级透明)下核心保持原色, 只有轨道/完成区间变淡
-		p.Draw.SetBrushColor(uint32(xui.RGBA(255, 255, 255, 255)))
+		// data-disabled:opacity-50 是组级透明: 滑块也逐层乘 50%(同 Button / Checkbox),
+		// 白底与 border-ring 描边一起变淡 —— 上游是 Control 整体 opacity-50, 只淡轨道
+		// 会让禁用后的滑块比轨道更显眼。
+		p.Draw.SetBrushColor(uint32(xui.RGBA(255, 255, 255, 255).WithAlpha(alpha)))
 		p.Draw.FillEllipse(&thumb)
-		p.Draw.SetBrushColor(uint32(t.Ring))
+		p.Draw.SetBrushColor(uint32(t.Ring.WithAlpha(alpha)))
 		p.Draw.DrawEllipse(&thumb)
 	}
 	return 0
 }
 
 // thumbPoint 返回第 i 个滑块中心的元素坐标(水平 = 轨道中线, 垂直 = 轨道中线)。
+// 轴上的活动区间与 axisSpan 同口径(edge 对齐时两端内缩半个滑块)。
 func (s *Slider) thumbPoint(rc xc.RECT, i int) xc.POINT {
 	var f float64
 	if i >= 0 && i < len(s.values) {
@@ -822,14 +913,30 @@ func (s *Slider) thumbPoint(rc xc.RECT, i int) xc.POINT {
 	}
 	if s.vertical {
 		length := (rc.Bottom - rc.Top) - sliderHalo*2
+		start := rc.Bottom - sliderHalo
+		if s.alignEdge() {
+			start -= sliderThumb / 2
+			length -= sliderThumb
+		}
+		if length < 0 {
+			length = 0
+		}
 		return xc.POINT{
 			X: rc.Left + (rc.Right-rc.Left)/2,
-			Y: rc.Bottom - sliderHalo - int32(math.Round(f*float64(length))),
+			Y: start - int32(math.Round(f*float64(length))),
 		}
 	}
 	length := (rc.Right - rc.Left) - sliderHalo*2
+	start := rc.Left + sliderHalo
+	if s.alignEdge() {
+		start += sliderThumb / 2
+		length -= sliderThumb
+	}
+	if length < 0 {
+		length = 0
+	}
 	return xc.POINT{
-		X: rc.Left + sliderHalo + int32(math.Round(f*float64(length))),
+		X: start + int32(math.Round(f*float64(length))),
 		Y: rc.Top + (rc.Bottom-rc.Top)/2,
 	}
 }

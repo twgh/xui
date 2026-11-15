@@ -167,7 +167,7 @@ func buildForm1Page(body *widget.LayoutEle) {
 	_, v3 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "滑动条", v3.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"纯自绘: 点击跳转 / 拖拽 / 方向键, hover 与拖动显示光环; 单值 / 范围 / 多滑块 / 垂直 / 禁用", v3.Handle))
+		"纯自绘: 点击跳转 / 拖拽 / 方向键(Shift 大步进, PageUp·Down 同), 两端滑块边缘贴轨道(edge); 单值 / 范围 / 多滑块 / 垂直 / 禁用", v3.Handle))
 
 	xui.ItemFill(hint(v3.Handle, "连续(0~100)"))
 	rowS := xui.HStack(v3.Handle, 24, 8)

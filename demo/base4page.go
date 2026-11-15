@@ -27,6 +27,16 @@ func buildBase4Page(body *widget.LayoutEle) {
 	}
 	box.Content().SetSpace(6)
 
+	// 常显形态: 不随鼠标移入淡入淡出(桌面"总是显示滚动条"的习惯)。
+	xui.ItemFill(hint(vs.Handle, "滚动条常显(WithScrollAreaScrollbarAlways)"))
+	box2 := ui.NewScrollArea(0, 0, 0, 96, vs.Handle, ui.WithScrollAreaScrollbarAlways())
+	xui.ItemFill(box2)
+	for i := 1; i <= 6; i++ {
+		l := ui.NewLabel(0, 0, 0, 0, fmt.Sprintf("常显滚动条 · 第 %d 行", i), box2.Content().Handle)
+		xui.ItemFill(l)
+	}
+	box2.Content().SetSpace(6)
+
 	// ---- 列表项(Item): 媒体 / 内容 / 动作 + 页眉页脚 ----
 	_, vi := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "列表项", vi.Handle))
@@ -151,6 +161,37 @@ func buildBase4Page(body *widget.LayoutEle) {
 		"触发区获得键盘焦点时显示焦点环, 空格 / 回车切换开合(Tab 在条目间移动)。",
 		a3.ContentStack(6).Handle))
 	a1.SetOpen(true)
+
+	// 根级禁用(Base UI Root 的 disabled)与可否决切换(onValueChange 的 cancel):
+	// 第 3 项开合被条目级否决拦下, 触发区的原生勾选位会回滚(不留下"亮了但没展开")。
+	xui.ItemFill(hint(va.Handle, "整组禁用 / 可否决切换(第 3 项开合被拦下)"))
+	accRow := xui.HStack(va.Handle, ui.ButtonSizeSm.Height()+1, 8)
+	accState := ui.NewLabel(0, 0, 0, 0, "展开: item-1", accRow.Handle).SetMuted()
+	xui.ItemWeight(accState, 1)
+	acc.OnChange(func(vals []string) {
+		text := "展开: (无)"
+		for i, v := range vals {
+			if i == 0 {
+				text = "展开: " + v
+			} else {
+				text += ", " + v
+			}
+		}
+		accState.SetText(text).Redraw()
+	})
+	a3.OnOpenChangeVeto(func(open bool) bool { return !open })
+	accDisBtn := ui.NewButton(0, 0, 0, 0, "禁用整组", accRow.Handle,
+		ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline))
+	accDisBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		acc.SetDisabled(!acc.Disabled())
+		if acc.Disabled() {
+			accDisBtn.SetText("启用整组")
+		} else {
+			accDisBtn.SetText("禁用整组")
+		}
+		accDisBtn.Redraw(false)
+		return 0
+	})
 
 	xui.ItemFill(hint(va.Handle, "multiple(各条目独立开合)"))
 	acc2 := ui.NewAccordion(0, 0, 0, 0, va.Handle, ui.WithAccordionMultiple())

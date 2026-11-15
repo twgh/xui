@@ -42,9 +42,11 @@ const (
 // 根容器宽必须确定(Fill): 放进卡片/行时用 xui.ItemFill 给它宽度(同 Collapsible)。
 type Accordion struct {
 	*widget.LayoutEle
-	mode    AccordionType
-	items   []*AccordionItem
-	changes []func(values []string)
+	mode     AccordionType
+	items    []*AccordionItem
+	changes  []func(values []string)
+	vetoes   []func(values []string) bool // 开合集合变化前的否决回调
+	disabled bool                         // 整组禁用(对应 Base UI Root 的 disabled)
 }
 
 // AccordionOption 手风琴配置项。
@@ -58,6 +60,12 @@ func WithAccordionType(t AccordionType) AccordionOption {
 // WithAccordionMultiple 等价 WithAccordionType(AccordionMultiple)。
 func WithAccordionMultiple() AccordionOption {
 	return func(a *Accordion) { a.mode = AccordionMultiple }
+}
+
+// WithAccordionDisabled 整组禁用(对应 Base UI Root 的 disabled: 忽略全部用户交互)。
+// 程序化 SetValue / SetOpen 仍然生效; 条目自身的禁用状态在整组启用后各自恢复。
+func WithAccordionDisabled() AccordionOption {
+	return func(a *Accordion) { a.disabled = true }
 }
 
 // NewAccordion 创建手风琴根容器(竖向流式, 子项间距 0 —— 分隔线自带节奏)。
@@ -128,8 +136,13 @@ func (a *Accordion) AddItem(value, title string, opts ...AccordionItemOption) *A
 		return 0
 	})
 	// Check 按钮的点击以 Button_Check 事件到达(状态已翻好), 在这里同步开合。
+	// 被条目的 OnOpenChangeVeto 或根级 OnValueChangeVeto 否决时要把原生勾选位翻回去
+	// —— 到达这里时状态已经改完, 只能在事件里回滚(同 Checkbox, 见 DESIGN 第八节 198)。
 	btn.AddEvent_Button_Check(func(hEle int, bCheck bool, pbHandled *bool) int {
-		it.setOpen(bCheck)
+		if !it.userOpen(bCheck) {
+			btn.SetCheck(!bCheck)
+			btn.Redraw(false)
+		}
 		return 0
 	})
 	// 原生 Check 按钮不响应空格/回车(KeyDown 能收到但状态不变), 键盘激活自己补
@@ -137,7 +150,7 @@ func (a *Accordion) AddItem(value, title string, opts ...AccordionItemOption) *A
 	btn.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
 		const vkReturn, vkSpace = 0x0D, 0x20
 		if (wParam == vkReturn || wParam == vkSpace) && xc.XEle_IsEnable(hEle) {
-			it.setOpen(!it.open)
+			it.userOpen(!it.open)
 			*pbHandled = true
 		}
 		return 0
@@ -151,9 +164,7 @@ func (a *Accordion) AddItem(value, title string, opts ...AccordionItemOption) *A
 	it.collapsible = coll
 
 	a.items = append(a.items, it)
-	if it.disabled {
-		it.SetDisabled(true)
-	}
+	it.applyEnabled()
 	return it
 }
 
@@ -198,6 +209,52 @@ func (a *Accordion) OnChange(fn func(values []string)) *Accordion {
 	return a
 }
 
+// OnValueChangeVeto 在展开集合即将变化前询问(对应 Base UI Root 的 onValueChange
+// 的 eventDetails.cancel()): 任一回调返回 false 即取消这次切换, 触发区的勾选位
+// 也会一起回滚。参数是"将要变成的完整集合"(single 模式下互斥收起已算进去),
+// 一次交互只问一次。程序化 SetValue / SetOpen 不经过否决。
+func (a *Accordion) OnValueChangeVeto(fn func(values []string) bool) *Accordion {
+	if a == nil || fn == nil {
+		return a
+	}
+	a.vetoes = append(a.vetoes, fn)
+	return a
+}
+
+// SetDisabled 整组禁用/启用(对应 Base UI Root 的 disabled)。
+// 只忽略用户交互(点击 / 键盘 / Toggle); 程序化 SetValue / SetOpen 仍生效。
+func (a *Accordion) SetDisabled(v bool) *Accordion {
+	if a == nil || a.disabled == v {
+		return a
+	}
+	a.disabled = v
+	for _, it := range a.items {
+		it.applyEnabled()
+	}
+	return a
+}
+
+// Disabled 返回整组是否禁用。
+func (a *Accordion) Disabled() bool { return a != nil && a.disabled }
+
+// valuesWith 返回"假如 it 落到 v"时的展开集合(根级否决的入参)。
+// single 模式下展开一项会收起其余, 集合里只留它。
+func (a *Accordion) valuesWith(it *AccordionItem, v bool) []string {
+	vals := make([]string, 0, len(a.items))
+	for _, other := range a.items {
+		if other == it {
+			if v {
+				vals = append(vals, other.value)
+			}
+			continue
+		}
+		if other.open && !(v && a.mode == AccordionSingle) {
+			vals = append(vals, other.value)
+		}
+	}
+	return vals
+}
+
 func (a *Accordion) notify() {
 	vals := a.Value()
 	for _, fn := range a.changes {
@@ -213,9 +270,10 @@ type AccordionItem struct {
 	collapsible *Collapsible
 	open        bool
 	disabled    bool
-	body        *widget.LayoutEle // 内容区容器(ContentStack 返回的那个)
-	space       int32             // 内容区子项间距(ContentStack 的参数)
-	pad         *widget.Element   // 内容区末尾的 pb-2.5 占位(见 ensureBottomPad)
+	vetoes      []func(open bool) bool // 本条目开合前的否决回调
+	body        *widget.LayoutEle      // 内容区容器(ContentStack 返回的那个)
+	space       int32                  // 内容区子项间距(ContentStack 的参数)
+	pad         *widget.Element        // 内容区末尾的 pb-2.5 占位(见 ensureBottomPad)
 }
 
 // AccordionItemOption 折叠项配置项。
@@ -244,30 +302,71 @@ func (it *AccordionItem) SetOpen(v bool) *AccordionItem {
 	return it
 }
 
-// Toggle 反转展开状态(disabled 时无效)。
+// Toggle 反转展开状态(禁用时无效; 与点击同一条路径, 经过否决回调)。
 func (it *AccordionItem) Toggle() *AccordionItem {
-	if it == nil || it.disabled {
+	if it == nil {
 		return it
 	}
-	it.setOpen(!it.open)
+	it.userOpen(!it.open)
 	return it
 }
 
-// SetDisabled 禁用/启用触发区。
+// OnOpenChangeVeto 在本条目即将开/合前询问(对应 Base UI Item 的 onOpenChange
+// 的 eventDetails.cancel()): 返回 false 取消这次切换, 触发区勾选位一并回滚。
+// 程序化 SetOpen 不经过; 根级 OnValueChangeVeto 也会在这个路径上被询问。
+func (it *AccordionItem) OnOpenChangeVeto(fn func(open bool) bool) *AccordionItem {
+	if it == nil || fn == nil {
+		return it
+	}
+	it.vetoes = append(it.vetoes, fn)
+	return it
+}
+
+// SetDisabled 禁用/启用本条目(整组禁用时条目仍保持自己的禁用状态)。
 func (it *AccordionItem) SetDisabled(d bool) *AccordionItem {
 	if it == nil {
 		return it
 	}
 	it.disabled = d
-	if it.trigger != nil {
-		it.trigger.Enable(!d)
-		it.trigger.Redraw(false)
-	}
+	it.applyEnabled()
 	return it
 }
 
-// Disabled 返回触发区是否禁用。
+// Disabled 返回本条目是否禁用(不含整组禁用)。
 func (it *AccordionItem) Disabled() bool { return it != nil && it.disabled }
+
+// applyEnabled 按"整组禁用 || 条目禁用"落触发区的可交互状态。
+func (it *AccordionItem) applyEnabled() {
+	if it == nil || it.trigger == nil {
+		return
+	}
+	off := it.disabled || (it.acc != nil && it.acc.disabled)
+	it.trigger.Enable(!off)
+	it.trigger.Redraw(false)
+}
+
+// userOpen 是用户交互路径(点击 / 空格回车 / Toggle): 条目级与根级否决都生效。
+// 返回 false 表示这次状态没有落地 —— 触发区的原生勾选位已被框架翻好, 调用方要回滚。
+func (it *AccordionItem) userOpen(v bool) bool {
+	if it == nil || it.open == v {
+		return true
+	}
+	for _, fn := range it.vetoes {
+		if !fn(v) {
+			return false
+		}
+	}
+	if it.acc != nil {
+		next := it.acc.valuesWith(it, v)
+		for _, fn := range it.acc.vetoes {
+			if !fn(next) {
+				return false
+			}
+		}
+	}
+	it.setOpen(v)
+	return true
+}
 
 // Content 返回内容容器(竖向流式, 宽铺满; 底部已带 pb-2.5 的 10px 间距)。
 // 第一次调用时创建, 内容高度由 Collapsible 管理, 不要自己给它声明高度。

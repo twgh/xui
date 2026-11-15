@@ -276,6 +276,23 @@ func (a *AlertDialog) OnClose(fn func()) *AlertDialog {
 	return a
 }
 
+// OnOpenChange 注册开合状态回调(Show / Hide / ESC / Cancel / Action / Close 都走),
+// 语义同 Dialog.OnOpenChange —— 同一状态不重复通知。
+func (a *AlertDialog) OnOpenChange(fn func(open bool)) *AlertDialog {
+	if a != nil {
+		a.d.OnOpenChange(fn)
+	}
+	return a
+}
+
+// SetOpen 受控入口: true 打开、false 关闭(false 不触发 OnClose, 同 Dialog)。
+func (a *AlertDialog) SetOpen(open bool) *AlertDialog {
+	if a != nil {
+		a.d.SetOpen(open)
+	}
+	return a
+}
+
 // Refresh 重新量内容并重排(打开状态下改过内容后调用)。
 func (a *AlertDialog) Refresh() *AlertDialog {
 	if a != nil {

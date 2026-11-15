@@ -44,7 +44,7 @@
       "deps": []
     },
     "separator": {
-      "files": ["separator.go"],
+      "files": ["separator.go", "cursor.go"],
       "deps": []
     },
     "badge": {

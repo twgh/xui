@@ -23,6 +23,17 @@ func TestSheetPanelWidth(t *testing.T) {
 	}
 }
 
+func TestSheetGeometryMatchesBase(t *testing.T) {
+	// base-nova 的 sheet.tsx: 关闭钮 top-3 right-3 + icon-sm(size-7);
+	// SheetHeader 是 gap-0.5(2), 不是旧版的 gap-1.5(6)。
+	if sheetCloseOff != 12 || sheetCloseSize != 28 {
+		t.Fatalf("关闭钮几何 = (%d,%d), want (12,28)", sheetCloseOff, sheetCloseSize)
+	}
+	if sheetHeadGap != 2 {
+		t.Fatalf("SheetHeader 间距 = %d, want 2", sheetHeadGap)
+	}
+}
+
 func TestSheetSlideStart(t *testing.T) {
 	d := &Dialog{}
 	d.panel = xc.RECT{Left: 100, Top: 50, Right: 484, Bottom: 810} // 384×760
