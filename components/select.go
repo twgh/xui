@@ -356,14 +356,9 @@ func (s *Select) Open() *Select {
 		s.scroll.ScrollPosYV(s.pendingScroll)
 	}
 	// 打开时把焦点/高亮放到选中条目(radix 内容获得焦点, 选中项 bg-accent)。
-	// highlightItemOnHover=false 时**不高亮任何行**: 高亮完全交给键盘(按下方向键才出现),
-	// 否则选中/首项会一直顶着满色底, 看起来像"第一项永远是悬停态"(实测用户就是这样理解的)。
-	active := s.rowOfValue(s.value)
-	if s.noHoverHl {
-		s.active = active
-	} else {
-		s.setActive(active, s.pendingScroll <= 0)
-	}
+	// highlightItemOnHover=false **不影响**这一条: 上游的语义只是"鼠标悬停不改高亮",
+	// 初始高亮仍落在选中项(没有选中值时是第一项), 后续由键盘移动。
+	s.setActive(s.rowOfValue(s.value), s.pendingScroll <= 0)
 	s.notifyOpen(true)
 	return s
 }

@@ -583,7 +583,7 @@ func (t *Tooltip) scheduleBubbleHide() {
 	if t.hideTimer != nil {
 		return
 	}
-	t.hideTimer = app.AfterFunc(300*time.Millisecond, func() {
+	t.hideTimer = app.AfterFunc(200*time.Millisecond, func() {
 		t.hideTimer = nil
 		if t.win == nil || !t.shown {
 			return
@@ -635,11 +635,12 @@ func (t *Tooltip) anchorScreenRect() (wapi.RECT, bool) {
 	return out, true
 }
 
-// cursorInHoverZone 判断光标是否落在"锚点 + 气泡 + 两者之间的缝隙"里。
+// cursorInHoverZone 判断光标是否还压在锚点或气泡上。
 //
-// 只查气泡矩形是不够的: 气泡与锚点中间隔着箭头那几像素的缝隙, 光标跨过缝隙时
-// 既不在锚点上、也不在气泡窗里, 窗口级命中测试与锚点 MouseLeave 都会判成"离开"。
-// 所以两块各外扩 8 物理像素, 再用两矩形的包围盒把中间的走廊一起算进来。
+// **不要**把两者的包围盒/走廊也算进来: 气泡比锚点宽时, 包围盒会覆盖按钮左下角
+// 一大片"其实不在气泡里"的区域, 光标跑到按钮外提示也不消失(实测用户反馈"范围太大")。
+// 只需要两块矩形各自外扩一点点: 气泡窗口的边缘本来就贴着锚点(箭头填满那段间距),
+// 光标从锚点移进气泡是一步跨过共用边, 不需要中间走廊。
 func (t *Tooltip) cursorInHoverZone() bool {
 	var pt wapi.POINT
 	if !wapi.GetCursorPos(&pt) {
@@ -649,36 +650,11 @@ func (t *Tooltip) cursorInHoverZone() bool {
 		return int32(pt.X) >= r.Left-pad && int32(pt.X) < r.Right+pad &&
 			int32(pt.Y) >= r.Top-pad && int32(pt.Y) < r.Bottom+pad
 	}
-	const pad int32 = 8
-	ar, aok := t.anchorScreenRect()
-	br, bok := t.bubbleScreenRect()
-	if aok && in(ar, pad) {
+	if ar, ok := t.anchorScreenRect(); ok && in(ar, 4) {
 		return true
 	}
-	if bok && in(br, pad) {
+	if br, ok := t.bubbleScreenRect(); ok && in(br, 2) {
 		return true
-	}
-	if aok && bok {
-		mn := func(a, b int32) int32 {
-			if a < b {
-				return a
-			}
-			return b
-		}
-		mx := func(a, b int32) int32 {
-			if a > b {
-				return a
-			}
-			return b
-		}
-		u := wapi.RECT{
-			Left:   mn(ar.Left, br.Left) - pad,
-			Top:    mn(ar.Top, br.Top) - pad,
-			Right:  mx(ar.Right, br.Right) + pad,
-			Bottom: mx(ar.Bottom, br.Bottom) + pad,
-		}
-		return int32(pt.X) >= u.Left && int32(pt.X) < u.Right &&
-			int32(pt.Y) >= u.Top && int32(pt.Y) < u.Bottom
 	}
 	return false
 }
