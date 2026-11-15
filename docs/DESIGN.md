@@ -419,9 +419,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 
 | **input 文件形态**(I1, 对应 `<input type="file">`): `WithFileInput(dlgOpts...)` = 只读显示 + 右侧"选择文件"文字钮(幽灵底、悬停 accent、高度 22), 点它调系统对话框; 显示文本只取**文件名**(多选 = `首个文件名 +N`), 完整路径在 `Files()` / `OnFilesChange`; 取消不改值; 必填 = 没选文件(`FieldValue()` 返回空串) | 浏览器 file input 的 "Choose file / No file chosen" + 上游 `file:*` 样式 |
 | **textarea 行数与拖拽**(TA2 / TA3): `WithTextareaRows(n)` 的最小高度按**实际行高**实时换算(与创建参数的 cy 二选一, rows 优先); `WithTextareaResize()` 在右下角画两条 45° 短线作抓手, 拖动改的是**最小高度**(内容更高时仍自动长高, 等价 CSS min-height + field-sizing-content), 拖动用屏幕物理坐标增量 ÷ 窗口 DPI 换算, 抓手区用斜向调整光标 | 原生 `<textarea rows>` 与默认 resize 手柄 |
-| **select 悬停高亮开关**(S6): `WithSelectHighlightOnHover(false)` 时**初始高亮照旧**落在选中项/首项, 键盘也能移动它; 鼠标悬停**不产生任何视觉反馈**(既不搬高亮也不画淡底/描边, 与上游 `highlightItemOnHover=false` 一致)。默认模式下悬停会把高亮搬指针下的条目 —— 原生按钮的悬停不挪焦点, 由组件自己搬(见第八节 217) | Base UI Select Root 的 `highlightItemOnHover` |
-| **tooltip 可移入与箭头内距**(TT1 / TT2): `WithTipHoverable()` 让气泡窗口去掉 `WS_EX_TRANSPARENT` 接收鼠标 —— 光标从锚点移进气泡时保持显示, 离开气泡才收: 锚点离开与窗口级命中测试都改成"延迟 200ms + 按锚点/气泡两个矩形确认"(不能只靠锚点 MouseLeave, 见第八节 214; 也不能用两者包围盒, 那样范围会大到按钮外都不收); 气泡窗**位置按物理像素、宽高按逻辑像素**落位(两边都乘 DPI 会得到 1.5² 倍大的窗口, 命中区跟着压进按钮, 见第八节 216); `WithTipArrowPadding(px)` 让箭头中心离气泡两端至少这么远(默认 0 = 只保证三角形落在气泡内) | Base UI Tooltip 的 `disableHoverableContent=false` 与 `arrowPadding` |
-| **badge 焦点环与校验态**(BA1): 可点击徽章(OnClick / NewLinkBadge)进 Tab 链、Enter/空格触发; **aria-invalid 只有 1px destructive 描边** —— 官方 badge 的 `aria-invalid:ring-destructive/20` 只有环色、没有环宽(Input / Textarea / Select 才有 `aria-invalid:ring-3`), 未聚焦不出现环; focus-visible 仍画 3px 环, 走"环带 + 内芯"画法(元素最外 3px 是半透明环带, 胶囊底色与 1px 描边画在内缩 3px 的矩形上; 外扩环会被元素裁掉, 描边在外、环带贴里面会被读成粗边框); `WithBadgeInvalid` / `SetInvalid` = 描边 destructive | badge.tsx 的 `focus-visible:ring-[3px]` / `aria-invalid:*` |
+| **select 悬停高亮开关**(S6): `WithSelectHighlightOnHover(false)` 时**初始高亮照旧**落在选中项/首项, 键盘也能移动它; 鼠标悬停**不产生任何视觉反馈**(既不搬高亮也不画淡底/描边, 与上游 `highlightItemOnHover=false` 一致); 默认模式悬停会把高亮搬到指针下的条目(见第八节 217) | Base UI Select Root 的 `highlightItemOnHover` |
+| **tooltip 可移入与箭头内距**(TT1 / TT2): `WithTipHoverable()` 让气泡窗口去掉 `WS_EX_TRANSPARENT` 接收鼠标 —— 光标从锚点移进气泡时保持显示, 离开气泡才收: 离开确认延迟 200ms, 按锚点/气泡两个矩形判定(见第八节 214); 命中区与可见气泡一致, 不会压进锚点(见第八节 216); `WithTipArrowPadding(px)` 让箭头中心离气泡两端至少这么远(默认 0 = 只保证三角形落在气泡内) | Base UI Tooltip 的 `disableHoverableContent=false` 与 `arrowPadding` |
+| **badge 焦点环与校验态**(BA1): 可点击徽章(OnClick / NewLinkBadge)进 Tab 链、Enter/空格触发; **aria-invalid 只有 1px destructive 描边**(官方未聚焦不出现环; 与 Input / Textarea / Select 不同); focus-visible 仍画 3px 环, 走"环带 + 内芯"画法(元素最外 3px 是半透明环带, 胶囊底色与 1px 描边画在内缩 3px 的矩形上; 外扩环会被元素裁掉); `WithBadgeInvalid` / `SetInvalid` = 描边 destructive | badge.tsx 的 `focus-visible:ring-[3px]` / `aria-invalid:*` |
 | **tabs 禁用回退与指示条滑动**(TB3 / TB4): 选中项被 `SetDisabled` 禁用时自动落到最近的可用标签(全都禁用则清空选中), 程序化 `SetActive` 仍可选中禁用项; line 变体的下划线/竖条在切换时从旧标签**滑到**新标签(150ms, 运行时过渡表驱动), 不在过渡中时每帧跟住当前标签矩形(缩放/换行重排不会落后) | Base UI Tabs 的 disabled fallback + 标签的 `transition-all` |
 | **switch 滑块位移**(SW3): 切换时滑块从一端滑到另一端(150ms, 运行时一次性过渡), 回滚(只读/否决)同样跟着回, 构造时的初始值直接落位不滑动 | switch.tsx 的 thumb `transition-transform` |
 | **radio group 横向**(RG4, 本库扩展): `WithRadioGroupHorizontal` / `SetHorizontal` 把条目横排 —— 条目宽按文字量成**固定宽**(横向主轴是宽度, Fill 会让每条独占一行), 换主题时重新量; 上游只有竖向 `grid gap-2` | 本库扩展(上游只有竖向) |
@@ -502,9 +502,9 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Attachment | `NewAttachment(x,y,cx,cy,parent, WithAttachmentState/Size/Orientation/Icon/Width/OnClick)` + `SetText(title,desc)` / `Title()/Description()/Media()/MediaSlot()/Actions()/Action(icon,fn)/SetState/State`; `NewAttachmentGroup(x,y,cx,cy,parent)` | 对应 attachment.tsx 的 `Attachment/AttachmentMedia/AttachmentContent/AttachmentTitle/AttachmentDescription/AttachmentActions/AttachmentAction/AttachmentTrigger/AttachmentGroup`; 水平朝向默认铺满父级(上游 `w-fit`), 横排多个时用 `WithAttachmentWidth` 收窄; 垂直朝向宽 96 / 有内容 120; 媒体只有图标块 —— 图片走 `MediaSlot()` 自己放(上游另有 image 变体) |
 | MessageScroller | `NewMessageScroller(x,y,cx,cy,parent, WithMessageScrollerAutoScroll/DefaultScrollPosition/EdgeThreshold/PreviousItemPeek/ScrollMargin/ButtonDirection)` + `AddItem/PrependItem/RemoveItem/Item/Content/ContentStack/SetViewPadding` + `ScrollToEnd/ScrollToStart/ScrollToMessage/ScrollToMessageAligned` + `ScrollState/CurrentAnchorID/VisibleMessageIDs` + `OnScrollStateChange/OnVisibilityChange/SetAutoScroll`; 条目 `ScrollAnchor(bool)` / `Remove()` | 对应 @shadcn/react 的 `MessageScroller.Provider/Root/Viewport/Content/Item/Button` 与三个 hook: Go 侧一个对象持有全部状态, `ScrollState` = `useMessageScrollerScrollable`, `OnVisibilityChange` = `useMessageScrollerVisibility`; 高度默认 Weight 1(与 ScrollArea 一致), 放在 Auto 高的父级里要显式 `LayoutItem_SetHeight(Fixed, h)`; 条目要用 `AddItem` 注册, 直接往 `Content()` 塞的元素不参与 id / 锚点跟踪 |
 | 不适用 | `asChild`(Slot)、`data-slot`/`data-state`/`data-variant` 钩子、compound 子组件拆分、props 透传 | React/DOM 形态, Go 侧没有对应物 |
-| 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | chart 色板供你的应用取用(组件库不画图表); sidebar 令牌由 `ui.Sidebar` 使用; 机械转译新主题时两组一并填(运行时的主题测试有守卫) |
+| 令牌 | `--chart-1..5` / `--sidebar-*` 已进 `xui.Theme`(Chart1..5 / Sidebar*) | chart 色板供你的应用取用(组件库不画图表); sidebar 令牌由 `ui.Sidebar` 使用; 机械转译新主题时两组一并填 |
 
-**下划线(Button link / Badge link / Accordion 触发区)**: xcgui 没有下划线文本标志位(`TextFormatFlag_` 里没有), 字体侧 `FontStyle_Underline` 在 D2D 文本路径下也不渲染(见第八节 110), 只能手绘: 宽度用 `xui.TextWidth` 量, y = 行盒中心 + 0.3em + offset(`underline-offset-4` 用 4px; Accordion 的 hover:underline 没有 offset, 用行盒底边 - 2px), 1px 线(`button.go` / `separator.go` / `accordion.go`)。实测(150% DPI): "Link" 下方 1 条 43 物理像素宽的横线, 紧贴文字下沿。
+**下划线(Button link / Badge link / Accordion 触发区)**: xcgui 没有下划线文本标志位(`TextFormatFlag_` 里没有), 字体侧 `FontStyle_Underline` 在 D2D 文本路径下也不渲染(见第八节 110), 只能手绘: 宽度用 `xui.TextWidth` 量, y = 行盒中心 + 0.3em + offset(`underline-offset-4` 用 4px; Accordion 的 hover:underline 没有 offset, 用行盒底边 - 2px), 1px 线(`button.go` / `separator.go` / `accordion.go`)。
 
 ---
 
@@ -512,8 +512,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 
 命令与开关的清单只有一份: **`xui --help`** —— 它由你手上那个二进制印出来, 不会超前也不会滞后(本文随数据源下发, 而 CLI 可能是上个 tag 的, 照本文敲一个新开关结果报"未知选项"时, 以 `--help` 为准)。日常只有三条入口: 新项目 `xui init -n <名字>`、追加组件 `xui add <组件...>`、刷新已装 `xui update`(省略组件名 = 已装的全部 + 已在的文档)。下面只讲清单之外的事: 每条约定为什么这样定、边界在哪。
 
-- **文档也会跟着升级**:组件目录里的 `DESIGN.md`、`DESIGN-PITFALLS.md` 与(普通 `init` 写的)`AGENTS.md` 和组件源码**共用同一套基线判定** —— 没改过就随 CLI 刷新(措辞"更新: 版本升级"), 改过就保留(要 `-o` 才丢弃)。以前它们是"存在就永远跳过", 等于第一次 `init` 那一刻定版, CLI 后来修了文档里的错也传不到已有项目。`theme.go` 例外: 它就是给你改主题用的, 存在就一个字都不动, 加 `-o` 也不覆写。
-- **文档可以单独点名**:`xui add DESIGN.md` 只拿文档(没跑过 `init` 的项目补齐它, 并连带配套的 `DESIGN-PITFALLS.md` —— 后者是本文第八节的完整正文),`xui update DESIGN.md` 只刷文档(那一份 + 配套文件)、不碰组件, 不存在的文档不创建(那是 `add` 的活)。**裸 `xui update`(不带组件名)= "把这个目录里 CLI 给过的都刷新"**: 已装组件 + 已经在的 `DESIGN.md` / `DESIGN-PITFALLS.md` / `AGENTS.md`(缺的文档不补也不提醒 —— 补齐是 `add`/`init` 的活)。唯一的例外: 老项目里 `DESIGN.md` 已在、拆分后才有的 `DESIGN-PITFALLS.md` 还没有时, `update` 会补上它(两份本来就是一份说明书, 不补的话第八节的索引全指向空处; 这不算"新增它没交付过的东西"), `--dry-run` 只预告。文档内容随**数据源**下发(与组件同源, 见下面的「下发的文档与组件同源」), 所以 `XUI_REGISTRY` 钉在哪个 tag, 拿到的说明就是那个 tag 的那一份。
+- **文档也会跟着升级**:组件目录里的 `DESIGN.md`、`DESIGN-PITFALLS.md` 与(普通 `init` 写的)`AGENTS.md` 和组件源码**共用同一套基线判定** —— 没改过就随 CLI 刷新(措辞"更新: 版本升级"), 改过就保留(要 `-o` 才丢弃)。`theme.go` 例外: 它就是给你改主题用的, 存在就一个字都不动, 加 `-o` 也不覆写。
+- **文档可以单独点名**:`xui add DESIGN.md` 只拿文档(没跑过 `init` 的项目补齐它, 并连带配套的 `DESIGN-PITFALLS.md` —— 后者是本文第八节的完整正文),`xui update DESIGN.md` 只刷文档(那一份 + 配套文件)、不碰组件, 不存在的文档不创建(那是 `add` 的活)。**裸 `xui update`(不带组件名)= "把这个目录里 CLI 给过的都刷新"**: 已装组件 + 已经在的 `DESIGN.md` / `DESIGN-PITFALLS.md` / `AGENTS.md`(缺的文档不补也不提醒 —— 补齐是 `add`/`init` 的活)。唯一的例外: 老项目里 `DESIGN.md` 已在、配套的 `DESIGN-PITFALLS.md` 还没有时, `update` 会补上它(两份本来就是一份说明书, 不补的话第八节的索引全指向空处; 这不算"新增它没交付过的东西"), `--dry-run` 只预告。文档内容随**数据源**下发(与组件同源, 见下面的「下发的文档与组件同源」), 所以 `XUI_REGISTRY` 钉在哪个 tag, 拿到的说明就是那个 tag 的那一份。
 - **默认不覆盖你改过的文件**:逐个比对内容 —— 本地没有则创建、内容一致则跳过、被改过则警告跳过;确认要丢掉本地改动时加 `-o/--overwrite`。判定看"安装基线"(组件目录 `.xui-manifest.json` 里记的上次写入哈希):基线对得上才叫"只是版本升级"(直接替换), 对不上叫"你改过"(默认保留), 该文件没有基线只说"无法判断来源"、不断言你改过。这是 copy-not-install 的前提:代码归你。
 - **组件目录**默认 `ui`, 可用 `init -n -p/--path <目录>` 在新项目里就把名字定下来(`main.go` 的 import、README、AGENTS 与安装清单都跟着这个名字;只许项目内的相对目录, 绝对路径或 `..` 跳出会被拒 —— 清单落在组件目录里, 跳出去之后就再也找不到自己的基线), 之后用 `add/update/info -p/--path <目录>` 指过去(`info` 也认它, 否则组件装在 `components/` 时它会答"ui/: 未初始化" —— 那是错的);全局 `-c/--cwd` 先切换工作目录。**包名始终是 `ui`**, 与目录名无关, import 时给别名(`ui "myapp/components"`)。
 - **带值的选项两种写法都不接受空值**(`-p ""` 与 `-p=` 一样当场报错): 空目录会把组件直接拷进当前目录根, 空的 `--view=` 会把"只看一个文件"静默变成"全部打印"。值被 shell 变量吃掉时该失败就失败, 不要退化成"少了一个过滤器"。
@@ -521,17 +521,17 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **`-v` 是全局的版本号**(等价 `xui version`), 与上游 shadcn 的 `add -v, --view` 撞名 —— 取舍是把 `-v` 留给版本, 看源码用 `--view`;打 `xui add -v card` 会报错并指你去 `--view`, 不会让你以为这个开关不存在。
 - **静默 `-s/--silent` 只压进度输出**:它压掉"创建了哪个文件"这类过程信息, **命令本身的结果照打**(`list` 的组件表、`view`/`--diff` 的源码与差异、`info` 的报告、`version`、`self-update --check` 的对比), 警告与错误也照打到 stderr。所以 `xui list -s` 给你一份没有表头的干净清单, 可以直接 `|` 给脚本; 升级提示走 stderr, 不会混进被 `>` 重定向的源码里。
 - **只展示的参数不吞写文件的参数**:`--view` / `--diff` 与 `--dry-run`、`-o/--overwrite`、`--no-install`、`--strict` 同时给会直接报错(它们本来就不写文件, 静默忽略等于让你以为预览生效了)。**过滤值谁都没命中 = 命令失败(退出码 1)**, 不是"没有差异/没有内容": 前者是"你要的东西不存在", 后者是"存在且一样", 混成一句会让脚本以为拿到了正确的空结果(`-j` 里同时给 `matched=false`, 但退出码也照此)。
-- **`--dry-run` 没有任何副作用**(init / add / update 都认): 不建目录、不写文件、不写安装清单、不联网动依赖、不调 `xc` 生成 `.syso`, 措辞一律用"将创建 / 将更新 / 将覆盖 / 将跳过"。以前 `init` 根本没有预览 —— 在别人仓库里生成项目只能赌一把。
+- **`--dry-run` 没有任何副作用**(init / add / update 都认): 不建目录、不写文件、不写安装清单、不联网动依赖、不调 `xc` 生成 `.syso`, 措辞一律用"将创建 / 将更新 / 将覆盖 / 将跳过"。
 - **`-j/--json` 给脚本与 AI 助手读**: `list` / `search` / `info` / `view`、`add` / `update` 的 `--view` 与 `--diff`、`self-update --check` 都支持。字段形状见 README 的表(空的 `files` / `deps` 一律 `[]` 不是 `null`; 过滤值没命中时靠 `matched=false` 区分"没命中"与"没差异")。别的命令不给: 写文件那条路径的输出是过程日志, 收下 `-j` 又不生效是骗人。
 - **退出码**: `0` 跑通(有跳过时 stderr 汇总一句"共 N 个文件被跳过")、`1` 命令失败(含 `--view`/`--diff` 的过滤值没命中)、`2` 只在 `--strict` 且有文件被跳过时出现。默认 `0` 是故意的 —— 保守跳过本地改动是正确行为, 不该让人类手里的 `xui update` 报错; CI/agent 要"没更新干净就失败"就跑 `xui update --strict`(可以配 `--dry-run` 先检查一遍)。
 - **`update` 不接 `--all`**:`xui update` 省略组件名就已经是"更新组件目录里已装的全部"; 把没装过的组件也一起拷进来是 `xui add --all` 的事, 两个命令不该混在一个开关里。点名一个**一个文件都不在本地**的组件同样只提示 `xui add <组件>`、不替你装(名字叫 update、行为是 add 的情况在显式点名时也一样不许发生); 已装组件缺的个别文件(跨版本升级新增的共享文件)则照常补齐 —— 那不算装新组件, 不补直接编译不过。
-- **新建项目的两个开关分开**:`-f/--force` 只放开"目标目录已存在且非空"这道闸门;`-o/--overwrite` 才决定能不能丢弃本地改动, 而且与组件文件共用上面那套基线判定(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore` 的基线记在同一份清单的 `project_files` 里)。以前一个 `-f` 两件事都干, 于是一次 `xui init -n app --force` 能把你改过的 `main.go` 无声覆掉。普通 `xui init [ui目录]` 没有"非空目录"这道闸门(`-f` 会直接报错), 它按同一套基线刷新: 没改过的文件随 CLI 升级, 改过的保留(要丢弃加 `-o`)。重跑 `init -n` 时若 `-p` 与上次不同(或忘了带, 默认 `ui`), 会**另起一套**组件目录与安装清单(骨架文件的基线在旧清单里, 新目录找不到) —— CLI 会提醒一句但不阻断, 之后每条命令的 `-p` 别混用。
+- **新建项目的两个开关分开**:`-f/--force` 只放开"目标目录已存在且非空"这道闸门;`-o/--overwrite` 才决定能不能丢弃本地改动, 而且与组件文件共用上面那套基线判定(`go.mod` / `main.go` / `README.md` / `AGENTS.md` / `.gitignore` 的基线记在同一份清单的 `project_files` 里)。普通 `xui init [ui目录]` 没有"非空目录"这道闸门(`-f` 会直接报错), 它按同一套基线刷新: 没改过的文件随 CLI 升级, 改过的保留(要丢弃加 `-o`)。重跑 `init -n` 时若 `-p` 与上次不同(或忘了带, 默认 `ui`), 会**另起一套**组件目录与安装清单(骨架文件的基线在旧清单里, 新目录找不到) —— CLI 会提醒一句但不阻断, 之后每条命令的 `-p` 别混用。
 - **依赖安装**:`xui init -n` 生成后默认在项目目录执行 `go mod tidy`(生成 `go.sum`), 并在缺 `xc` 时 `go install` 后生成 winres 的 `.syso`;离线或想手动控制时加 `--no-install`(`add` / `update` / `init` 都认): 组件与文档照写, 只是不动 `go.mod`; `init -n` 还跳过 tidy 与 xc(`winres/` 照写, 之后自己跑一次 `xc res make --arch amd64,386`)。
 - **升级自己**:`xui self-update [版本]` 跑 `go install github.com/twgh/xui/cmd/xui@<目标>`(默认 `@latest`, 也可 `vX.Y.Z` / `main` / `HEAD` / commit 短哈希)。成没成以"跑新二进制拿到的版本"为准;正在运行的 exe 不许就地覆写, 失败时会把它改名成 `.old` 让路重试一次。`--check` 报"当前版本 / 最新 tag / CLI 最后改动的 tag"三行再给结论, 因此**不接受版本参数**(收下又丢掉会让人以为查的是那个版本)。
-- **升级提示**:依据是 `registry.json` 的 `cliChange` —— **CLI 最后一次改动在哪个 tag**(命令行为与内嵌模板/资源;组件批次与设计文档更新不抬它, 机械抬配套版本也不算)。装的版本低于它, 命令正常跑完后才向 stderr 提示一句;数据源没这个字段(旧镜像)才退回比最新 tag, 并说明这是退路。`-s/--silent` 与 `XUI_NO_UPDATE_CHECK=1` 关闭;本地/`go run` 构建不提示;`version` 与 `info` 不联网拉数据源, 所以也拿不到这个依据。
-- **配套运行时版本**:组件源码跟 `main`(永远最新), 运行时 `github.com/twgh/xui` 只能按 tag 取, 两者的差值就是编译错误(`undefined: xui.Xxx`,因为组件用了新加的运行时助手而项目钉着旧 tag)。`registry.json` 的 `runtime` 声明与这批组件**配套**的运行时版本 —— 每次发布都抬成刚发的 tag(只改 CLI 也抬), 所以 `xui update` 会顺带把项目 `go.mod` 的该依赖升到最新发布版(等价 `go get github.com/twgh/xui@<tag>` **再 `go mod tidy`** —— 只 `go get` 的话 `go.sum` 里会留着上个版本的条目, 看着像没升干净), 运行时的修复也一并带上;`--dry-run` 与 `--no-install` 只打印命令, `go.mod` 里 `replace` 了该模块时完全不动你的依赖; 向上找到的那份 `go.mod` 若**既在当前目录之外、又没要求 `github.com/twgh/xui`**, 也不动它(在临时目录或别人的 monorepo 上层跑 CLI 时, 不该去改一个不相干模块的依赖)。
-- **数据源**:默认从仓库 `main` 分支拉组件(永远最新),自动在直连 / Gitee 镜像 / GitCode 镜像 / 加速代理之间选路;拷到一半某个文件拉不到(镜像限速、临时挂起)会自动换下一个源继续,不会留下半套组件源码。`XUI_REGISTRY` 可指向本地目录或任意 `http(s)://` 基址(离线开发 / 锁定组件版本),显式设置时只走你写的地址、失败直接报错(不静默降级)。
-- **下发的文档与组件同源**:`DESIGN.md` / `DESIGN-PITFALLS.md` 也从数据源的 `docs/` 取,不是从 CLI 自带的版本读 —— 组件批次同时会改这两份说明(第八节的编号就是组件行为的依据), 只从 CLI 本地读会把"最新组件 + 上个 tag 的说明"装进同一个项目。拉不通(源里没有 `docs/`、代理限流回了个页面)才退回 CLI 自带的那份, 并在 stderr 说明用的是哪一份。`AGENTS.md` 由 CLI 内嵌模板渲染(它要写 `-p <目录>` 这类路径), 那部分才跟 CLI 版本走。
+- **升级提示**:依据是 `registry.json` 的 `cliChange`(CLI 最后一次改动的 tag)。装的版本低于它, 命令正常跑完后才向 stderr 提示一句;数据源没这个字段(旧镜像)才退回比最新 tag, 并说明这是退路。`-s/--silent` 与 `XUI_NO_UPDATE_CHECK=1` 关闭;本地/`go run` 构建不提示;`version` 与 `info` 不联网拉数据源, 所以也拿不到这个依据。
+- **配套运行时版本**:组件源码永远跟着最新数据源, 运行时 `github.com/twgh/xui` 只能按 tag 取, 两者的差值就是编译错误(`undefined: xui.Xxx`,因为组件用了新加的运行时助手而项目钉着旧 tag)。`registry.json` 的 `runtime` 声明与当前这组组件**配套**的运行时版本, 所以 `xui update` 会顺带把项目 `go.mod` 的该依赖升到最新发布版(等价 `go get github.com/twgh/xui@<tag>` **再 `go mod tidy`** —— 只 `go get` 的话 `go.sum` 里会留着上个版本的条目, 看着像没升干净), 运行时的修复也一并带上;`--dry-run` 与 `--no-install` 只打印命令, `go.mod` 里 `replace` 了该模块时完全不动你的依赖; 向上找到的那份 `go.mod` 若**既在当前目录之外、又没要求 `github.com/twgh/xui`**, 也不动它(在临时目录或别人的 monorepo 上层跑 CLI 时, 不该去改一个不相干模块的依赖)。
+- **数据源**:默认从官方数据源拉组件(永远最新),自动在直连 / Gitee 镜像 / GitCode 镜像 / 加速代理之间选路;拷到一半某个文件拉不到(镜像限速、临时挂起)会自动换下一个源继续,不会留下半套组件源码。`XUI_REGISTRY` 可指向本地目录或任意 `http(s)://` 基址(离线开发 / 锁定组件版本),显式设置时只走你写的地址、失败直接报错(不静默降级)。
+- **下发的文档与组件同源**:`DESIGN.md` / `DESIGN-PITFALLS.md` 也从数据源的 `docs/` 取,不是从 CLI 自带的版本读 —— 这样拿到的组件与说明永远是同一份。拉不通(源里没有 `docs/`、代理限流回了个页面)才退回 CLI 自带的那份, 并在 stderr 说明用的是哪一份。`AGENTS.md` 由 CLI 内嵌模板渲染(它要写 `-p <目录>` 这类路径), 那部分才跟 CLI 版本走。
 - **registry.json** 是组件清单:每个组件登记 `files`(要拷的文件,含跨文件助手)与 `deps`(依赖的其它组件)。CLI 只拷这些 `.go` 文件;运行时(`github.com/twgh/xui`)与图标子包(`github.com/twgh/xui/icons`)是 Go 模块依赖,不进组件目录。
 
 ---
@@ -577,7 +577,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 
 | 上游条目 | 不做的原因 |
 |---|---|
-| Code Block | 全量对齐要在 Go 侧实现 tokenizer(上游 Shiki 13 语法 + ANSI + Streamdown + 选区感知复制); 若以后提供降级版, 必须在本节声明与上游的部分对齐 |
+| Code Block | 全量对齐要在 Go 侧实现 tokenizer(上游 Shiki 13 语法 + ANSI + Streamdown + 选区感知复制), 本库未提供 |
 | Direction | 文字渲染只有 LTR, 没有 RTL 布局能力 |
 | Typography | 上游是纯样式文档页, 没有可安装组件, 不做或落成 Label 的标题/段落预设 |
 | AI Elements | 暂无需求 |
@@ -801,7 +801,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **147** Input Group: 内层输入框必须是"裸输入", 焦点环由容器画
 - **148** 布局容器放进自建弹层时: 位置参数会被布局覆盖, 内边距只能用元素 padding + 子项锁 Fixed 宽
 - **149** xcgui 会把 9pt 及以下的常规字重画成宋体, 从字体文件创建可绕开
-- **150** 按钮类文字的 Vcenter 不需要上移 1px —— 早期回补会让小字偏高
+- **150** 按钮类文字的 Vcenter 不需要上移 1px
 - **151** 中文文本的 Vcenter 要上移半个逻辑像素(只调中文)
 - **152** 可聚焦元素(EnableSwitchFocus)的 ←/→ 会被框架当成"切换焦点", 键盘处理必须挂在窗口级
 - **153** 分页的三个显示形态与"焦点环画在条目上"
