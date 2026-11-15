@@ -14,6 +14,8 @@ shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。**本文件只
 - **绘制坐标是逻辑像素**:`XEle_GetClientRect` 返回未缩放矩形,框架渲染时统一 DPI 变换;自绘**禁止**再按 DPI 预缩放(见 DESIGN 6/10)
 - **组件禁止缓存颜色**:paint 回调里 `xui.Current()` 实时取令牌;需要同步原生 API 的颜色用 `xui.OnThemeChangeFor(元素句柄, fn)`(元素销毁时自动反注册;仅非元素的长生命周期订阅才用裸 `OnThemeChange`)(见 DESIGN 3.2/3.3)
 - **事件一律 `AddEvent*` 系列**(有 2000 回调上限问题);不用背景管理器管理组件外观(见 DESIGN 2/3)
+- **纯装饰 / 纯布局的普通 Element 必须关掉焦点三件套**:`EnableMouseThrough(true)` + `EnableFocus(false)` + `EnableDrawFocus(false)`。xcgui 的普通 Element 默认**可聚焦并画系统高亮焦点框**,1px 分隔线、占位块、容器空白被点到就会冒出一圈蓝框(禁用态最容易点到,见 DESIGN 210)
+- **手写探针程序做视觉/像素验证时,UI 进程必须真正激活**:`SetForegroundWindow` 常被前台锁拒绝,先 `ShowWindow(SW_MINIMIZE)` → `SW_RESTORE` → `SetForegroundWindow`;带坐标的 `SendMessage(WM_LBUTTONDOWN)` / `WM_MOUSEWHEEL` 要先把光标 `SetCursorPos` 到目标点(xcgui 按光标位置命中)。抓窗口自身内容用 `PrintWindow(hwnd, hdc, 2)`,不受遮挡影响
 - **渲染固定 Direct2D**:`app.New(true)`,demo 是标准样板(含无图标无三键标题栏样式,见 DESIGN 38)
 - **改交互语义前**:先查 DESIGN 第四节末的语义汇总表,再读本地 shadcn 源码 —— 勿凭记忆改动
 - **界面布局禁止绝对坐标**:窗口/页面/卡片全部走流式布局。三条会踩的语义 —— ① `Fill` 是"父级整尺寸(减自身边距)"**不是剩余空间**, 竖向堆叠用它必溢出;② 要"剩余"用 `Weight`, 但它只在**父级尺寸确定**(窗口直属 / Fixed / Weight 解析值)时生效, 父级是 `Fill`/`Auto` 时恒为 0(所以竖向主链从窗口开始一路 `Weight`, 中间别垫 `Fill` 容器);③ 卡片高度要随内容就用 `Auto` 自撑, 要长高的面板则整条链全 `Weight`(见 DESIGN 8.55/8.56, 样板 `demo/main.go`)
