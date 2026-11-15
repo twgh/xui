@@ -128,7 +128,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | ButtonGroup | 按钮组:横向/纵向、首尾外角 + 相邻边直角、宽高按内容自撑;可混放 Button / Input / NativeComboBox |
 | Alert | 提示条:图标 + 标题 + 描述 + 右上动作槽;两变体(default/destructive),高度按内容自撑、文字自动折行 |
 | Empty | 空状态容器:图标底板 + 标题 + 描述 + 动作区;三个槽位 `Header()` / `Content()` / `Body()`,不画边框 |
-| Field | 表单字段布局:Label / Title / Description / Content / 校验错误区,垂直或水平取向;`Attach(控件)` 后 `SetInvalid` / `SetDisabled` 级联(内置控件与实现 `FieldControl` 的自定义控件都可接入,字段禁用保留控件原本的单独禁用状态);`WithFieldFocusProxy` 让外层卡片代理键盘焦点环;横向时内容默认 240 宽(嵌套布局只认 Fixed 宽) |
+| Field | 表单字段布局:Label / Title / Description / Content / 校验错误区,垂直或水平取向;`Attach(控件)` 后 `SetInvalid` / `SetDisabled` 级联(内置控件与实现 `FieldControl` 的自定义控件都可接入,字段禁用保留控件原本的单独禁用状态);`WithFieldFocusProxy` 让外层卡片代理键盘焦点环;必填与校验器 `WithFieldRequired` / `WithFieldValidator` + `Validate()`(`FieldValueProvider` 提供控件值),`FieldGroup.Validate/Submit` 做组级提交;横向时内容默认 240 宽(嵌套布局只认 Fixed 宽) |
 | Item | 列表项:媒体 + 内容 + 动作区 + 头/尾槽位,三变体两尺寸;配 ItemGroup / ItemSeparator / ItemTitle / ItemDescription |
 | Breadcrumb | 面包屑:链接(hover 过渡 + `OnClick`)/ 当前页 / 分隔符 / 省略号 |
 | Kbd | 键帽:宽度按文字自适应;`NewKbdGroup` 排组合键 |

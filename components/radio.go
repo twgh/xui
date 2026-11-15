@@ -93,6 +93,14 @@ func NewRadio(x, y, cx, cy int32, text string, hParent int, opts ...RadioOption)
 // Selected 返回选中状态。
 func (r *Radio) Selected() bool { return r.IsCheck() }
 
+// FieldValue 实现 FieldValueProvider: 选中为 "1", 未选中为空串。
+func (r *Radio) FieldValue() string {
+	if r == nil || !r.Selected() {
+		return ""
+	}
+	return "1"
+}
+
 // Select 选中该项并触发 OnChange(与鼠标点击/空格等价), 已选中时为空操作。
 // 用于"整块区域可点"的场景(如选择卡片的卡片本体), 让外部点击走与点击指示器相同的路径。
 func (r *Radio) Select() *Radio {

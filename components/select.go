@@ -167,6 +167,14 @@ func (s *Select) SetGroups(groups []SelectGroup) *Select {
 // Value 返回当前选中的 SelectItem.Value, 未选中为空串。
 func (s *Select) Value() string { return s.value }
 
+// FieldValue 实现 FieldValueProvider: 必填校验与 Field 校验器读取选中值。
+func (s *Select) FieldValue() string {
+	if s == nil {
+		return ""
+	}
+	return s.Value()
+}
+
 // Selected 返回当前选中条目; 没有匹配(ok=false)时返回零值。
 // 直接查**源数据**(groups)而不是弹层行(flat): flat 是懒构建的, 没弹过层之前是空的,
 // 触发区在构建后立刻 SetValue 就会查空表 —— 表现为"设了值却还显示占位符"。

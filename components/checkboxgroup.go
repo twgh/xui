@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -189,6 +191,14 @@ func (g *CheckboxGroup) Values() []string {
 		}
 	}
 	return out
+}
+
+// FieldValue 实现 FieldValueProvider: 组值用逗号连接, 全未选为空串。
+func (g *CheckboxGroup) FieldValue() string {
+	if g == nil {
+		return ""
+	}
+	return strings.Join(g.Values(), ",")
 }
 
 // SetValues 设置选中值, 不触发 OnChange。传空 = 全部取消。

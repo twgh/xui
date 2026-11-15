@@ -269,6 +269,18 @@ func (t *TagInput) Value() string {
 	return t.edit.GetText()
 }
 
+// FieldValue 实现 FieldValueProvider: 已提交标签 + 输入框里待提交的文字, 逗号连接。
+func (t *TagInput) FieldValue() string {
+	if t == nil {
+		return ""
+	}
+	vals := t.Tags()
+	if v := strings.TrimSpace(t.Value()); v != "" {
+		vals = append(vals, v)
+	}
+	return strings.Join(vals, ",")
+}
+
 // SetValue 设置输入框里尚未提交的文字(不切成标签, 不触发 OnChange)。
 func (t *TagInput) SetValue(s string) *TagInput {
 	if t != nil {

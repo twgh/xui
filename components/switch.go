@@ -129,6 +129,14 @@ func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
 // Checked 返回选中状态。
 func (s *Switch) Checked() bool { return s.IsCheck() }
 
+// FieldValue 实现 FieldValueProvider: 打开为 "1", 关闭为空串。
+func (s *Switch) FieldValue() string {
+	if s == nil || !s.Checked() {
+		return ""
+	}
+	return "1"
+}
+
 // SetChecked 设置选中状态(不触发 OnChange)。
 func (s *Switch) SetChecked(v bool) *Switch {
 	s.SetCheck(v)

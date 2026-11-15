@@ -390,6 +390,14 @@ func (g *InputGroup) SetFieldState(invalid, disabled bool) {
 // FieldDisabled 实现 FieldControl。
 func (g *InputGroup) FieldDisabled() bool { return g == nil || g.Disabled() }
 
+// FieldValue 实现 FieldValueProvider: 读取组内输入框/文本域的值(没有内层输入时为空串)。
+func (g *InputGroup) FieldValue() string {
+	if g == nil || g.input == nil {
+		return ""
+	}
+	return g.input.FieldValue()
+}
+
 // AttachControl 把外部控件接进组(对应 input-group.tsx 的 `data-slot=input-group-control`):
 // 焦点环判断、Focus() 落点、SetDisabled 的启用状态都把它算进来 —— 第三方输入控件(如可伸缩
 // 文本域)放进 Content() 后仍能吃到容器的焦点/禁用语义。控件本身的聚焦能力由调用方保证。

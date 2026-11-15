@@ -3,6 +3,7 @@ package ui
 import (
 	"math"
 	"sort"
+	"strconv"
 
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
@@ -339,6 +340,14 @@ func (s *Slider) Value() float64 {
 		return s.min
 	}
 	return s.values[0]
+}
+
+// FieldValue 实现 FieldValueProvider: 返回第一个滑块的数值文本。
+func (s *Slider) FieldValue() string {
+	if s == nil {
+		return ""
+	}
+	return strconv.FormatFloat(s.Value(), 'f', -1, 64)
 }
 
 // ValueAt 返回第 i 个滑块的值(越界返回 s.min)。

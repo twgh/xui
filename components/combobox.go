@@ -146,6 +146,14 @@ func NewNativeComboBox(x, y, cx, cy int32, hParent int, items []string, opts ...
 // Selected 返回当前选中项索引, 未选中返回 -1。
 func (c *NativeComboBox) Selected() int32 { return c.GetSelItem() }
 
+// FieldValue 实现 FieldValueProvider: 返回选中项文本, 未选中(或内容为空)时为空串。
+func (c *NativeComboBox) FieldValue() string {
+	if c == nil || c.Selected() < 0 {
+		return ""
+	}
+	return c.ItemText(c.Selected())
+}
+
 // SetInvalid 设置/清除校验失败态(见 WithNativeComboBoxInvalid)。
 func (c *NativeComboBox) SetInvalid(v bool) *NativeComboBox {
 	if c.invalid == v {

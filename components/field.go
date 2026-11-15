@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
@@ -30,6 +32,10 @@ const (
 	// 容器查询的 28rem(= 448px)。按字段自身宽度判定: 字段在组里满宽, 与上游按
 	// FieldGroup 量宽等价。
 	fieldResponsiveBreakpoint int32 = 448
+
+	// fieldRequiredMessage 是必填字段的默认错误文案(可用 WithFieldRequiredMessage /
+	// SetRequiredMessage 覆盖)。取上游 Input#Required 示例的提示语。
+	fieldRequiredMessage = "This field is required."
 )
 
 // FieldOrientation 字段取向, 对应 shadcn field.tsx 的 orientation。
@@ -68,6 +74,28 @@ func WithFieldFocusProxy() FieldOption {
 	return func(f *Field) { f.labelProxy = true }
 }
 
+// WithFieldRequired 标记字段为必填: 标签后追加破坏性色 "*"(同上游 Input#Required),
+// Validate 时值为空即失败并写入错误区。
+func WithFieldRequired() FieldOption {
+	return func(f *Field) { f.required = true }
+}
+
+// WithFieldRequiredMessage 覆盖必填失败时的错误文案(默认 "This field is required.")。
+// 通常与 WithFieldRequired 一起用。
+func WithFieldRequiredMessage(msg string) FieldOption {
+	return func(f *Field) { f.requiredMsg = msg }
+}
+
+// WithFieldValidator 追加字段级校验器: 收到当前值, 返回 error 时把 Error() 文案写进
+// 错误区。校验器总会收到当前值(必填为空时值是空串), 需要"可空"的规则自行放行。
+func WithFieldValidator(v FieldValidator) FieldOption {
+	return func(f *Field) {
+		if v != nil {
+			f.validators = append(f.validators, v)
+		}
+	}
+}
+
 // FieldControl 是可被 Field 级联校验失败态/禁用态的控件。
 // 内置控件均已实现(Checkbox / Radio / RadioGroup / Switch / Input / Textarea /
 // NativeComboBox / NativeSelect / Select / Combobox / Slider / InputGroup / InputOTP /
@@ -85,6 +113,18 @@ type FieldControl interface {
 type fieldFocusProxy interface {
 	SetFocusRingProxy(bool)
 }
+
+// FieldValueProvider 是可选能力: 控件向 Field 报告当前值的字符串形式, 供必填校验与
+// FieldValidator 读取; 空串表示未填写。内置的可取值控件均已实现(Input / Textarea /
+// Select / Combobox / NativeComboBox / NativeSelect / RadioGroup / Radio / Checkbox /
+// Switch / CheckboxGroup / InputGroup / InputOTP / TagInput / DatePicker / TimePicker /
+// Toggle / ToggleGroup / Slider); 自定义控件实现本接口即可参与 Field 校验。
+type FieldValueProvider interface {
+	FieldValue() string
+}
+
+// FieldValidator 校验字段当前值: 返回 nil 通过; 返回 error 时把 Error() 文案写进错误区。
+type FieldValidator func(value string) error
 
 // Field 表单字段容器: 把标签、控件、说明、错误按 12px 间距排成一组。
 //
@@ -115,12 +155,20 @@ type Field struct {
 	invalid       bool
 	disabled      bool
 	labelProxy    bool
+	required      bool
+	requiredMsg   string
+	validators    []FieldValidator
+	lastErrs      []string
 	labels        []*Label
 	texts         []*Label
 	content       *widget.LayoutEle
 	controls      []FieldControl
 	errors        []*FieldError
 	origDisabled  map[FieldControl]bool
+	// labelRows / stars 把标签行与必填星号关联到主标签: 标签行承载布局宽度,
+	// 主标签只按文字自身宽度排版, 星号跟在文字后面(同上游 label + destructive span)。
+	labelRows map[*Label]*widget.LayoutEle
+	stars     map[*Label]*Label
 	// fillControls 记录"切横排时被收成固定宽"的直属控件, 切回竖排要恢复 Fill。
 	fillControls map[int]bool
 }
@@ -330,7 +378,8 @@ func (f *Field) SetOrientation(o FieldOrientation) *Field {
 }
 
 // Label 创建字段标签(text-sm, font-medium), 并纳入 SetInvalid 的统一改色。
-// 竖排下满宽; 横排下按权重吃剩余宽度(对应上游的 flex-auto)。
+// 竖排下标签行满宽; 横排下按权重吃剩余宽度(对应上游的 flex-auto)。返回的标签自身
+// 保持文字宽度(必填星号紧跟其后), 布局宽度由字段的标签行承担, 一般不要再 ItemFill。
 func (f *Field) Label(text string) *Label {
 	return f.newText(text)
 }
@@ -432,6 +481,102 @@ func (f *Field) SetFocusRingProxy(v bool) *Field {
 
 // FocusRingProxy 返回是否由外层代理键盘焦点环。
 func (f *Field) FocusRingProxy() bool { return f != nil && f.labelProxy }
+
+// SetRequired 运行时切换必填标记: 标签后的 "*" 同步显隐, 后续 Validate 按必填判定。
+func (f *Field) SetRequired(v bool) *Field {
+	if f == nil || f.required == v {
+		return f
+	}
+	f.required = v
+	for _, l := range f.labels {
+		if s := f.stars[l]; s != nil {
+			s.Show(v)
+			s.Enable(!f.disabled)
+		}
+	}
+	if len(f.labels) > 0 {
+		adjustFieldAncestors(f.Handle)
+	}
+	return f
+}
+
+// Required 返回字段是否必填。
+func (f *Field) Required() bool { return f != nil && f.required }
+
+// SetRequiredMessage 覆盖必填失败时的错误文案。
+func (f *Field) SetRequiredMessage(msg string) *Field {
+	if f != nil {
+		f.requiredMsg = msg
+	}
+	return f
+}
+
+// AddValidator 追加字段级校验器(见 WithFieldValidator), 返回自身便于链式调用。
+func (f *Field) AddValidator(v FieldValidator) *Field {
+	if f != nil && v != nil {
+		f.validators = append(f.validators, v)
+	}
+	return f
+}
+
+// Value 返回第一个可报告值的已接控件的当前值(FieldValueProvider), 没有时为空串。
+func (f *Field) Value() string {
+	if f == nil {
+		return ""
+	}
+	for _, c := range f.controls {
+		if p, ok := c.(FieldValueProvider); ok {
+			return p.FieldValue()
+		}
+	}
+	return ""
+}
+
+// Validate 校验必填与全部 FieldValidator: 失败文案写进已 AttachError 的错误区并置
+// invalid, 通过时清空错误并恢复配色; 返回是否通过(禁用字段跳过校验, 恒为 true)。
+// 多条失败会一次收集(必填 + 各校验器), 由错误区按列表展示。
+func (f *Field) Validate() bool {
+	if f == nil {
+		return true
+	}
+	if f.disabled {
+		return true
+	}
+	value := f.Value()
+	msgs := fieldValidationMessages(value, f.required, f.requiredMsg, f.validators)
+	f.lastErrs = msgs
+	f.SetErrors(msgs...)
+	return len(msgs) == 0
+}
+
+// fieldValidationMessages 收集必填与校验器的错误文案(按顺序, 供 Validate 与测试复用)。
+// 值为空白视为未填写; 校验器即使值为空也会调用, 需要可空规则的校验器自行放行。
+func fieldValidationMessages(value string, required bool, requiredMsg string, validators []FieldValidator) []string {
+	var msgs []string
+	if required && strings.TrimSpace(value) == "" {
+		if requiredMsg == "" {
+			requiredMsg = fieldRequiredMessage
+		}
+		msgs = append(msgs, requiredMsg)
+	}
+	for _, v := range validators {
+		if v == nil {
+			continue
+		}
+		if err := v(value); err != nil && err.Error() != "" {
+			msgs = append(msgs, err.Error())
+		}
+	}
+	return msgs
+}
+
+// ValidationErrors 返回最近一次 Validate 产生的错误文案(未接入错误区也能取到)。
+func (f *Field) ValidationErrors() []string {
+	if f == nil {
+		return nil
+	}
+	return append([]string(nil), f.lastErrs...)
+}
 
 // Content 返回字段内容列(竖向, gap-6): 用于"标题 + 多行说明"或复选框组这类复合内容。
 // 竖排下满宽; 横排下默认固定 240 宽 —— xcgui 不把 Weight/Percent 宽传给嵌套布局的
@@ -541,7 +686,41 @@ func (f *Field) Errors() []*FieldError {
 }
 
 func (f *Field) newText(text string) *Label {
-	l := NewLabel(0, 0, 0, fieldTextH, text, f.Handle).SetMedium()
+	// 标签放在横向行里: 主标签按文字宽度 + 紧跟破坏性色 "*"(必填时显示)。
+	// 行本身承担布局宽度(竖排 Fill / 横排 Weight), 主标签保持自身宽度, 星号才能
+	// 贴在文字后面而不是被推到行尾。
+	row := widget.NewLayoutEle(0, 0, 0, 0, f.Handle)
+	if row != nil {
+		row.EnableHorizon(true)
+		row.EnableLayout(true)
+		row.EnableBkTransparent(true)
+		row.EnableAutoWrap(false)
+		row.SetSpace(4)
+		row.SetAlignV(xcc.Layout_Align_Center)
+		row.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	}
+	parent := f.Handle
+	if row != nil {
+		parent = row.Handle
+	}
+	l := NewLabel(0, 0, 0, fieldTextH, text, parent).SetMedium()
+	// 原生 Button 在布局父级里的默认宽是 0(实测), 必须显式 Auto 才会按文字自撑:
+	// 行内两个标签都保持自身宽, 星号才能紧跟文字。
+	l.LayoutItem_SetWidth(xcc.Layout_Size_Auto, 0)
+	if row != nil {
+		if f.labelRows == nil {
+			f.labelRows = map[*Label]*widget.LayoutEle{}
+		}
+		f.labelRows[l] = row
+		s := NewLabel(0, 0, 0, fieldTextH, "*", row.Handle)
+		s.LayoutItem_SetWidth(xcc.Layout_Size_Auto, 0)
+		s.SetColorFunc(func(t *xui.Theme) xui.Color { return t.Destructive })
+		s.Show(f.required)
+		if f.stars == nil {
+			f.stars = map[*Label]*Label{}
+		}
+		f.stars[l] = s
+	}
 	f.setChildWidth(l)
 	f.labels = append(f.labels, l)
 	f.applyLabelColor(l)
@@ -553,22 +732,36 @@ func (f *Field) newText(text string) *Label {
 func (f *Field) addText(l *Label) {
 	f.texts = append(f.texts, l)
 	l.Enable(!f.disabled)
+	if s := f.stars[l]; s != nil {
+		s.Enable(!f.disabled)
+	}
 }
 
-// applyTextEnabled 把字段禁用态同步到标签/标题/说明。
+// applyTextEnabled 把字段禁用态同步到标签/标题/说明/必填星号。
 // Label 的禁用是"字色与卡片底色预混 50%", 与 disabled:opacity-50 的观感一致。
 func (f *Field) applyTextEnabled() {
 	for _, l := range f.texts {
 		l.Enable(!f.disabled)
 		l.Redraw(false)
 	}
+	for _, s := range f.stars {
+		s.Enable(!f.disabled)
+		s.Redraw(false)
+	}
 }
 
 func (f *Field) setChildWidth(l *Label) {
+	if l == nil {
+		return
+	}
+	var item xui.Item = l
+	if row := f.labelRows[l]; row != nil {
+		item = row
+	}
 	if f.horizontal {
-		xui.ItemWeight(l, 1)
+		xui.ItemWeight(item, 1)
 	} else {
-		xui.ItemFill(l)
+		xui.ItemFill(item)
 	}
 }
 
@@ -590,8 +783,68 @@ func NewFieldSet(x, y, cx, cy int32, hParent int) *widget.LayoutEle {
 
 // FieldGroup 字段组容器: 竖向流, 子项间距 28(gap-7), 宽铺满、高自撑。
 // 嵌套组需要更紧的间距时调用 SetSpace(16)(上游嵌套 gap-4)。
-func NewFieldGroup(x, y, cx, cy int32, hParent int) *widget.LayoutEle {
-	return newFieldStack(hParent, fieldGroupGap)
+//
+// 除布局外还提供组级校验入口: Fields 按视觉顺序列出组内全部字段(含嵌套容器里的),
+// Validate 一次校验并让每个字段各自展示错误, Submit 校验通过后再执行提交回调。
+type FieldGroup struct {
+	*widget.LayoutEle
+}
+
+// NewFieldGroup 创建字段组。
+func NewFieldGroup(x, y, cx, cy int32, hParent int) *FieldGroup {
+	l := newFieldStack(hParent, fieldGroupGap)
+	if l == nil {
+		return nil
+	}
+	return &FieldGroup{LayoutEle: l}
+}
+
+// Fields 按视觉顺序(深度优先)返回组内全部字段, 包含放在 Content / 普通容器里的字段;
+// 嵌套 FieldGroup 的字段也包含在内。
+func (g *FieldGroup) Fields() []*Field {
+	if g == nil {
+		return nil
+	}
+	var out []*Field
+	var walk func(hEle int)
+	walk = func(hEle int) {
+		if hEle == 0 {
+			return
+		}
+		if f, ok := fieldReg[hEle]; ok {
+			out = append(out, f)
+		}
+		n := int(xc.XEle_GetChildCount(hEle))
+		for i := 0; i < n; i++ {
+			walk(xc.XEle_GetChildByIndex(hEle, int32(i)))
+		}
+	}
+	walk(g.Handle)
+	return out
+}
+
+// Validate 校验组内全部字段, 返回是否全部通过。每个字段都会得到自己的错误文案,
+// 不会在第一个失败处停下(提交时一次看到所有问题)。
+func (g *FieldGroup) Validate() bool {
+	ok := true
+	for _, f := range g.Fields() {
+		if !f.Validate() {
+			ok = false
+		}
+	}
+	return ok
+}
+
+// Submit 校验通过后执行 fn(对应表单提交动作), 返回校验是否通过;
+// 校验失败时不执行 fn, 各字段的错误区已更新。
+func (g *FieldGroup) Submit(fn func()) bool {
+	if !g.Validate() {
+		return false
+	}
+	if fn != nil {
+		fn()
+	}
+	return true
 }
 
 func newFieldStack(hParent int, gap int32) *widget.LayoutEle {

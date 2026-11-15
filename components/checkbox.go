@@ -158,6 +158,14 @@ func checkboxNaturalWidth(t *xui.Theme, text string, box int32) int32 {
 // Checked 返回选中状态(不确定态返回 false)。
 func (c *Checkbox) Checked() bool { return c.IsCheck() }
 
+// FieldValue 实现 FieldValueProvider: 选中为 "1", 未选(含不确定态)为空串。
+func (c *Checkbox) FieldValue() string {
+	if c == nil || !c.Checked() {
+		return ""
+	}
+	return "1"
+}
+
 // Indeterminate 返回是否处于不确定态。
 func (c *Checkbox) Indeterminate() bool { return c.indeterminate }
 

@@ -17,17 +17,17 @@
 | # | 官方组件 | 本库 key / 实现 | 状态 | 备注 |
 |---:|---|---|---|---|
 | 1 | Button | `button` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 2 | Input | `input` | 已核查 | 结论见第三节;8 项可实现,I2 / I7 已落地(见第十节) |
+| 2 | Input | `input` | 已核查 | 结论见第三节;8 项可实现,I2 / I7 / I3 已落地(见第十节;I3 走 Field 必填与校验) |
 | 3 | Checkbox | `checkbox` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 4 | Select | `select` | 已核查 | 结论见第四节;9 项可实现,S3 已落地(见第十节) |
+| 4 | Select | `select` | 已核查 | 结论见第四节;9 项可实现,S3 / S9 已落地(见第十节;S9 走 Field 必填) |
 | 5 | Combobox | `combobox` | 已核查 | 三批补齐,见 `23bdfc5` / `725d329` / `7441a77` |
 | 6 | Dialog | `dialog` | 已核查 | 结论见第五节;6 项可实现,D1 / D2 / D3 已落地(见第十节) |
 | 7 | Card | `card` | 已核查 | 结论见第五节;5 项可实现(含 1 项能力边界重评估),C1 / C2 已落地(见第十节) |
-| 8 | Label | `label` | 已核查 | 结论见第五节;4 项可实现,L1 / L2 / L4 已落地(见第十节) |
-| 9 | Textarea | `textarea` | 已核查 | 结论见第六节;与 Input 同源 + 3 项特有,TA1(随 Input 的 I2 / I7)已落地 |
+| 8 | Label | `label` | 已核查 | 结论见第五节;4 项可实现,L1 / L2 / L3 / L4 已落地(见第十节;L3 由 Field 统一出星号) |
+| 9 | Textarea | `textarea` | 已核查 | 结论见第六节;与 Input 同源 + 3 项特有,TA1(随 Input 的 I2 / I7 与 Field 必填)已落地 |
 | 10 | Tabs | `tabs` | 已核查 | 结论见第六节;4 项可实现 |
 | 11 | Switch | `switch` | 已核查 | 结论见第六节;3 项可实现,SW1 / SW2 已落地(见第十节) |
-| 12 | Radio Group | `radio-group` | 已核查 | 结论见第六节;3 项可实现(+1 扩展),RG1 / RG2 已落地(见第十节) |
+| 12 | Radio Group | `radio-group` | 已核查 | 结论见第六节;3 项可实现(+1 扩展),RG1 / RG2 / RG3 已落地(见第十节;RG3 走 Field 必填) |
 | 13 | Dropdown Menu | `menu` | 已核查 | 结论见第六节;5 项可实现,DM1 已落地(见第十节);#56 Context Menu 同一实现 |
 | 14 | Tooltip | `tooltip` | 已核查 | 结论见第七节;3 项可实现 |
 | 15 | Badge | `badge` | 已核查 | 结论见第七节;3 项可实现;文件 `separator.go` |
@@ -36,7 +36,7 @@
 | 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现;官方是组合模式,差异见 DESIGN 第七节 |
 | 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现,PO1/PO2/PO3 已落地(见第十节);本批开合控制最完整 |
 | 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min / PR3 轨道配色与圆角 / PR2 宽度过渡已落地(见第十节) |
-| 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL4 错误区同源 / FL1 响应式取向 / FL2 Choice Card 已落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
+| 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL1 / FL2 / FL3 / FL4 已全部落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
 | 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现,IG1/IG2 已落地(见第十节);11 个官方示例仅缺 Custom Input |
 | 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1/AV2/AV3/AV4 已落地(见第十节) |
 | 24 | Accordion | `accordion` | 待核查 | 下一轮起点 |
@@ -494,7 +494,7 @@
 
 ## 十、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分两批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~五批已落地。
 
 **第一批**:
 
@@ -547,4 +547,14 @@
 | FL1 | Field | `FieldResponsive`(宽度 ≥ 448 = 上游 `@md/field-group` 容器查询时横排, 不足竖排) + 运行时 `SetOrientation` / `Horizontal`; 跨断点自动切横竖并重排; 切横排时直属「Fill 宽 + 非 Auto 高」控件收成 240、切回竖排恢复满宽; `Content` 横排固定 240 / 竖排满宽 |
 | FL2 | Field | `NewFieldChoiceCard` + `Label/Description/Content` + `Attach(Checkbox/Radio/Switch)`: 整卡命中(子项与指示器鼠标穿透)、点整卡聚焦并切换、选中 = bg-accent + border-primary、指示器宿主底色跟随卡片、键盘焦点环代理; `Switch` 补 `SetBackdrop` |
 
-**下一批建议**: I3 / S9 / L3 / RG3 / FL3(Field 必填与校验器基础设施)必须同批设计 → PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求; 下一轮核查从 #24 Accordion 起。
+**第五批**(Field 必填与校验基础设施, I3 / S9 / L3 / RG3 / FL3 同批落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| I3 | Field / Input | `WithFieldRequired` / `SetRequired` / `Required` + 标签后破坏性色 `*`(运行时显隐); `WithFieldRequiredMessage` / `SetRequiredMessage` 覆盖文案; `WithFieldValidator` / `AddValidator(func(value string) error)`; `Validate()` 一次收集必填 + 校验器文案并写入错误区, `ValidationErrors()` / `Value()` |
+| S9 | Field / Select | 必填校验统一走 Field: 控件实现可选接口 `FieldValueProvider`(`FieldValue() string`), Select 等选择类返回选中值; `Field.Attach(select)` 后 `Validate()` 即按空选中判定 |
+| L3 | Field / Label | 必填星号由 Field 统一出(不单独给 Label 加 `SetRequired`): 标签行为「主标签 + 破坏性色 `*`」, 星号跟随 `SetRequired` 显隐、`SetDisabled` 调暗 |
+| RG3 | Field / Radio Group | RadioGroup 实现 `FieldValueProvider`(返回组值), 必填 = 组内无选中; 与 I3 / S9 共用同一套 Field 校验入口 |
+| FL3 | Field / FieldGroup | `NewFieldGroup` 返回 `*FieldGroup`: `Fields()` 深度优先列出全部字段(含 Content / 嵌套组), `Validate()` 逐字段校验并各自展示错误, `Submit(fn)` 校验通过才执行提交回调 |
+
+**下一批建议**: 余下条目中 PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求再动手(定位策略 / 箭头 / 模态焦点圈禁 / 独立 Progress 部件 / 头像加载状态); 其余小改动可随时排; 下一轮核查从 #24 Accordion 起。

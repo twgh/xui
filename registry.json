@@ -220,7 +220,7 @@
       "deps": []
     },
     "combobox": {
-      "files": ["combobox_search.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go", "label.go", "textopt.go"],
+      "files": ["combobox_search.go", "select_model.go", "popup.go", "scrollarea.go", "scrollbar.go", "label.go", "group.go", "textopt.go"],
       "deps": []
     },
     "input-group": {

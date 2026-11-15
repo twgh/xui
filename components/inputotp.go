@@ -230,6 +230,14 @@ func (o *InputOTP) Value() string {
 	return b.String()
 }
 
+// FieldValue 实现 FieldValueProvider: 返回各格拼接值。
+func (o *InputOTP) FieldValue() string {
+	if o == nil {
+		return ""
+	}
+	return o.Value()
+}
+
 // SetValue 设置值(超出格数截断, 非法字符跳过), 不触发回调。
 func (o *InputOTP) SetValue(v string) *InputOTP {
 	o.distribute(v, 0)

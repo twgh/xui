@@ -672,6 +672,9 @@ func (c *Combobox) Value() string {
 	return ""
 }
 
+// FieldValue 实现 FieldValueProvider: 必填校验与 Field 校验器读取选中值。
+func (c *Combobox) FieldValue() string { return c.Value() }
+
 // Values 返回全部选中值(按数据顺序)。
 func (c *Combobox) Values() []string {
 	if c == nil {

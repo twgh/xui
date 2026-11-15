@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/twgh/xcgui/app"
@@ -186,6 +187,98 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(narrowInput)
 	narrowInput.SetValue("宽度不足, 保持竖排")
 	fNarrow.Attach(narrowInput)
+
+	// ---- 必填与提交校验(Field.Validate / FieldGroup) ----
+	_, vVal := autoCard(body.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "必填与校验(Field.Validate)", vVal.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"标签后的 * = WithFieldRequired; 校验器文案写进错误区; FieldGroup 一次校验全部字段", vVal.Handle))
+
+	valGrp := ui.NewFieldGroup(0, 0, 0, 0, vVal.Handle)
+	xui.ItemFill(valGrp)
+
+	fUser := ui.NewField(0, 0, 0, 0, valGrp.Handle,
+		ui.WithFieldRequired(), ui.WithFieldRequiredMessage("请输入用户名"),
+		ui.WithFieldValidator(func(v string) error {
+			if v != "" && len([]rune(v)) < 3 {
+				return errors.New("用户名至少 3 个字符")
+			}
+			return nil
+		}))
+	xui.ItemFill(fUser)
+	fUser.Label("用户名")
+	userInput := ui.NewInput(0, 0, 0, 0, fUser.Handle, ui.WithPlaceholder("twgh"))
+	xui.ItemFill(userInput)
+	fUser.Description("必填; 校验器: 至少 3 个字符(空值只报必填)。")
+	fUser.Attach(userInput)
+	userErr := ui.NewFieldError(0, 0, 0, 0, fUser.Handle)
+	xui.ItemFill(userErr)
+	fUser.AttachError(userErr)
+
+	fDept := ui.NewField(0, 0, 0, 0, valGrp.Handle,
+		ui.WithFieldRequired(), ui.WithFieldRequiredMessage("请选择部门"))
+	xui.ItemFill(fDept)
+	fDept.Label("部门(Select)")
+	dept := ui.NewSelect(0, 0, 0, 0, fDept.Handle,
+		ui.WithSelectPlaceholder("选择部门"),
+		ui.WithSelectItems([]ui.SelectItem{
+			{Value: "eng", Text: "研发"},
+			{Value: "design", Text: "设计"},
+			{Value: "ops", Text: "运维"},
+		}))
+	xui.ItemFill(dept)
+	fDept.Attach(dept)
+	deptErr := ui.NewFieldError(0, 0, 0, 0, fDept.Handle)
+	xui.ItemFill(deptErr)
+	fDept.AttachError(deptErr)
+
+	fPlan := ui.NewField(0, 0, 0, 0, valGrp.Handle,
+		ui.WithFieldRequired(), ui.WithFieldRequiredMessage("请选择订阅计划"))
+	xui.ItemFill(fPlan)
+	fPlan.Label("订阅计划(RadioGroup)")
+	plan := ui.NewRadioGroup(fPlan.Handle)
+	plan.AddItem("monthly", "月付 $9.99")
+	plan.AddItem("yearly", "年付 $99.99")
+	fPlan.Attach(plan)
+	planErr := ui.NewFieldError(0, 0, 0, 0, fPlan.Handle)
+	xui.ItemFill(planErr)
+	fPlan.AttachError(planErr)
+
+	valRow := xui.HStack(vVal.Handle, 32, 8)
+	btnSubmit := ui.NewButton(0, 0, 0, 0, "提交", valRow.Handle)
+	btnToggleReq := ui.NewButton(0, 0, 0, 0, "切换「用户名」必填", valRow.Handle,
+		ui.WithVariant(ui.ButtonOutline))
+	valState := ui.NewLabel(0, 0, 0, 20, "状态: 尚未提交", vVal.Handle).SetMuted()
+	xui.ItemFill(valState)
+
+	btnSubmit.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		ok := valGrp.Submit(func() {
+			valState.SetText(fmt.Sprintf("提交成功: 用户名 %s / 部门 %s / 计划 %s",
+				userInput.Value(), dept.Value(), plan.Value()))
+			valState.Redraw()
+		})
+		if !ok {
+			n := 0
+			for _, f := range valGrp.Fields() {
+				if f.Invalid() {
+					n++
+				}
+			}
+			valState.SetText(fmt.Sprintf("校验未通过: %d 个字段待修正", n))
+			valState.Redraw()
+		}
+		return 0
+	})
+	btnToggleReq.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		fUser.SetRequired(!fUser.Required())
+		if fUser.Required() {
+			valState.SetText("用户名: 必填已打开(标签 * 出现)")
+		} else {
+			valState.SetText("用户名: 必填已关闭(标签 * 隐藏)")
+		}
+		valState.Redraw()
+		return 0
+	})
 
 	// ---- 文件对话框(系统原生, 不套主题) ----
 	_, vfd := autoCard(body.Handle, 10)

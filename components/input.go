@@ -1022,6 +1022,14 @@ func (i *Input) FieldDisabled() bool { return i == nil || !i.IsEnable() }
 // Value 返回输入内容。
 func (i *Input) Value() string { return i.GetText() }
 
+// FieldValue 实现 FieldValueProvider: 必填校验与 Field 校验器读取输入文本。
+func (i *Input) FieldValue() string {
+	if i == nil {
+		return ""
+	}
+	return i.Value()
+}
+
 // SetValue 设置输入内容。
 func (i *Input) SetValue(s string) *Input {
 	i.SetText(s)

@@ -133,6 +133,14 @@ func (t *TimePicker) Text() string {
 	return fmt.Sprintf("%02d:%02d", t.hour, t.minute)
 }
 
+// FieldValue 实现 FieldValueProvider: 返回 "HH:mm" 文本。
+func (t *TimePicker) FieldValue() string {
+	if t == nil {
+		return ""
+	}
+	return t.Text()
+}
+
 // OnChange 注册时间变化回调。
 func (t *TimePicker) OnChange(fn func(hour, minute int)) *TimePicker {
 	t.onChange = fn

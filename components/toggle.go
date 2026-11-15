@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -149,6 +151,14 @@ func (t *Toggle) addChangeListener(fn func(pressed bool)) {
 
 // Pressed 返回是否处于选中态。
 func (t *Toggle) Pressed() bool { return t.IsCheck() }
+
+// FieldValue 实现 FieldValueProvider: 按下为 "1", 未按下为空串。
+func (t *Toggle) FieldValue() string {
+	if t == nil || !t.Pressed() {
+		return ""
+	}
+	return "1"
+}
 
 // SetPressed 设置选中态, 不触发 OnChange。
 func (t *Toggle) SetPressed(v bool) *Toggle {
@@ -502,6 +512,14 @@ func (g *ToggleGroup) Value() []string {
 		}
 	}
 	return vals
+}
+
+// FieldValue 实现 FieldValueProvider: 选中值用逗号连接, 未选为空串。
+func (g *ToggleGroup) FieldValue() string {
+	if g == nil {
+		return ""
+	}
+	return strings.Join(g.Value(), ",")
 }
 
 // SetValue 设置选中值, 不触发 OnChange。单选组取第一个值, 传空清空全部。

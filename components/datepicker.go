@@ -418,6 +418,14 @@ func (d *DatePicker) Text() string {
 	return d.value.Format("2006年1月2日")
 }
 
+// FieldValue 实现 FieldValueProvider: 返回触发区日期文本, 未选择为空串。
+func (d *DatePicker) FieldValue() string {
+	if d == nil {
+		return ""
+	}
+	return d.Text()
+}
+
 // SetValue 设置日期, 传零值 = 清空选择。范围模式下会把起点设为该日期并清空终点。
 func (d *DatePicker) SetValue(t time.Time) *DatePicker {
 	d.value = t

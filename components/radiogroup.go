@@ -162,6 +162,9 @@ func (g *RadioGroup) Value() string {
 	return ""
 }
 
+// FieldValue 实现 FieldValueProvider: 必填校验与 Field 校验器读取选中值。
+func (g *RadioGroup) FieldValue() string { return g.Value() }
+
 // SetValue 设置选中值, 不触发 OnChange。传空串清空全部。
 //
 // 选中目标只调用 SetSelected(true): 同父兄弟项由原生单选逻辑自动取消
