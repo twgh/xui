@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/twgh/xui/main/registry.schema.json",
-  "runtime": "v0.13.0",
-  "cliChange": "v0.11.0",
+  "runtime": "v0.14.0",
+  "cliChange": "v0.14.0",
   "components": {
     "button": {
       "files": ["button.go", "group.go", "textopt.go", "press.go", "cursor.go"],
