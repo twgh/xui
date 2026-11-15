@@ -199,7 +199,7 @@ type Badge struct {
 	iconSize int32
 	loading  bool      // 前置位画加载指示器(替换前置图标)
 	onClick  func()    // 点击回调(对应把徽章渲染成链接/按钮)
-	linkURL  string    // 非空 = 链接徽章, 点击用系统默认浏览器打开(BA3)
+	linkURL  string    // 非空 = 链接徽章, 点击用系统默认浏览器打开
 	custom   bool      // 使用自定义配色(对应 className 覆盖颜色)
 	bg       xui.Color // 自定义底色
 	fore     xui.Color // 自定义前景色

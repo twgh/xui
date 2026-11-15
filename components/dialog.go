@@ -149,7 +149,7 @@ type Dialog struct {
 	scrollOn  bool
 	scrollMax int32
 
-	// 遮罩可配(SH6 / AD4): 默认黑 10%(Sheet/Drawer 是黑 50%, 见 paintSheet)。
+	// 遮罩可配: 默认黑 10%(Sheet/Drawer 是黑 50%, 见 paintSheet)。
 	// overlayAlpha 用"是否设置"的标志区分 0(完全透明)与未设置。
 	overlayColor    xui.Color
 	overlayAlpha    float64

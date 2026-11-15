@@ -157,14 +157,14 @@ type Input struct {
 	// stepAuto 步进按钮只在悬停输入框或输入框有焦点时显示(移开/失焦隐藏)
 	stepAuto bool
 
-	// 文件输入形态(I1, 对应 `<input type="file">`): 只读显示已选文件名 + 右侧"选择文件"钮。
+	// 文件输入形态(对应 `<input type="file">`): 只读显示已选文件名 + 右侧"选择文件"钮。
 	fileBtn   bool
 	files     []string
 	fileMulti bool
 	fileMax   int
 	fileDlg   []FileDialogOption
 	onFiles   []func([]string)
-	// 原生 Edit 的视觉/行为覆盖(I6): 选区底色(0 = 跟随主题)与插入符宽度(0 = 原生默认)。
+	// 原生 Edit 的视觉/行为覆盖: 选区底色(0 = 跟随主题)与插入符宽度(0 = 原生默认)。
 	selColor   uint32
 	caretWidth int32
 	autoSelAll bool
@@ -464,7 +464,7 @@ func (i *Input) applyTheme(t *xui.Theme) {
 		i.SetDefaultTextColor(uint32(t.MutedForeground))
 	}
 	i.SetCaretColor(uint32(t.Primary))
-	// ::selection 的等价物(I6): 主色 25% 透明底, 亮暗主题下都能看清选中范围;
+	// ::selection 的等价物: 主色 25% 透明底, 亮暗主题下都能看清选中范围;
 	// WithInputSelectColor 可覆盖。原生 Edit 的选区色只能这样下发。
 	if i.selColor != 0 {
 		i.SetSelectBkColor(i.selColor)
@@ -1202,7 +1202,7 @@ func (i *Input) FieldValue() string {
 	return i.Value()
 }
 
-// ===== 文件输入(I1, 对应 `<input type="file">`) =====
+// ===== 文件输入(对应 `<input type="file">`) =====
 
 // pickFiles 打开系统文件对话框并把结果写回; 取消时保留原选择。
 func (i *Input) pickFiles() {

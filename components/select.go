@@ -27,7 +27,7 @@ type Select struct {
 	invalid       bool
 	disabled      bool
 	readOnly      bool
-	valueText     func(item SelectItem) string // 触发区文字格式化(S8), nil = 用条目文字
+	valueText     func(item SelectItem) string // 触发区文字格式化, nil = 用条目文字
 	// noHoverHl: 鼠标悬停不把条目高亮成"当前项"底色(Base UI Root 的 highlightItemOnHover=false)。
 	noHoverHl bool
 	// hoverIdx 是当前被鼠标悬停的条目下标(-1 = 没有)。原生按钮的悬停不搬焦点,
@@ -882,7 +882,7 @@ func (s *Select) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	x := p.Rc.Left + 10 // pl-2.5
 	text := s.placeholder
 	if ok {
-		text = s.displayText(it) // 自定义格式化优先(S8), 空 Text 回落 Value
+		text = s.displayText(it) // 自定义格式化优先, 空 Text 回落 Value
 	}
 	if ok && it.Icon != "" {
 		rc := xc.RECT{Left: x, Top: (p.Rc.Top + p.Rc.Bottom - 16) / 2,

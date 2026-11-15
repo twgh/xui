@@ -101,7 +101,7 @@ type Tabs struct {
 
 	cb     func(index int32)
 	vcb    func(value string)
-	vetoes []func(value string) bool // 可否决的切换(TB1), 返回 false 即取消这次切换
+	vetoes []func(value string) bool // 可否决的切换, 返回 false 即取消这次切换
 
 	// 换行模式的状态: 上一次宽度(尺寸事件节流)与延迟重排标记。
 	lastWrapW  int32
@@ -209,7 +209,7 @@ func NewTabsItems(x, y, cx int32, hParent int, items []TabsItem, opts ...TabsOpt
 		tb.hasFocus = true
 		from := tb.active
 		if from < 0 {
-			from = 0 // 无选中(TB2)时从第一个可用标签进入
+			from = 0 // 无选中时从第一个可用标签进入
 		}
 		tb.focus = tb.nearestEnabled(from)
 		tb.Redraw(false)
@@ -266,7 +266,7 @@ func NewTabsItems(x, y, cx int32, hParent int, items []TabsItem, opts ...TabsOpt
 		})
 		tb.list = append(tb.list, btn)
 	}
-	// active = -1 是合法的"无选中"(TB2), 只把越界值收回 0
+	// active = -1 是合法的"无选中", 只把越界值收回 0
 	if tb.active < -1 || tb.active >= int32(len(tb.list)) {
 		tb.active = 0
 	}
@@ -287,7 +287,7 @@ func NewTabsItems(x, y, cx int32, hParent int, items []TabsItem, opts ...TabsOpt
 func (t *Tabs) Active() int32 { return t.active }
 
 // SetActive 设置选中项并重绘(禁用项也可程序化选中, 同 radix 的受控 value)。
-// 传 -1 = 取消选中(TB2, 对应 Base UI Tabs 的 value=null): 所有绑定面板一起隐藏。
+// 传 -1 = 取消选中(对应 Base UI Tabs 的 value=null): 所有绑定面板一起隐藏。
 // 程序化调用不经过 OnValueChangeVeto。
 func (t *Tabs) SetActive(i int32) *Tabs {
 	if t == nil || i < -1 || i >= int32(len(t.items)) {

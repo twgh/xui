@@ -80,18 +80,18 @@ type Menu struct {
 	// 覆盖); 0 = 走组件默认(max(触发区宽, 128))。
 	width int32
 
-	// 定位参数(DM2), 对应 Base UI Menu Content 的 side / align / sideOffset / alignOffset。
+	// 定位参数, 对应 Base UI Menu Content 的 side / align / sideOffset / alignOffset。
 	// sideOff = -1 表示用默认 4(radix sideOffset=4)。
 	side     MenuSide
 	align    MenuAlign
 	sideOff  int32
 	alignOff int32
 
-	// disabledAll 整菜单禁用(DM4): 全部条目按禁用态构建(灰显、不可点)。
+	// disabledAll 整菜单禁用: 全部条目按禁用态构建(灰显、不可点)。
 	disabledAll bool
 
 	opens   []func(bool)                   // OnOpenChange 注册的开合回调
-	radioCB func(group int32, value string) // 单选组变化回调(DM3)
+	radioCB func(group int32, value string) // 单选组变化回调
 }
 
 // MenuSide 是弹层相对触发区的一侧, 对应 Base UI MenuContent 的 side(默认 bottom)。
@@ -293,7 +293,7 @@ func (m *Menu) Offset(side, align int32) *Menu {
 	return m
 }
 
-// SetDisabled 整菜单禁用(DM4, 对应 Base UI Menu Root 的 disabled): 全部条目按禁用态
+// SetDisabled 整菜单禁用(对应 Base UI Menu Root 的 disabled): 全部条目按禁用态
 // 构建 —— 灰显、悬停不高亮、点击不派发。要在添加条目**之后**、弹出之前调用。
 func (m *Menu) SetDisabled(v bool) *Menu {
 	if m == nil {

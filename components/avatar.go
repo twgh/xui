@@ -133,7 +133,7 @@ type Avatar struct {
 	imagePath string
 	imageData image.Image
 	imgHandle int
-	// onImageStatus 是图片加载状态回调(AV5): 每次 syncImage 后按成功与否回调。
+	// onImageStatus 是图片加载状态回调: 每次 syncImage 后按成功与否回调。
 	onImageStatus []func(ok bool)
 }
 
@@ -324,7 +324,7 @@ func (a *Avatar) syncImage() {
 	if img != nil {
 		a.imgHandle = avatarImageHandle(img, a.GetWidth(), avatarDPI(a.Handle), a.circleInset())
 	}
-	// 图片状态回调(AV5, 对应 Base UI Avatar.Image 的 onLoadingStatusChange):
+	// 图片状态回调(对应 Base UI Avatar.Image 的 onLoadingStatusChange):
 	// 同步解码, 每次换图/改圆半径都会重新判定一次。
 	ok := a.imgHandle != 0
 	for _, fn := range a.onImageStatus {

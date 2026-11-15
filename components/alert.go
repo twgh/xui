@@ -81,7 +81,7 @@ type Alert struct {
 	titleText string
 	descText  string
 
-	// 自定义配色(AL1, 见 WithAlertColors): custom 为真时四个色直接覆盖变体取色。
+	// 自定义配色(见 WithAlertColors): custom 为真时四个色直接覆盖变体取色。
 	custom    bool
 	bg        xui.Color
 	border    xui.Color

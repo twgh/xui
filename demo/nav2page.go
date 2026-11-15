@@ -38,7 +38,7 @@ func buildNav2Page(body *widget.LayoutEle) {
 		ui.WithTabsVariant(ui.TabsLine), ui.WithTabsActive(1))
 	xui.ItemWidth(lineTabs, 200)
 
-	xui.ItemFill(hint(v.Handle, "选中项被禁用 → 自动回退到最近可用(TB3)"))
+	xui.ItemFill(hint(v.Handle, "选中项被禁用 → 自动回退到最近可用"))
 	fbTabs := ui.NewTabs(0, 0, 200, v.Handle, []string{"一", "二", "三"}, ui.WithTabsActive(1))
 	xui.ItemWidth(fbTabs, 200)
 	fbInfo := ui.NewLabel(0, 0, 0, 20, "当前: 二", v.Handle).SetMuted().SetFontSize(14)
@@ -55,7 +55,7 @@ func buildNav2Page(body *widget.LayoutEle) {
 		return 0
 	})
 
-	xui.ItemFill(hint(v.Handle, "可否决切换(TB1) / 无选中(TB2): 「发布」被拦下, 按钮可清空选中"))
+	xui.ItemFill(hint(v.Handle, "可否决切换 / 无选中: 「发布」被拦下, 按钮可清空选中"))
 	vetoTabs := ui.NewTabs(0, 0, 200, v.Handle, []string{"草稿", "预览", "发布"},
 		ui.WithTabsValues("draft", "preview", "publish"))
 	xui.ItemWidth(vetoTabs, 200)
