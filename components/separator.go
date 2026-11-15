@@ -318,8 +318,8 @@ func WithBadgeColors(bg, fore, border xui.Color) func(*Badge) {
 	}
 }
 
-// WithBadgeInvalid 让徽章初始即为校验失败态(对应 aria-invalid): 胶囊描边变 destructive、
-// 内侧常驻一圈 destructive/20 的环, 与 Input / Select 的校验态同一口径(不要求焦点)。
+// WithBadgeInvalid 让徽章初始即为校验失败态(对应 aria-invalid): 1px 描边变 destructive,
+// 最外 3px 环带填 destructive/20, 与 Input / Select 的校验态同一口径(不要求焦点)。
 func WithBadgeInvalid() func(*Badge) {
 	return func(b *Badge) { b.invalid = true }
 }
@@ -535,11 +535,10 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if b.invalid {
 		stroke = t.Destructive // aria-invalid:border-destructive
 	}
-	p.StrokeRound(&p.Rc, stroke, radius, 1)
 	// focus-visible:ring-[3px] ring-ring/50 / aria-invalid:ring-destructive/20
 	//
 	// 徽章的胶囊就是元素本身(没有按钮那种按压预留), 3px 环画在**外侧**会被裁掉;
-	// 这里改画在胶囊内侧(与 Avatar 的键盘环同一手法), 视觉上仍是"贴着边框的一圈"。
+	// 这里改画在胶囊内侧的环带上(与 Avatar 的键盘环同一手法)。
 	st := xui.StateOf(hEle)
 	ring := xui.None
 	switch {
@@ -552,18 +551,32 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		ring = t.Ring.WithAlpha(128)
 	}
 	if !ring.IsNone() {
-		// 环必须**贴住**描边: 描边占最外 1px, 环从 1px 处起画 3px(1~4)。
-		// 用 2 会留出 1px 底色缝隙, 看起来像"两道不相干的红边"(实测 150% DPI 下很明显)。
-		inset := int32(1)
+		// 环带 + 内芯: 最外 3px 是环带, 胶囊底色与 1px 描边画在内缩 3px 的矩形上 ——
+		// 与 Input / Select 的 aria-invalid 同一画法。不要把描边留在最外、环带贴在里面:
+		// 小尺寸下那一圈会和描边连成一片, 被读成"更粗的边框"(用户反馈"校验失败环
+		// 看起来就像边框")。
+		const inset = int32(3)
+		p.FillRound(&p.Rc, ring, radius)
 		inner := xc.RECT{
 			Left:   p.Rc.Left + inset,
 			Top:    p.Rc.Top + inset,
 			Right:  p.Rc.Right - inset,
 			Bottom: p.Rc.Bottom - inset,
 		}
-		if inner.Right-inner.Left > 2 && inner.Bottom-inner.Top > 2 {
-			p.StrokeRound(&inner, ring, radius-inset, 3)
+		if inner.Right-inner.Left > 4 && inner.Bottom-inner.Top > 4 {
+			// 环带下要先铺不透底: outline / ghost / link 没有底色, 直接用 bg 会透出环带
+			core := bg
+			if core.IsNone() {
+				core = t.Card
+			}
+			p.FillRound(&inner, core, radius-inset)
+			if !bg.IsNone() && bg != core {
+				p.FillRound(&inner, bg, radius-inset)
+			}
+			p.StrokeRound(&inner, stroke, radius-inset, 1)
 		}
+	} else {
+		p.StrokeRound(&p.Rc, stroke, radius, 1)
 	}
 
 	fontSize := t.FontDefault.Size - 2

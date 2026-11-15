@@ -421,7 +421,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | **textarea 行数与拖拽**(TA2 / TA3): `WithTextareaRows(n)` 的最小高度按**实际行高**实时换算(与创建参数的 cy 二选一, rows 优先); `WithTextareaResize()` 在右下角画两条 45° 短线作抓手, 拖动改的是**最小高度**(内容更高时仍自动长高, 等价 CSS min-height + field-sizing-content), 拖动用屏幕物理坐标增量 ÷ 窗口 DPI 换算, 抓手区用斜向调整光标 | 原生 `<textarea rows>` 与默认 resize 手柄 |
 | **select 悬停高亮开关**(S6): `WithSelectHighlightOnHover(false)` 时**初始高亮照旧**落在选中项/首项, 键盘也能移动它; 鼠标悬停**不产生任何视觉反馈**(既不搬高亮也不画淡底/描边, 与上游 `highlightItemOnHover=false` 一致)。默认模式下悬停会把高亮搬指针下的条目 —— 原生按钮的悬停不挪焦点, 由组件自己搬(见第八节 217) | Base UI Select Root 的 `highlightItemOnHover` |
 | **tooltip 可移入与箭头内距**(TT1 / TT2): `WithTipHoverable()` 让气泡窗口去掉 `WS_EX_TRANSPARENT` 接收鼠标 —— 光标从锚点移进气泡时保持显示, 离开气泡才收: 锚点离开与窗口级命中测试都改成"延迟 200ms + 按锚点/气泡两个矩形确认"(不能只靠锚点 MouseLeave, 见第八节 214; 也不能用两者包围盒, 那样范围会大到按钮外都不收); 气泡窗**位置按物理像素、宽高按逻辑像素**落位(两边都乘 DPI 会得到 1.5² 倍大的窗口, 命中区跟着压进按钮, 见第八节 216); `WithTipArrowPadding(px)` 让箭头中心离气泡两端至少这么远(默认 0 = 只保证三角形落在气泡内) | Base UI Tooltip 的 `disableHoverableContent=false` 与 `arrowPadding` |
-| **badge 焦点环与校验态**(BA1): 可点击徽章(OnClick / NewLinkBadge)进 Tab 链、Enter/空格触发, focus-visible 环与 aria-invalid 环都画在**胶囊内侧** 2px(元素矩形就是胶囊, 3px 外环会被裁); `WithBadgeInvalid` / `SetInvalid` = 描边 destructive + 常驻红环 | badge.tsx 的 `focus-visible:ring-[3px]` / `aria-invalid:*` |
+| **badge 焦点环与校验态**(BA1): 可点击徽章(OnClick / NewLinkBadge)进 Tab 链、Enter/空格触发, focus-visible 环与 aria-invalid 环都走"环带 + 内芯"画法(同 Input / Select): 元素最外 3px 是半透明环带, 胶囊底色与 1px 描边画在内缩 3px 的矩形上 —— 描边留在最外、环带贴里面会被读成"更粗的边框"(见第八节 218; 元素矩形就是胶囊, 外扩环会被裁); `WithBadgeInvalid` / `SetInvalid` = 描边 destructive + 常驻红环 | badge.tsx 的 `focus-visible:ring-[3px]` / `aria-invalid:*` |
 | **tabs 禁用回退与指示条滑动**(TB3 / TB4): 选中项被 `SetDisabled` 禁用时自动落到最近的可用标签(全都禁用则清空选中), 程序化 `SetActive` 仍可选中禁用项; line 变体的下划线/竖条在切换时从旧标签**滑到**新标签(150ms, 运行时过渡表驱动), 不在过渡中时每帧跟住当前标签矩形(缩放/换行重排不会落后) | Base UI Tabs 的 disabled fallback + 标签的 `transition-all` |
 | **switch 滑块位移**(SW3): 切换时滑块从一端滑到另一端(150ms, 运行时一次性过渡), 回滚(只读/否决)同样跟着回, 构造时的初始值直接落位不滑动 | switch.tsx 的 thumb `transition-transform` |
 | **radio group 横向**(RG4, 本库扩展): `WithRadioGroupHorizontal` / `SetHorizontal` 把条目横排 —— 条目宽按文字量成**固定宽**(横向主轴是宽度, Fill 会让每条独占一行), 换主题时重新量; 上游只有竖向 `grid gap-2` | 本库扩展(上游只有竖向) |
@@ -869,7 +869,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **215** RadioGroup 只能声明组容器直下条目的宽度: 选择卡片里的单选指示器一旦 Fill, 会把卡片内容列挤成 0 宽
 - **216** 提示窗的宽高是逻辑像素、位置是物理像素: 两边都乘 DPI 会得到 1.5² 倍大的窗口, 命中区压进按钮
 - **217** 原生按钮的悬停不挪焦点: Select 的"悬停即高亮"要自己搬高亮, 关掉时纯悬停不画任何反馈
-- **218** 可移入提示别用定时巡检兜底: 首次显示还进不了 shown 状态, 还会误收键盘聚焦弹出的提示
+- **218** 环带与描边的内外顺序: 描边在最外、环带贴里面会被读成"更粗的边框"; 要环带在外、描边内缩 3px
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 

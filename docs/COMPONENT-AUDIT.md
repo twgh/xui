@@ -729,7 +729,7 @@
 | TA2 / TA3 | Textarea | `WithTextareaRows(n)` 最小高按实际行高换算(与 cy 二选一); `WithTextareaResize()` 右下角抓手拖拽改最小高度(屏幕物理增量 ÷ DPI, 自动长高继续生效) |
 | S6 | Select | `WithSelectHighlightOnHover(false)` / `SetHighlightOnHover`: 纯悬停不画任何反馈, 高亮只跟键盘/初始选中项(默认模式悬停搬高亮) |
 | TT1 / TT2 | Tooltip | `WithTipHoverable()`(气泡可移入: 动态去 `WS_EX_TRANSPARENT` + 锚点离开延迟确认)、`WithTipArrowPadding(px)` |
-| BA1 | Badge | 可点击徽章进 Tab 链 + Enter/空格触发; focus-visible 与 aria-invalid 环画在胶囊内侧 2px; `WithBadgeInvalid` / `SetInvalid` |
+| BA1 | Badge | 可点击徽章进 Tab 链 + Enter/空格触发; focus-visible 与 aria-invalid 走"环带+内芯"(最外 3px 环带, 底色与 1px 描边内缩 3px); `WithBadgeInvalid` / `SetInvalid` |
 | TB3 / TB4 | Tabs | 选中项被禁用时自动回退到最近可用标签(全禁用则清空); line 变体指示条 150ms 滑动 |
 | SW3 | Switch | 滑块位移过渡 150ms(回滚同样跟着回, 初始值直接落位) |
 | RG4 | Radio Group | `WithRadioGroupHorizontal` / `SetHorizontal`: 横向排列, 条目宽按文字量成固定宽 |
