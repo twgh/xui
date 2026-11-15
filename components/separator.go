@@ -323,7 +323,7 @@ func WithBadgeColors(bg, fore, border xui.Color) func(*Badge) {
 // 官方 badge.tsx 的 aria-invalid 只写了 `ring-destructive/20`(环色), **没有**
 // `aria-invalid:ring-3`(环宽) —— 环宽只在 `focus-visible:ring-[3px]` 里给,
 // 所以未聚焦的校验徽章只有红描边, 不要照抄 Input / Select 的常驻 3px 红环
-// (它们的类名里有 aria-invalid:ring-3), 见 DESIGN 第八节 218。
+// (它们的类名里有 aria-invalid:ring-3)。
 func WithBadgeInvalid() func(*Badge) {
 	return func(b *Badge) { b.invalid = true }
 }
@@ -548,7 +548,7 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 徽章的胶囊就是元素本身(没有按钮那种按压预留), 3px 环画在**外侧**会被裁掉;
 	// 这里画在胶囊内侧的环带上(与 Input / Select 的焦点环同一手法): 最外 3px 是环带,
 	// 胶囊底色与 1px 描边画在内缩 3px 的矩形上。不要把描边留在最外、环带贴在里面 ——
-	// 小尺寸下那一圈会和描边连成一片, 被读成"更粗的边框"(见 DESIGN 第八节 218)。
+	// 小尺寸下那一圈会和描边连成一片, 被读成"更粗的边框"。
 	st := xui.StateOf(hEle)
 	ring := xui.None
 	if st.Focused && xui.FocusedByKeyboard() {

@@ -342,7 +342,7 @@
 
 | # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
 |---:|---|---|---|---|---|
-| BA1 | `focus-visible` 环与 `aria-invalid` 校验态 | `badge.tsx` 的 `focus-visible:ring-[3px]` / `aria-invalid:border-destructive`(注意:`aria-invalid:ring-destructive/20` 只有环色、**没有环宽**, Input / Textarea / Select 才有 `aria-invalid:ring-3`) | Badge 是纯 Element,没有焦点环也没有 `SetInvalid` | 可点击形态启用焦点 + 手绘环(同 Button);补 `WithBadgeInvalid` / `SetInvalid(bool)` 只画 destructive 描边, 不画常驻红环(见 DESIGN 第八节 218) | 小-中 / 中 |
+| BA1 | `focus-visible` 环与 `aria-invalid` 校验态 | `badge.tsx` 的 `focus-visible:ring-[3px]` / `aria-invalid:border-destructive`(注意:`aria-invalid:ring-destructive/20` 只有环色、**没有环宽**, Input / Textarea / Select 才有 `aria-invalid:ring-3`) | Badge 是纯 Element,没有焦点环也没有 `SetInvalid` | 可点击形态启用焦点 + 手绘环(同 Button);补 `WithBadgeInvalid` / `SetInvalid(bool)` 只画 destructive 描边, 不画常驻红环 | 小-中 / 中 |
 | BA2 | 行内图标侧内距收窄 | `badge.tsx` 的 `has-data-[icon=inline-start]:pl-1.5` / `pr-1.5` | `naturalWidth` 用固定 `badgePadX*2` 再加图标宽,**有图标时那一侧没有收窄** | 按 `leading` / `trailing` / `loading` 把对应侧内距从 `padX` 换成 6(同 Button 412 的做法) | 极小 / 中 |
 | BA3 | Link 变体真正打开链接 | 官方 Link 示例用 `render` 渲染 `<a>` | link 只是样式,`OnClick` 要调用方自己写 ShellExecute | `NewLinkBadge(...)` / `SetLinkURL(url)`,复用 Button 的 `NewLinkButton` 逻辑 | 小 / 中 |
 

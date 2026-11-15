@@ -1661,9 +1661,3 @@ hover 背景底边正好贴住弹层底边、滚轮还能再滚一下。
      - **根因**: 条目是原生 Button, 高亮画的是 `Hover || Focused`, 而悬停只改按钮的 Hover 状态、**不挪焦点** —— 初始焦点行与悬停行同时满足条件。Base UI 的 `highlightItemOnHover=false` 是"悬停完全不产生高亮反馈"(不是"更淡的高亮"); 默认主题 Accent 接近白色, 半浓度 accent 与底色只差几级明度, 指针扫过时看起来就是闪烁。
      - **修法**: 组件自己记 `hoverIdx`(MouseStay/MouseLeave 维护), 默认模式悬停时 `setActive` 把焦点/高亮搬过去, 旧/新两行显式重绘; `highlightItemOnHover=false` 时不画任何悬停反馈(只有焦点/初始高亮画满色 accent), 也不起半透明过渡。
      - **实测**: 默认模式探针 —— 初始第 1 行 `(245,245,245)`, 悬停第 3 行后第 1 行复原 `(255,255,255)`、第 3 行变 `(245,245,245)`, 600/1000ms 两次采样一致(只剩一行高亮); 关悬停高亮时第 1 行始终 `(245,245,245)`, 第 3 行 600/1000ms 均为 `(255,255,255)`, 行中心横向扫描无描边。
-
-218. **badge 的 `aria-invalid:ring-*` 只有颜色、没有环宽: 官方校验徽章只有 1px 红描边, 别照抄 Input 的常驻红环**(`separator.go` 的 `Badge.onPaint`):
-     - **现象**: 给徽章加校验失败态时按 Input / Select 的样式画了"1px 红描边 + 3px 红/20 环", 与官方徽章对照发现官方未聚焦的校验徽章只有红描边、没有环; 小尺寸下那圈半透明红环还会与描边连成一条粗红边。
-     - **根因**: 官方 `badge.tsx` 的 aria-invalid 只写了 `aria-invalid:ring-destructive/20`(环色), **没有** `aria-invalid:ring-3`(环宽); Tailwind 的 ring 宽度由 `ring-3` / `ring-[3px]` 提供, 徽章上只有 `focus-visible:ring-[3px]`, 所以未聚焦时根本没有环。Input / Textarea / Select 的类名里都有 `aria-invalid:ring-3`, 照抄它们会给徽章多画一圈官方没有的环。
-     - **修法**: 校验态只保留 1px destructive 描边, 不画常驻红环; focus-visible 时仍画 3px 环(可点击/链接徽章), 环带画在元素内侧的 3px 环带上、底色与 1px 描边内缩 3px —— 外扩环会被元素裁掉, 描边留在最外、环带贴里面又会被读成粗边框。
-     - **实测**: 150% DPI 探针: 未聚焦的 `BadgeOutline + WithBadgeInvalid` 顶边只有 1 行 `(231,0,11)` 描边 → 白底, 没有环带; 对照 `badge.tsx` 类名 —— `aria-invalid:ring-destructive/20` 无环宽, `focus-visible:ring-[3px]` 才给宽度。
