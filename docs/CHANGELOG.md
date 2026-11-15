@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复: 裸 `xui update` 漏更「上游新增了文件」的已装组件**(2026-11-15, 用户用本地 registry 升级 stocktools 时发现):
+  - **现象**: `XUI_REGISTRY=<本地仓库> xui update -p ui` 只刷 10 个组件; 项目里装过的 input / switch / checkbox / radio / separator / textarea / sidebar 一个都没动。`go build` 照样通过, 所以看不出来, 只能显式点名 19 个组件才刷干净。
+  - **根因**: `installedComponents` 要求 registry 里该组件列出的**全部文件**都在本地才算"已装"(本意是防止只装了 select 时把 date-picker / popover / dialog 全判成已装)。上游给组件新增共享助手文件(`cursor.go` / `filedialog.go` / `checkboxgroup.go`)后, 这些组件反而因"缺新文件"被判成未安装 —— 恰恰是最该升级的一批。点名路径由 `dropUninstalled` 的宽松判定兜住了(其注释也写了"跨版本升级常在组件里新增共享文件"), 但裸 update 不经过它, 两条路径口径不一致。
+  - **修法**: ① `.xui-manifest.json` 新增 `components` 字段, `add` / `update` 结束时把本次处理的组件(含依赖闭包)并进去; 裸 update 优先照它刷新, 上游新增**专属**文件也不再有歧义。② 老清单回退按三选一判定: 文件齐全 / 有一个专属文件(只被这一个组件引用)在场 / 缺的全是被 ≥3 个组件引用的高共享助手; 阈值 3 把只被 1~2 个组件引用的主文件与同族文件(toggle.go / radio.go / select_model.go)挡在外面。③ `dropUninstalled` 注释同步口径。
+  - **验收**: 真实 registry 数据模拟: 新判据零漏更、零误判, 只新建 3 个本就必需的文件(旧判据漏 checkbox 且误建 toggle.go); 修复后的 CLI 在 stocktools 上裸 `xui update -p ui --dry-run --strict` 输出 31 项全部"已一致", 与显式点名结果完全一致。新增 3 组回归测试(启发式判据 / 清单优先 / 裸 update 两条路径补齐新增文件且不误装); `go vet ./...` / `go build ./...` / `go test ./...` 全绿。
+
 - ✅ **修复: 等宽 / 嵌套在 ScrollArea 里的 Label 同一高度内改字不刷新**(2026-11-15, 用户反馈 demo 导航6"最近操作未及时更新", 根因同第八节 196):
   - **现象**: demo 导航6 点击左侧菜单, "最近操作"标签在没有任何其它重绘时一直停在旧字; 有其它控件顺带重绘时才跳成新值。
   - **根因**: `Label.SetText` 只在元素矩形变化时重绘(旧/新矩形并集); 等宽(Fill / Fixed)标签改字不改变矩形, 原生按钮也不保证刷新, 画面停在旧帧(同第八节 196 的流式文本)。

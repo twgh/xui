@@ -341,6 +341,8 @@ xui self-update --check # 报当前版本 / 最新 tag / CLI 最后改动的 tag
 
 也就是说: 自己没动过的文件会跟着版本正常升级, 只有你手改过的那些才需要 `-o`; `--diff` 的每个文件头也标的是同一个来源判定。清单缺失(老项目 / 手动删了它)时退回保守模式 —— 一律"无法判断来源"并跳过, 加 `-o` 之后清单会重新生成。
 
+**裸 `xui update` 怎么知道该刷哪些组件**: 清单里的 `components` 记着装过的组件(含依赖闭包), `add` / `update` 每次把本次处理过的并进去。老清单没有这个字段时按文件反推: 至少一个文件在场, 且文件齐全、有一个专属文件(只被这一个组件引用)在场、或只缺高共享助手文件, 三者之一算装过。反推同样不会把只靠 `popup.go` / `textopt.go` 蹭中的未装组件(date-picker / toggle 等)整套拷进 `ui/`。
+
 **运行时版本**: 组件源码跟 `main`(永远最新), 而运行时 `github.com/twgh/xui` 是 Go 模块依赖、**只能按 tag 取**; `registry.json` 的 `runtime` 字段声明与这批组件**配套**的运行时版本(每次发布都抬成刚发的 tag)。`add` / `update` / `init` 装完组件会顺手把项目 `go.mod` 的该依赖抬到它(等价 `go get github.com/twgh/xui@<tag>` 再 `go mod tidy` —— `go get` 只往 `go.sum` **追加**新版本, 上个版本的条目要靠 `tidy` 才清得掉), 升级完直接 `go build` 就行, 不用你再 `go get -u`。
 
 这五种情况不动你的依赖: `--dry-run` 与 `--no-install` 只打印命令; `go.mod` 里把该模块 `replace` 到本地工作副本时以你的 `replace` 为准; 项目里找不到 `go.mod` 时只提示; 找到的那份 `go.mod` 既在当前目录之外、又没要求 `github.com/twgh/xui` 时也只提示。想自己锁版本: 先 `go get github.com/twgh/xui@<你选的 tag>` 再跑 `xui update`。

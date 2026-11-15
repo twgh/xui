@@ -2564,7 +2564,8 @@ func updateWith(src *source, reg *registry, opts componentOptions) {
 
 // dropUninstalled 去掉"组件目录里一个文件都没有"的组件: update 不装新组件(那是 add 的事)。
 // 只挡全空的: 部分文件缺失仍交给 install 补齐 —— 跨版本升级常在组件里新增共享文件,
-// 那些文件本地本来就不存在, 不补会直接编译不过(与 installedComponents 的"全都有才算已装"互补)。
+// 那些文件本地本来就不存在, 不补会直接编译不过。裸 update 走的 installedComponents
+// 现在同样容忍这类缺失, 点名与裸跑两条路径口径一致。
 func dropUninstalled(reg *registry, order []string, uiDir string) []string {
 	kept := make([]string, 0, len(order))
 	for _, name := range order {
@@ -2739,29 +2740,79 @@ func min3(a, b, c int) int {
 	return a
 }
 
-// installedComponents 扫描 uiDir, 返回**全部文件都在本地**的组件名(排序)。
+// installedComponents 返回"装过"的组件名(排序), 供不带组件名的 update 使用。
 //
-// 不能用"任意一个文件存在"判定: 组件之间共享助手文件(scrollbar.go / popup.go /
-// scrollarea.go / group.go …), 只装了 select 时 popup.go 等已存在, 会把 date-picker /
-// popover / dialog / table / tree / combobox / toggle 全判成"已安装", update 无参数
-// 时把它们整套拷进 ui/。要求 files 全部存在才能把共享文件归到真正装过的组件上。
+// 优先读安装清单里的 components —— add/update 每次都会把处理过的组件记进去, 这是唯一
+// 无歧义的来源: 上游给组件新增**专属**文件时, 单看文件分不出"这是上游新加的"和
+// "这组件从没装过", 只有清单能说清。
+//
+// 老清单(没有 components)退回按文件推断:
+//   - 不能用"任意一个文件存在": 组件之间共享助手文件(scrollbar.go / popup.go /
+//     scrollarea.go / group.go …), 只装了 select 就会把 date-picker / popover /
+//     dialog / table / tree / combobox 全判成"已装", 裸 update 把它们整套拷进 ui/。
+//   - 也不能用旧版的"全部文件都在": 跨版本升级常给组件**新增共享文件**(cursor.go /
+//     filedialog.go / checkboxgroup.go …), 缺它们恰恰说明该升级, 结果反被判成没装过,
+//     最该刷新的组件被整批漏掉。点名路径由 dropUninstalled 补齐, 但裸 update 不经过它。
+//   - 折中: 至少有一个文件在场, 并且满足三选一 —— 文件齐全 / 有一个**专属文件**
+//     (只被这一个组件引用)在场 / 缺的全是高共享助手文件(上游新增的就是这类)。
+//     只被 1~2 个组件引用的文件更像组件主文件或同族组件(toggle.go / radio.go /
+//     select_model.go), 它们缺席说明这组件没装过, 不能放过。
+//   - 只由共享文件组成的组件(scroll-area / badge)也算已装: 它们的 files 是已有
+//     文件的子集或只多一个共享助手, install 不会往 ui/ 里带进无关组件的主文件。
+//
+// 老清单回退终究是推断: 上游若新增一个**专属**文件(如 checkboxgroup.go, 只被
+// checkbox 引用), 从文件上分不出"新文件"和"没装过的组件主文件"。有了 components
+// 记录的新清单就不存在这个歧义, 所以 add/update 每次都会把组件名写进清单。
 func installedComponents(reg *registry, uiDir string) []string {
-	var names []string
-	for name, e := range reg.Components {
-		installed := len(e.Files) > 0
-		for _, f := range e.Files {
-			if _, err := os.Stat(filepath.Join(uiDir, f)); err != nil {
-				installed = false
-				break
+	if inst := loadManifest(uiDir); len(inst.Components) > 0 {
+		names := make([]string, 0, len(inst.Components))
+		for _, name := range inst.Components {
+			if _, ok := reg.Components[name]; ok {
+				names = append(names, name)
 			}
 		}
-		if installed {
+		sort.Strings(names)
+		return names
+	}
+	owners := map[string]int{}
+	for _, e := range reg.Components {
+		for _, f := range e.Files {
+			owners[f]++
+		}
+	}
+	var names []string
+	for name, e := range reg.Components {
+		if len(e.Files) == 0 {
+			continue
+		}
+		hit, strong, missing := false, false, false
+		missingAllShared := true
+		for _, f := range e.Files {
+			if _, err := os.Stat(filepath.Join(uiDir, f)); err != nil {
+				missing = true
+				if owners[f] < sharedHelperMinOwners {
+					missingAllShared = false
+				}
+				continue
+			}
+			hit = true
+			if owners[f] == 1 {
+				strong = true
+			}
+		}
+		if hit && (!missing || strong || missingAllShared) {
 			names = append(names, name)
 		}
 	}
 	sort.Strings(names)
 	return names
 }
+
+// sharedHelperMinOwners: 被至少这么多个组件引用的文件才算"共享助手"
+// (group.go / popup.go / scrollbar.go / cursor.go / filedialog.go 都是这一类)。
+// 阈值取 3 是为了把只被 1~2 个组件引用的主文件/同族文件挡在外面: 它们缺席时
+// 更可能是"这组件压根没装", 而不是"上游新增了文件"。
+const sharedHelperMinOwners = 3
 
 // manifestName 是安装清单的文件名(放在组件目录里, 点开头 —— go 工具链忽略)。
 //
@@ -2775,6 +2826,11 @@ const manifestName = ".xui-manifest.json"
 type installation struct {
 	Version string            `json:"version,omitempty"`
 	Files   map[string]string `json:"files"`
+	// Components 是装过的组件(含依赖闭包), add/update 每次把本次处理过的并进来。
+	// 裸 update 用它才能精确知道"刷新哪些组件": 单看文件反推, 上游给组件新增一个
+	// 专属文件时, 分不出"这是新文件"还是"这组件从没装过"。老清单没这个字段,
+	// installedComponents 会退回按文件推断。
+	Components []string `json:"components,omitempty"`
 	// Project 是 init -n 生成的项目骨架文件(go.mod / main.go / README.md / AGENTS.md /
 	// .gitignore, 键相对项目根)→ 写入时的 sha256。与组件共用这一份清单: 模板文件同样要
 	// 分得清"本地改过"和"模板随 CLI 升级", 否则覆写只能靠猜。
@@ -2797,6 +2853,7 @@ func loadManifest(uiDir string) installation {
 	if m.Project == nil {
 		m.Project = map[string]string{}
 	}
+	m.Components = got.Components
 	m.Version = got.Version
 	return m
 }
@@ -2983,6 +3040,10 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 	if dryRun {
 		return skipped
 	}
+	// 记下这次真正处理过的组件(含依赖闭包)。裸 update 有它就不必再从文件反推
+	// "装过什么" —— 上游给组件新增专属文件时, 从文件是分不出"新文件"和
+	// "没装过的组件主文件"的, 只有清单里这份记录无歧义。
+	inst.Components = mergeNames(inst.Components, order)
 	if v := cliVersion(); v != "" {
 		if prevVersion != "" && prevVersion != v {
 			info("组件版本 %s → %s", prevVersion, v)
@@ -2993,6 +3054,27 @@ func install(src *source, reg *registry, order []string, uiDir string, overwrite
 		warn("写入安装清单失败: %v", err)
 	}
 	return skipped
+}
+
+// mergeNames 把本次处理的组件并入清单里已装组件的集合(去重 + 排序, 让清单稳定)。
+func mergeNames(existing, added []string) []string {
+	seen := make(map[string]bool, len(existing)+len(added))
+	for _, n := range existing {
+		if n != "" {
+			seen[n] = true
+		}
+	}
+	for _, n := range added {
+		if n != "" {
+			seen[n] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for n := range seen {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // exitPartial 是 --strict 下"有文件被跳过"的退出码。与 fatal 的 1 分开, CI 才能区分

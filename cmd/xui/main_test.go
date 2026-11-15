@@ -192,6 +192,52 @@ func TestInstalledComponentsRequiresAllFiles(t *testing.T) {
 	}
 }
 
+// 跨版本升级给组件新增共享助手文件(cursor.go)时, 旧实现要求"files 全都在本地",
+// 会把 button / badge 判成没装过 —— 裸 update 因此漏掉最该刷新的组件。
+// 共享文件缺席要放行, 但 switch / checkbox / date-picker 这类只靠共享文件蹭中的
+// 未装组件仍必须挡住。
+func TestInstalledComponentsToleratesUpstreamSharedFiles(t *testing.T) {
+	reg := &registry{Components: map[string]entry{
+		"button":      {Files: []string{"button.go", "group.go", "cursor.go"}},
+		"switch":      {Files: []string{"switch.go", "cursor.go"}},
+		"checkbox":    {Files: []string{"checkbox.go", "cursor.go"}},
+		"badge":       {Files: []string{"separator.go", "cursor.go"}},
+		"separator":   {Files: []string{"separator.go", "cursor.go"}},
+		"date-picker": {Files: []string{"datepicker.go", "group.go"}},
+	}}
+	dir := t.TempDir()
+	for _, f := range []string{"button.go", "group.go", "separator.go"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("package ui\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := installedComponents(reg, dir)
+	if want := "badge,button,separator"; strings.Join(got, ",") != want {
+		t.Errorf("installedComponents = %v, 期望 %s", got, want)
+	}
+}
+
+// 新清单记了组件名就照它来: 上游新增专属文件(从文件反推分不出"新文件"与
+// "没装过的主文件")也能精确刷新, 已下线的组件名则过滤掉。
+func TestInstalledComponentsPrefersManifest(t *testing.T) {
+	reg := &registry{Components: map[string]entry{
+		"button": {Files: []string{"button.go", "group.go"}},
+		"switch": {Files: []string{"switch.go", "cursor.go"}},
+	}}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "button.go"), []byte("package ui\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inst := installation{Files: map[string]string{}, Components: []string{"switch", "button", "retired"}}
+	if err := inst.save(dir); err != nil {
+		t.Fatal(err)
+	}
+	got := installedComponents(reg, dir)
+	if want := "button,switch"; strings.Join(got, ",") != want {
+		t.Errorf("installedComponents = %v, 期望 %s (清单优先)", got, want)
+	}
+}
+
 // stubWinresMake 把 winresMake 换成桩(写出假的 .syso), 避免单测依赖本机 xc;
 // 返回的切片记录每次调用的 allowInstall。
 func stubWinresMake(t *testing.T) *[]bool {
@@ -2963,6 +3009,57 @@ func TestUpdateFillsMissingFileOfInstalledComponent(t *testing.T) {
 	update(componentOptions{names: []string{"button"}, uiDir: "ui"})
 	if _, err := os.Stat(filepath.Join(uiDir, "press.go")); err != nil {
 		t.Errorf("已装组件缺的文件该补齐: %v", err)
+	}
+}
+
+// 裸 update 的回归: 装过 button, 上游后来给 button 新增共享文件 cursor.go。
+// 旧实现因"缺文件"把 button 判成没装过, 裸 update 什么都不刷; 修复后必须补齐,
+// 同时不能把没装过的组件整套带进来。新清单走 components 精确路径, 老清单
+// (没有 components)走按文件推断的路径 —— 两条都要过。
+func TestBareUpdateRefreshesInstalledComponentWithNewSharedFile(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		name := "manifest-components"
+		if legacy {
+			name = "legacy-manifest"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("XUI_REGISTRY", moduleRoot())
+			t.Setenv("XUI_NO_UPDATE_CHECK", "1")
+			dir := t.TempDir()
+			old, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chdir(dir); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(old) })
+
+			add(componentOptions{names: []string{"button"}, uiDir: "ui"})
+			uiDir := filepath.Join(dir, "ui")
+			inst := loadManifest(uiDir)
+			if len(inst.Components) == 0 {
+				t.Fatal("add 之后清单里该记下装过的组件")
+			}
+			if legacy { // 模拟修复前生成、没有 components 字段的老清单
+				inst.Components = nil
+				if err := inst.save(uiDir); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Remove(filepath.Join(uiDir, "cursor.go")); err != nil {
+				t.Fatal(err)
+			}
+			out := captureOutput(t, func() { update(componentOptions{uiDir: "ui"}) })
+			if !fileExists(filepath.Join(uiDir, "cursor.go")) {
+				t.Errorf("裸 update 没补齐已装组件新增的共享文件: %s", out)
+			}
+			for _, f := range []string{"datepicker.go", "popover.go", "toggle.go"} {
+				if fileExists(filepath.Join(uiDir, f)) {
+					t.Errorf("裸 update 把没装过的组件文件 %s 带进来了", f)
+				}
+			}
+		})
 	}
 }
 
