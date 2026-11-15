@@ -32,11 +32,28 @@ func buildNav2Page(body *widget.LayoutEle) {
 		panel.SetText([]string{"账户设置面板", "密码设置面板", "通知设置面板"}[i]).Redraw()
 	})
 
-	xui.ItemFill(hint(v.Handle, "line"))
+	xui.ItemFill(hint(v.Handle, "line(切换时指示条 150ms 从旧标签滑到新标签)"))
 	// Tabs 的标签宽度按创建时给的 cx 等分, 不能被布局拉伸, 所以用固定宽度
 	lineTabs := ui.NewTabs(0, 0, 200, v.Handle, []string{"概览", "详情"},
 		ui.WithTabsVariant(ui.TabsLine), ui.WithTabsActive(1))
 	xui.ItemWidth(lineTabs, 200)
+
+	xui.ItemFill(hint(v.Handle, "选中项被禁用 → 自动回退到最近可用(TB3)"))
+	fbTabs := ui.NewTabs(0, 0, 200, v.Handle, []string{"一", "二", "三"}, ui.WithTabsActive(1))
+	xui.ItemWidth(fbTabs, 200)
+	fbInfo := ui.NewLabel(0, 0, 0, 20, "当前: 二", v.Handle).SetMuted().SetFontSize(14)
+	xui.ItemFill(fbInfo)
+	fbTabs.OnChange(func(i int32) {
+		fbInfo.SetText(fmt.Sprintf("当前: %d", i)).Redraw()
+	})
+	fbRow := xui.HStack(v.Handle, ui.ButtonSizeXs.Height()+1, 8)
+	toggleDis := ui.NewButton(0, 0, 0, 0, "禁用/启用「二」", fbRow.Handle, ui.WithSize(ui.ButtonSizeXs),
+		ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(toggleDis, 132)
+	toggleDis.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		fbTabs.SetDisabled(1, !fbTabs.Disabled(1))
+		return 0
+	})
 
 	xui.ItemFill(hint(v.Handle, "可否决切换(TB1) / 无选中(TB2): 「发布」被拦下, 按钮可清空选中"))
 	vetoTabs := ui.NewTabs(0, 0, 200, v.Handle, []string{"草稿", "预览", "发布"},

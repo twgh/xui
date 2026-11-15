@@ -37,6 +37,25 @@ func buildForm1Page(body *widget.LayoutEle) {
 	ta := ui.NewTextarea(0, 0, 0, 0, v.Handle, ui.WithPlaceholder("介绍一下自己…"))
 	xui.ItemFill(ta)
 	ta.SetValue("测试文本域:\n输入内容后高度自动增长。")
+	xui.ItemFill(hint(v.Handle, "文本域行数(WithTextareaRows(3) = 最小 3 行, 仍随内容长高)"))
+	xui.ItemFill(ui.NewTextarea(0, 0, 0, 0, v.Handle, ui.WithTextareaRows(3), ui.WithPlaceholder("固定三行起")))
+	xui.ItemFill(hint(v.Handle, "可拖拽文本域(右下角抓手拖改最小高度)"))
+	xui.ItemFill(ui.NewTextarea(0, 0, 0, 0, v.Handle, ui.WithTextareaRows(2), ui.WithTextareaResize()))
+	xui.ItemFill(hint(v.Handle, "文件输入(对应 <input type=\"file\">): 右侧「选择文件」调系统对话框"))
+	fileIn := ui.NewInput(0, 0, 0, 0, v.Handle,
+		ui.WithFileInput(ui.WithFileDialogFilters(
+			ui.FileFilter{Name: "图片", Patterns: "*.png;*.jpg;*.jpeg"},
+			ui.FileFilter{Name: "所有文件", Patterns: "*.*"},
+		)))
+	xui.ItemFill(fileIn)
+	fileIn.OnFilesChange(func(paths []string) {
+		if len(paths) > 0 {
+			println("选中文件:", paths[0])
+		}
+	})
+	xui.ItemFill(hint(v.Handle, "多选文件(显示「首个文件名 +N」, 完整路径走 Files())"))
+	multiIn := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithFileInputMulti())
+	xui.ItemFill(multiIn)
 	xui.ItemFill(hint(v.Handle, "禁用 / 只读(只读可聚焦、可选中复制, 但打不进字)"))
 	ro := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithInputReadOnly())
 	xui.ItemFill(ro)

@@ -16,7 +16,7 @@
       "deps": []
     },
     "color-picker": {
-      "files": ["colorpicker.go", "popup.go", "input.go", "scrollbar.go", "group.go", "textopt.go"],
+      "files": ["colorpicker.go", "popup.go", "input.go", "scrollbar.go", "group.go", "textopt.go", "filedialog.go"],
       "deps": []
     },
     "file-dialog": {
@@ -32,11 +32,11 @@
       "deps": []
     },
     "input": {
-      "files": ["input.go", "scrollbar.go", "group.go"],
+      "files": ["input.go", "scrollbar.go", "group.go", "filedialog.go"],
       "deps": []
     },
     "textarea": {
-      "files": ["textarea.go", "input.go", "scrollbar.go", "group.go"],
+      "files": ["textarea.go", "input.go", "scrollbar.go", "group.go", "filedialog.go"],
       "deps": []
     },
     "label": {
@@ -145,7 +145,7 @@
     },
     "table": {
       "files": ["table.go", "scrollbar.go"],
-      "deps": []
+      "deps": ["label"]
     },
     "data-table": {
       "files": ["datatable.go", "datatablefacet.go"],
@@ -224,7 +224,7 @@
       "deps": []
     },
     "input-group": {
-      "files": ["inputgroup.go", "input.go", "scrollbar.go", "group.go", "button.go", "kbd.go", "spinner.go", "textopt.go", "press.go", "cursor.go"],
+      "files": ["inputgroup.go", "input.go", "scrollbar.go", "group.go", "button.go", "kbd.go", "spinner.go", "textopt.go", "press.go", "cursor.go", "filedialog.go"],
       "deps": ["menu"]
     },
     "input-otp": {

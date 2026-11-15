@@ -217,6 +217,18 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 		ui.WithProgressFieldTitle("上传进度"), ui.WithProgressFieldValue(66))
 	xui.ItemFill(pf)
 
+	xui.ItemFill(hint(v4.Handle, "独立标题与数值(ProgressLabel / ProgressValue: 标题左、数值右, 数值自动跟随)"))
+	plRow := xui.HStack(v4.Handle, 20, 8)
+	plTitle := ui.NewProgressLabel(0, 0, 0, 0, "下载进度", plRow.Handle)
+	xui.ItemWidth(plTitle, 96)
+	pvBar := ui.NewProgress(0, 0, 0, 0, v4.Handle)
+	xui.ItemFill(pvBar)
+	pv := ui.NewProgressValue(pvBar, 0, 0, 0, 0, plRow.Handle)
+	xui.ItemWidth(pv, 96)
+	pv.SetFormat(func(v, max float64) string { return fmt.Sprintf("%.0f / %.0f MB", v, max) })
+	pvBar.SetMax(240)
+	pvBar.SetValue(86)
+
 	xui.ItemFill(hint(v4.Handle, "轨道配色 / 圆角可配(Track 是独立部件, 上游可传 className)"))
 	pTrack := ui.NewProgress(0, 0, 0, 0, v4.Handle, ui.WithProgressRadius(3),
 		ui.WithProgressTrackColor(xui.Hex("#e5e7eb")),

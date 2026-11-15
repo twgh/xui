@@ -40,6 +40,14 @@ func buildForm5Page(body *widget.LayoutEle) {
 	fCustom.Description("条目放在 Field 子容器里, 仍参与组互斥与键盘导航。")
 	grp.Attach(rCustom, "custom")
 
+	xui.ItemFill(hint(vGrp.Handle, "横向排列(WithRadioGroupHorizontal, 条目宽按文字量固定)"))
+	grpH := ui.NewRadioGroup(vGrp.Handle, ui.WithRadioGroupHorizontal(), ui.WithRadioGroupValue("m"))
+	xui.ItemFill(grpH)
+	grpH.AddItem("s", "小")
+	grpH.AddItem("m", "中")
+	grpH.AddItem("l", "大")
+	grpH.AddItem("xl", "特大")
+
 	xui.ItemFill(hint(vGrp.Handle, "禁用整组"))
 	grpDis := ui.NewRadioGroup(vGrp.Handle, ui.WithRadioGroupDisabled(), ui.WithRadioGroupValue("a"))
 	xui.ItemFill(grpDis)

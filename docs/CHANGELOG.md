@@ -5,6 +5,25 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查清单第八批: 可直接排期条目一次性落地(28 条, 跨 18 个组件)**(2026-11-15, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节的"可直接排期"清单):
+  - **Input / Textarea(I1 / I6 / TA2 / TA3)**: `WithFileInput(dlgOpts...)` / `WithFileInputMulti` / `WithFileInputMaxFiles` 把输入框变成文件输入 —— 只读显示文件名(多选 `首个 +N`)+ 右侧"选择文件"文字钮, 点它调 FileDialog(类型过滤器 / 标题 / 初始目录透传), 取消不改值; `SetFiles` / `Files` / `ClearFiles` / `OnFilesChange`, `FieldValue()` 在文件形态下返回路径列表(必填 = 必须选文件)。`WithTextareaRows(n)` 的最小高度按实际行高换算(与 cy 二选一), `WithTextareaResize()` 右下角抓手拖拽改最小高度(屏幕物理增量 ÷ DPI, 抓手区用斜向光标, 自动长高继续生效)。原生 Edit 侧补 `WithInputSelectColor`(选区底色, 默认主色 25%)/ `WithInputCaretWidth` / `WithInputAutoSelect` / `Undo` / `Redo`。
+  - **Select(S6)**: `WithSelectHighlightOnHover(false)` / `SetHighlightOnHover` —— 悬停只给一层淡底, 键盘高亮不跟着鼠标走(Base UI 的 `highlightItemOnHover`)。
+  - **Tooltip(TT1 / TT2)**: `WithTipHoverable()` 让气泡可移入(动态去掉 `WS_EX_TRANSPARENT`, 锚点 MouseLeave 延迟 120ms 按光标位置确认, 跨过箭头/间距不闪), `WithTipArrowPadding(px)` 让箭头离气泡两端留内距。踩坑与物理像素判定记入 DESIGN 第八节 213。
+  - **Badge(BA1)**: 可点击徽章进 Tab 链、Enter/空格触发; focus-visible 环与 aria-invalid 环画在胶囊内侧 2px(元素矩形就是胶囊); `WithBadgeInvalid` / `SetInvalid` / `Invalid`。
+  - **Tabs(TB3 / TB4)**: 选中项被禁用时自动回退到最近的可用标签(全禁用则清空选中, 程序化 SetActive 仍可选禁用项); line 变体指示条切换带 150ms 滑动(运行时过渡表, 不在过渡中时每帧跟住当前标签矩形)。
+  - **Switch(SW3)**: 滑块位移过渡 150ms(运行时一次性过渡), 回滚(只读/否决)同样跟着回, 初始值直接落位。
+  - **RadioGroup(RG4)**: `WithRadioGroupHorizontal` / `SetHorizontal` 横向排列, 条目宽按文字量成固定宽(横向主轴是宽度), 换主题重新量。
+  - **Card(C3 / C5)**: `FullBleed(cy)` 通栏块做**卡片的直接子项**(内容区的元素 padding 逃不出去, 见第八节 212); 卡片头宽 < 300 时动作列换到标题下方(容器查询的等价)。
+  - **Menu(DM2 / DM3 / DM4)**: `Side` / `Align` / `Offset(side, align)` 对应 side / align / sideOffset / alignOffset(默认 bottom + start + 4, 放不下翻对侧再夹工作区); `SetRadioGroupValue` / `RadioGroupValue` / `OnRadioGroupChange` 用条目文本当组值; `SetDisabled(true)` 整菜单按禁用态构建。
+  - **Table(TBL1 / TBL2)**: `SetCaption` / `SetFooter` 两条表外横带(与表格同父的兄弟元素, 见第八节 211), 合计行 border-t + bg-muted/50 并按列对齐; 两者同用时说明压在最下面。
+  - **Data Table(DT1)**: `WithDataTableRemote()` 服务端分页 —— rows 就是当前页, 本地不排序/筛选, 总数走 `SetTotalRows`, 翻页/每页行数/排序/筛选只发 `OnQueryChange(DataTableQuery)`。
+  - **Progress(PR4)**: `NewProgressLabel` / `NewProgressValue(bar, ...)` 独立摆放的标题与数值(数值自动跟随, `SetFormat` 覆盖格式)。
+  - **Avatar(AV5)**: `OnImageStatus(func(ok bool))`(注册即回调一次)+ `ImageLoaded()`。
+  - **ScrollArea(SA3)**: `ScrollTo` / `ScrollIntoView`(已可见不动)/ `ScrollToCenter`。
+  - **Dialog / Sheet / AlertDialog(SH6 / SH7 / AD2 / AD4)**: `WithDialogOverlayColor` / `WithDialogOverlayAlpha` 覆盖遮罩(默认对话框黑 10%、Sheet 黑 50%); Sheet 进场改成 base-nova 的 2.5rem(40px)小位移 + 整组淡入(`WithSheetSlideDistance` 可回到整块推入), 测试同步更新; AlertDialog 的媒体块可放图片 —— `WithAlertDialogMediaImage` / `SetMediaImage` / `MediaImage`, CPU 侧裁剪成圆角矩形(与 Avatar 同一套采样, 但**不能跨文件复用**, 闭包单独下发)。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿。几何探针(720×620)实测: 卡片 400 宽时内容区 `(0,16)-(400,68)`、通栏块 `(0,84)-(400,124)` 左右到边; 表格 `(0,0)-(260,200)` / caption `(0,206)-(260,226)` / footer `(0,226)-(260,262)`; `WithTextareaRows(3)` 高 82(3×22 行高 + 16 内边距); 横向 RadioGroup 两项各 77 宽、同一行。临时项目逐组件 `add input / textarea / input-group / color-picker / table / data-table / progress / alert-dialog / sheet / scroll-area / select / card / menu / tabs / switch / radio-group / badge / tooltip / avatar` 与 `add --all` 后 `go build ./ui` 均通过。
+  - **登记**: 新依赖写进 registry —— `input` / `textarea` / `input-group` / `color-picker` 的 files 补 `filedialog.go`(文件输入要用 FileDialog), `table` 的 deps 补 `label`(说明文字用 Label); `scroll-area` 与 `alert-dialog` 的闭包里没有 colorpicker.go / avatar.go, 因此这两处的钳制与图片采样各自留了本地副本。`runtime` / `cliChange` 不动(未打 tag)。
+
 - ✅ **修复: 手风琴整组禁用后点分隔线 / 内容末尾会冒出一圈蓝色焦点框**(2026-11-15, 根因与实测见 DESIGN 第八节 210): 分隔线(1px)、内容末尾的 10px 占位块、手风琴与折叠面板的根容器/内容区都是普通 Element, 而 xcgui 的普通 Element **默认可聚焦并绘制焦点框**(`EnableFocus` / `EnableDrawFocus` 默认开)。整组禁用后触发区 `Enable(false)` 不再接收鼠标, 按下消息落到这些装饰元素上, 框架就照元素矩形描一圈系统高亮色 —— 1px 的线被描成横贯整宽的蓝色细矩形, 容器则是一整块大框。修法: 非交互元素创建时关掉三件套 `EnableMouseThrough(true)` / `EnableFocus(false)` / `EnableDrawFocus(false)`(`separator.go` 全部分隔线、`accordion.go` 的根容器与 `ensureBottomPad` 占位块、`collapsible.go` 的根容器与内容区)。只关绘制也能消框, 但焦点仍会跳到装饰元素上, 所以一起关。验收: 探针(720×340 手风琴两项 + 整组禁用)里 `XWnd_GetFocusEle` 修复前落在分隔线句柄(矩形 `(0,115)-(704,116)`)、修复后点同一位置焦点无变化; demo 基础4 点"禁用整组"后点分隔线, 前后截图**逐像素 diff = 0**。
 
 - ✅ **组件特性核查清单第七批: 核查 #24 Accordion~#30 Scroll Area, 落地 Accordion 根禁用与两级否决 / Slider edge 对齐与 largeStep / Skeleton 配色 / Separator 颜色与撑满 / ScrollArea 常显 / Sheet·AlertDialog 开合接口**(2026-11-15, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 3.7 与第五节):

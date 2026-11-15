@@ -102,6 +102,17 @@ func WithSheetCloseButton(b bool) SheetOption {
 	}
 }
 
+// WithSheetSlideDistance 覆盖进场/退场的位移量(逻辑像素, 默认 40 = 2.5rem)。
+// 传大于面板尺寸的值可恢复"整块从屏幕外推入"的旧观感; 传 0 用默认值。
+func WithSheetSlideDistance(px int32) SheetOption {
+	return func(s *Sheet) {
+		if s == nil || s.d == nil {
+			return
+		}
+		s.d.slideDist = px
+	}
+}
+
 // WithSheetDuration 覆盖进场/退场时长(0 = 用默认 300ms / 200ms)。
 func WithSheetDuration(open, close time.Duration) SheetOption {
 	return func(s *Sheet) {
@@ -574,26 +585,35 @@ func (d *Dialog) applyPanelOffset(dx, dy int32) {
 	d.appliedDX, d.appliedDY = dx, dy
 }
 
-// sheetSlideStart 返回面板"完全贴在屏幕外"时的偏移量(像素)。
+// sheetSlideDist 是进场位移量的默认值: base-nova 的 sheet 面板用
+// data-starting-style 的 translate-x-[2.5rem](40px) —— 小位移 + 淡入, 面板并不从
+// 屏幕外整块推入(那是移动端手势的观感)。需要整块推入时用 WithSheetSlideDistance
+// 传一个大于面板宽度的值。
+const sheetSlideDist int32 = 40
+
+// sheetSlideStart 返回面板进场起点相对最终位置的偏移量(逻辑像素)。
 func (d *Dialog) sheetSlideStart() (int32, int32) {
-	w := d.panel.Right - d.panel.Left
-	h := d.panel.Bottom - d.panel.Top
+	dist := d.slideDist
+	if dist <= 0 {
+		dist = sheetSlideDist
+	}
 	switch d.sheetSide {
 	case SheetLeft:
-		return -w, 0
+		return -dist, 0
 	case SheetTop:
-		return 0, -h
+		return 0, -dist
 	case SheetBottom:
-		return 0, h
+		return 0, dist
 	default:
-		return w, 0
+		return dist, 0
 	}
 }
 
-// paintSheet 画遮罩与面板: bg-black/50, 面板 bg-background + 贴边侧 1px 边框。
+// paintSheet 画遮罩与面板: bg-black/50(可被 WithDialogOverlay* 覆盖),
+// 面板 bg-popover + 贴边侧 1px 边框。
 func (d *Dialog) paintSheet(p *xui.Painter) {
 	t := xui.Current()
-	p.FillRound(&p.Rc, xui.RGBA(0, 0, 0, 128), 0)
+	p.FillRound(&p.Rc, d.overlayFill(0.5), 0)
 
 	panel := d.panel
 	if panel.Right <= panel.Left || panel.Bottom <= panel.Top {
@@ -638,7 +658,8 @@ func (d *Dialog) showSheet() *Dialog {
 	dx, dy := d.sheetSlideStart()
 	d.slideX, d.slideY = dx, dy
 	d.applyPanelOffset(dx, dy)
-	xc.XEle_SetAlpha(d.overlay.Handle, 0)
+	// 整组(遮罩 + 面板 + 全部子元素)从全透明淡入: 元素 alpha 不级联, 必须逐个设。
+	xui.SetSubtreeAlpha(0, d.overlay.Handle)
 	d.overlay.Redraw(false)
 	xc.XWnd_Redraw(d.hWnd, true)
 
@@ -658,7 +679,7 @@ func (d *Dialog) showSheet() *Dialog {
 		if !d.open || d.dragging {
 			return
 		}
-		xc.XEle_SetAlpha(d.overlay.Handle, byte(v*255+0.5))
+		xui.SetSubtreeAlpha(v, d.overlay.Handle)
 		d.slideX = int32(float64(dx)*(1-v) + 0.5)
 		d.slideY = int32(float64(dy)*(1-v) + 0.5)
 		d.applyPanelOffset(d.slideX, d.slideY)
@@ -694,7 +715,7 @@ func (d *Dialog) animateSheetClose(startX, startY int32) {
 		dur = sheetCloseDuration
 	}
 	xui.Presence(d.hWnd, d.fadeKey, false, dur, func(v float64) {
-		xc.XEle_SetAlpha(d.overlay.Handle, byte(v*255+0.5))
+		xui.SetSubtreeAlpha(v, d.overlay.Handle)
 		d.slideX = startX + int32(float64(dx-startX)*(1-v)+0.5)
 		d.slideY = startY + int32(float64(dy-startY)*(1-v)+0.5)
 		d.applyPanelOffset(d.slideX, d.slideY)
@@ -708,7 +729,7 @@ func (d *Dialog) finishSheetHide() {
 	showEleTree(d.overlay.Handle, false)
 	d.slideX, d.slideY = 0, 0
 	d.appliedDX, d.appliedDY = 0, 0
-	xc.XEle_SetAlpha(d.overlay.Handle, 255)
+	xui.SetSubtreeAlpha(1, d.overlay.Handle) // 复位整组透明度(下次 Show 从 0 淡入)
 	xc.XWnd_Redraw(d.hWnd, true)
 }
 

@@ -126,11 +126,15 @@ type Dialog struct {
 	//   - media: 40×40 的图标块(可带破坏性配色);
 	//   - dismissOutside = false: 点遮罩不关闭(radix AlertDialog 的 onInteractOutside preventDefault);
 	//   - initialFocus: 打开时强制聚焦的元素(AlertDialog 聚焦 Cancel, 而不是内容区首项)。
-	alert          bool
-	alertSize      AlertDialogSize
-	media          *widget.Element
-	mediaIcon      string
-	mediaTone      AlertDialogMediaTone
+	alert     bool
+	alertSize AlertDialogSize
+	media     *widget.Element
+	mediaIcon string
+	// mediaImg 是媒体块里的图片句柄(SetMediaImage), 非 0 时优先于图标绘制;
+	// 由遮罩的 Destroy 事件统一释放(对话框与媒体块同生命周期)。
+	mediaImg     int
+	mediaImgPath string
+	mediaTone    AlertDialogMediaTone
 	dismissOutside bool
 	initialFocus   int
 	finalFocus     int  // 关闭后聚焦的元素(0 = 挨个还焦点给下层模态)
@@ -145,6 +149,12 @@ type Dialog struct {
 	scrollOn  bool
 	scrollMax int32
 
+	// 遮罩可配(SH6 / AD4): 默认黑 10%(Sheet/Drawer 是黑 50%, 见 paintSheet)。
+	// overlayAlpha 用"是否设置"的标志区分 0(完全透明)与未设置。
+	overlayColor    xui.Color
+	overlayAlpha    float64
+	overlayAlphaSet bool
+
 	// sheet/drawer 形态(由 sheet.go 配置): 面板贴边而非居中, 四向侧边 + 滑入。
 	// 面板本身仍是 overlay 的自绘, 子元素按最终位置排好后整体平移(slideX/slideY)。
 	sheet       bool
@@ -154,6 +164,7 @@ type Dialog struct {
 	sheetPanelW int32
 	durOpen     time.Duration
 	durClose    time.Duration
+	slideDist   int32 // 进场位移量(逻辑像素), 0 = 默认 40(2.5rem)
 	slideX      int32
 	slideY      int32
 	appliedDX   int32
@@ -223,6 +234,26 @@ func WithDialogFinalFocus(hEle int) DialogOption {
 	return func(d *Dialog) { d.finalFocus = hEle }
 }
 
+// WithDialogOverlayColor 覆盖遮罩颜色(对应 DialogOverlay 传 className 改配色)。
+// 默认是固定的黑色 10%(Sheet / Drawer 是黑色 50%); 传 xui.None 恢复默认。
+// 传进来的颜色会被 WithDialogOverlayAlpha 的透明度替换, 只在需要换色相(如品牌色蒙层)时用。
+func WithDialogOverlayColor(c xui.Color) DialogOption {
+	return func(d *Dialog) { d.overlayColor = c }
+}
+
+// WithDialogOverlayAlpha 覆盖遮罩不透明度(0 = 全透明, 1 = 全黑)。
+// 默认值按形态取: 普通对话框 0.1(上游 bg-black/10), Sheet / Drawer 0.5(bg-black/50)。
+func WithDialogOverlayAlpha(a float64) DialogOption {
+	return func(d *Dialog) {
+		if a < 0 {
+			a = 0
+		} else if a > 1 {
+			a = 1
+		}
+		d.overlayAlpha, d.overlayAlphaSet = a, true
+	}
+}
+
 // NewDialog 创建对话框(默认隐藏)。hWnd 为宿主窗口句柄, 对话框覆盖整个窗口。
 func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	win := app.NewWindowByHandle(hWnd)
@@ -253,6 +284,15 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	d.overlay.EnableEvent_XE_MOUSEWHEEL(true)
 	d.overlay.AddEvent_MouseWheel(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 		*pbHandled = true
+		return 0
+	})
+	// AlertDialogMedia 的图片句柄与对话框同生命周期: 遮罩销毁时一起释放
+	// (换图时由 SetMediaImage 自己释放旧的)。
+	d.overlay.AddEvent_Destroy(func(hEle int, pbHandled *bool) int {
+		if d.mediaImg != 0 {
+			xc.XImage_Destroy(d.mediaImg)
+			d.mediaImg = 0
+		}
 		return 0
 	})
 
@@ -1107,6 +1147,25 @@ func (d *Dialog) scrollContentHeight(innerW, headerH, footerH, bodyH int32) int3
 	return h
 }
 
+// overlayFill 返回遮罩的填充色: 色相默认黑(可被 WithDialogOverlayColor 覆盖),
+// 不透明度先看选项, 没设过就用该形态的默认值(普通对话框 0.1 / Sheet 0.5)。
+func (d *Dialog) overlayFill(defAlpha float64) xui.Color {
+	a := defAlpha
+	if d.overlayAlphaSet {
+		a = d.overlayAlpha
+	}
+	if a < 0 {
+		a = 0
+	} else if a > 1 {
+		a = 1
+	}
+	base := xui.RGBA(0, 0, 0, 255)
+	if !d.overlayColor.IsNone() {
+		base = d.overlayColor
+	}
+	return base.WithAlpha(byte(a*255 + 0.5))
+}
+
 // onPaint 绘制遮罩、面板、页脚带与描边。
 func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
@@ -1120,8 +1179,8 @@ func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	t := xui.Current()
 
-	// 遮罩: bg-black/10(shadcn 的遮罩是固定黑色 10%, 不随主题变化)
-	p.FillRound(&p.Rc, xui.RGBA(0, 0, 0, 26), 0)
+	// 遮罩: bg-black/10(shadcn 的遮罩是固定黑色 10%, 不随主题变化; 可被选项覆盖)
+	p.FillRound(&p.Rc, d.overlayFill(0.1), 0)
 
 	panel := d.panel // 面板/页脚都存遮罩局部坐标, 与绘制坐标系一致
 	if panel.Right <= panel.Left || panel.Bottom <= panel.Top {
@@ -1159,7 +1218,7 @@ func (d *Dialog) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 // 破坏性变体是 bg-destructive/10 text-destructive(暗色 /20)。
 func (d *Dialog) onMediaPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
-	if p == nil || d.mediaIcon == "" {
+	if p == nil || (d.mediaIcon == "" && d.mediaImg == 0) {
 		return 0
 	}
 	*pbHandled = true
@@ -1173,6 +1232,12 @@ func (d *Dialog) onMediaPaint(hEle int, hDraw int, pbHandled *bool) int {
 		bg, fg = t.Destructive.ScaleAlpha(frac), t.Destructive
 	}
 	p.FillRound(&p.Rc, bg, t.RadiusMd())
+	// 图片形态(AlertDialogMedia 放任意图片): 位图本身已按圆角矩形做过蒙版,
+	// 直接 1:1 铺满元素矩形(同 Avatar 的画法)。
+	if d.mediaImg != 0 {
+		p.Draw.XDraw_ImageEx(d.mediaImg, p.Rc.Left, p.Rc.Top, p.W(), p.H())
+		return 0
+	}
 	ir := p.Rc
 	inset := (alertDlgMediaSize - alertDlgMediaIcon) / 2
 	ir.Left += inset

@@ -28,6 +28,8 @@ type Select struct {
 	disabled      bool
 	readOnly      bool
 	valueText     func(item SelectItem) string // 触发区文字格式化(S8), nil = 用条目文字
+	// noHoverHl: 鼠标悬停不把条目高亮成"当前项"底色(Base UI Root 的 highlightItemOnHover=false)。
+	noHoverHl bool
 	panel         *popoverPanel
 	scroll        *ScrollArea
 	rows          *widget.LayoutEle
@@ -105,6 +107,15 @@ func WithSelectReadOnly() SelectOption {
 // 传 nil 恢复默认(条目 Text, 空则回落 Value)。
 func WithSelectValueText(fn func(item SelectItem) string) SelectOption {
 	return func(s2 *Select) { s2.valueText = fn }
+}
+
+// WithSelectHighlightOnHover 设置鼠标悬停条目时是否把它画成"当前高亮"底色
+// (对应 Base UI Select Root 的 highlightItemOnHover, 默认 true)。
+//
+// 关闭后悬停只给一层很淡的底, 键盘高亮不跟着鼠标走 —— 适合"鼠标只用来指, 选中态
+// 完全由键盘决定"的场景。运行时切换用 SetHighlightOnHover。
+func WithSelectHighlightOnHover(on bool) SelectOption {
+	return func(s2 *Select) { s2.noHoverHl = !on }
 }
 
 // NewSelect 创建下拉选择框。cx/cy 传 0: cy 用尺寸档高度, cx 按内容量宽
@@ -257,6 +268,23 @@ func (s *Select) SetReadOnly(v bool) *Select {
 
 // ReadOnly 返回是否只读。
 func (s *Select) ReadOnly() bool { return s != nil && s.readOnly }
+
+// SetHighlightOnHover 运行时切换"悬停即高亮"(语义同 WithSelectHighlightOnHover)。
+func (s *Select) SetHighlightOnHover(on bool) *Select {
+	if s == nil {
+		return s
+	}
+	s.noHoverHl = !on
+	for _, r := range s.flat {
+		if r.btn != nil {
+			r.btn.Redraw(false)
+		}
+	}
+	return s
+}
+
+// HighlightOnHover 报告悬停是否会把条目高亮成当前项底色。
+func (s *Select) HighlightOnHover() bool { return s != nil && !s.noHoverHl }
 
 // SetValueText 运行时替换触发区文字格式化(语义同 WithSelectValueText)。
 func (s *Select) SetValueText(fn func(item SelectItem) string) *Select {
@@ -838,9 +866,17 @@ func (s *Select) paintItem(r *selectRow, hEle int, hDraw int, pbHandled *bool) {
 	st := xui.StateOf(hEle)
 
 	p.FillRound(&p.Rc, t.Popover, 0) // 擦底(透明元素重绘不擦底)
-	hv := xui.Hover(hEle, (st.Hover || st.Focused) && !r.item.Disabled)
+	hoverOK := st.Hover && !r.item.Disabled
+	focusOK := st.Focused && !r.item.Disabled
+	hv := xui.Hover(hEle, hoverOK || focusOK)
 	if hv > 0 {
-		p.FillRound(&p.Rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
+		// highlightItemOnHover=false 时: 键盘高亮(focus)仍是满色 bg-accent,
+		// 纯悬停退成一层很淡的底, 让人看得出鼠标在哪儿, 又不冒充当前项。
+		col := t.Accent
+		if s.noHoverHl && hoverOK && !focusOK {
+			col = t.Muted
+		}
+		p.FillRound(&p.Rc, col.ScaleAlpha(hv), t.RadiusSm())
 	}
 
 	fore := t.PopoverForeground

@@ -161,6 +161,22 @@ func WithDataTableVirtualScroll() DataTableOption {
 	return func(d *DataTable) { d.virtual = true }
 }
 
+// DataTableQuery 是一次"按条件取数"的查询参数(服务端分页用), 由 OnQueryChange 给出:
+// 调用方按它去后端取一页, 取到后 SetRows(rows) + SetTotalRows(total)。
+type DataTableQuery struct {
+	Page     int           // 0 起
+	PageSize int           // 每页行数
+	Filter   string        // 关键字筛选(空串 = 无)
+	Sorts    []DataSortKey // 主 → 次; 空 = 不排序
+}
+
+// WithDataTableRemote 启用服务端(手动)分页: 本地不对 rows 排序/筛选, rows 就是当前页;
+// 总行数由 SetTotalRows 提供, 翻页 / 改每页行数 / 排序 / 筛选只触发 OnQueryChange。
+// 与 WithDataTableVirtualScroll 互斥(服务端分页优先)。
+func WithDataTableRemote() DataTableOption {
+	return func(d *DataTable) { d.remote = true }
+}
+
 // WithDataTablePageSizes 设置"每页行数"下拉的候选值(默认 10/20/30/40/50)。
 func WithDataTablePageSizes(sizes ...int) DataTableOption {
 	return func(d *DataTable) {
@@ -268,6 +284,12 @@ type DataTable struct {
 	// virtual 为 true = 虚拟滚动模式: 不分页, 全部筛选结果放在同一张可滚动表里。
 	// 默认 false(分页); 两种模式共用同一套排序/筛选/勾选/编辑逻辑, 差别只在行映射与页脚。
 	virtual bool
+
+	// remote 为 true = 服务端分页(手动分页): rows 就是**当前页**的数据, 组件不再本地
+	// 排序/筛选; 总数由 SetTotalRows 给, 翻页/排序/筛选只发 OnQueryChange 由调用方去取。
+	remote      bool
+	remoteTotal int
+	onQuery     func(q DataTableQuery)
 
 	page      int // 0 起
 	pageSize  int
@@ -836,6 +858,7 @@ func (d *DataTable) SetFilter(s string) *DataTable {
 	if d.onFilter != nil {
 		d.onFilter(s)
 	}
+	d.notifyQuery() // 服务端分页: 关键字交给后端筛
 	return d
 }
 
@@ -896,6 +919,7 @@ func (d *DataTable) notifySort() {
 	if d.onSortKeys != nil {
 		d.onSortKeys(d.SortKeys())
 	}
+	d.notifyQuery() // 服务端分页: 排序是后端的活, 这里只发查询条件
 }
 
 // sortKeyIndex 返回该列的排序键次序(0 = 主键), -1 = 不在排序键里。
@@ -943,10 +967,54 @@ func (d *DataTable) Page() int { return d.page }
 
 // PageCount 返回总页数(至少 1)。虚拟滚动模式恒为 1(没有页的概念)。
 func (d *DataTable) PageCount() int {
+	if d.remote { // 服务端分页优先(与 WithDataTableRemote 的说明一致)
+		return dataPageCount(d.remoteTotal, d.pageSize)
+	}
 	if d.virtual {
 		return 1
 	}
 	return dataPageCount(len(d.view), d.pageSize)
+}
+
+// SetTotalRows 在服务端分页模式下设置总行数(决定总页数与页脚统计);
+// 非服务端模式无操作(总行数就是 len(rows))。
+func (d *DataTable) SetTotalRows(n int) *DataTable {
+	if d == nil || !d.remote {
+		return d
+	}
+	if n < 0 {
+		n = 0
+	}
+	d.remoteTotal = n
+	d.clampPage()
+	d.render()
+	return d
+}
+
+// Remote 报告是否为服务端分页模式。
+func (d *DataTable) Remote() bool { return d != nil && d.remote }
+
+// OnQueryChange 注册"按条件取数"回调(服务端分页用): 翻页、改每页行数、排序、筛选
+// 都会触发, 参数是一次完整查询。回调里应去后端取数, 然后 SetRows + SetTotalRows。
+func (d *DataTable) OnQueryChange(fn func(q DataTableQuery)) *DataTable {
+	if d == nil {
+		return d
+	}
+	d.onQuery = fn
+	return d
+}
+
+// notifyQuery 把当前查询条件发给服务端(没有注册回调时什么都不做)。
+func (d *DataTable) notifyQuery() {
+	if d == nil || !d.remote || d.onQuery == nil {
+		return
+	}
+	d.onQuery(DataTableQuery{
+		Page:     d.page,
+		PageSize: d.pageSize,
+		Filter:   d.filter,
+		Sorts:    d.SortKeys(),
+	})
 }
 
 // SetPage 跳到指定页(越界自动夹取), 触发 OnPageChange。虚拟滚动模式下无操作。
@@ -960,6 +1028,7 @@ func (d *DataTable) SetPage(p int) *DataTable {
 	if d.onPage != nil {
 		d.onPage(d.page)
 	}
+	d.notifyQuery()
 	return d
 }
 
@@ -982,11 +1051,17 @@ func (d *DataTable) SetPageSize(n int) *DataTable {
 	if d.onPage != nil {
 		d.onPage(d.page)
 	}
+	d.notifyQuery()
 	return d
 }
 
-// TotalRows 返回全部行数。
-func (d *DataTable) TotalRows() int { return len(d.rows) }
+// TotalRows 返回全部行数(服务端分页模式 = SetTotalRows 给的值)。
+func (d *DataTable) TotalRows() int {
+	if d.remote {
+		return d.remoteTotal
+	}
+	return len(d.rows)
+}
 
 // FilteredRows 返回过滤后的行数。
 func (d *DataTable) FilteredRows() int { return len(d.view) }
@@ -1532,6 +1607,17 @@ func (d *DataTable) compareFor(col int, a, b string) int {
 }
 
 func (d *DataTable) apply(resetPage bool) {
+	if d.remote {
+		// 服务端分页: rows 就是**当前页**, 本地不排序也不筛选(排序/筛选是后端的活);
+		// 视图下标 = 页内下标, rawRow 的映射因此保持自洽(行回调给的是页内下标)。
+		d.view = make([]int, len(d.rows))
+		for i := range d.view {
+			d.view[i] = i
+		}
+		d.clampPage()
+		d.render()
+		return
+	}
 	d.view = dataTableViewKeys(d.rows, d.filter, d.filterCols, d.facet, d.sortKeys, d.compareFor)
 	if d.virtual {
 		d.page = 0
@@ -1944,6 +2030,9 @@ func (d *DataTable) render() {
 	}
 	d.table.Clear()
 	start, end := d.page*d.pageSize, d.page*d.pageSize+d.pageSize
+	if d.remote {
+		start, end = 0, len(d.view) // rows 已经是当前页, 不再按页切片
+	}
 	if start > len(d.view) {
 		start = len(d.view)
 	}
@@ -1973,9 +2062,14 @@ func (d *DataTable) render() {
 func (d *DataTable) syncFooter() {
 	pages := d.PageCount()
 	if d.totalLabel != nil {
-		text := fmt.Sprintf("共 %d 行", len(d.rows))
+		// 服务端分页的"总数"只有后端知道(remoteTotal); 页内行数由 view 决定。
+		total := len(d.rows)
+		if d.remote {
+			total = d.remoteTotal
+		}
+		text := fmt.Sprintf("共 %d 行", total)
 		if d.filtersActive() {
-			text = fmt.Sprintf("筛选出 %d / %d 行", len(d.view), len(d.rows))
+			text = fmt.Sprintf("筛选出 %d / %d 行", len(d.view), total)
 		}
 		// 有勾选时优先显示"已选 x / y 行"(tasks 示例页脚的 "{n} of {m} row(s) selected"),
 		// y 取筛选后的行数: 筛选把行藏起来了, 拿总数当分母对不上。

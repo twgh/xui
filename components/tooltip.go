@@ -59,6 +59,8 @@ type tipConfig struct {
 	delay    int32 // 显示延迟(ms); -1 = 跟随 Tooltip.SetDelay
 	shortcut string
 	maxWidth int32
+	arrowPad int32 // 箭头与气泡两端的最小距离(0 = 保持锐角, 见 clampArrowPad)
+	hoverable bool // 鼠标可移入气泡并保持显示(disableHoverableContent=false)
 }
 
 // TipOption 是单条工具提示的配置项。
@@ -82,6 +84,26 @@ func WithTipShortcut(s string) TipOption { return func(c *tipConfig) { c.shortcu
 
 // WithTipMaxWidth 覆盖气泡最大宽度(默认 280, 即 max-w-xs); 超宽时文字折行。
 func WithTipMaxWidth(px int32) TipOption { return func(c *tipConfig) { c.maxWidth = px } }
+
+// WithTipArrowPadding 设置箭头中心与气泡两端的最小距离(Base UI Tooltip 的 arrowPadding):
+// 默认 0 —— 只保证三角形完整落在气泡内(锐角气泡贴边也不让位); 传 0 以外的值后
+// 箭头至少离圆角这么远, 视觉上不会压到圆角弧线。
+func WithTipArrowPadding(px int32) TipOption {
+	return func(c *tipConfig) {
+		if px < 0 {
+			px = 0
+		}
+		c.arrowPad = px
+	}
+}
+
+// WithTipHoverable 允许鼠标移入气泡而**不关闭**提示(对应 Base UI Tooltip 的
+// disableHoverableContent=false):
+//
+// 默认气泡窗口是鼠标穿透的(WS_EX_TRANSPARENT), 光标一离开锚点提示就收起;
+// 打开本项后气泡窗口会去接收鼠标事件, 光标从锚点移进气泡时保持显示, 离开气泡才收起。
+// 内容只是纯文字/快捷键时不需要它; 只有把气泡当成"可停留的小面板"时才用。
+func WithTipHoverable() TipOption { return func(c *tipConfig) { c.hoverable = true } }
 
 // Tooltip 提示气泡: 原生控件没有提示部件, 这里自建一个无边框置顶小窗承载。
 //
@@ -140,6 +162,11 @@ type Tooltip struct {
 	// 若它在切换目标后还在跑, 会把窗口**拉回旧位置**(实测: 200ms 内接着 Show 另一个
 	// 元素的提示, 新位置被旧帧覆盖, 气泡停在上一个元素旁边)。过期代际的回调直接返回。
 	fadeGen int
+	// hoverable 是**当前显示中**的气泡是否可移入(WithTipHoverable)。可移入时气泡窗
+	// 去掉 WS_EX_TRANSPARENT 才会收到鼠标事件; hideTimer 是"离开气泡"的延迟确认,
+	// 光标很快从锚点滑进气泡时不会闪一下。
+	hoverable bool
+	hideTimer *time.Timer
 }
 
 // NewTooltip 创建提示管理器(窗口懒创建, 首次显示时才建)。
@@ -233,6 +260,11 @@ func (t *Tooltip) BindTip(hEle int, text string, opts ...TipOption) *Tooltip {
 		// MouseLeave 可能晚于新元素的 MouseStay/MouseMove 到达(实测: 相邻图标格),
 		// 那条迟到的 leave 会把刚进场的气泡立刻关掉, 表现成"提示不显示"。
 		if hEle == t.shownEle {
+			// 可移入的气泡: 光标很可能是往气泡里走, 不要立刻收(见 scheduleBubbleHide)。
+			if t.hoverable && t.shown {
+				t.scheduleBubbleHide()
+				return 0
+			}
 			t.Hide()
 			return 0
 		}
@@ -362,6 +394,7 @@ func (t *Tooltip) Show(hEle int) *Tooltip {
 // Hide 隐藏提示: 退场淡出(150ms)后再真正隐藏窗口。
 func (t *Tooltip) Hide() {
 	t.cancelPending()
+	t.cancelBubbleHide()
 	if t.win == nil || !t.shown {
 		return
 	}
@@ -504,6 +537,108 @@ func (t *Tooltip) fade(v float64) {
 	t.win.Redraw(true) // 立即重绘: 元素 alpha 要画一遍才落地
 }
 
+// applyHoverable 按 t.hoverable 切换气泡窗的 WS_EX_TRANSPARENT:
+// 可移入时去掉穿透位(窗口才收得到鼠标事件), 否则加回去(气泡压在别的元素上也不挡鼠标)。
+func (t *Tooltip) applyHoverable() {
+	if t.win == nil {
+		return
+	}
+	hwnd := t.win.GetHWND()
+	if hwnd == 0 {
+		return
+	}
+	const transparent = int(xcc.WS_EX_TRANSPARENT)
+	st := wapi.GetWindowLongPtrW(hwnd, wapi.GWL_EXSTYLE)
+	next := st | transparent
+	if t.hoverable {
+		next = st &^ transparent
+	}
+	if next != st {
+		wapi.SetWindowLongPtrW(hwnd, wapi.GWL_EXSTYLE, next)
+	}
+}
+
+// cancelBubbleHide 取消"离开气泡"的延迟确认。
+func (t *Tooltip) cancelBubbleHide() {
+	if t.hideTimer != nil {
+		t.hideTimer.Stop()
+		t.hideTimer = nil
+	}
+}
+
+// scheduleBubbleHide 在光标离开锚点/气泡后**延迟**确认一次再收:
+// 光标从锚点滑进气泡要跨过中间的箭头与间距, 立刻收会把气泡闪没;
+// 延迟到点后若光标确实不在气泡里(也没回到锚点, 那种情况会被 MouseMove 重新显示)才隐藏。
+//
+// 用 app.AfterFunc 而不是定时器轮询: 这是一次性的确认, 不是逐帧动画。
+func (t *Tooltip) scheduleBubbleHide() {
+	if t == nil || !t.hoverable || t.win == nil {
+		return
+	}
+	if t.hideTimer != nil {
+		return
+	}
+	t.hideTimer = app.AfterFunc(120*time.Millisecond, func() {
+		t.hideTimer = nil
+		if t.win == nil || !t.shown {
+			return
+		}
+		if t.cursorInBubble() {
+			return
+		}
+		if t.cursorOnAnchor() {
+			return
+		}
+		t.Hide()
+	})
+}
+
+// cursorInBubble 用**物理像素**判断光标是否落在气泡窗口内。
+//
+// 这里不要用 XWnd_ScreenToClient 之类的 DPI 适配 API: GetCursorPos 给的是物理屏幕坐标,
+// 而气泡窗的位置/尺寸也是物理的(ShowNow 里乘过 DPI), 两边同单位直接比最稳。
+func (t *Tooltip) cursorInBubble() bool {
+	if t.win == nil {
+		return false
+	}
+	hwnd := t.win.GetHWND()
+	var wr wapi.RECT
+	if hwnd == 0 || !wapi.GetWindowRect(hwnd, &wr) {
+		return false
+	}
+	var pt wapi.POINT
+	if !wapi.GetCursorPos(&pt) {
+		return false
+	}
+	return pt.X >= wr.Left && pt.X < wr.Right && pt.Y >= wr.Top && pt.Y < wr.Bottom
+}
+
+// cursorOnAnchor 判断光标是否还压在锚点元素上(用元素未裁剪的客户区矩形)。
+func (t *Tooltip) cursorOnAnchor() bool {
+	if t.shownEle == 0 || !xc.XC_IsHXCGUI(t.shownEle, xcc.XC_ELE) {
+		return false
+	}
+	hwnd := xc.XWidget_GetHWND(t.shownEle)
+	if hwnd == 0 {
+		return false
+	}
+	var pt wapi.POINT
+	if !wapi.GetCursorPos(&pt) {
+		return false
+	}
+	var wr wapi.RECT
+	if !wapi.GetWindowRect(hwnd, &wr) {
+		return false
+	}
+	var rc xc.RECT
+	xc.XEle_GetWndClientRectDPI(t.shownEle, &rc) // 物理像素, 与窗口矩形同单位
+	if rc.Right <= rc.Left || rc.Bottom <= rc.Top {
+		return false
+	}
+	x, y := int32(pt.X)-wr.Left, int32(pt.Y)-wr.Top
+	return x >= rc.Left && x < rc.Right && y >= rc.Top && y < rc.Bottom
+}
+
 // measure 量气泡的内容尺寸与窗口尺寸(逻辑像素)。
 // 文字按绘制时同一字体与限宽量, 否则气泡会比文字宽一圈(此前量的是 14px 主题字体,
 // 而实际绘制用 12px)。返回气泡宽高、窗口宽高、右内边距与快捷键块宽。
@@ -574,6 +709,12 @@ func (t *Tooltip) showNow(hEle int) {
 	// 从 A 窗的提示切到 B 窗的提示是走"非首次"分支的; 不更新的话 hide 的退场过渡、
 	// 宿主销毁清理和下面的锚点比对都会用错窗口。
 	t.hWnd = hWnd
+	// 可移入式气泡: 按本次显示的配置切换气泡窗的鼠标穿透位(见 WithTipHoverable)。
+	// 放在每次 showNow 里而不是 ensure 里 —— 同一个管理器可以给不同元素配不同策略。
+	if t.hoverable != cfg.hoverable {
+		t.hoverable = cfg.hoverable
+		t.applyHoverable()
+	}
 
 	bw, bh, _, _ := t.measure(text, cfg)
 
@@ -686,15 +827,15 @@ func (t *Tooltip) showNow(hEle int) {
 	// 否则 align=start/end 下箭头会跑到元素外面去。
 	if side == TipTop || side == TipBottom {
 		if bw <= ex {
-			t.arrow = bw / 2
+			t.arrow = clampArrowPad(bw/2, bw, cfg.arrowPad)
 		} else {
-			t.arrow = clampArrow(sx+ex/2-x, bw)
+			t.arrow = clampArrowPad(sx+ex/2-x, bw, cfg.arrowPad)
 		}
 	} else {
 		if bh <= ey {
-			t.arrow = bh / 2
+			t.arrow = clampArrowPad(bh/2, bh, cfg.arrowPad)
 		} else {
-			t.arrow = clampArrow(sy+ey/2-y, bh)
+			t.arrow = clampArrowPad(sy+ey/2-y, bh, cfg.arrowPad)
 		}
 	}
 
@@ -865,7 +1006,9 @@ func (t *Tooltip) destroyWin() {
 	t.shownEle = 0
 	t.hWnd = 0
 	t.text = ""
+	t.hoverable = false
 	t.cancelPending()
+	t.cancelBubbleHide()
 	if w != nil {
 		w.DestroyWindow()
 	}
@@ -886,6 +1029,19 @@ func (t *Tooltip) ensure() {
 	w.SetTransparentAlpha(255)
 	w.SetWindowPos(xcc.HWND_TOPMOST, 0, 0, 0, 0,
 		xcc.SWP_NOMOVE|xcc.SWP_NOSIZE|xcc.SWP_NOACTIVATE)
+
+	// 可移入式气泡(WithTipHoverable)靠这两个窗口级事件维持显示: 气泡窗默认是鼠标穿透的
+	// (收不到任何鼠标事件), showNow 里按配置临时去掉 WS_EX_TRANSPARENT。
+	w.AddEvent_MouseMove(func(hWin int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
+		t.cancelBubbleHide()
+		return 0
+	})
+	w.AddEvent_MouseLeave(func(hWin int, pbHandled *bool) int {
+		if t.hoverable {
+			t.scheduleBubbleHide()
+		}
+		return 0
+	})
 
 	ele := widget.NewElement(0, 0, 10, 10, w.Handle)
 	ele.EnableBkTransparent(true)
@@ -1028,7 +1184,17 @@ func (t *Tooltip) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 //
 // 气泡比三角形还窄时(span < 2*half)无解, 取正中。
 func clampArrow(v, span int32) int32 {
-	lo, hi := tipArrow, span-tipArrow
+	return clampArrowPad(v, span, 0)
+}
+
+// clampArrowPad 是 clampArrow 的带内距版本(WithTipArrowPadding / Base UI 的 arrowPadding):
+// pad 是箭头中心离气泡两端的最小距离, 0 表示只按三角形半宽让位(锐角)。
+func clampArrowPad(v, span, pad int32) int32 {
+	lo := tipArrow
+	if pad > lo {
+		lo = pad
+	}
+	hi := span - lo
 	if hi < lo {
 		return span / 2
 	}

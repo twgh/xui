@@ -205,6 +205,7 @@ type Badge struct {
 	fore     xui.Color // 自定义前景色
 	border   xui.Color // 自定义描边
 	autoW    bool      // cx 传 0 时按内容量宽, 文字变化后自动重量
+	invalid  bool      // 校验失败态(aria-invalid: 描边 destructive + 常驻红环)
 }
 
 // NewBadge 创建徽章。cy 可传 0 使用默认高度 20; cx 传 0 时按内容量宽。
@@ -226,6 +227,10 @@ func NewBadge(x, y, cx, cy int32, text string, hParent int, opts ...func(*Badge)
 	}
 	b.Element = ele
 	ele.EnableBkTransparent(true)
+	// 焦点环自己画(元素的系统焦点框是整块矩形, 与胶囊对不齐); 非交互徽章不参与 Tab 链
+	// (纯展示元素默认可聚焦, 点一下会冒出一圈系统高亮框)。
+	ele.EnableDrawFocus(false)
+	ele.EnableFocus(b.onClick != nil || b.linkURL != "")
 	ele.AddEvent_Paint(b.onPaint)
 	// 悬停: ghost / link / outline 的变体语义要靠它体现
 	ele.AddEvent_MouseStay(func(hEle int, pbHandled *bool) int {
@@ -244,14 +249,39 @@ func NewBadge(x, y, cx, cy int32, text string, hParent int, opts ...func(*Badge)
 			return 0
 		}
 		xui.NotePointerPress()
-		if b.onClick != nil {
-			b.onClick()
+		b.activate()
+		return 0
+	})
+	// 可交互徽章是键盘可达的(Badge 的链接/按钮形态): Enter / 空格触发, 与 Button 一致。
+	ele.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
+		const (
+			vkReturn = 0x0D
+			vkSpace  = 0x20
+		)
+		if wParam != vkReturn && wParam != vkSpace {
+			return 0
 		}
-		b.openLink()
+		if b.onClick == nil && b.linkURL == "" {
+			return 0
+		}
+		xui.NoteKeyboard() // 键盘触发的点击不要清掉 focus-visible 环
+		b.activate()
+		*pbHandled = true
 		return 0
 	})
 	xui.AttachWindow(ele.Handle)
 	return b
+}
+
+// activate 触发一次点击(鼠标点击与键盘 Enter/空格共用)。
+func (b *Badge) activate() {
+	if b == nil {
+		return
+	}
+	if b.onClick != nil {
+		b.onClick()
+	}
+	b.openLink()
 }
 
 // WithBadgeVariant 构造时设置徽章变体。
@@ -287,6 +317,25 @@ func WithBadgeColors(bg, fore, border xui.Color) func(*Badge) {
 		b.custom, b.bg, b.fore, b.border = true, bg, fore, border
 	}
 }
+
+// WithBadgeInvalid 让徽章初始即为校验失败态(对应 aria-invalid): 胶囊描边变 destructive、
+// 内侧常驻一圈 destructive/20 的环, 与 Input / Select 的校验态同一口径(不要求焦点)。
+func WithBadgeInvalid() func(*Badge) {
+	return func(b *Badge) { b.invalid = true }
+}
+
+// SetInvalid 运行时设置/清除校验失败态(见 WithBadgeInvalid)。
+func (b *Badge) SetInvalid(v bool) *Badge {
+	if b == nil || b.invalid == v {
+		return b
+	}
+	b.invalid = v
+	b.Redraw(false)
+	return b
+}
+
+// Invalid 返回当前是否处于校验失败态。
+func (b *Badge) Invalid() bool { return b != nil && b.invalid }
 
 // WithVariant 设置徽章变体。
 func (b *Badge) WithVariant(v BadgeVariant) *Badge {
@@ -337,9 +386,11 @@ func (b *Badge) SetColors(bg, fore, border xui.Color) *Badge {
 }
 
 // OnClick 注册点击回调(与 WithBadgeOnClick 等价, 便于链式)。
+// 注册后徽章就是可交互的: 进 Tab 链、键盘 Enter/空格可触发、显示 focus-visible 环。
 func (b *Badge) OnClick(fn func()) *Badge {
 	if b != nil {
 		b.onClick = fn
+		b.EnableFocus(fn != nil || b.linkURL != "")
 	}
 	return b
 }
@@ -368,6 +419,7 @@ func (b *Badge) SetLinkURL(url string) *Badge {
 	} else {
 		b.SetCursor(controlCursor(false))
 	}
+	b.EnableFocus(url != "" || b.onClick != nil)
 	return b
 }
 
@@ -479,7 +531,38 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.FillRound(&p.Rc, t.Card, radius)
 	}
 	p.FillRound(&p.Rc, bg, radius)
-	p.StrokeRound(&p.Rc, border, radius, 1)
+	stroke := border
+	if b.invalid {
+		stroke = t.Destructive // aria-invalid:border-destructive
+	}
+	p.StrokeRound(&p.Rc, stroke, radius, 1)
+	// focus-visible:ring-[3px] ring-ring/50 / aria-invalid:ring-destructive/20
+	//
+	// 徽章的胶囊就是元素本身(没有按钮那种按压预留), 3px 环画在**外侧**会被裁掉;
+	// 这里改画在胶囊内侧(与 Avatar 的键盘环同一手法), 视觉上仍是"贴着边框的一圈"。
+	st := xui.StateOf(hEle)
+	ring := xui.None
+	switch {
+	case b.invalid:
+		ring = t.Destructive.WithAlpha(51)
+		if t.IsDark() {
+			ring = t.Destructive.WithAlpha(102)
+		}
+	case st.Focused && xui.FocusedByKeyboard():
+		ring = t.Ring.WithAlpha(128)
+	}
+	if !ring.IsNone() {
+		inset := int32(2)
+		inner := xc.RECT{
+			Left:   p.Rc.Left + inset,
+			Top:    p.Rc.Top + inset,
+			Right:  p.Rc.Right - inset,
+			Bottom: p.Rc.Bottom - inset,
+		}
+		if inner.Right-inner.Left > 2 && inner.Bottom-inner.Top > 2 {
+			p.StrokeRound(&inner, ring, radius-inset, 3)
+		}
+	}
 
 	fontSize := t.FontDefault.Size - 2
 	f := badgeFont(t)

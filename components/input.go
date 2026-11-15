@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -54,6 +55,7 @@ const (
 	partToggle
 	partStepUp
 	partStepDown
+	partFile // 文件输入形态的"选择文件"文字按钮
 )
 
 // inputPartRect 是一个内嵌件在元素客户区里的矩形(逻辑像素)。
@@ -132,6 +134,10 @@ type Input struct {
 	// padY 是文本域形态的上下文字内边距(0 = 默认 6)。Textarea 用 8 对齐上游 textarea.tsx
 	// 的 py-2; 单行输入框的 7/5 与它无关。
 	padY int32
+	// minRows / resize 只由 Textarea 读写(同 padY): minRows 是"至少显示几行"(按实际行高
+	// 换算最小高度), resize 打开右下角拖拽抓手。
+	minRows int32
+	resize  bool
 
 	leadingIcon string // 前置图标(lucide path)
 	prefix      string // 前置文字
@@ -150,6 +156,19 @@ type Input struct {
 	stepArrows bool
 	// stepAuto 步进按钮只在悬停输入框或输入框有焦点时显示(移开/失焦隐藏)
 	stepAuto bool
+
+	// 文件输入形态(I1, 对应 `<input type="file">`): 只读显示已选文件名 + 右侧"选择文件"钮。
+	fileBtn   bool
+	files     []string
+	fileMulti bool
+	fileMax   int
+	fileDlg   []FileDialogOption
+	onFiles   []func([]string)
+	// 原生 Edit 的视觉/行为覆盖(I6): 选区底色(0 = 跟随主题)与插入符宽度(0 = 原生默认)。
+	selColor   uint32
+	caretWidth int32
+	autoSelAll bool
+	// undo/redo 由原生 Edit 维护, 这里只透出方法。
 
 	hover      inputPart       // 当前悬停的内嵌件
 	hoverInput bool            // 鼠标是否停在输入框上(stepAuto 用)
@@ -172,6 +191,26 @@ func WithPlaceholder(s string) InputOption { return func(i *Input) { i.placehold
 // WithMultiline 启用多行(文本域)模式。
 func WithMultiline() InputOption { return func(i *Input) { i.multiline = true } }
 
+// WithTextareaRows 让文本域初始显示 n 行(对应原生 `<textarea rows>`): 最小高度按
+// **实际行高**换算, 与创建参数的 cy 是二选一的关系 —— 给了 rows 就以 rows 为准。
+// 只对 NewTextarea 有效(单行输入框的行数是 1, 没有意义)。
+func WithTextareaRows(n int32) InputOption {
+	return func(i *Input) {
+		if n > 0 {
+			i.minRows = n
+		}
+	}
+}
+
+// WithTextareaResize 在文本域右下角画一个拖拽抓手, 可用鼠标改最小高度(对应原生
+// `<textarea>` 默认的 resize: both 的纵向部分)。
+//
+// 与自动长高**不冲突**: 拖拽改的是"最小高度", 内容比它高时仍然继续长高;
+// 两者的关系就是 CSS 的 min-height 与 field-sizing-content。
+func WithTextareaResize() InputOption {
+	return func(i *Input) { i.resize = true }
+}
+
 // WithInputBare 创建"裸输入": 不绘制壳体、焦点环与校验环, 边框/背景由外层容器负责。
 // 主要给 Input Group 用 —— 组里输入框与 addon 共用一层边框, 输入框自己再画一层会
 // 出现双框; 单独使用(没有外层画框)会得到一个"没有边框的文本框", 一般不需要。
@@ -184,6 +223,63 @@ func WithInputInvalid() InputOption { return func(i *Input) { i.invalid = true }
 // WithInputReadOnly 只读(对应原生 `<input readOnly>`): 可聚焦、可选文字、可复制,
 // 但编辑不进去。与禁用(Enable(false))的区别是外观不灰、仍能接收焦点与键盘导航。
 func WithInputReadOnly() InputOption { return func(i *Input) { i.readOnly = true } }
+
+// WithFileInput 把输入框变成**文件输入**(对应 `<input type="file">`): 只读显示已选文件名,
+// 右侧一个幽灵"选择文件"按钮调系统文件对话框; 取消不改值。
+//
+// dlgOpts 直接透传给 FileDialog(类型过滤器用 WithFileDialogFilters, 标题用
+// WithFileDialogTitle, 初始目录用 WithFileDialogInitialDir)。多选用 WithFileInputMulti。
+// 取到的路径用 Files() / OnFilesChange 读; 显示文本自动取文件名(不含目录)。
+func WithFileInput(dlgOpts ...FileDialogOption) InputOption {
+	return func(i *Input) {
+		i.fileBtn = true
+		i.readOnly = true // 文件名由对话框写入, 不允许手打
+		i.fileDlg = append([]FileDialogOption(nil), dlgOpts...)
+	}
+}
+
+// WithFileInputMulti 是 WithFileInput 的多选形态: 打开多选对话框,
+// 显示文本为"首个文件名 +N", 完整路径列表走 Files()。
+func WithFileInputMulti(dlgOpts ...FileDialogOption) InputOption {
+	return func(i *Input) {
+		i.fileBtn = true
+		i.fileMulti = true
+		i.fileMax = 10
+		i.readOnly = true
+		i.fileDlg = append([]FileDialogOption(nil), dlgOpts...)
+	}
+}
+
+// WithFileInputMaxFiles 覆盖多选时的最大返回数(默认 10; 语义同 WithFileDialogMaxFiles)。
+func WithFileInputMaxFiles(n int) InputOption {
+	return func(i *Input) {
+		if n > 0 {
+			i.fileMax = n
+		}
+	}
+}
+
+// WithInputSelectColor 覆盖选区底色(对应浏览器 `::selection` 的 background)。
+// 传 0 恢复默认(主题主色 25% 透明度, 亮暗主题都清晰可读)。
+func WithInputSelectColor(c xui.Color) InputOption {
+	return func(i *Input) { i.selColor = uint32(c) }
+}
+
+// WithInputCaretWidth 覆盖插入符宽度(逻辑像素; 0 = 原生默认 1)。加粗光标在
+// 高 DPI 下更容易看见。
+func WithInputCaretWidth(px int32) InputOption {
+	return func(i *Input) {
+		if px > 0 {
+			i.caretWidth = px
+		}
+	}
+}
+
+// WithInputAutoSelect 获得焦点时自动全选内容(原生 XEdit_EnableAutoSelAll)。
+// 默认关闭 —— 组件把所有内嵌按钮的焦点交还输入框, 自动全选会留下蓝色选中态。
+func WithInputAutoSelect() InputOption {
+	return func(i *Input) { i.autoSelAll = true }
+}
 
 // WithLeadingIcon 在文字区左侧嵌一枚图标(lucide path, 如 icons.IconSearch)。
 // 图标 size-4(16), 颜色 muted-foreground(禁用时再乘 50%)。
@@ -276,6 +372,9 @@ func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
 	for _, o := range opts {
 		o(in)
 	}
+	if in.fileBtn && in.placeholder == "" {
+		in.placeholder = "未选择文件" // 对应浏览器 file input 的 "No file chosen"
+	}
 
 	if in.multiline {
 		// 文本域形态: 上下都是正文, 没有可以放按钮的边, 附加件一律忽略
@@ -318,7 +417,11 @@ func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
 	in.EnableReadOnly(in.readOnly)
 	// 关掉"获得焦点自动全选"(xcgui 默认开): 内嵌按钮点完都要把焦点交回输入框,
 	// 全选会留下蓝色的选中态, 取消选中后还可能残留一层没擦掉的选中文字。
-	in.EnableAutoSelAll(false)
+	// WithInputAutoSelect 显式要求时保留(xcgui 本来就默认开)。
+	in.EnableAutoSelAll(in.autoSelAll)
+	if in.caretWidth > 0 {
+		in.SetCaretWidth(in.caretWidth)
+	}
 	// 文字内边距: 左右按附加件宽度算, 避免文字贴到圆角/跑到按钮底下
 	in.syncPadding()
 
@@ -361,6 +464,13 @@ func (i *Input) applyTheme(t *xui.Theme) {
 		i.SetDefaultTextColor(uint32(t.MutedForeground))
 	}
 	i.SetCaretColor(uint32(t.Primary))
+	// ::selection 的等价物(I6): 主色 25% 透明底, 亮暗主题下都能看清选中范围;
+	// WithInputSelectColor 可覆盖。原生 Edit 的选区色只能这样下发。
+	if i.selColor != 0 {
+		i.SetSelectBkColor(i.selColor)
+	} else {
+		i.SetSelectBkColor(uint32(t.Primary.WithAlpha(64)))
+	}
 	if i.multiline {
 		// 多行滚动条: 轨道透明(露出壳体底色), 滑块走嵌入式皮肤(前景色淡化 + 悬停加深)
 		styleScrollBar(i.GetScrollBarVObj(), 0, embedScrollBarSkin(t))
@@ -409,10 +519,22 @@ func counterReserve(max int) string {
 // 文字类(后缀/计数)按文字内边距 10 —— 与左侧图标的内缩对称, 否则 ".com" / "15/120"
 // 会紧贴右边框(看起来"没有边距")。
 func (i *Input) trailingInset() int32 {
-	if i.step != nil || i.passToggle || i.clearBtn {
+	if i.step != nil || i.passToggle || i.clearBtn || i.fileBtn {
 		return inputEdge
 	}
 	return inputPadX
+}
+
+// 文件输入形态的"选择文件"钮: 文字按钮(不是图标钮), 高度比壳体小一档。
+const (
+	inputFileBtnLabel = "选择文件"
+	inputFileBtnH     int32 = 22
+	inputFileBtnPadX  int32 = 8
+)
+
+// fileButtonWidth 返回"选择文件"钮的宽度(文字宽 + 左右内距); 绘制与内边距共用。
+func (i *Input) fileButtonWidth(t *xui.Theme) int32 {
+	return inputTextWidth(t, inputFileBtnLabel, t.FontDefault.Size) + 2*inputFileBtnPadX
 }
 
 // syncPadding 把文字区的左右内边距设为"基础值 + 附加件占位"。
@@ -455,8 +577,11 @@ func (i *Input) syncPadding() {
 		left += inputTextWidth(t, i.prefix, t.FontDefault.Size) + inputTextGap
 	}
 
-	// 尾部各项自右向左的宽度(必须先步进块、再眼睛、再清除, 与 paintAddons 同序)
+	// 尾部各项自右向左的宽度(必须与 paintAddons 同序: 文件钮 → 步进 → 眼睛 → 清除 …)
 	var items []int32
+	if i.fileBtn {
+		items = append(items, i.fileButtonWidth(t))
+	}
 	if i.step != nil {
 		if i.stepArrows {
 			items = append(items, inputStepColW)
@@ -657,6 +782,35 @@ func (i *Input) paintAddons(p *xui.Painter, t *xui.Theme, st xui.State) {
 		rx = rc.Left - inputGap
 	}
 
+	// 文件输入: 右侧文字按钮"选择文件"(幽灵底 + 主色文字, 悬停加深)。
+	// 先于其它尾部件绘制 —— 它在最右边。
+	if i.fileBtn {
+		w := i.fileButtonWidth(t)
+		rc := xc.RECT{
+			Left:   rx - w,
+			Top:    cy - inputFileBtnH/2,
+			Right:  rx,
+			Bottom: cy + inputFileBtnH/2,
+		}
+		enabled := i.IsEnable() && !st.Disabled
+		if enabled {
+			i.parts = append(i.parts, inputPartRect{part: partFile, rc: rc})
+		}
+		hv := xui.HoverItem(i.Handle, int32(partFile), enabled && i.hover == partFile)
+		if hv > 0 {
+			p.FillRound(&rc, t.Accent.ScaleAlpha(hv), inputBtnR)
+		}
+		if f := inputFont(t, t.FontDefault.Size); f != 0 {
+			p.Draw.SetFont(f)
+		}
+		c := xui.Fade(base, t.AccentForeground, hv)
+		if !enabled {
+			c = base.ScaleAlpha(0.5)
+		}
+		p.Text(inputFileBtnLabel, &rc, c, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+		rx = rc.Left - inputGap
+	}
+
 	if i.step != nil {
 		// 自动隐藏形态: 只有"鼠标在输入框上"或"有焦点"时才画, 否则只占位
 		// (占位让文字/其它附加件保持原位, 该区域点下去落到文本区 = 放光标)。
@@ -836,6 +990,8 @@ func (i *Input) activate(part inputPart) {
 		i.suppressChange = false
 		i.emitChange()
 		i.SetFocus()
+	case partFile:
+		i.pickFiles()
 	case partToggle:
 		i.setMasked(!i.password)
 		i.SetFocus()
@@ -1035,11 +1191,107 @@ func (i *Input) FieldDisabled() bool { return i == nil || !i.IsEnable() }
 func (i *Input) Value() string { return i.GetText() }
 
 // FieldValue 实现 FieldValueProvider: 必填校验与 Field 校验器读取输入文本。
+// 文件输入形态下返回已选路径(换行分隔), 没选任何文件时为空串 —— 必填即"必须选文件"。
 func (i *Input) FieldValue() string {
 	if i == nil {
 		return ""
 	}
+	if i.fileBtn {
+		return strings.Join(i.files, "\n")
+	}
 	return i.Value()
+}
+
+// ===== 文件输入(I1, 对应 `<input type="file">`) =====
+
+// pickFiles 打开系统文件对话框并把结果写回; 取消时保留原选择。
+func (i *Input) pickFiles() {
+	if i == nil || !i.fileBtn || !i.IsEnable() {
+		return
+	}
+	hw := xc.XWidget_GetHWINDOW(i.Handle)
+	opts := append([]FileDialogOption(nil), i.fileDlg...)
+	if i.fileMulti {
+		opts = append(opts, WithFileDialogMaxFiles(i.fileMax))
+	}
+	dlg := NewFileDialog(hw, opts...)
+	var picked []string
+	if i.fileMulti {
+		picked = dlg.OpenMulti()
+	} else if p := dlg.Open(); p != "" {
+		picked = []string{p}
+	}
+	if len(picked) == 0 {
+		return
+	}
+	i.SetFiles(picked)
+	i.SetFocus()
+}
+
+// SetFiles 程序化设置已选文件并触发 OnFilesChange; 显示文本自动取文件名
+// (多选显示"首个文件名 +N")。传 nil / 空切片等于清空。
+func (i *Input) SetFiles(paths []string) *Input {
+	if i == nil {
+		return i
+	}
+	i.files = append([]string(nil), paths...)
+	i.syncFileText()
+	i.Redraw(false)
+	for _, fn := range i.onFiles {
+		fn(i.Files())
+	}
+	return i
+}
+
+// Files 返回已选文件的完整路径(副本)。
+func (i *Input) Files() []string {
+	if i == nil {
+		return nil
+	}
+	return append([]string(nil), i.files...)
+}
+
+// ClearFiles 清空已选文件(触发 OnFilesChange)。
+func (i *Input) ClearFiles() *Input { return i.SetFiles(nil) }
+
+// OnFilesChange 注册文件选择变化回调(对话框选完 / SetFiles / ClearFiles 都会触发)。
+func (i *Input) OnFilesChange(fn func(paths []string)) *Input {
+	if i == nil || fn == nil {
+		return i
+	}
+	i.onFiles = append(i.onFiles, fn)
+	return i
+}
+
+// syncFileText 把已选文件写成显示文本。只是显示, 真实值在 files 里 ——
+// 用户看得到的应当只是文件名(路径太长会把输入框撑满), 完整路径用 Files() 取。
+func (i *Input) syncFileText() {
+	text := ""
+	switch n := len(i.files); {
+	case n == 1:
+		text = filepath.Base(i.files[0])
+	case n > 1:
+		text = fmt.Sprintf("%s +%d", filepath.Base(i.files[0]), n-1)
+	}
+	i.suppressChange = true
+	i.SetText(text)
+	i.suppressChange = false
+}
+
+// Undo 撤销一次编辑(原生 XEdit_Undo; 返回是否有可撤销的操作)。
+func (i *Input) Undo() bool {
+	if i == nil {
+		return false
+	}
+	return i.Edit.Undo()
+}
+
+// Redo 重做一次编辑(原生 XEdit_Redo)。
+func (i *Input) Redo() bool {
+	if i == nil {
+		return false
+	}
+	return i.Edit.Redo()
 }
 
 // SetValue 设置输入内容。同样受 WithMaxLength 约束: 原生 SetText 不派发变更事件,
@@ -1208,6 +1460,19 @@ func (i *Input) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 壳体内部的附加件(图标/前后缀/计数/按钮)。原生 Edit 的文字在本回调之后绘制,
 	// 附加件都排在文字区之外(见 syncPadding), 不会互相压字。
 	i.paintAddons(p, t, st)
+	// 文本域右下角的拖拽抓手(WithTextareaResize): 两条 45° 短线, 落在壳体圆角之内。
+	if i.multiline && i.resize {
+		grip := t.MutedForeground.ScaleAlpha(0.6)
+		if st.Disabled {
+			grip = grip.ScaleAlpha(0.5)
+		}
+		r, b := p.Rc.Right-4, p.Rc.Bottom-4
+		for _, off := range []int32{6, 9} {
+			if off < p.W() && off < p.H() {
+				p.Line(r-off, b, r, b-off, grip, 1)
+			}
+		}
+	}
 	// 画完附加件把画笔字体还原成主题字体: 原生文字是**接着这个建图对象**画的, 附加件
 	// 里为计数换过 12px 字体, 不还原会把正文也带成小字号 + 字距走样(实测: 带计数的
 	// 输入框里"字体跟别的不一样、字距还变宽")。

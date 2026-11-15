@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/window"
@@ -104,7 +106,17 @@ type Tabs struct {
 	// 换行模式的状态: 上一次宽度(尺寸事件节流)与延迟重排标记。
 	lastWrapW  int32
 	wrapQueued bool
+
+	// line 变体指示条的当前位置(切换时从旧标签滑到新标签, 见 animateIndicator)。
+	// indAnim 期间不要用"当前选中标签的矩形"覆盖它, 否则过渡会被每帧重绘打断。
+	indRect  xc.RECT
+	indValid bool
+	indAnim  bool
+	indSeq   uint64
 }
+
+// tabsIndicatorDur 是 line 变体指示条滑动的时长(上游标签的 transition-all 默认 150ms)。
+const tabsIndicatorDur = 150 * time.Millisecond
 
 // TabsOption 标签栏配置项。
 type TabsOption func(*Tabs)
@@ -302,9 +314,79 @@ func (t *Tabs) setActive(i int32, user bool) *Tabs {
 		t.focus = i
 	}
 	t.syncPanels()
+	t.animateIndicator()
 	t.Redraw(false)
 	t.notify(i)
 	return t
+}
+
+// animateIndicator 让 line 变体的指示条从当前位置滑到新选中标签(对应标签的
+// transition-all): 每次切换开始一段新过渡(运行时 PresenceOnce), 旧过渡由 indSeq 停写。
+// 首次进入(还没有指示条位置)直接落位, 不从 0 滑进来。
+func (t *Tabs) animateIndicator() {
+	if t == nil || t.variant != TabsLine {
+		t.indValid = false
+		return
+	}
+	if t.active < 0 || int(t.active) >= len(t.list) || t.list[t.active] == nil {
+		t.indValid = false
+		return
+	}
+	to := indicatorRectOf(t.list[t.active].GetRectEx(), t.vertical)
+	if !t.indValid {
+		t.indRect = to
+		t.indValid = true
+		return
+	}
+	from := t.indRect
+	t.indSeq++
+	seq := t.indSeq
+	t.indAnim = true
+	xui.PresenceOnce(t.Handle, true, tabsIndicatorDur, func(v float64) {
+		if seq != t.indSeq {
+			return
+		}
+		t.indRect = lerpRect(from, to, v)
+		t.Redraw(true)
+	}, func(float64) {
+		if seq != t.indSeq {
+			return
+		}
+		t.indRect = to
+		t.indAnim = false
+		t.Redraw(false)
+	})
+}
+
+// indicatorRectOf 把标签矩形换算成 line 变体指示条的矩形(横向下划线 / 纵向竖条)。
+func indicatorRectOf(rc xc.RECT, vertical bool) xc.RECT {
+	if vertical {
+		// after:inset-y-0 after:-right-1 after:w-0.5 —— 贴在标签右侧
+		return xc.RECT{Left: rc.Right + 1, Top: rc.Top, Right: rc.Right + 3, Bottom: rc.Bottom}
+	}
+	// after:inset-x-0 after:bottom-[-5px] after:h-0.5 —— 贴在**当前行**的底边
+	line := tabsPad - 2
+	return xc.RECT{Left: rc.Left, Top: rc.Bottom + line, Right: rc.Right, Bottom: rc.Bottom + line + 2}
+}
+
+// lerpRect 在两条矩形之间按进度插值(四边分别插值, 跨行切换时也有连续的位移)。
+func lerpRect(a, b xc.RECT, v float64) xc.RECT {
+	lerp := func(x, y int32) int32 {
+		if x == y {
+			return x
+		}
+		d := float64(y-x) * v
+		if d >= 0 {
+			return x + int32(d+0.5)
+		}
+		return x - int32(-d+0.5)
+	}
+	return xc.RECT{
+		Left:   lerp(a.Left, b.Left),
+		Top:    lerp(a.Top, b.Top),
+		Right:  lerp(a.Right, b.Right),
+		Bottom: lerp(a.Bottom, b.Bottom),
+	}
 }
 
 // OnValueChangeVeto 注册"可否决"的切换回调(对应 Base UI Tabs 的 onValueChange +
@@ -419,6 +501,16 @@ func (t *Tabs) SetDisabled(index int32, disabled bool) *Tabs {
 	}
 	if disabled && t.focus == index {
 		t.focus = t.nearestEnabled(index)
+	}
+	// 选中项被禁用时自动回退(对应 Base UI Tabs 的 disabled fallback): 落到最近的可用
+	// 标签上; 全都被禁用则清空选中(value=null, 面板全部隐藏)。
+	// 程序化 SetActive 仍可选中禁用项 —— 受控值照旧生效, 这里只管"用户没法再停在它上面"。
+	if disabled && t.active == index {
+		next := t.nearestEnabled(index)
+		if !t.enabledAt(next) {
+			next = -1
+		}
+		t.setActive(next, false)
 	}
 	t.redrawAll()
 	return t
@@ -768,16 +860,12 @@ func (t *Tabs) onPaintList(hEle int, hDraw int, pbHandled *bool) int {
 			continue
 		}
 		rc := btn.GetRectEx()
-		if int32(i) == t.active && t.variant == TabsLine {
-			if t.vertical {
-				// after:inset-y-0 after:-right-1 after:w-0.5 —— 贴在标签右侧
-				line := xc.RECT{Left: rc.Right + 1, Top: rc.Top, Right: rc.Right + 3, Bottom: rc.Bottom}
-				p.FillRound(&line, th.Foreground, 1)
-			} else {
-				// after:inset-x-0 after:bottom-[-5px] after:h-0.5 —— 贴在**当前行**的底边
-				// (换行时不能再用列表底边, 否则下划线会跑到最后一行下面)
-				line := xc.RECT{Left: rc.Left, Top: rc.Bottom + tabsPad - 2, Right: rc.Right, Bottom: rc.Bottom + tabsPad}
-				p.FillRound(&line, th.Foreground, 1)
+		// line 变体的指示条: 位置由 indRect 持有(切换时滑动过渡, 见 animateIndicator)。
+		// 不在过渡中时每帧跟住当前选中标签的矩形 —— 窗口缩放/换行重排后它会跟着走。
+		if t.variant == TabsLine && int32(i) == t.active {
+			cur := indicatorRectOf(rc, t.vertical)
+			if !t.indAnim {
+				t.indRect, t.indValid = cur, true
 			}
 		}
 		// focus-visible:ring-3 ring-ring/50 —— 只画在键盘焦点所在的那个标签上。
@@ -792,6 +880,11 @@ func (t *Tabs) onPaintList(hEle int, hDraw int, pbHandled *bool) int {
 			}
 			p.StrokeRound(&halo, th.Ring.WithAlpha(128), th.RadiusMd()+2, 3)
 		}
+	}
+	// 指示条统一在标签之后画(它可能跨在相邻标签的边界上, 先画会被后画的标签底盖住)
+	if t.variant == TabsLine && t.indValid && t.active >= 0 {
+		line := t.indRect
+		p.FillRound(&line, th.Foreground, 1)
 	}
 	return 0
 }

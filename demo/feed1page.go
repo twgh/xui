@@ -50,6 +50,13 @@ func buildFeed1Page(body *widget.LayoutEle, hWindow int) {
 	tipKbd := mkTipBtn("快捷键", rt2)
 	tip.BindTip(tipKbd.Handle, "打开命令面板", ui.WithTipShortcut("Ctrl+K"))
 
+	// 可移入的气泡(WithTipHoverable): 光标从按钮移进气泡时保持显示, 离开气泡才收。
+	rt3 := xui.HStack(v2.Handle, 36, 8)
+	xui.ItemFill(rt3)
+	hoverableBtn := mkTipBtn("可移入", rt3)
+	tip.BindTip(hoverableBtn.Handle, "把光标移进这段文字试试(不会消失)",
+		ui.WithTipHoverable(), ui.WithTipArrowPadding(12))
+
 	xui.ItemFill(desc(v2.Handle, "键盘焦点进入也显示(鼠标点击产生的焦点不算); WithTipDelay 设延迟、移出后 300ms 内移到下一个元素跳过延迟。绑定的元素自身有弹层时(如 NativeComboBox), 弹层打开要主动 HideTooltip。"))
 
 	// ---- 第二行: 警示对话框 + 对话框变体 ----

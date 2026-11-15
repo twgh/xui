@@ -720,7 +720,29 @@
 | SH4 | Sheet | 对齐 base-nova: 关闭钮 `top-3 right-3`(12)、SheetHeader 间距 `gap-0.5`(2)、面板底色 `bg-popover`(Drawer 仍用页面底色) |
 | AD1 | AlertDialog | 转发 `OnOpenChange` / `SetOpen`: 与 Dialog / Sheet 口径统一 |
 
-**下一批建议**: 分两类 —— 需要先拍板的见下表(Q1~Q4), 其余可直接排期(按组件集中做, 不用逐条确认)。下一轮**核查**(不是实现)从 #31 Toast 起。
+**第八批**(可直接排期清单一次性落地, 跨 18 个组件; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| I1 | Input / Textarea | `WithFileInput(dlgOpts...)` / `WithFileInputMulti` / `WithFileInputMaxFiles`: 只读显示文件名(多选 `首个 +N`) + 右侧"选择文件"文字钮调 FileDialog, 取消不改值; `SetFiles/Files/ClearFiles/OnFilesChange`, 文件形态下 `FieldValue()` 返回路径列表(必填 = 必须选文件) |
+| I6 | Input / Textarea | `WithInputSelectColor`(选区底色, 默认主色 25%)、`WithInputCaretWidth`、`WithInputAutoSelect`、`Undo` / `Redo` |
+| TA2 / TA3 | Textarea | `WithTextareaRows(n)` 最小高按实际行高换算(与 cy 二选一); `WithTextareaResize()` 右下角抓手拖拽改最小高度(屏幕物理增量 ÷ DPI, 自动长高继续生效) |
+| S6 | Select | `WithSelectHighlightOnHover(false)` / `SetHighlightOnHover`: 悬停只给淡底, 键盘高亮不跟鼠标走 |
+| TT1 / TT2 | Tooltip | `WithTipHoverable()`(气泡可移入: 动态去 `WS_EX_TRANSPARENT` + 锚点离开延迟确认)、`WithTipArrowPadding(px)` |
+| BA1 | Badge | 可点击徽章进 Tab 链 + Enter/空格触发; focus-visible 与 aria-invalid 环画在胶囊内侧 2px; `WithBadgeInvalid` / `SetInvalid` |
+| TB3 / TB4 | Tabs | 选中项被禁用时自动回退到最近可用标签(全禁用则清空); line 变体指示条 150ms 滑动 |
+| SW3 | Switch | 滑块位移过渡 150ms(回滚同样跟着回, 初始值直接落位) |
+| RG4 | Radio Group | `WithRadioGroupHorizontal` / `SetHorizontal`: 横向排列, 条目宽按文字量成固定宽 |
+| C3 / C5 | Card | `FullBleed(cy)` 通栏块(卡片直接子项); 卡片头宽 < 300 时动作列换到标题下方 |
+| DM2 / DM3 / DM4 | Menu | `Side` / `Align` / `Offset(side, align)`; `SetRadioGroupValue` / `RadioGroupValue` / `OnRadioGroupChange`; `SetDisabled` 整菜单禁用 |
+| TBL1 / TBL2 | Table | `SetCaption` / `SetFooter`: 与表格同父的兄弟横带(说明在最下, 合计行 border-t + bg-muted/50 按列对齐) |
+| DT1 | Data Table | `WithDataTableRemote()` / `SetTotalRows` / `OnQueryChange(DataTableQuery)`: 服务端分页, rows = 当前页 |
+| PR4 | Progress | `NewProgressLabel` / `NewProgressValue(bar, ...)`: 独立摆放的标题与数值 |
+| AV5 | Avatar | `OnImageStatus(func(ok bool))`(注册即回调一次)+ `ImageLoaded()` |
+| SA3 | Scroll Area | `ScrollTo` / `ScrollIntoView` / `ScrollToCenter` |
+| SH6 / SH7 / AD2 / AD4 | Dialog / Sheet / AlertDialog | 遮罩配色与不透明度可配(默认对话框 10%、Sheet 50%); Sheet 进场改 2.5rem(40px)小位移 + 整组淡入(`WithSheetSlideDistance` 可回退); AlertDialog 媒体块可放图片(`WithAlertDialogMediaImage` / `SetMediaImage`, 圆角矩形蒙版) |
+
+**下一批建议**: 分两类 —— 需要先拍板的见下表(Q1~Q4), 其余暂无(可直接排期清单已清空)。下一轮**核查**(不是实现)从 #31 Toast 起。
 
 **待确认需求(不动手前需要拍板)**:
 
@@ -731,4 +753,4 @@
 | Q3 | SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3 | 桌面端收益存疑的大项: 滑块拖动推挤(`push`)、单滑块禁用、ScrollArea 横向滚动、非模态弹层(`modal=false`)、Popover 定位策略可配、表格列宽拖拽 | 全部暂不做; 有真实场景再单独立项(SA2 若要做, 需先定"加横向模式"还是"新建 HScrollArea") |
 | Q4 | C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2 | 两类: C4 卡片图片槽(依赖圆角裁剪, 只能做直角图片块)与 5 组纯 demo 示例(不改组件) | demo 示例可以补(便宜, 提升文档完整度); C4 只做"直角图片槽 + 自适应高", 不做圆角 |
 
-**可直接排期(无需确认)**: I1 文件输入 / I6 原生 Edit 视觉与行为 API / S6 悬停高亮开关 / C3 通栏内容 / C5 header 响应式 / TA2 resize / TA3 rows / TB3 选中回退 / TB4 指示条过渡 / SW3 过渡 / RG4 横向 / DM2 菜单定位参数 / DM3 受控 RadioGroup / DM4 Root 级小项 / TT1 hoverable / TT2 箭头内距 / BA1 焦点环与校验环 / AL2 多行描述 / TBL1 caption / TBL2 合计行 / DT1 手动分页 / PR4 独立 Label/Value / AV5 图片状态回调 / SH6 遮罩样式 / SH7 进场位移 / AD2 media 图片 / AD4 遮罩样式 / SA3 ScrollTo。其中 I1 优先级最高(桌面高频), DM2 次之(靠边/右键菜单常需)。
+**可直接排期(无需确认)**: 已全部落地(第八批, 见第五节)。其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。

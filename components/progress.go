@@ -412,6 +412,85 @@ func (p *Progress) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	return 0
 }
 
+// ===== 独立摆放的标题 / 数值(对应 ProgressLabel / ProgressValue 部件) =====
+//
+// ProgressField 是"标题 + 数值 + 条"的固定组合; 上游把 ProgressLabel / ProgressValue 列成
+// 可自由摆放的子部件(标签在条上方、数值在条右侧、数值单独放一行等)。这两个构造函数给出
+// 同样的自由度: 尺寸与位置交给调用方的布局, 数值文本自己跟着 Progress 刷新。
+
+// NewProgressLabel 创建独立的进度标题(对应 ProgressLabel 部件): medium 字重的普通 Label,
+// 摆放位置由调用方决定(通常配 xui.ItemWeight 或 xui.ItemFill)。
+func NewProgressLabel(x, y, cx, cy int32, text string, hParent int) *Label {
+	if cy <= 0 {
+		cy = 20
+	}
+	l := NewLabel(x, y, cx, cy, text, hParent)
+	if l == nil {
+		return nil
+	}
+	return l.SetMedium()
+}
+
+// ProgressValue 是独立摆放的进度数值文本(对应 ProgressValue 部件): 绑定一个 Progress,
+// 值变化时自动刷新, 文本格式可覆盖(默认四舍五入到整数百分比)。
+//
+// 它只是"订阅者", 不参与 Progress 的布局: 放在条的右侧/下方都行。
+type ProgressValue struct {
+	*Label
+	bar    *Progress
+	format func(v, max float64) string
+}
+
+// NewProgressValue 创建并绑定到 bar 的进度数值文本。cy 传 0 用 20。
+// bar 为 nil 时退化成普通 Label(始终显示空文本)。
+func NewProgressValue(bar *Progress, x, y, cx, cy int32, hParent int) *ProgressValue {
+	if cy <= 0 {
+		cy = 20
+	}
+	l := NewLabel(x, y, cx, cy, "", hParent)
+	if l == nil {
+		return nil
+	}
+	l.SetMuted()
+	pv := &ProgressValue{Label: l, bar: bar}
+	if bar != nil {
+		bar.OnChange(func(float64) { pv.Refresh() })
+	}
+	pv.Refresh()
+	return pv
+}
+
+// SetFormat 自定义数值文本(参数是当前值与最大值; 与 ProgressField 的
+// WithProgressFieldFormat 同一口径)。传 nil 恢复默认百分比。
+func (pv *ProgressValue) SetFormat(fn func(v, max float64) string) *ProgressValue {
+	if pv == nil {
+		return pv
+	}
+	pv.format = fn
+	pv.Refresh()
+	return pv
+}
+
+// Refresh 按当前进度重算文本(程序化改过值/格式后调用; 值变化事件已自动处理)。
+func (pv *ProgressValue) Refresh() *ProgressValue {
+	if pv == nil || pv.bar == nil {
+		return pv
+	}
+	text := ""
+	switch {
+	case pv.bar.Indeterminate():
+		text = "…" // 不确定态不报告百分比(同 ProgressField)
+	case pv.format != nil:
+		text = pv.format(pv.bar.Value(), pv.bar.Max())
+	default:
+		text = fmt.Sprintf("%.0f%%", pv.bar.Percent())
+	}
+	if pv.GetText() != text {
+		pv.SetText(text).Redraw()
+	}
+	return pv
+}
+
 // ===== ProgressField: 标题 + 百分比 + 进度条(对应 shadcn 文档的 Labels 示例) =====
 
 // ProgressField 是"标题行(左标题 / 右百分比) + 进度条"的复合形态, 对应 shadcn

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 )
@@ -136,6 +137,98 @@ func (s *ScrollArea) SetContentFill() *ScrollArea {
 func (s *ScrollArea) ScrollToTop() *ScrollArea {
 	s.ScrollPosYV(0)
 	return s
+}
+
+// ScrollTo 把内容区里的某个元素滚到视口顶部(对应浏览器的 ScrollIntoView 的 start 对齐)。
+//
+// 只对**本容器内容区里的**元素有效(其它位置的元素无意义); 元素矩形读出来是内容坐标
+// (框架的滚动只作用于绘制, 见构造函数注释), 因此直接与视口高度比较即可。
+func (s *ScrollArea) ScrollTo(hEle int) *ScrollArea {
+	if s == nil {
+		return s
+	}
+	top, _, _, _, max, ok := s.scrollMetrics(hEle)
+	if !ok {
+		return s
+	}
+	s.ScrollPosYV(scrollClampY(top, max))
+	return s
+}
+
+// ScrollIntoView 只在元素不在视口内时滚动(对应浏览器 ScrollIntoView 的 "nearest" 语义):
+// 元素已完整可见就什么都不做, 在上方就贴到顶部, 在下方就贴到底部。
+func (s *ScrollArea) ScrollIntoView(hEle int) *ScrollArea {
+	if s == nil {
+		return s
+	}
+	top, bottom, viewH, pos, max, ok := s.scrollMetrics(hEle)
+	if !ok {
+		return s
+	}
+	switch {
+	case top >= pos && bottom <= pos+viewH:
+		return s
+	case top < pos:
+		s.ScrollPosYV(scrollClampY(top, max))
+	default:
+		s.ScrollPosYV(scrollClampY(bottom-viewH, max))
+	}
+	return s
+}
+
+// ScrollToCenter 把元素滚到视口垂直居中(对应 ScrollIntoView 的 center 对齐)。
+func (s *ScrollArea) ScrollToCenter(hEle int) *ScrollArea {
+	if s == nil {
+		return s
+	}
+	top, bottom, viewH, _, max, ok := s.scrollMetrics(hEle)
+	if !ok {
+		return s
+	}
+	s.ScrollPosYV(scrollClampY((top+bottom)/2-viewH/2, max))
+	return s
+}
+
+// scrollClampY 把滚动位夹进 [0, max](本组件自用, 不依赖其它组件文件)。
+func scrollClampY(y, max int32) int32 {
+	if y < 0 {
+		return 0
+	}
+	if y > max {
+		return max
+	}
+	return y
+}
+
+// scrollMetrics 返回元素在本容器内容坐标里的上下边、视口高、当前滚动位与最大滚动位。
+func (s *ScrollArea) scrollMetrics(hEle int) (top, bottom, viewH, pos, max int32, ok bool) {
+	if hEle == 0 || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
+		return
+	}
+	// 元素必须在本容器的内容区里, 否则算出来的矩形与视口无关。
+	inContent := false
+	for p := hEle; p != 0; p = xc.XWidget_GetParentEle(p) {
+		if p == s.content.Handle {
+			inContent = true
+			break
+		}
+	}
+	if !inContent {
+		return
+	}
+	var er, fr xc.RECT
+	xc.XEle_GetWndClientRect(hEle, &er)
+	xc.XEle_GetWndClientRect(s.Handle, &fr)
+	top = er.Top - fr.Top
+	bottom = top + (er.Bottom - er.Top)
+	viewH = s.GetViewHeight()
+	pos = s.GetViewPosV()
+	max = s.content.GetHeight() - viewH
+	if max < 0 {
+		max = 0
+	}
+	ok = true
+	return
 }
 
 // onSize 元素尺寸事件: 首帧与滚动条显隐翻转的那一帧补排一次(见 lastFW 注释)。

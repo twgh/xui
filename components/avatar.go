@@ -133,6 +133,8 @@ type Avatar struct {
 	imagePath string
 	imageData image.Image
 	imgHandle int
+	// onImageStatus 是图片加载状态回调(AV5): 每次 syncImage 后按成功与否回调。
+	onImageStatus []func(ok bool)
 }
 
 // NewAvatar 创建头像。cx 传 0 用尺寸档; 传其他值作为直径覆盖尺寸档。
@@ -319,11 +321,30 @@ func (a *Avatar) syncImage() {
 			}
 		}
 	}
-	if img == nil {
-		return
+	if img != nil {
+		a.imgHandle = avatarImageHandle(img, a.GetWidth(), avatarDPI(a.Handle), a.circleInset())
 	}
-	a.imgHandle = avatarImageHandle(img, a.GetWidth(), avatarDPI(a.Handle), a.circleInset())
+	// 图片状态回调(AV5, 对应 Base UI Avatar.Image 的 onLoadingStatusChange):
+	// 同步解码, 每次换图/改圆半径都会重新判定一次。
+	ok := a.imgHandle != 0
+	for _, fn := range a.onImageStatus {
+		fn(ok)
+	}
 }
+
+// OnImageStatus 注册图片状态回调: ok=true 表示图片已加载并生成位图, false 表示
+// 加载失败 / 没有图片(界面回落 fallback 文字)。注册时立即回调一次当前状态。
+func (a *Avatar) OnImageStatus(fn func(ok bool)) *Avatar {
+	if a == nil || fn == nil {
+		return a
+	}
+	a.onImageStatus = append(a.onImageStatus, fn)
+	fn(a.imgHandle != 0)
+	return a
+}
+
+// ImageLoaded 报告当前是否显示了图片(而非 fallback 文字)。
+func (a *Avatar) ImageLoaded() bool { return a != nil && a.imgHandle != 0 }
 
 // circleInset 返回照片位图要让出的环带宽度(逻辑像素): 画色环或需要画焦点环时为 2。
 //

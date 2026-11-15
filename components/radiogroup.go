@@ -31,6 +31,7 @@ type RadioGroup struct {
 	*widget.LayoutEle
 	items          []*Radio
 	spacing        int32
+	horizontal     bool   // 横向排列(本库扩展; 上游只有竖向)
 	disabled       bool
 	invalid        bool
 	readOnly       bool   // 用户不可换选(程序化 SetValue 仍生效)
@@ -77,6 +78,13 @@ func WithRadioGroupSpacing(px int32) RadioGroupOption {
 	}
 }
 
+// WithRadioGroupHorizontal 横向排列条目(本库扩展: 上游只给 `grid gap-2` 竖向,
+// 但桌面表单里"横向二选一"很常见)。条目宽按文字自然宽, 组高自撑。
+// 运行时切换用 SetHorizontal。
+func WithRadioGroupHorizontal() RadioGroupOption {
+	return func(g *RadioGroup) { g.horizontal = true }
+}
+
 // NewRadioGroup 创建单选组。组宽铺满、高自撑, 放进卡片内容区即可。
 func NewRadioGroup(hParent int, opts ...RadioGroupOption) *RadioGroup {
 	g := &RadioGroup{spacing: radioGroupGap}
@@ -88,7 +96,7 @@ func NewRadioGroup(hParent int, opts ...RadioGroupOption) *RadioGroup {
 		return nil
 	}
 	g.LayoutEle = ele
-	ele.EnableHorizon(false)
+	ele.EnableHorizon(g.horizontal)
 	ele.EnableLayout(true)
 	ele.EnableBkTransparent(true)
 	ele.EnableAutoWrap(false)
@@ -96,8 +104,45 @@ func NewRadioGroup(hParent int, opts ...RadioGroupOption) *RadioGroup {
 	ele.SetAlignH(xcc.Layout_Align_Left)
 	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	// 横向时条目宽是"按文字量出来的固定值", 换主题(字体/字号变了)要重新量。
+	xui.OnThemeChangeFor(ele.Handle, func(*xui.Theme) { g.applyItemWidths() })
 	xui.AttachWindow(ele.Handle)
 	return g
+}
+
+// SetHorizontal 运行时切换横向/竖向排列(条目宽度与组高一起跟着变)。
+func (g *RadioGroup) SetHorizontal(v bool) *RadioGroup {
+	if g == nil || g.horizontal == v {
+		return g
+	}
+	g.horizontal = v
+	g.EnableHorizon(v)
+	g.applyItemWidths()
+	g.relayout()
+	return g
+}
+
+// Horizontal 报告是否横向排列。
+func (g *RadioGroup) Horizontal() bool { return g != nil && g.horizontal }
+
+// applyItemWidths 按当前取向重排条目宽度: 竖向铺满(上游 block 条目), 横向按文字自然宽。
+//
+// 横向不能沿用 Fill —— 横向布局的主轴是宽度, Fill 会让每个条目独占一整行;
+// 也不能不声明宽度(元素自身宽是 0)。所以横向用"标题文字量出来的固定宽"。
+func (g *RadioGroup) applyItemWidths() {
+	if g == nil {
+		return
+	}
+	for _, it := range g.items {
+		if g.horizontal {
+			xui.ItemWidth(it, it.naturalWidth())
+		} else {
+			xui.ItemFill(it)
+		}
+	}
+	if g.horizontal {
+		g.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	}
 }
 
 // AddItem 在组内追加一个条目(直接子项)并返回它。value 是组值, text 为标签文字。
@@ -109,8 +154,7 @@ func (g *RadioGroup) AddItem(value, text string, opts ...RadioOption) *Radio {
 	if r == nil {
 		return nil
 	}
-	xui.ItemFill(r)
-	return g.Attach(r, value)
+	return g.Attach(r, value) // 宽度由 Attach 按取向统一声明
 }
 
 // Attach 把一个已创建的 Radio 纳入组语义。用于条目需要放在 Field 等子容器里的场景
@@ -145,6 +189,7 @@ func (g *RadioGroup) Attach(r *Radio, value string) *Radio {
 		g.SetValue(g.initial)
 		g.initial = ""
 	}
+	g.applyItemWidths()
 	g.relayout()
 	return r
 }

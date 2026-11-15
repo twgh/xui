@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"math"
+	"time"
+
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -25,6 +28,11 @@ var switchSpecs = map[SwitchSize]struct{ w, h, thumb int32 }{
 //   - 顺带把点击热区外扩, 与 shadcn 的 after:-inset-x-3 after:-inset-y-2 等效。
 const switchRingPad int32 = 3
 
+// switchSlide 是滑块位移的过渡时长: switch.tsx 的 thumb 带 transition-transform,
+// 按 tailwind 默认 150ms。过渡由运行时 PresenceOnce 驱动(每次切换一段新过渡),
+// 组件不自起定时器。
+const switchSlide = 150 * time.Millisecond
+
 // Switch 自绘开关: 载体为 Button_Type_Check 类型的原生按钮(与 Checkbox 相同的行为层),
 // 轨道与滑块全部由本组件绘制。
 //
@@ -46,6 +54,10 @@ type Switch struct {
 	backdrop       func(t *xui.Theme) xui.Color
 	changes        []func(checked bool)
 	vetoes         []func(checked bool) bool
+	// thumbPos 是滑块位置的过渡插值(0 = 左端, 1 = 右端), 由 slideTo 逐帧更新;
+	// 直接读它绘制, 不要按 checked 画终点(否则切换是瞬移, 见开关的 transition-transform)。
+	thumbPos float64
+	slideSeq uint64
 }
 
 // SwitchOption 开关配置项。
@@ -85,6 +97,11 @@ func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
 		Bottom: y + spec.h + switchRingPad*2,
 	}, false, xcc.AdjustLayout_No)
 
+	// 初始状态直接落位, 不要从"关"滑进来(构造期的初始值不是一次交互)。
+	sw.thumbPos = 0
+	if sw.IsCheck() {
+		sw.thumbPos = 1
+	}
 	sw.SetTypeEx(xcc.Button_Type_Check)
 	sw.EnableBkTransparent(true) // 灭掉原生外观, 交给 onPaint
 	sw.SetCursor(controlCursor(sw.disabled))
@@ -100,9 +117,11 @@ func NewSwitch(x, y int32, hParent int, opts ...SwitchOption) *Switch {
 	sw.AddEvent_Button_Check(func(hEle int, bCheck bool, pbHandled *bool) int {
 		if sw.readOnly || !sw.allowChange(bCheck) {
 			sw.SetCheck(!bCheck)
+			sw.slideTo(!bCheck) // 回滚也要跟着回(否则滑块停在一次没被接受的位移上)
 			sw.Redraw(false)
 			return 0
 		}
+		sw.slideTo(bCheck)
 		sw.Redraw(false)
 		sw.notifyChange(bCheck)
 		return 0
@@ -137,11 +156,46 @@ func (s *Switch) FieldValue() string {
 	return "1"
 }
 
-// SetChecked 设置选中状态(不触发 OnChange)。
+// SetChecked 设置选中状态(不触发 OnChange; 滑块位置按 transition-transform 过渡)。
 func (s *Switch) SetChecked(v bool) *Switch {
 	s.SetCheck(v)
+	s.slideTo(v)
 	s.Redraw(false)
 	return s
+}
+
+// slideTo 让滑块从当前位置过渡到目标端(对应 switch.tsx 的 thumb transition-transform)。
+//
+// 用运行时 PresenceOnce: 每次切换开始一段**新键**过渡(复用键会命中已到位条目, 动画
+// 只跑第一次), 到位条目由运行时自动回收; 旧过渡还没跑完时由 slideSeq 让它停止写值,
+// 否则两段会同时改 thumbPos, 滑块来回跳(同 Progress.retarget)。
+func (s *Switch) slideTo(on bool) {
+	if s == nil {
+		return
+	}
+	to := 0.0
+	if on {
+		to = 1.0
+	}
+	from := s.thumbPos
+	s.slideSeq++
+	seq := s.slideSeq
+	if from == to {
+		return
+	}
+	xui.PresenceOnce(s.Handle, true, switchSlide, func(v float64) {
+		if seq != s.slideSeq {
+			return
+		}
+		s.thumbPos = from + (to-from)*v
+	}, func(float64) {
+		if seq != s.slideSeq {
+			return
+		}
+		s.thumbPos = to
+		// 到位帧的重绘发生在 done 之前, 终值要再补一次(同 anim.go 的 settledNow 语义)。
+		s.Redraw(false)
+	})
 }
 
 // Toggle 切换选中状态并触发 OnChange(与点击/空格同一路径)。
@@ -161,6 +215,7 @@ func (s *Switch) toggleNotify() {
 		return
 	}
 	s.SetCheck(next)
+	s.slideTo(next)
 	s.Redraw(false)
 	s.notifyChange(next)
 }
@@ -356,12 +411,15 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		p.StrokeRound(&track, t.Ring, radius, 1)
 	}
 
-	// 滑块: 选中右移, 两侧各留 1px
+	// 滑块: 从"左端(两侧各留 1px)"按 thumbPos 插值到右端(过渡见 slideTo)。
+	// 不要直接按 checked 画终点 —— 那样切换是瞬移, 与上游的 transition-transform 不符。
 	const inset = int32(1)
 	thumb := spec.thumb
-	x := track.Left + inset
-	if checked {
-		x = track.Right - thumb - inset
+	offX := track.Left + inset
+	onX := track.Right - thumb - inset
+	x := offX
+	if d := onX - offX; d != 0 {
+		x = offX + int32(math.Round(float64(d)*s.thumbPos))
 	}
 	y := track.Top + (spec.h-thumb)/2
 	trc := xc.RECT{Left: x, Top: y, Right: x + thumb, Bottom: y + thumb}

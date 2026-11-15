@@ -80,13 +80,43 @@ type Menu struct {
 	// 覆盖); 0 = 走组件默认(max(触发区宽, 128))。
 	width int32
 
-	opens []func(bool) // OnOpenChange 注册的开合回调
+	// 定位参数(DM2), 对应 Base UI Menu Content 的 side / align / sideOffset / alignOffset。
+	// sideOff = -1 表示用默认 4(radix sideOffset=4)。
+	side     MenuSide
+	align    MenuAlign
+	sideOff  int32
+	alignOff int32
+
+	// disabledAll 整菜单禁用(DM4): 全部条目按禁用态构建(灰显、不可点)。
+	disabledAll bool
+
+	opens   []func(bool)                   // OnOpenChange 注册的开合回调
+	radioCB func(group int32, value string) // 单选组变化回调(DM3)
 }
+
+// MenuSide 是弹层相对触发区的一侧, 对应 Base UI MenuContent 的 side(默认 bottom)。
+type MenuSide int
+
+const (
+	MenuSideBottom MenuSide = iota // 下方(默认)
+	MenuSideTop                    // 上方
+	MenuSideLeft                   // 左侧
+	MenuSideRight                  // 右侧
+)
+
+// MenuAlign 是弹层与触发区在侧向轴上的对齐方式, 对应 align(默认 start)。
+type MenuAlign int
+
+const (
+	MenuAlignStart  MenuAlign = iota // 起点对齐(下方/上方时左缘对齐)
+	MenuAlignCenter                  // 居中
+	MenuAlignEnd                     // 终点对齐
+)
 
 // NewMenu 创建下拉菜单。菜单是一次性对象: 弹出关闭后原生菜单即销毁,
 // 状态(如勾选)由调用方持有并在下次弹出时传入。
 func NewMenu() *Menu {
-	return &Menu{byID: map[int32]*menuItem{}, groupTop: map[int32]int32{}, nextID: 1}
+	return &Menu{byID: map[int32]*menuItem{}, groupTop: map[int32]int32{}, nextID: 1, sideOff: -1}
 }
 
 func (m *Menu) add(it *menuItem, opts []MenuOpt) *Menu {
@@ -230,6 +260,89 @@ func (m *Menu) menuTargetWidth() int32 {
 // 不调用时走组件默认: 弹层宽 = max(触发区宽, 128)。
 func (m *Menu) Width(w int32) *Menu {
 	m.width = w
+	return m
+}
+
+// Side 指定弹层在触发区的哪一侧(默认下方), 对应 Base UI MenuContent 的 side。
+// 放不下时仍按 radix 的语义翻到对侧, 最后夹进工作区。
+func (m *Menu) Side(s MenuSide) *Menu {
+	if m == nil {
+		return m
+	}
+	m.side = s
+	return m
+}
+
+// Align 指定弹层在侧向轴上的对齐(默认起点对齐), 对应 Base UI MenuContent 的 align。
+func (m *Menu) Align(a MenuAlign) *Menu {
+	if m == nil {
+		return m
+	}
+	m.align = a
+	return m
+}
+
+// Offset 覆盖弹层与触发区的间距(sideOffset, 默认 4)与交叉轴偏移(alignOffset, 默认 0),
+// 单位是逻辑像素; 与 shadcn 的 `className="sideOffset-*"` / Positioner props 同义。
+// 单独调某一个时另一个传当前值即可(不想要交叉轴偏移就传 0)。
+func (m *Menu) Offset(side, align int32) *Menu {
+	if m == nil {
+		return m
+	}
+	m.sideOff, m.alignOff = side, align
+	return m
+}
+
+// SetDisabled 整菜单禁用(DM4, 对应 Base UI Menu Root 的 disabled): 全部条目按禁用态
+// 构建 —— 灰显、悬停不高亮、点击不派发。要在添加条目**之后**、弹出之前调用。
+func (m *Menu) SetDisabled(v bool) *Menu {
+	if m == nil {
+		return m
+	}
+	m.disabledAll = v
+	return m
+}
+
+// Disabled 报告整菜单是否禁用。
+func (m *Menu) Disabled() bool { return m != nil && m.disabledAll }
+
+// RadioGroupValue 返回某个单选组(MenuGroup)当前勾选条目的文本, 没有勾选时为空串。
+func (m *Menu) RadioGroupValue(group int32) string {
+	if m == nil {
+		return ""
+	}
+	for _, it := range m.items {
+		if it.kind == menuKindRadio && it.group == group && it.checked {
+			return it.text
+		}
+	}
+	return ""
+}
+
+// SetRadioGroupValue 按条目文本设置某个单选组的勾选状态(条目文本即组值, 与
+// RadioGroupValue / OnRadioGroupChange 同一口径)。菜单是一次性对象 —— 在**构建菜单时**
+// 用它反映调用方持有的当前值。
+func (m *Menu) SetRadioGroupValue(group int32, value string) *Menu {
+	if m == nil {
+		return m
+	}
+	for _, it := range m.items {
+		if it.kind != menuKindRadio || it.group != group {
+			continue
+		}
+		it.checked = value != "" && it.text == value
+	}
+	return m
+}
+
+// OnRadioGroupChange 注册单选组变化回调(用户选中某项时触发一次, value = 条目文本),
+// 对应 DropdownMenuRadioGroup 的 onValueChange。组值仍由调用方持有, 下次构建菜单时
+// 用 SetRadioGroupValue 传回去。
+func (m *Menu) OnRadioGroupChange(fn func(group int32, value string)) *Menu {
+	if m == nil {
+		return m
+	}
+	m.radioCB = fn
 	return m
 }
 
@@ -384,7 +497,7 @@ func (m *Menu) build(hWindow int) *widget.Menu {
 		switch {
 		case it.kind == menuKindSeparator:
 			flags = xcc.Menu_Item_Flag_Separator
-		case it.disabled: // Label 借用禁用态: 不高亮、不可点
+		case it.disabled || m.disabledAll: // Label 借用禁用态; disabledAll = 整菜单禁用
 			flags = xcc.Menu_Item_Flag_Disable
 		case (it.kind == menuKindCheck || it.kind == menuKindRadio) && it.checked:
 			flags = xcc.Menu_Item_Flag_Check
@@ -499,6 +612,9 @@ func (m *Menu) dispatch(nID int32) {
 		if it.onCheck != nil {
 			it.onCheck(true)
 		}
+		if m.radioCB != nil {
+			m.radioCB(it.group, it.text) // 组值回调(条目文本即组值)
+		}
 	default:
 		if it.onSelect != nil {
 			it.onSelect()
@@ -573,10 +689,60 @@ func menuPopupBody(mw *window.Window, m *Menu, rc xc.RECT) (int32, int32) {
 	sc := float64(dpi) / 96
 	bw := int32(math.Round(float64(rc.Right-rc.Left) * sc)) // Body 物理宽(GetRectEx 是逻辑尺寸)
 	bh := int32(math.Round(float64(rc.Bottom-rc.Top) * sc))
-	gap := int32(math.Round(float64(menuSideOffset) * sc))
-	x, y := m.anchor.Left, m.anchor.Bottom+gap
-	if y+bh > wa.Bottom && m.anchor.Top-gap-bh >= wa.Top {
-		y = m.anchor.Top - gap - bh
+	gapPx := menuSideOffset
+	if m.sideOff >= 0 {
+		gapPx = m.sideOff // Offset 显式覆盖(0 = 紧贴锚点)
+	}
+	gap := int32(math.Round(float64(gapPx) * sc))
+	alignOff := int32(math.Round(float64(m.alignOff) * sc))
+	ax, ay := m.anchor.Left, m.anchor.Top
+	aw, ah := m.anchor.Right-ax, m.anchor.Bottom-ay
+
+	// 先按 side 放一个初始位置(默认 bottom), 再按 align 在交叉轴上摆, 最后翻转 + 夹紧。
+	x, y := ax, ay+ah+gap
+	switch m.side {
+	case MenuSideTop:
+		y = ay - gap - bh
+	case MenuSideLeft:
+		x = ax - gap - bw
+	case MenuSideRight:
+		x = ax + aw + gap
+	}
+	switch m.side {
+	case MenuSideTop, MenuSideBottom:
+		switch m.align {
+		case MenuAlignCenter:
+			x = ax + aw/2 - bw/2
+		case MenuAlignEnd:
+			x = ax + aw - bw
+		default:
+			x = ax
+		}
+		x += alignOff
+		// 竖直翻转: 下方放不下、上方装得下时翻到上方(radix avoidCollisions)
+		if m.side == MenuSideBottom && y+bh > wa.Bottom && ay-gap-bh >= wa.Top {
+			y = ay - gap - bh
+		}
+		if m.side == MenuSideTop && y < wa.Top && ay+ah+gap+bh <= wa.Bottom {
+			y = ay + ah + gap
+		}
+	default:
+		switch m.align {
+		case MenuAlignCenter:
+			y = ay + ah/2 - bh/2
+		case MenuAlignEnd:
+			y = ay + ah - bh
+		default:
+			y = ay
+		}
+		y += alignOff
+		// 水平翻转: 右侧放不下、左侧装得下时翻到左侧
+		if m.side == MenuSideRight && x+bw > wa.Right && ax-gap-bw >= wa.Left {
+			x = ax - gap - bw
+		}
+		if m.side == MenuSideLeft && x < wa.Left && ax+aw+gap+bw <= wa.Right {
+			x = ax + aw + gap
+		}
 	}
 	if y+bh > wa.Bottom {
 		y = wa.Bottom - bh

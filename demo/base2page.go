@@ -47,6 +47,14 @@ func buildBase2Page(body *widget.LayoutEle) {
 	ui.NewLinkBadge(0, 0, 0, 0, "shadcn 文档", "https://ui.shadcn.com", rc.Handle,
 		ui.WithBadgeTrailingIcon(icons.IconArrowUpRight))
 
+	xui.ItemFill(hint(v2.Handle, "键盘可达(可点击徽章进 Tab 链, Enter/空格触发) / 校验失败(内侧红环)"))
+	rb := xui.HStack(v2.Handle, 24, 8)
+	kb := ui.NewBadge(0, 0, 0, 0, "可聚焦徽章", rb.Handle,
+		ui.WithBadgeVariant(ui.BadgeOutline), ui.WithBadgeLeadingIcon(icons.IconCircleCheck))
+	kb.OnClick(func() { println("badge clicked") })
+	ui.NewBadge(0, 0, 0, 0, "校验失败", rb.Handle,
+		ui.WithBadgeVariant(ui.BadgeOutline), ui.WithBadgeInvalid())
+
 	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
 
 	xui.ItemFill(hint(v2.Handle, "分隔线与标签"))
@@ -187,6 +195,28 @@ func buildAvatarCard(parent int) {
 		rtAvatar.SetRing(rtIdx == 2)
 		rtBtn.SetText("当前: " + rtNames[rtIdx])
 		return 0
+	})
+
+	xui.ItemFill(hint(vav.Handle, "图片状态回调(OnImageStatus: 加载成功/失败各自回一次, 失败回落首字母)"))
+	avStatusRow := xui.HStack(vav.Handle, 40, 12)
+	avStatusLabel := ui.NewLabel(0, 0, 0, 20, "状态: 未知", vav.Handle).SetMuted().SetFontSize(14)
+	xui.ItemFill(avStatusLabel)
+	avStatus := ui.NewAvatar(0, 0, 0, 0, avStatusRow.Handle, "IG", ui.WithAvatarImageData(demoAvatar()))
+	avStatus.OnImageStatus(func(ok bool) {
+		if ok {
+			avStatusLabel.SetText("状态: 图片已加载").Redraw()
+		} else {
+			avStatusLabel.SetText("状态: 加载失败, 回落首字母").Redraw()
+		}
+	})
+	avBadLabel := ui.NewLabel(0, 0, 0, 20, "缺图头像: 等待回调…", avStatusRow.Handle).SetMuted().SetFontSize(14)
+	xui.ItemWidth(avBadLabel, 180)
+	avBadStatus := ui.NewAvatar(0, 0, 0, 0, avStatusRow.Handle, "NF",
+		ui.WithAvatarImage(`Z:\definitely-missing\avatar.png`))
+	avBadStatus.OnImageStatus(func(ok bool) {
+		if !ok {
+			avBadLabel.SetText("缺图头像: 回落首字母").Redraw()
+		}
 	})
 
 	xui.ItemFill(hint(vav.Handle, "可交互头像(作 Popover 触发区: 点它或聚焦后 Enter/空格)"))

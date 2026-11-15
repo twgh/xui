@@ -81,6 +81,40 @@ func buildNav1Page(body *widget.LayoutEle) {
 	})
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "条目 hover 走 bg-accent, 与表格行 / 树行同一口径", v2.Handle).SetMuted())
 
+	xui.ItemFill(hint(v2.Handle, "定位参数(朝右 + 两侧偏移 8) / 单选组取值 / 整菜单禁用"))
+	rpos := xui.HStack(v2.Handle, 36, 8)
+	posBtn := ui.NewButton(0, 0, 0, 0, "朝右弹出", rpos.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonHasPopup(),
+		ui.WithButtonTrailingIcon(icons.IconChevronRight))
+	xui.ItemWidth(posBtn, 120)
+	posBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		posBtn.SetExpanded(true)
+		defer posBtn.SetExpanded(false)
+		m := ui.NewMenu()
+		m.Width(160).Side(ui.MenuSideRight).Align(ui.MenuAlignStart).Offset(8, 0)
+		m.Label("密度")
+		m.Radio("紧凑", true, ui.MenuGroup(1))
+		m.Radio("宽松", false, ui.MenuGroup(1))
+		m.OnRadioGroupChange(func(group int32, value string) {
+			println("菜单单选组:", group, value)
+		})
+		m.PopupAtElement(hEle)
+		return 0
+	})
+	disMenuBtn := ui.NewButton(0, 0, 0, 0, "整菜单禁用", rpos.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithButtonHasPopup())
+	xui.ItemWidth(disMenuBtn, 120)
+	disMenuBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		disMenuBtn.SetExpanded(true)
+		defer disMenuBtn.SetExpanded(false)
+		m := ui.NewMenu()
+		m.Width(160).SetDisabled(true)
+		m.Item("不可用", ui.MenuShortcut("Ctrl+X"))
+		m.Item("也不可用")
+		m.PopupAtElement(hEle)
+		return 0
+	})
+
 	// ---- 列 2: 右键菜单 ----
 	_, v3 := autoCard(xui.VStack(r.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "右键菜单", v3.Handle))

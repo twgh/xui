@@ -93,6 +93,32 @@ func NewRadio(x, y, cx, cy int32, text string, hParent int, opts ...RadioOption)
 // Selected 返回选中状态。
 func (r *Radio) Selected() bool { return r.IsCheck() }
 
+// naturalWidth 返回条目按当前文字需要的宽度(指示器 + 间距 + 文字 + 两侧余量)。
+//
+// 只给"横向排列"的 RadioGroup 用: 横向布局的主轴是宽度, 条目铺满会把每个条目挤成
+// 一整行, 不声明宽度又会被排成 0 宽 —— 所以按文字量一个固定值。几何与 onPaint
+// 一致(左 4 + 指示器 + 8 + 文字 + 右 4), 换主题后由 RadioGroup 重新调用。
+func (r *Radio) naturalWidth() int32 {
+	if r == nil {
+		return 0
+	}
+	const (
+		left  int32 = 4
+		gap   int32 = 8
+		right int32 = 4
+	)
+	box := r.BoxSize
+	if box <= 0 {
+		box = 16
+	}
+	text := r.GetText()
+	if text == "" {
+		return left + box + right
+	}
+	t := xui.Current()
+	return left + box + gap + xui.TextWidth(text, xui.FontHandle(t.FontDefault)) + right
+}
+
 // FieldValue 实现 FieldValueProvider: 选中为 "1", 未选中为空串。
 func (r *Radio) FieldValue() string {
 	if r == nil || !r.Selected() {

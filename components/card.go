@@ -204,6 +204,42 @@ func (c *Card) ContentStack(space int32) *widget.LayoutEle {
 	return c.stack
 }
 
+// FullBleed 创建一个**通栏**子容器: 左右不受卡片内边距约束(内容贴到卡片左右边缘),
+// 对应上游用 `-mx-(--card-spacing)` 做的 edge-to-edge 块(分隔线 / 图片 / 表格)。
+//
+// 它不是 ContentStack 的子项 —— 内容区的左右内边距是由元素 padding 实现的, 子项无法
+// "逃出"这层约束(改用负外边距会让 Fill 子项按错误宽度解析, 见 DESIGN 8.129)。
+// 所以通栏块是**卡片的直接子项**, 按创建顺序参与卡片的竖排:
+//
+//	stack := card.ContentStack(12)   // 先填内容
+//	...                            // 通栏块想要在内容**上方**时, 就在建内容区之前创建
+//	img := card.FullBleed(0)       // 0 = 高度按内容自撑
+//	ui.NewLabel(0, 0, 0, 0, "通栏内容", img.Handle)
+//
+// 有页脚时通栏块与页脚之间不再额外留内距(页脚自带 p-(--card-spacing))。
+func (c *Card) FullBleed(cy int32) *widget.LayoutEle {
+	if c == nil {
+		return nil
+	}
+	l := widget.NewLayoutEle(0, 0, 0, cy, c.Handle)
+	if l == nil {
+		return nil
+	}
+	l.EnableHorizon(false)
+	l.EnableLayout(true)
+	l.EnableBkTransparent(true)
+	l.EnableAutoWrap(false)
+	l.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	if cy > 0 {
+		l.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, cy)
+	} else {
+		l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	}
+	// 通栏块存在时, 内容区底部内距照旧(它可能夹在内容区与页脚之间), 不需要改 stack。
+	xui.AttachWindow(l.Handle)
+	return l
+}
+
 func (c *Card) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
@@ -254,7 +290,13 @@ type CardHeader struct {
 	titleW      int32        // 上次写回标题/描述子项的 Fixed 宽(见 syncTitleWidth)
 	synced      map[int]bool // 由 syncTitleWidth 锁过宽的标题列子项(后续尺寸变化要跟着更新)
 	syncPending bool
+	narrow       bool // 当前是否处于"窄卡"排布(动作列换到第二行)
+	narrowQueued bool
 }
+
+// cardHeaderStackW 是卡片头的换行断点: 宽度小于它时动作列从右上角换到标题下方
+// (上游用 @container/card-header 的容器查询做同一件事)。
+const cardHeaderStackW int32 = 300
 
 // NewCardHeader 创建卡片头。parent 传卡片内容区(ContentStack 的返回值)。
 // 头的宽度已声明为 Fill(卡片内容区宽), 高度 Auto 自撑, 调用方不需要再声明尺寸。
@@ -276,7 +318,53 @@ func NewCardHeader(x, y, cx int32, hParent int, space int32) *CardHeader {
 	// 左列先建出来(哪怕没人往里放标题): 它是 `1fr` 的占位列, 只有它存在,
 	// 只放动作、不写标题的卡片头才会把动作顶到右边(同 shadcn 的 grid-cols-[1fr_auto])。
 	h.TitleStack()
+	// 容器查询(@container/card-header)的等价物: 卡片头变窄时把动作列换到标题下方。
+	row.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		h.scheduleResponsive()
+		return 0
+	})
 	return h
+}
+
+// scheduleResponsive 把"按宽度切横/竖排布"推迟到下一轮消息: 在尺寸事件里改布局方向会重入
+// 当前布局趟。
+func (h *CardHeader) scheduleResponsive() {
+	if h == nil || h.narrowQueued {
+		return
+	}
+	h.narrowQueued = true
+	app.AfterFunc(0, func() {
+		h.narrowQueued = false
+		h.applyResponsive()
+	})
+}
+
+// applyResponsive 按卡片头当前宽度切换排布:
+//   - 宽卡(≥ cardHeaderStackW): 横向一行两列 —— 标题列 Weight 1 吃剩余, 动作列贴右上;
+//   - 窄卡: 竖向两行 —— 标题列铺满, 动作列缩到内容宽并右对齐(放到标题下面)。
+func (h *CardHeader) applyResponsive() {
+	if h == nil || h.title == nil || !xc.XC_IsHXCGUI(h.Handle, xcc.XC_ELE) {
+		return
+	}
+	w := h.GetWidth()
+	if w <= 0 {
+		return
+	}
+	narrow := h.action != nil && w < cardHeaderStackW
+	if narrow == h.narrow {
+		return
+	}
+	h.narrow = narrow
+	if narrow {
+		h.EnableHorizon(false)
+		h.title.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+		h.action.SetAlignH(xcc.Layout_Align_Right) // 竖排时动作缩到内容宽并靠右
+	} else {
+		h.EnableHorizon(true)
+		h.title.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1)
+		h.action.SetAlignH(xcc.Layout_Align_Left)
+	}
+	h.AdjustLayout()
 }
 
 // TitleStack 取左侧标题/说明的竖排容器(构造时已建, 同时充当 1fr 占位列)。
@@ -358,6 +446,8 @@ func (h *CardHeader) ActionStack() *widget.LayoutEle {
 		l.LayoutItem_SetWidth(xcc.Layout_Size_Auto, 0)
 		l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
 		h.action = l
+		// 动作区可能是头部已经排过之后才建的: 补一次"窄卡换行"判定。
+		h.scheduleResponsive()
 	}
 	return h.action
 }

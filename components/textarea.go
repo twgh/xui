@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"math"
+
 	"github.com/twgh/xcgui/app"
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
@@ -29,8 +32,19 @@ const (
 // 需要固定高度时直接用 Input + WithMultiline(高度写在创建参数里, 溢出出滚动条)。
 type Textarea struct {
 	*Input
-	// minH 是创建时给的最小高度, 内容再少也不缩到它以下。
+	// minH 是创建时给的最小高度(宽/高被拖拽后是新的最小高度), 内容再少也不缩到它以下。
 	minH int32
+	// rows > 0 表示最小高度按"显示 n 行"实时换算(WithTextareaRows); 用户拖过高度后
+	// userMin 置位, 不再按行数覆盖 —— 否则松开鼠标高度又跳回 rows 行。
+	rows    int32
+	userMin bool
+	// resize: 右下角拖拽抓手(WithTextareaResize)。dragging 期间用屏幕坐标增量改 minH。
+	resize     bool
+	gripHot    bool
+	dragging   bool
+	dragStartY int32
+	dragStartH int32
+	dragScale  float64
 	// fitPending/fitting: 合并同轮的量高请求, 并挡住"改高度 → Size 事件 → 再量高"的重入。
 	fitPending bool
 	fitting    bool
@@ -52,7 +66,18 @@ func NewTextarea(x, y, cx, cy int32, hParent int, opts ...InputOption) *Textarea
 	if in == nil {
 		return nil
 	}
-	t := &Textarea{Input: in, minH: cy}
+	t := &Textarea{Input: in, minH: cy, rows: in.minRows, resize: in.resize}
+	// 拖拽抓手: 事件要抢在 Input 自己的 LButtonDown(附加件命中)之前跑, 因此注册得更晚
+	// —— AddEvent 系列按后注册先执行(hits 见 skill 说明), 命中抓手时置 pbHandled 挡掉后续。
+	if t.resize {
+		in.AddEvent_LButtonDown(t.onResizeDown)
+		in.AddEvent_MouseMove(t.onResizeMove)
+		in.AddEvent_LButtonUp(t.onResizeUp)
+		in.AddEvent_MouseLeave(func(hEle, hEleStay int, pbHandled *bool) int {
+			t.setGripHot(false)
+			return 0
+		})
+	}
 	// 自动长高后内容总装得下: 关掉原生滚动条。留着的话, 内容在"改高度的那一帧"会先溢出、
 	// 滚动条闪现一下, 而且它还占掉一行宽度, 下一帧宽度变了又要重新折行。
 	in.EnableAutoShowScrollBar(false)
@@ -141,9 +166,15 @@ func (t *Textarea) fit() {
 	if rows < 1 {
 		rows = 1
 	}
+	// 最小高度: rows 行(WithTextareaRows)按当前行高实时换算, 与创建参数的 cy 二选一;
+	// 用户拖过高度后以拖出来的值为准(userMin), 否则松手又会跳回 rows 行。
+	minH := t.minH
+	if t.rows > 0 && !t.userMin {
+		minH = t.rows*lineH + textareaPadY*2
+	}
 	h := rows*lineH + textareaPadY*2
-	if h < t.minH {
-		h = t.minH
+	if h < minH {
+		h = minH
 	}
 	if h == t.GetHeight() || !xc.XC_IsHXCGUI(t.Handle, xcc.XC_ELE) {
 		return
@@ -153,6 +184,141 @@ func (t *Textarea) fit() {
 	t.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
 	t.fitting = false
 	textareaReflow(t.Handle)
+}
+
+// SetRows 按"显示几行"设最小高度(对应原生 `<textarea rows>`); 传 0 表示回到创建参数给的
+// 高度。用户拖过抓手后调用它会重新接管高度。
+func (t *Textarea) SetRows(n int32) *Textarea {
+	if t == nil {
+		return t
+	}
+	if n < 0 {
+		n = 0
+	}
+	t.rows = n
+	t.userMin = false
+	t.scheduleFit()
+	return t
+}
+
+// ===== 右下角拖拽改高度(WithTextareaResize) =====
+
+// textareaGrip 是右下角抓手的命中边长(逻辑像素)。
+const textareaGrip int32 = 14
+
+// sizeNWSECursor 是斜向调整光标(抓手上悬停时用)。
+var sizeNWSECursorHandle uintptr
+
+func sizeNWSECursor() uintptr {
+	if sizeNWSECursorHandle == 0 {
+		sizeNWSECursorHandle = wapi.LoadImageW(0, wapi.IDC_SIZENWSE, wapi.IMAGE_CURSOR, 0,
+			0, wapi.LR_DEFAULTSIZE|wapi.LR_SHARED)
+	}
+	return sizeNWSECursorHandle
+}
+
+// inGrip 判断指针是否落在右下角抓手上。
+func (t *Textarea) inGrip(pPt *xc.POINT) bool {
+	if t == nil || !t.resize || pPt == nil {
+		return false
+	}
+	w, h := t.GetWidth(), t.GetHeight()
+	return pPt.X >= w-textareaGrip && pPt.Y >= h-textareaGrip
+}
+
+// setGripHot 切换抓手的悬停光标。离开时把元素光标还原为 0(框架默认箭头),
+// Edit 的文本光标本来就是原生绘制, 不受影响。
+func (t *Textarea) setGripHot(v bool) {
+	if t == nil || t.gripHot == v {
+		return
+	}
+	t.gripHot = v
+	if v {
+		t.SetCursor(sizeNWSECursor())
+	} else {
+		t.SetCursor(0)
+	}
+}
+
+// onResizeDown 在抓手上按下: 捕获鼠标并记下起点(屏幕坐标 + 当前高)。
+func (t *Textarea) onResizeDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+	if !t.inGrip(pPt) || t.Disabled() {
+		return 0
+	}
+	t.dragging = true
+	t.userMin = true
+	t.dragStartH = t.GetHeight()
+	t.dragScale = 1
+	if hw := xc.XWidget_GetHWINDOW(hEle); hw != 0 {
+		if dpi := xc.XWnd_GetDPI(hw); dpi > 0 {
+			t.dragScale = float64(dpi) / 96
+		}
+	}
+	if t.dragScale <= 0 {
+		t.dragScale = 1
+	}
+	var pt wapi.POINT
+	if wapi.GetCursorPos(&pt) {
+		t.dragStartY = pt.Y
+	}
+	xc.XEle_SetCapture(hEle, true) // 拖出元素范围也能继续(同 Slider)
+	if pbHandled != nil {
+		*pbHandled = true
+	}
+	return 0
+}
+
+// onResizeMove 拖动中改最小高度; 未拖动时只管抓手光标。
+//
+// 用**屏幕坐标增量**换算, 而不是事件里的元素坐标: 元素本身在变高, 坐标原点跟着动,
+// 直接相减会变成"追着自己跑"(同状态栏/卡片的抓手做法)。物理增量按窗口 DPI 折回逻辑像素。
+func (t *Textarea) onResizeMove(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+	if !t.resize {
+		return 0
+	}
+	if t.dragging {
+		// 在窗口外松手收不到 LButtonUp: 用 MK_LBUTTON 收尾(同 Resizable / StatusBar)。
+		if nFlags&1 == 0 {
+			t.endResizeDrag(hEle)
+			return 0
+		}
+		var pt wapi.POINT
+		if !wapi.GetCursorPos(&pt) {
+			return 0
+		}
+		h := t.dragStartH + int32(math.Round(float64(pt.Y-t.dragStartY)/t.dragScale))
+		if h < textareaMinH {
+			h = textareaMinH
+		}
+		if h != t.minH {
+			t.minH = h // 自动长高仍然生效: 内容比它高时 fit 会继续长
+			t.scheduleFit()
+		}
+		if pbHandled != nil {
+			*pbHandled = true
+		}
+		return 0
+	}
+	t.setGripHot(t.inGrip(pPt))
+	return 0
+}
+
+// onResizeUp 结束拖拽。
+func (t *Textarea) onResizeUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+	if t.dragging {
+		t.endResizeDrag(hEle)
+	}
+	t.setGripHot(t.inGrip(pPt))
+	return 0
+}
+
+func (t *Textarea) endResizeDrag(hEle int) {
+	if t == nil || !t.dragging {
+		return
+	}
+	t.dragging = false
+	xc.XEle_SetCapture(hEle, false)
+	t.scheduleFit()
 }
 
 // textareaReflow 只把最近的 ScrollArea 框架(或窗口)重排一次。

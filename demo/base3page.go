@@ -108,6 +108,11 @@ func buildBase3Page(body *widget.LayoutEle) {
 	cardAct := ui.NewButton(0, 0, 0, 0, "", ch.ActionStack().Handle,
 		ui.WithVariant(ui.ButtonGhost), ui.WithSize(ui.ButtonSizeIconSm), ui.WithIcon(icons.IconEllipsis))
 	tip.Bind(cardAct.Handle, "CardAction")
+	// 通栏块(FullBleed): 贴卡片左右边缘, 跨过内容区的内边距(上游 edge-to-edge 块)。
+	// 必须做卡片的直接子项 —— 内容区的左右内边距是元素 padding, 子项出不去。
+	fb := cardDemo.FullBleed(34)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 0, "FullBleed · 贴卡片左右边缘的通栏块", fb.Handle).SetMuted().SetFontSize(14))
+
 	rd := xui.HStack(vd.Handle, 36, 12)
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "了解详情", rd.Handle, ui.WithVariant(ui.ButtonOutline)), 104)
 	xui.ItemWidth(ui.NewButton(0, 0, 0, 0, "开始使用", rd.Handle), 104)

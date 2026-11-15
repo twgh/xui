@@ -37,14 +37,15 @@ func TestSheetGeometryMatchesBase(t *testing.T) {
 func TestSheetSlideStart(t *testing.T) {
 	d := &Dialog{}
 	d.panel = xc.RECT{Left: 100, Top: 50, Right: 484, Bottom: 810} // 384×760
+	// 默认 = base-nova 的 translate-x-[2.5rem](40px) 小位移 + 淡入, 不再整块推入。
 	cases := []struct {
 		side   SheetSide
 		dx, dy int32
 	}{
-		{SheetRight, 384, 0},
-		{SheetLeft, -384, 0},
-		{SheetTop, 0, -760},
-		{SheetBottom, 0, 760},
+		{SheetRight, sheetSlideDist, 0},
+		{SheetLeft, -sheetSlideDist, 0},
+		{SheetTop, 0, -sheetSlideDist},
+		{SheetBottom, 0, sheetSlideDist},
 	}
 	for _, c := range cases {
 		d.sheetSide = c.side
@@ -52,5 +53,11 @@ func TestSheetSlideStart(t *testing.T) {
 		if dx != c.dx || dy != c.dy {
 			t.Fatalf("side %d: got (%d,%d), want (%d,%d)", c.side, dx, dy, c.dx, c.dy)
 		}
+	}
+	// WithSheetSlideDistance 显式给大位移时恢复"整块从屏幕外滑入"的旧观感。
+	d.slideDist = 384
+	d.sheetSide = SheetRight
+	if dx, _ := d.sheetSlideStart(); dx != 384 {
+		t.Fatalf("slideDist 覆盖: got %d, want 384", dx)
 	}
 }

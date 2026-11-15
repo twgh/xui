@@ -104,6 +104,12 @@ type Table struct {
 	virtual     bool
 	virtualRows int32
 	virtualText func(row, col int32) string
+
+	// caption / footer: 表格之外的两条横带(TableCaption / TableFooter)。
+	// 原生 List 的行区是整块客户区, 没有"表外横带"的概念, 所以它们建成**同一个父级里
+	// 排在表格之后的兄弟元素**(交由外层竖向布局摆位), 而不是 List 的子元素。
+	caption *Label
+	footer  *tableFooterBand
 }
 
 // HeaderCellRect 返回表头第 col 列的单元格矩形(元素客户区坐标)。只在表头画过之后有效;
@@ -361,6 +367,85 @@ func (t *Table) Select(row int32) *Table {
 func (t *Table) OnSelect(fn func(row int32)) *Table {
 	t.onSel = fn
 	return t
+}
+
+// SetCaption 设置表格下方的说明文字(对应 TableCaption 的 caption-bottom), 传空串隐藏。
+//
+// 说明文字是**表格的兄弟元素**, 建在表格所在的父容器里、排在表格之后(外层是竖向布局时
+// 自然落在表格下方)。原生 List 的行区铺满整块客户区, 没有"表外横带"可画。
+func (t *Table) SetCaption(text string) *Label {
+	if t == nil {
+		return nil
+	}
+	if t.caption == nil {
+		p := t.GetParentEle()
+		if p == 0 {
+			return nil
+		}
+		l := NewLabel(0, 0, 0, 20, "", p).SetMuted()
+		if l == nil {
+			return nil
+		}
+		xui.ItemFill(l)
+		xui.ItemMarginTop(l, 6) // 与表格之间留 6px(上游 caption 的 mt)
+		l.EnableFocus(false)    // 纯展示: 不进 Tab 链、不画焦点框
+		l.EnableDrawFocus(false)
+		t.caption = l
+	}
+	t.caption.SetText(text)
+	t.caption.Show(text != "")
+	if p := t.GetParentEle(); p != 0 {
+		xc.XEle_AdjustLayout(p)
+	}
+	return t.caption
+}
+
+// Caption 返回说明文字元素(未设置时 nil)。
+func (t *Table) Caption() *Label {
+	if t == nil {
+		return nil
+	}
+	return t.caption
+}
+
+// SetFooter 设置表格底部的合计行(对应 TableFooter 示例: border-t + bg-muted/50);
+// 传空 = 隐藏。cells 按列顺序给文本, 缺的列留空; 对齐方式跟随列定义(TableColumn.Align)。
+//
+// 与 SetCaption 一样, 合计行是与表格同父、排在表格之后的兄弟元素, 高度 = 数据行高。
+func (t *Table) SetFooter(cells ...string) *tableFooterBand {
+	if t == nil {
+		return nil
+	}
+	if t.footer == nil {
+		p := t.GetParentEle()
+		if p == 0 {
+			return nil
+		}
+		band := newTableFooterBand(t, p)
+		if band == nil {
+			return nil
+		}
+		t.footer = band
+	}
+	t.footer.setCells(cells)
+	t.footer.Show(len(cells) > 0)
+	// 同时用了说明文字时把它压到最下面: 上游 TableCaption 是表格的**最后一个**子节点
+	// (caption-bottom), 合计行在它上面。布局按 z 序排兄弟项, 所以把说明抬到顶层即可。
+	if t.caption != nil {
+		t.caption.SetZOrderEx(0, xcc.Zorder_Top)
+	}
+	if p := t.GetParentEle(); p != 0 {
+		xc.XEle_AdjustLayout(p)
+	}
+	return t.footer
+}
+
+// Footer 返回合计行元素(未设置时 nil), 可继续改底色/字体。
+func (t *Table) Footer() *tableFooterBand {
+	if t == nil {
+		return nil
+	}
+	return t.footer
 }
 
 // Refresh 重新加载全部行(批量改完数据后调用)。
@@ -824,4 +909,100 @@ func (t *Table) onHeaderDrawItem(hEle, hDraw int, pItem *xc.List_Header_Item_, p
 // 给原生对象, 因此换肤要重刷一遍(Clear 后重加, 不会累积超过炫彩的 20 个背景对象上限)。
 func (t *Table) styleScrollBars(th *xui.Theme) {
 	styleScrollBar(t.GetScrollBarVObj(), uint32(t.surface(th)), embedScrollBarSkin(th))
+}
+
+// tableFooterBand 是表格底部的合计行(对应 TableFooter 的 border-t + bg-muted/50):
+// 与表格同父、排在表格之后的横带, 高 = 数据行高, 各列文本的对齐跟随列定义。
+type tableFooterBand struct {
+	*widget.Element
+	t     *Table
+	cells []string
+}
+
+// newTableFooterBand 创建合计行横带(宽度铺满父级, 高度固定为数据行高)。
+func newTableFooterBand(t *Table, hParent int) *tableFooterBand {
+	e := widget.NewElement(0, 0, 0, tableRowH, hParent)
+	if e == nil {
+		return nil
+	}
+	fb := &tableFooterBand{Element: e, t: t}
+	e.EnableBkTransparent(true)
+	e.EnableDrawBorder(false)
+	e.EnableFocus(false)
+	e.EnableDrawFocus(false)
+	e.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	e.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, tableRowH)
+	e.AddEvent_Paint(fb.onPaint)
+	xui.AttachWindow(e.Handle)
+	// 底色与文字色实时取令牌, 但元素不在表格的重绘链上: 切主题要自己重绘一次。
+	xui.OnThemeChangeFor(e.Handle, func(*xui.Theme) { e.Redraw(false) })
+	return fb
+}
+
+// setCells 更新各列文本。
+func (f *tableFooterBand) setCells(cells []string) {
+	if f == nil {
+		return
+	}
+	f.cells = append([]string(nil), cells...)
+	f.Redraw(false)
+}
+
+// Cells 返回当前各列文本。
+func (f *tableFooterBand) Cells() []string {
+	if f == nil {
+		return nil
+	}
+	return append([]string(nil), f.cells...)
+}
+
+// SetCell 改某一列的文本。
+func (f *tableFooterBand) SetCell(col int32, text string) *tableFooterBand {
+	if f == nil || col < 0 {
+		return f
+	}
+	for int32(len(f.cells)) <= col {
+		f.cells = append(f.cells, "")
+	}
+	f.cells[col] = text
+	f.Redraw(false)
+	return f
+}
+
+func (f *tableFooterBand) onPaint(hEle int, hDraw int, pbHandled *bool) int {
+	p := xui.BeginPaint(hEle, hDraw)
+	if p == nil {
+		return 0
+	}
+	*pbHandled = true
+	th := xui.Current()
+	// bg-muted/50: 在令牌自身 alpha 上乘(暗色 muted 自带 alpha, 覆盖会变成实色)
+	p.FillRound(&p.Rc, th.Muted.ScaleAlpha(0.5), 0)
+	p.Line(p.Rc.Left, p.Rc.Top, p.Rc.Right, p.Rc.Top, th.Border, 1)
+
+	font := xui.FontHandle(th.FontDefault)
+	if font != 0 {
+		p.Draw.SetFont(font)
+	}
+	// 列起点与表格一致: 原生内容区左侧缩进 tableInset, 单元格内边距 tableCellPadX。
+	x := p.Rc.Left + tableInset
+	cx := f.t.GetWidth()
+	for i := range f.t.cols {
+		w := f.t.colWidth(int32(i), cx, f.t.sbWide)
+		rc := xc.RECT{Left: x + tableCellPadX, Top: p.Rc.Top, Right: x + w, Bottom: p.Rc.Bottom}
+		align := xcc.TextAlignFlag_Left | xcc.TextAlignFlag_Vcenter
+		switch f.t.cols[i].Align {
+		case DataAlignRight:
+			align = xcc.TextAlignFlag_Right | xcc.TextAlignFlag_Vcenter
+			rc.Right -= tableCellPadX
+		case DataAlignCenter:
+			align = xcc.TextAlignFlag_Center | xcc.TextAlignFlag_Vcenter
+			rc.Right -= tableCellPadX
+		}
+		if rc.Right > rc.Left && i < len(f.cells) && f.cells[i] != "" {
+			p.Text(f.cells[i], &rc, th.Foreground, align)
+		}
+		x += w
+	}
+	return 0
 }
