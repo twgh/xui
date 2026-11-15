@@ -47,6 +47,13 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 		ui.WithAlertIcon(icons.IconCircleAlert),
 		ui.WithAlertTitle("Unable to process your payment."),
 		ui.WithAlertDescription("Please verify your billing information and try again.")))
+	// 自定义配色(Custom Colors): 底色 / 描边 / 标题与图标 / 描述四层都能覆盖, 不随主题变化
+	xui.ItemFill(ui.NewAlert(0, 0, 0, 0, vb.Handle,
+		ui.WithAlertIcon(icons.IconSparkles),
+		ui.WithAlertTitle("自定义配色(Custom Colors)"),
+		ui.WithAlertDescription("底色、描边、标题与描述色直接给, 切主题也不变。"),
+		ui.WithAlertColors(xui.Hex("#F3EEFF"), xui.Hex("#D6C8F5"),
+			xui.Hex("#5B3FA8"), xui.Hex("#7A63B8"))))
 	withAction := ui.NewAlert(0, 0, 0, 0, vb.Handle,
 		ui.WithAlertIcon(icons.IconCircleAlert),
 		ui.WithAlertTitle("The selected emails have been marked as spam."),

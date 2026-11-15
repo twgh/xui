@@ -195,6 +195,12 @@ func WithDataTableColumnToggle() DataTableOption {
 	return func(d *DataTable) { d.toggleOn = true }
 }
 
+// WithDataTableEmptyText 自定义空态文案(默认"暂无数据"; 有筛选关键字时默认
+// "没有匹配的数据")。设置后两种空态都用这一句, 对应官方示例里的 "No results."。
+func WithDataTableEmptyText(s string) DataTableOption {
+	return func(d *DataTable) { d.emptyText = s }
+}
+
 // WithDataTableEditing 开启单元格编辑: 文本列**双击**在原地弹出输入框, Enter / 失焦提交,
 // Esc 取消; 配了 DataColumn.EditOptions 的固定选项列则**单击**弹选择菜单, 选中即提交;
 // DataColumn.EditNumeric 的数值列在输入时过滤非数字字符。值没变不写回, 排序与筛选会
@@ -257,6 +263,7 @@ type DataTable struct {
 
 	filter     string
 	filterCols []int
+	emptyText  string // 自定义空态文案(空 = 内置文案)
 
 	// virtual 为 true = 虚拟滚动模式: 不分页, 全部筛选结果放在同一张可滚动表里。
 	// 默认 false(分页); 两种模式共用同一套排序/筛选/勾选/编辑逻辑, 差别只在行映射与页脚。
@@ -780,6 +787,18 @@ func (d *DataTable) sizeItems() []SelectItem {
 }
 
 // ===== 数据 API =====
+
+// SetEmptyText 运行时改空态文案(空串 = 恢复内置文案)。
+func (d *DataTable) SetEmptyText(s string) *DataTable {
+	if d == nil {
+		return d
+	}
+	d.emptyText = s
+	if d.table != nil {
+		d.table.Redraw(false)
+	}
+	return d
+}
 
 // SetRows 替换全部数据(行 = 各列显示文本)。
 func (d *DataTable) SetRows(rows [][]string) *DataTable {
@@ -2184,9 +2203,12 @@ func (d *DataTable) paintEmpty(hEle, hDraw int, pbHandled *bool) int {
 	if rc.Top >= rc.Bottom {
 		return 0
 	}
-	msg := "暂无数据"
-	if strings.TrimSpace(d.filter) != "" {
-		msg = "没有匹配的数据"
+	msg := d.emptyText
+	if msg == "" {
+		msg = "暂无数据"
+		if strings.TrimSpace(d.filter) != "" {
+			msg = "没有匹配的数据"
+		}
 	}
 	p.Text(msg, &rc, th.MutedForeground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
 	return 0

@@ -140,6 +140,8 @@ type Input struct {
 	passToggle  bool   // 显示密码显隐按钮
 	password    bool   // 当前是否处于密码模式(true = 内容被遮挡)
 	counterMax  int    // >0 时显示 "n/max" 计数
+	maxLen      int    // >0 时硬限制输入长度(按字符数, 超出的尾巴截掉)
+	truncating  bool   // 正在截断回写文本, 屏蔽本次嵌套的变更事件
 
 	step    *inputStep      // 非空 = 步进器
 	lastNum float64         // 最近一个有效数值(输入不合法时回退用)
@@ -202,11 +204,24 @@ func WithClearButton() InputOption { return func(i *Input) { i.clearBtn = true }
 func WithPasswordToggle() InputOption { return func(i *Input) { i.passToggle = true } }
 
 // WithCounter 在右侧显示 "已输入字数/上限"(text-xs muted), 超出上限变红。
-// 只做提示, 不拦截输入(原生 Edit 没有 maxlength, 硬截断会和输入法的候选上屏打架)。
+// 只做提示, 不拦截输入; 要真正拦住用 WithMaxLength(原生 Edit 没有 maxlength,
+// 截断只能在文本变更后回写, 见 WithMaxLength 的说明)。
 func WithCounter(max int) InputOption {
 	return func(i *Input) {
 		if max > 0 {
 			i.counterMax = max
+		}
+	}
+}
+
+// WithMaxLength 硬限制输入长度(对应原生 `<input maxLength>`), 按**字符数**算(中文算 1)。
+// 原生 Edit 没有 maxlength, 这里在文本变更后把超出的尾巴截掉 —— 对粘贴、输入法上屏
+// 同样有效; 光标在末尾(绝大多数输入情形)时截断后仍停在末尾。
+// 与 WithCounter 配套使用: 计数照旧显示, 只是再也超不过上限。
+func WithMaxLength(n int) InputOption {
+	return func(i *Input) {
+		if n > 0 {
+			i.maxLen = n
 		}
 	}
 }
@@ -324,12 +339,9 @@ func NewInput(x, y, cx, cy int32, hParent int, opts ...InputOption) *Input {
 			return 0
 		})
 	}
-	if in.clearBtn {
-		// 清除按钮的显隐跟着内容走: 文字变化时要重绘附加件区
-		in.AddEvent_Edit_Changed(func(hEle int, pbHandled *bool) int {
-			in.Redraw(false)
-			return 0
-		})
+	// 清除按钮的显隐跟着内容走、WithMaxLength 要在变更后截断: 两者共用同一个变更回调。
+	if in.clearBtn || in.maxLen > 0 {
+		in.ensureChangeWired()
 	}
 	in.trackHover()
 	xui.AttachWindow(in.Handle)
@@ -1030,9 +1042,11 @@ func (i *Input) FieldValue() string {
 	return i.Value()
 }
 
-// SetValue 设置输入内容。
+// SetValue 设置输入内容。同样受 WithMaxLength 约束: 原生 SetText 不派发变更事件,
+// 不在这里补一次截断, 程序化写入就能绕过上限。
 func (i *Input) SetValue(s string) *Input {
 	i.SetText(s)
+	i.applyMaxLength()
 	return i
 }
 
@@ -1040,17 +1054,78 @@ func (i *Input) SetValue(s string) *Input {
 // 原生变更事件时同样会回调(与过去一致)。
 func (i *Input) OnChange(fn func(text string)) *Input {
 	i.changeFns = append(i.changeFns, fn)
-	if !i.changeWired {
-		i.changeWired = true
-		i.AddEvent_Edit_Changed(func(hEle int, pbHandled *bool) int {
-			if i.suppressChange {
-				return 0
-			}
-			i.emitChange()
-			return 0
-		})
-	}
+	i.ensureChangeWired()
 	return i
+}
+
+// ensureChangeWired 装上唯一的文本变更回调(OnChange / 清除按钮 / WithMaxLength 共用,
+// 重复注册会让一次输入触发多遍回调)。
+func (i *Input) ensureChangeWired() {
+	if i.changeWired {
+		return
+	}
+	i.changeWired = true
+	i.AddEvent_Edit_Changed(func(hEle int, pbHandled *bool) int {
+		if i.suppressChange || i.truncating {
+			return 0
+		}
+		i.applyMaxLength()
+		if i.clearBtn {
+			i.Redraw(false) // 清除按钮的显隐跟着内容走
+		}
+		i.emitChange()
+		return 0
+	})
+}
+
+// SetMaxLength 运行时设置最大长度(0 = 取消限制)。已有内容超限时立即截断。
+func (i *Input) SetMaxLength(n int) *Input {
+	if i == nil {
+		return i
+	}
+	if n < 0 {
+		n = 0
+	}
+	i.maxLen = n
+	if n > 0 {
+		i.ensureChangeWired()
+		i.applyMaxLength()
+	}
+	i.Redraw(false)
+	return i
+}
+
+// MaxLength 返回当前最大长度(0 = 不限制)。
+func (i *Input) MaxLength() int { return i.maxLen }
+
+// applyMaxLength 把超出 maxLen 的尾巴截掉(对应原生 maxLength 的硬限制)。
+// 在文本变更事件里调用: 粘贴与输入法上屏都走过这里; 回写时置 truncating,
+// 让嵌套触发的那次变更事件直接返回, 避免递归与重复回调。
+func (i *Input) applyMaxLength() {
+	if i.maxLen <= 0 {
+		return
+	}
+	r := []rune(i.GetText())
+	if len(r) <= i.maxLen {
+		return
+	}
+	var begin, end xc.Position_
+	hasSel := xc.XEdit_GetSelectRange(i.Handle, &begin, &end)
+	i.truncating = true
+	i.SetText(string(r[:i.maxLen]))
+	// 单行: 光标原位(最多挪到截断点), 从中间插入/粘贴时不会跳到末尾;
+	// 多行: 行列换算不值得做, 统一放末尾(多行一般在末尾续写)。
+	if hasSel && !i.multiline && begin.IRow == 0 {
+		col := begin.IColumn
+		if col > int32(i.maxLen) {
+			col = int32(i.maxLen)
+		}
+		xc.XEdit_SetSelect(i.Handle, 0, col, 0, col)
+	} else {
+		i.MoveEnd()
+	}
+	i.truncating = false
+	i.Redraw(false)
 }
 
 func (i *Input) emitChange() {

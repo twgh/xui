@@ -47,6 +47,15 @@ func WithAlertTitle(text string) AlertOption { return func(a *Alert) { a.titleTe
 // WithAlertDescription 设置描述(text-sm, 弱化色; destructive 变体用 destructive/90)。
 func WithAlertDescription(text string) AlertOption { return func(a *Alert) { a.descText = text } }
 
+// WithAlertColors 自定义配色(对应官方 Custom Colors 示例, 上游用 className 覆盖):
+// bg 为底色、border 为描边色、fore 为标题与图标色、desc 为描述色。
+// 自定义配色不随变体改变, 也不再跟随主题; 传 xui.None 表示该层不画。
+func WithAlertColors(bg, border, fore, desc xui.Color) AlertOption {
+	return func(a *Alert) {
+		a.custom, a.bg, a.border, a.fore, a.descColor = true, bg, border, fore, desc
+	}
+}
+
 // Alert 静态提示条: 图标 + 标题 + 描述 + 右上动作槽。
 //
 // 与 shadcn alert.tsx(radix-nova) 对齐:
@@ -71,6 +80,13 @@ type Alert struct {
 	action    *widget.LayoutEle
 	titleText string
 	descText  string
+
+	// 自定义配色(AL1, 见 WithAlertColors): custom 为真时四个色直接覆盖变体取色。
+	custom    bool
+	bg        xui.Color
+	border    xui.Color
+	fore      xui.Color
+	descColor xui.Color
 
 	reflowPending bool  // 已预约一次量高重排(合并同一轮里的多次触发)
 	measuredW     int32 // 上次量高时的文本列宽度(见 onPaint)
@@ -350,8 +366,24 @@ func (a *Alert) setTextHeight(l *Label, h int32) bool {
 	return true
 }
 
+// SetColors 运行时改自定义配色(语义同 WithAlertColors)。
+func (a *Alert) SetColors(bg, border, fore, desc xui.Color) *Alert {
+	if a == nil {
+		return a
+	}
+	a.custom, a.bg, a.border, a.fore, a.descColor = true, bg, border, fore, desc
+	a.Redraw(false)
+	a.title.Redraw(false)
+	a.desc.Redraw(false)
+	a.iconEle.Redraw(false)
+	return a
+}
+
 // foreground 返回标题/图标的语义色(对应 text-card-foreground / text-destructive)。
 func (a *Alert) foreground(t *xui.Theme) xui.Color {
+	if a.custom {
+		return a.fore
+	}
 	if a.variant == AlertDestructive {
 		return t.Destructive
 	}
@@ -360,6 +392,9 @@ func (a *Alert) foreground(t *xui.Theme) xui.Color {
 
 // descriptionColor 返回描述色(text-muted-foreground / text-destructive/90)。
 func (a *Alert) descriptionColor(t *xui.Theme) xui.Color {
+	if a.custom {
+		return a.descColor
+	}
 	if a.variant == AlertDestructive {
 		return t.Destructive.ScaleAlpha(0.9)
 	}
@@ -377,8 +412,12 @@ func (a *Alert) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	*pbHandled = true
 	t := xui.Current()
-	p.FillRound(&p.Rc, t.Card, t.RadiusLg())
-	p.StrokeRound(&p.Rc, t.Border, t.RadiusLg(), 1)
+	bg, border := t.Card, t.Border
+	if a.custom {
+		bg, border = a.bg, a.border
+	}
+	p.FillRound(&p.Rc, bg, t.RadiusLg())
+	p.StrokeRound(&p.Rc, border, t.RadiusLg(), 1)
 	return 0
 }
 

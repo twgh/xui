@@ -48,7 +48,7 @@
       "deps": []
     },
     "badge": {
-      "files": ["separator.go"],
+      "files": ["separator.go", "cursor.go"],
       "deps": []
     },
     "card": {

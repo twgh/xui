@@ -57,3 +57,26 @@ func TestTabsSeek(t *testing.T) {
 		t.Errorf("zero step: got %d, want -1", got)
 	}
 }
+
+// TestTabsVetoAndNoSelection 固定 TB1 / TB2 的语义: 否决不落地、-1 = 无选中。
+func TestTabsVetoAndNoSelection(t *testing.T) {
+	tb := &Tabs{items: []TabsItem{{}, {}}, values: []string{"a", "b"}}
+	if !tb.allowChange(1) {
+		t.Fatal("没有 OnValueChangeVeto 时一律放行")
+	}
+	tb.OnValueChangeVeto(func(v string) bool { return v == "a" })
+	if !tb.allowChange(0) {
+		t.Fatal("a 应放行")
+	}
+	if tb.allowChange(1) {
+		t.Fatal("b 应被否决")
+	}
+
+	WithTabsActive(-1)(tb)
+	if tb.active != -1 {
+		t.Fatalf("WithTabsActive(-1) 得到 %d, want -1", tb.active)
+	}
+	if got := tb.ActiveValue(); got != "" {
+		t.Fatalf("无选中时 ActiveValue = %q, want 空串", got)
+	}
+}

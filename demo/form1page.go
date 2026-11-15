@@ -73,6 +73,10 @@ func buildForm1Page(body *widget.LayoutEle) {
 	counter := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithCounter(120))
 	xui.ItemFill(counter)
 	counter.SetValue("这是一段用于演示字数统计的文本")
+	xui.ItemFill(hint(v.Handle, "上限硬限制(WithMaxLength(12)): 超出部分再也打不进去"))
+	limited := ui.NewInput(0, 0, 0, 0, v.Handle, ui.WithCounter(12), ui.WithMaxLength(12))
+	xui.ItemFill(limited)
+	limited.SetValue("最多十二个字符")
 
 	// ---- 左列 2: 输入组(Input Group) ----
 	_, vg := autoCard(colL.Handle, 10)

@@ -17,23 +17,23 @@
 | # | 官方组件 | 本库 key / 实现 | 状态 | 备注 |
 |---:|---|---|---|---|
 | 1 | Button | `button` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 2 | Input | `input` | 已核查 | 结论见第三节;8 项可实现,I2 / I7 / I3 已落地(见第十节;I3 走 Field 必填与校验) |
+| 2 | Input | `input` | 已核查 | 结论见第三节;8 项可实现,I2 / I7 / I3 / I4 已落地(见第十节;I3 走 Field 必填与校验) |
 | 3 | Checkbox | `checkbox` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 4 | Select | `select` | 已核查 | 结论见第四节;9 项可实现,S3 / S9 已落地(见第十节;S9 走 Field 必填) |
+| 4 | Select | `select` | 已核查 | 结论见第四节;9 项可实现,S3 / S9 / S4 / S8 已落地(见第十节;S9 走 Field 必填) |
 | 5 | Combobox | `combobox` | 已核查 | 三批补齐,见 `23bdfc5` / `725d329` / `7441a77` |
 | 6 | Dialog | `dialog` | 已核查 | 结论见第五节;6 项可实现,D1 / D2 / D3 已落地(见第十节) |
 | 7 | Card | `card` | 已核查 | 结论见第五节;5 项可实现(含 1 项能力边界重评估),C1 / C2 已落地(见第十节) |
 | 8 | Label | `label` | 已核查 | 结论见第五节;4 项可实现,L1 / L2 / L3 / L4 已落地(见第十节;L3 由 Field 统一出星号) |
 | 9 | Textarea | `textarea` | 已核查 | 结论见第六节;与 Input 同源 + 3 项特有,TA1(随 Input 的 I2 / I7 与 Field 必填)已落地 |
-| 10 | Tabs | `tabs` | 已核查 | 结论见第六节;4 项可实现 |
+| 10 | Tabs | `tabs` | 已核查 | 结论见第六节;4 项可实现,TB1 / TB2 已落地(见第十节) |
 | 11 | Switch | `switch` | 已核查 | 结论见第六节;3 项可实现,SW1 / SW2 已落地(见第十节) |
 | 12 | Radio Group | `radio-group` | 已核查 | 结论见第六节;3 项可实现(+1 扩展),RG1 / RG2 / RG3 已落地(见第十节;RG3 走 Field 必填) |
 | 13 | Dropdown Menu | `menu` | 已核查 | 结论见第六节;5 项可实现,DM1 已落地(见第十节);#56 Context Menu 同一实现 |
 | 14 | Tooltip | `tooltip` | 已核查 | 结论见第七节;3 项可实现 |
-| 15 | Badge | `badge` | 已核查 | 结论见第七节;3 项可实现;文件 `separator.go` |
-| 16 | Alert | `alert` | 已核查 | 结论见第七节;2 项可实现 |
+| 15 | Badge | `badge` | 已核查 | 结论见第七节;3 项可实现,BA2 / BA3 已落地(见第十节);文件 `separator.go` |
+| 16 | Alert | `alert` | 已核查 | 结论见第七节;2 项可实现,AL1 已落地(见第十节) |
 | 17 | Table | `table` | 已核查 | 结论见第七节;3 项可实现 |
-| 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现;官方是组合模式,差异见 DESIGN 第七节 |
+| 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现,DT2 已落地(见第十节);官方是组合模式,差异见 DESIGN 第七节 |
 | 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现,PO1/PO2/PO3 已落地(见第十节);本批开合控制最完整 |
 | 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min / PR3 轨道配色与圆角 / PR2 宽度过渡已落地(见第十节) |
 | 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL1 / FL2 / FL3 / FL4 已全部落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
@@ -494,7 +494,7 @@
 
 ## 十、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~五批已落地。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~六批已落地。
 
 **第一批**:
 
@@ -557,4 +557,18 @@
 | RG3 | Field / Radio Group | RadioGroup 实现 `FieldValueProvider`(返回组值), 必填 = 组内无选中; 与 I3 / S9 共用同一套 Field 校验入口 |
 | FL3 | Field / FieldGroup | `NewFieldGroup` 返回 `*FieldGroup`: `Fields()` 深度优先列出全部字段(含 Content / 嵌套组), `Validate()` 逐字段校验并各自展示错误, `Submit(fn)` 校验通过才执行提交回调 |
 
-**下一批建议**: 余下条目中 PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求再动手(定位策略 / 箭头 / 模态焦点圈禁 / 独立 Progress 部件 / 头像加载状态); 其余小改动可随时排; 下一轮核查从 #24 Accordion 起。
+**第六批**(散落小改动,跨 6 个组件;已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| S4 | Select | `WithSelectReadOnly` / `SetReadOnly` / `ReadOnly`: 弹层仍可打开浏览与高亮, 但选中不落值、不发 `OnChange`, 触发区不置灰(与 Checkbox / Radio 的 readOnly 同语义) |
+| S8 | Select | `WithSelectValueText(func(SelectItem) string)` / `SetValueText`: 只改触发区文字(前缀/单位/多字段拼接); 同时补上 `Text` 为空回落 `Value` 的显示与量宽 |
+| I4 | Input / Textarea | `WithMaxLength(n)` / `SetMaxLength` / `MaxLength`: 变更事件里截掉超限尾巴(粘贴、输入法上屏同样拦截), 单行光标留在截断点、多行回末尾; `SetValue` 程序化写入同样受约束 |
+| TB1 | Tabs | `OnValueChangeVeto(func(value string) bool)`: 点击 / 方向键(automatic) / Enter(manual) 三条路径统一可否决, 程序化 `SetActive` / `SetActiveValue` 不经过 |
+| TB2 | Tabs | 无选中态: `WithTabsActive(-1)` / `SetActive(-1)` / `ClearActive()`; 绑定面板全部隐藏, 值回调收到空串, 键盘从第一个可用标签进入 |
+| BA2 | Badge | 图标侧内距收窄到 6(`has-data-[icon]:px-1.5`), 无图标侧仍是 8; 内容在不称内距内居中 |
+| BA3 | Badge | `NewLinkBadge(x, y, cx, cy, text, url, parent, opts...)` / `SetLinkURL` / `LinkURL`: link 样式 + 手型光标 + 点击 `ShellExecute` 打开 |
+| AL1 | Alert | `WithAlertColors(bg, border, fore, desc)` / `SetColors`: 四层配色直接覆盖, 不随变体与主题取色 |
+| DT2 | Data Table | `WithDataTableEmptyText(s)` / `SetEmptyText`: 空态与"无匹配"文案可覆盖(默认仍是内置两句) |
+
+**下一批建议**: 余下条目中 PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求再动手(定位策略 / 箭头 / 模态焦点圈禁 / 独立 Progress 部件 / 头像加载状态); S1 / S2 / S5 / DL4~6 / TB3 / DM2~5 / TT1~3 / TBL1~3 / DT3 等中等改动按组件集中排; 其余小改动可随时排; 下一轮核查从 #24 Accordion 起。

@@ -47,7 +47,9 @@ func buildDataPage(body *widget.LayoutEle) {
 		ui.WithDataTablePageSize(10),
 		ui.WithDataTablePageSizes(10, 20, 30),
 		// 关键字筛选只匹配"任务 / 标题 / 状态 / 优先级"这四列(操作列没有文字)
-		ui.WithDataTableFilterColumns(taskColID, taskColTitle, taskColStatus, taskColPriority))
+		ui.WithDataTableFilterColumns(taskColID, taskColTitle, taskColStatus, taskColPriority),
+		// 空态文案可覆盖(对应上游 "No results."): 输入不可能命中的关键字即可看到
+		ui.WithDataTableEmptyText("No results."))
 	xui.ItemFill(dt)
 	xui.ItemFillHeight(dt) // 表格占满内容区里"标题/说明之外"的剩余高度
 	rows := make([][]string, len(demoTasks))

@@ -26,6 +26,8 @@ type Select struct {
 	size          SelectSize
 	invalid       bool
 	disabled      bool
+	readOnly      bool
+	valueText     func(item SelectItem) string // 触发区文字格式化(S8), nil = 用条目文字
 	panel         *popoverPanel
 	scroll        *ScrollArea
 	rows          *widget.LayoutEle
@@ -90,6 +92,19 @@ func WithSelectInvalid() SelectOption {
 // WithSelectDisabled 禁用触发区。
 func WithSelectDisabled() SelectOption {
 	return func(s2 *Select) { s2.disabled = true }
+}
+
+// WithSelectReadOnly 只读(Base UI Select Root 的 readOnly): 弹层仍可打开、条目仍可
+// 高亮浏览, 但选不进去 —— 触发区不置灰, 与禁用态区分开。
+func WithSelectReadOnly() SelectOption {
+	return func(s2 *Select) { s2.readOnly = true }
+}
+
+// WithSelectValueText 自定义触发区显示文字(对应 Base UI 的 `<Select.Value>` 传函数):
+// 用于加前缀/单位或把条目多个字段拼起来, 弹层条目本身仍显示各自的 Text。
+// 传 nil 恢复默认(条目 Text, 空则回落 Value)。
+func WithSelectValueText(fn func(item SelectItem) string) SelectOption {
+	return func(s2 *Select) { s2.valueText = fn }
 }
 
 // NewSelect 创建下拉选择框。cx/cy 传 0: cy 用尺寸档高度, cx 按内容量宽
@@ -229,6 +244,38 @@ func (s *Select) SetDisabled(v bool) *Select {
 
 // Disabled 返回触发区是否禁用。
 func (s *Select) Disabled() bool { return s.disabled }
+
+// SetReadOnly 设置只读: 仍可打开弹层浏览与高亮, 但选中不落值、不触发 OnChange。
+// 与 SetDisabled 的区别是外观不灰、可聚焦、可展开。
+func (s *Select) SetReadOnly(v bool) *Select {
+	if s == nil || s.readOnly == v {
+		return s
+	}
+	s.readOnly = v
+	return s
+}
+
+// ReadOnly 返回是否只读。
+func (s *Select) ReadOnly() bool { return s != nil && s.readOnly }
+
+// SetValueText 运行时替换触发区文字格式化(语义同 WithSelectValueText)。
+func (s *Select) SetValueText(fn func(item SelectItem) string) *Select {
+	if s == nil {
+		return s
+	}
+	s.valueText = fn
+	s.Redraw(false)
+	return s
+}
+
+// displayText 返回条目在**触发区**显示的文字: 自定义格式化优先, 否则 Text 空时回落 Value。
+// 弹层条目不用它 —— 上游 `<Select.Value>` 只改触发区。
+func (s *Select) displayText(it SelectItem) string {
+	if s.valueText != nil {
+		return s.valueText(it)
+	}
+	return selectItemLabel(it)
+}
 
 // SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
 func (s *Select) SetFieldState(invalid, disabled bool) {
@@ -631,8 +678,13 @@ func (s *Select) itemAlignedPos() (int32, int32) {
 }
 
 // choose 选中一行: 回写 value、关闭弹层、通知监听(即使重复选同一项, 同 radix)。
+// 只读模式只关弹层, 不落值也不通知 —— 与 Checkbox / Radio 的 readOnly 同语义。
 func (s *Select) choose(r *selectRow) {
 	if r == nil || r.kind != selectRowItem || r.item.Disabled {
+		return
+	}
+	if s.readOnly {
+		s.Close()
 		return
 	}
 	s.value = r.item.Value
@@ -651,13 +703,14 @@ func (s *Select) naturalWidth() int32 {
 	f := xui.FontHandle(t.FontDefault)
 	w := int32(10 + 6 + 18 + 8) // pl-2.5 + gap-1.5 + chevron 16+2 + pr-2
 	if it, ok := s.Selected(); ok {
+		text := s.displayText(it)
 		if it.Icon != "" {
 			w += 16
-			if it.Text != "" {
+			if text != "" {
 				w += 6
 			}
 		}
-		w += xui.TextWidth(it.Text, f)
+		w += xui.TextWidth(text, f)
 	} else if s.placeholder != "" {
 		w += xui.TextWidth(s.placeholder, f)
 	} else {
@@ -736,18 +789,18 @@ func (s *Select) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		fore = t.MutedForeground
 	}
 	x := p.Rc.Left + 10 // pl-2.5
+	text := s.placeholder
+	if ok {
+		text = s.displayText(it) // 自定义格式化优先(S8), 空 Text 回落 Value
+	}
 	if ok && it.Icon != "" {
 		rc := xc.RECT{Left: x, Top: (p.Rc.Top + p.Rc.Bottom - 16) / 2,
 			Right: x + 16, Bottom: (p.Rc.Top + p.Rc.Bottom + 16) / 2}
 		p.Icon(it.Icon, &rc, fore, 2)
 		x += 16
-		if it.Text != "" {
+		if text != "" {
 			x += 6
 		}
-	}
-	text := s.placeholder
-	if ok {
-		text = it.Text
 	}
 	if text != "" {
 		dy := textVDy(text)

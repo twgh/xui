@@ -97,8 +97,9 @@ type Tabs struct {
 	keyID    int
 	hWindow  int
 
-	cb  func(index int32)
-	vcb func(value string)
+	cb     func(index int32)
+	vcb    func(value string)
+	vetoes []func(value string) bool // 可否决的切换(TB1), 返回 false 即取消这次切换
 
 	// 换行模式的状态: 上一次宽度(尺寸事件节流)与延迟重排标记。
 	lastWrapW  int32
@@ -111,7 +112,7 @@ type TabsOption func(*Tabs)
 // WithTabsVariant 设置视觉变体。
 func WithTabsVariant(v TabsVariant) TabsOption { return func(t *Tabs) { t.variant = v } }
 
-// WithTabsActive 设置初始选中项。
+// WithTabsActive 设置初始选中项。-1 = 初始无选中(对应 Base UI Tabs 的 value=null)。
 func WithTabsActive(i int32) TabsOption { return func(t *Tabs) { t.active = i } }
 
 // WithTabsOrientation 设置取向(默认横向)。
@@ -194,7 +195,11 @@ func NewTabsItems(x, y, cx int32, hParent int, items []TabsItem, opts ...TabsOpt
 	el.EnableDrawFocus(false)
 	el.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int {
 		tb.hasFocus = true
-		tb.focus = tb.nearestEnabled(tb.active)
+		from := tb.active
+		if from < 0 {
+			from = 0 // 无选中(TB2)时从第一个可用标签进入
+		}
+		tb.focus = tb.nearestEnabled(from)
 		tb.Redraw(false)
 		return 0
 	})
@@ -249,10 +254,14 @@ func NewTabsItems(x, y, cx int32, hParent int, items []TabsItem, opts ...TabsOpt
 		})
 		tb.list = append(tb.list, btn)
 	}
-	if tb.active < 0 || tb.active >= int32(len(tb.list)) {
+	// active = -1 是合法的"无选中"(TB2), 只把越界值收回 0
+	if tb.active < -1 || tb.active >= int32(len(tb.list)) {
 		tb.active = 0
 	}
 	tb.focus = tb.active
+	if tb.focus < 0 {
+		tb.focus = tb.nearestEnabled(0) // 无选中时键盘从第一个可用标签起
+	}
 	if tb.wrap && !tb.vertical {
 		el.AddEvent_Size(tb.onSize)
 		tb.scheduleWrap()
@@ -262,20 +271,66 @@ func NewTabsItems(x, y, cx int32, hParent int, items []TabsItem, opts ...TabsOpt
 	return tb
 }
 
-// Active 返回当前选中项索引。
+// Active 返回当前选中项索引(-1 = 无选中)。
 func (t *Tabs) Active() int32 { return t.active }
 
 // SetActive 设置选中项并重绘(禁用项也可程序化选中, 同 radix 的受控 value)。
+// 传 -1 = 取消选中(TB2, 对应 Base UI Tabs 的 value=null): 所有绑定面板一起隐藏。
+// 程序化调用不经过 OnValueChangeVeto。
 func (t *Tabs) SetActive(i int32) *Tabs {
-	if t == nil || i < 0 || i >= int32(len(t.items)) || i == t.active {
+	if t == nil || i < -1 || i >= int32(len(t.items)) {
+		return t
+	}
+	return t.setActive(i, false)
+}
+
+// ClearActive 取消选中(等价 SetActive(-1)): 没有标签高亮, 绑定面板全部隐藏。
+func (t *Tabs) ClearActive() *Tabs { return t.SetActive(-1) }
+
+// setActive 是切换的唯一入口; user = 用户操作(点击 / 方向键 / Enter), 经过否决回调。
+func (t *Tabs) setActive(i int32, user bool) *Tabs {
+	if t == nil || i == t.active {
+		return t
+	}
+	if user && !t.allowChange(i) {
+		// 被否决: 不改选中值, 但焦点按需求已由调用方搬到新标签(同 radio 的否决语义)
+		t.Redraw(false)
 		return t
 	}
 	t.active = i
-	t.focus = i
+	if i >= 0 {
+		t.focus = i
+	}
 	t.syncPanels()
 	t.Redraw(false)
 	t.notify(i)
 	return t
+}
+
+// OnValueChangeVeto 注册"可否决"的切换回调(对应 Base UI Tabs 的 onValueChange +
+// eventDetails.cancel()): 在选中值落地**之前**调用, 返回 false 即取消这次切换。
+// 鼠标点击、方向键(automatic 模式)与 Enter/空格(manual 模式)走同一条路径;
+// 程序化 SetActive / SetActiveValue 不经过否决。常用于"有未保存内容时禁止切页"。
+func (t *Tabs) OnValueChangeVeto(fn func(value string) bool) *Tabs {
+	if t == nil || fn == nil {
+		return t
+	}
+	t.vetoes = append(t.vetoes, fn)
+	return t
+}
+
+// allowChange 依次询问否决回调; 没有注册时一律放行。
+func (t *Tabs) allowChange(i int32) bool {
+	value := ""
+	if i >= 0 && int(i) < len(t.values) {
+		value = t.values[i]
+	}
+	for _, fn := range t.vetoes {
+		if !fn(value) {
+			return false
+		}
+	}
+	return true
 }
 
 // Activate 是 SetActive 的别名, 便于与 radix 的触发语义对齐。
@@ -295,7 +350,7 @@ func (t *Tabs) ActiveValue() string {
 	return t.values[t.active]
 }
 
-// SetActiveValue 按字符串值选中标签(找不到时无操作)。
+// SetActiveValue 按字符串值选中标签(找不到时无操作)。要清空选中用 ClearActive。
 func (t *Tabs) SetActiveValue(v string) *Tabs {
 	if t == nil {
 		return t
@@ -383,7 +438,7 @@ func (t *Tabs) onClick(idx int32) {
 	if t.hWindow != 0 && !t.hasFocus {
 		xc.XWnd_SetFocusEle(t.hWindow, t.Handle)
 	}
-	t.SetActive(idx)
+	t.setActive(idx, true)
 }
 
 // tabGap 返回列表内标签间距: line 变体 gap-1, default 无间距。
@@ -441,6 +496,9 @@ func (t *Tabs) onKeyDown(wParam uintptr, pbHandled *bool) int {
 	if len(t.list) == 0 {
 		return 0
 	}
+	if t.focus < 0 || t.focus >= int32(len(t.items)) {
+		t.focus = t.nearestEnabled(0)
+	}
 	switch wParam {
 	case 0x25, 0x26: // VK_LEFT / VK_UP
 		t.focusMove(-1)
@@ -450,7 +508,7 @@ func (t *Tabs) onKeyDown(wParam uintptr, pbHandled *bool) int {
 		t.focusToEdge(wParam == 0x23)
 	case 0x0D, 0x20: // VK_RETURN / VK_SPACE
 		if !t.items[t.focus].Disabled {
-			t.SetActive(t.focus)
+			t.setActive(t.focus, true)
 		}
 	default:
 		return 0
@@ -507,7 +565,7 @@ func (t *Tabs) setFocusIndex(i int32) {
 		return
 	}
 	// automatic: 焦点移动即激活(radix activationMode="automatic")。
-	t.SetActive(i)
+	t.setActive(i, true)
 }
 
 // nearestEnabled 从 i 起找一个可用标签(优先自己, 再往后, 最后往前); 全禁用时返回 i。
@@ -531,12 +589,17 @@ func (t *Tabs) nearestEnabled(i int32) int32 {
 	return i
 }
 
+// notify 广播切换结果: i = -1 表示无选中(值回调收到空串, 对应上游的 value=null)。
 func (t *Tabs) notify(i int32) {
 	if t.cb != nil {
 		t.cb(i)
 	}
-	if t.vcb != nil && i >= 0 && int(i) < len(t.values) {
-		t.vcb(t.values[i])
+	if t.vcb != nil {
+		if i >= 0 && int(i) < len(t.values) {
+			t.vcb(t.values[i])
+		} else if i < 0 {
+			t.vcb("")
+		}
 	}
 }
 

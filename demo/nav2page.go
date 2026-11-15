@@ -38,6 +38,26 @@ func buildNav2Page(body *widget.LayoutEle) {
 		ui.WithTabsVariant(ui.TabsLine), ui.WithTabsActive(1))
 	xui.ItemWidth(lineTabs, 200)
 
+	xui.ItemFill(hint(v.Handle, "可否决切换(TB1) / 无选中(TB2): 「发布」被拦下, 按钮可清空选中"))
+	vetoTabs := ui.NewTabs(0, 0, 200, v.Handle, []string{"草稿", "预览", "发布"},
+		ui.WithTabsValues("draft", "preview", "publish"))
+	xui.ItemWidth(vetoTabs, 200)
+	vetoInfo := ui.NewLabel(0, 0, 0, 20, "当前: draft", v.Handle).SetMuted().SetFontSize(14)
+	xui.ItemFill(vetoInfo)
+	vetoTabs.OnValueChangeVeto(func(v string) bool { return v != "publish" })
+	vetoTabs.OnValueChange(func(v string) {
+		if v == "" {
+			v = "(无选中)"
+		}
+		vetoInfo.SetText("当前: " + v).Redraw()
+	})
+	vclear := ui.NewButton(0, 0, 0, 0, "清除选中", v.Handle, ui.WithSize(ui.ButtonSizeXs))
+	xui.ItemWidth(vclear, 84)
+	vclear.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		vetoTabs.ClearActive()
+		return 0
+	})
+
 	xui.ItemFill(hint(v.Handle, "纵向 · 图标"))
 	vTabs := ui.NewTabsItems(0, 0, 112, v.Handle, []ui.TabsItem{
 		{Text: "账户", Icon: icons.Path("user")},

@@ -178,6 +178,16 @@ func buildForm2Page(body *widget.LayoutEle) {
 			{Value: "svelte", Text: "Svelte"},
 		})))
 
+	xui.ItemFill(hint(v5.Handle, "只读(可展开浏览, 选不进去) + 触发区自定义文字"))
+	xui.ItemFill(ui.NewSelect(0, 0, 0, 0, v5.Handle,
+		ui.WithSelectReadOnly(),
+		ui.WithSelectValue("standard"),
+		ui.WithSelectValueText(func(it ui.SelectItem) string { return "方案: " + it.Text }),
+		ui.WithSelectItems([]ui.SelectItem{
+			{Value: "standard", Text: "标准"},
+			{Value: "pro", Text: "专业版"},
+		})))
+
 	// ---- 右列 3: 自动补全(Combobox) ----
 	_, vc := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "自动补全", vc.Handle))

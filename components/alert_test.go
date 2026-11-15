@@ -36,3 +36,25 @@ func TestAlertColors(t *testing.T) {
 		t.Errorf("destructive description = %v, want Destructive/90", got)
 	}
 }
+
+// TestAlertCustomColors AL1: 自定义配色盖住变体取色(两种变体都一样)。
+func TestAlertCustomColors(t *testing.T) {
+	th := xui.Light()
+	bg, border := xui.Hex("#112233"), xui.Hex("#445566")
+	fore, desc := xui.Hex("#778899"), xui.Hex("#aabbcc")
+
+	a := &Alert{variant: AlertDefault}
+	WithAlertColors(bg, border, fore, desc)(a)
+	if !a.custom {
+		t.Fatal("WithAlertColors 未标记自定义配色")
+	}
+	for _, v := range []AlertVariant{AlertDefault, AlertDestructive} {
+		a.variant = v
+		if got := a.foreground(th); got != fore {
+			t.Errorf("variant %d foreground = %v, want 自定义 %v", v, got, fore)
+		}
+		if got := a.descriptionColor(th); got != desc {
+			t.Errorf("variant %d description = %v, want 自定义 %v", v, got, desc)
+		}
+	}
+}

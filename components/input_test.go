@@ -46,3 +46,20 @@ func TestInputStepSnapAndFormat(t *testing.T) {
 		t.Errorf("0.1 步长负数吸附后 = %q, want \"-0.7\"", got)
 	}
 }
+
+// TestInputMaxLengthOption 固定 I4 的选项口径: 只接受正数, 0/负数 = 不限制。
+func TestInputMaxLengthOption(t *testing.T) {
+	in := &Input{}
+	if got := in.MaxLength(); got != 0 {
+		t.Fatalf("新建默认 MaxLength = %d, want 0", got)
+	}
+	WithMaxLength(12)(in)
+	if got := in.MaxLength(); got != 12 {
+		t.Fatalf("WithMaxLength(12) 得到 %d", got)
+	}
+	WithMaxLength(0)(in)
+	WithMaxLength(-3)(in)
+	if got := in.MaxLength(); got != 12 {
+		t.Fatalf("0 / 负数不应清除限制, 得到 %d", got)
+	}
+}

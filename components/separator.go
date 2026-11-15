@@ -3,6 +3,7 @@ package ui
 import (
 	"math"
 
+	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -120,9 +121,10 @@ const (
 // Badge 几何(逻辑像素), 对齐 badge.tsx 的
 // `h-5 gap-1 rounded-4xl border px-2 py-0.5 text-xs [&>svg]:size-3`。
 const (
-	badgePadX   int32 = 8
-	badgeGap    int32 = 4
-	badgeIconSz int32 = 12
+	badgePadX     int32 = 8 // px-2
+	badgeIconPadX int32 = 6 // has-data-[icon=inline-start/end]:px-1.5 —— 有图标那一侧收窄
+	badgeGap      int32 = 4
+	badgeIconSz   int32 = 12
 )
 
 // Badge 自绘徽章: 载体为原生 Element + 手绘文字。
@@ -147,6 +149,7 @@ type Badge struct {
 	iconSize int32
 	loading  bool      // 前置位画加载指示器(替换前置图标)
 	onClick  func()    // 点击回调(对应把徽章渲染成链接/按钮)
+	linkURL  string    // 非空 = 链接徽章, 点击用系统默认浏览器打开(BA3)
 	custom   bool      // 使用自定义配色(对应 className 覆盖颜色)
 	bg       xui.Color // 自定义底色
 	fore     xui.Color // 自定义前景色
@@ -185,12 +188,16 @@ func NewBadge(x, y, cx, cy int32, text string, hParent int, opts ...func(*Badge)
 		ele.Redraw(true)
 		return 0
 	})
-	// 点击: 链接形态的徽章(Go 侧没有 <a>, 用回调表达)
+	// 点击: 链接形态的徽章(Go 侧没有 <a>, 用回调 + 打开 URL 表达)
 	ele.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		if b.onClick == nil && b.linkURL == "" {
+			return 0
+		}
+		xui.NotePointerPress()
 		if b.onClick != nil {
-			xui.NotePointerPress()
 			b.onClick()
 		}
+		b.openLink()
 		return 0
 	})
 	xui.AttachWindow(ele.Handle)
@@ -287,9 +294,65 @@ func (b *Badge) OnClick(fn func()) *Badge {
 	return b
 }
 
-// naturalWidth 按内容量宽: px-2 + 图标 + gap + 文字 + 后置图标。
+// NewLinkBadge 创建链接徽章(Link 变体 + 点击用系统默认浏览器打开 url),
+// 对应官方把 Badge 用 render 渲染成 `<a href>` 的示例。光标恒为手型。
+func NewLinkBadge(x, y, cx, cy int32, text, url string, hParent int, opts ...func(*Badge)) *Badge {
+	opts = append([]func(*Badge){WithBadgeVariant(BadgeLink)}, opts...)
+	b := NewBadge(x, y, cx, cy, text, hParent, opts...)
+	if b == nil {
+		return nil
+	}
+	b.SetLinkURL(url)
+	return b
+}
+
+// SetLinkURL 设置链接徽章的目标地址(空串 = 只保留 link 样式, 点击不再打开)。
+// 设置后光标变手型, 点击由组件自己 ShellExecute。
+func (b *Badge) SetLinkURL(url string) *Badge {
+	if b == nil {
+		return b
+	}
+	b.linkURL = url
+	if url != "" {
+		b.SetCursor(linkCursor())
+	} else {
+		b.SetCursor(controlCursor(false))
+	}
+	return b
+}
+
+// LinkURL 返回链接徽章的目标地址(非链接徽章为空串)。
+func (b *Badge) LinkURL() string {
+	if b == nil {
+		return ""
+	}
+	return b.linkURL
+}
+
+// openLink 用系统默认程序打开链接。
+func (b *Badge) openLink() {
+	if b == nil || b.linkURL == "" {
+		return
+	}
+	wapi.ShellExecuteW(0, "open", b.linkURL, "", "", xcc.SW_SHOWNORMAL)
+}
+
+// sidePads 返回左右内距: 有图标那一侧收窄到 6(has-data-[icon]:px-1.5), 无图标侧仍是 8。
+func (b *Badge) sidePads() (int32, int32) {
+	left, right := badgePadX, badgePadX
+	if b.leading != "" || b.loading {
+		left = badgeIconPadX
+	}
+	if b.trailing != "" {
+		right = badgeIconPadX
+	}
+	return left, right
+}
+
+// naturalWidth 按内容量宽: 左右内距 + 图标 + gap + 文字 + 后置图标。
 func (b *Badge) naturalWidth(t *xui.Theme) int32 {
-	w := badgePadX*2 + xui.TextWidth(b.text, badgeFont(t))
+	left, right := b.sidePads()
+	w := left + right + xui.TextWidth(b.text, badgeFont(t))
 	if b.leading != "" || b.loading {
 		w += b.iconSize + badgeGap
 	}
@@ -390,7 +453,10 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if trailSz > 0 {
 		total += trailSz + badgeGap
 	}
-	x := (p.Rc.Left+p.Rc.Right)/2 - total/2
+	// 在左右内距之内的区域居中: 有图标的一侧内距只有 6, 与另一侧的 8 不对称
+	padL, padR := b.sidePads()
+	innerL, innerR := p.Rc.Left+padL, p.Rc.Right-padR
+	x := (innerL+innerR)/2 - total/2
 	cy := (p.Rc.Top + p.Rc.Bottom) / 2
 	iconRect := func(x int32, sz int32) xc.RECT {
 		return xc.RECT{Left: x, Top: cy - sz/2, Right: x + sz, Bottom: cy + sz/2}

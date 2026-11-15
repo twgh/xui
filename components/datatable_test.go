@@ -194,3 +194,15 @@ func TestDataPageCount(t *testing.T) {
 		}
 	}
 }
+
+// TestDataTableEmptyTextOption DT2: 空态文案可由选项覆盖, 未设置时保持内置文案。
+func TestDataTableEmptyTextOption(t *testing.T) {
+	d := &DataTable{}
+	if d.emptyText != "" {
+		t.Fatalf("默认 emptyText = %q, want 空串(用内置文案)", d.emptyText)
+	}
+	WithDataTableEmptyText("No results.")(d)
+	if d.emptyText != "No results." {
+		t.Fatalf("WithDataTableEmptyText 得到 %q", d.emptyText)
+	}
+}

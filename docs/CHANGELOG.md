@@ -5,6 +5,16 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查清单第六批: Select 只读与值格式化 / Input 长度硬限制 / Tabs 可否决与无选中 / Badge 图标内距与链接 / Alert 自定义配色 / Data Table 空态文案**(2026-11-15, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) S4 / S8 / I4 / TB1 / TB2 / BA2 / BA3 / AL1 / DT2):
+  - **Select(S4 / S8)**: `WithSelectReadOnly` / `SetReadOnly` / `ReadOnly` —— 弹层仍可打开、条目仍可高亮浏览, 但选中不落值也不发 `OnChange`(只关弹层), 触发区不置灰, 与 `SetDisabled` 区分; `WithSelectValueText(func(SelectItem) string)` / `SetValueText` 只改触发区文字(前缀/单位/多字段拼接), 弹层条目仍显示各自 `Text`; 顺带修掉触发区在 `Text` 为空时不回落 `Value`(现在显示与量宽同口径)。
+  - **Input / Textarea(I4)**: `WithMaxLength(n)` / `SetMaxLength` / `MaxLength` 按字符数硬限制(中文算 1), 覆盖打字、粘贴与输入法上屏; 单行用 `XEdit_GetSelectRange` + `SetSelect` 把插入符放回(最多挪到截断点), 多行回末尾; `SetValue` 程序化写入同样受约束。踩过的坑记入 DESIGN 第八节 209: 原生 `SetText` / `AddText` 不派发 `XE_EDIT_CHANGED`, 只挂变更回调会让程序化写入绕过上限。
+  - **Tabs(TB1 / TB2)**: `OnValueChangeVeto(func(value string) bool)` 在选中值落地前询问, 点击 / 方向键(automatic) / Enter·空格(manual) 统一生效, 程序化 `SetActive` / `SetActiveValue` 不经过; 无选中态用 `WithTabsActive(-1)` / `SetActive(-1)` / `ClearActive()`, 面板全部隐藏、值回调收到空串、键盘从第一个可用标签进入(焦点回调与按键处理都做了 `-1` 兜底, 不会越界)。
+  - **Badge(BA2 / BA3)**: 有图标那一侧内距收到 6(`has-data-[icon]:px-1.5`)、无图标侧仍 8, 内容在不称内距内居中; 新增 `NewLinkBadge(x, y, cx, cy, text, url, parent, opts...)` / `SetLinkURL` / `LinkURL` —— link 样式 + 手型光标 + 点击 `wapi.ShellExecuteW` 打开链接。
+  - **Alert(AL1)**: `WithAlertColors(bg, border, fore, desc)` / `SetColors` 四层自定义配色, 覆盖后不随变体与主题取色(官方 Custom Colors 示例的等价能力)。
+  - **Data Table(DT2)**: `WithDataTableEmptyText(s)` / `SetEmptyText` 覆盖内置空态与"无匹配"文案(设置后两种空态共用, 对应 "No results.")。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 新增 `TestSelectDisplayText` / `TestSelectReadOnlyOption` / `TestInputMaxLengthOption` / `TestTabsVetoAndNoSelection` / `TestBadgeSidePads` / `TestBadgeLinkURL` / `TestAlertCustomColors` / `TestDataTableEmptyTextOption`。临时探针窗口验 `WithMaxLength`: `SetValue` 写 14 字 → 显示 12/12 且尾部截掉、插入符在末尾; 空框收到 20 个 `WM_CHAR` → 同样停在 12/12。demo 150% DPI 截图: 表单2 只读 Select 显示"方案: 标准"且不置灰、可展开; 导航2 否决标签页(「发布」被拦下、清除选中按钮可见); 基础2 出现 `shadcn 文档 ↗` 链接徽章, 图标侧内距与相邻徽章一致; 反馈2 的紫色自定义配色 Alert 底色/描边/标题/描述四层都按给的颜色画; 数据页筛选框输入不命中的关键字显示 "No results."。
+  - **登记**: 无新增组件文件; `registry.json` 只改 badge 的 files(补 `cursor.go` —— 链接徽章用到 `linkCursor` / `controlCursor`, 逐组件安装时发现单独 `add badge` 编译失败); `runtime` / `cliChange` 不动(未打 tag)。
+
 - ✅ **补充说明: 固定高行里的按钮按下时底边被削平(行高要给足按压预留)**(2026-11-15, 用户反馈截图):
   - **现象**: 「提交」「切换「用户名」必填」、文件对话框的四个按钮、表单2 的「聚焦 / 聚焦后失焦」、导航3 的「上一步 / 下一步 / 推进进度」在**按下时**下边框与下圆角消失, 底边变成一条平线; 松开又恢复正常。
   - **根因**: 按钮的 `active:translate-y-px` 是整块下沉 1px, 所以元素高 = 视觉高 + 1px 按压预留(Default 33 / Sm 29 / Xs 25 / Lg 37)。这些按钮都放在高度**只等于视觉高**(h-32)甚至更小(h-28, sm 按钮)的固定高 HStack 里, 父级把元素底部那 1px 裁掉, 按下时下移的底边正好落在裁切线外 → 下边框被削平。不按下时壳体底边在预留边之上, 所以看不出来。弹层触发区(`hasPopup`)本来就不下沉, 不受影响。

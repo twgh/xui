@@ -37,13 +37,15 @@ func buildBase2Page(body *widget.LayoutEle) {
 	ui.NewBadge(0, 0, 0, 0, "Custom", ri.Handle,
 		ui.WithBadgeColors(xui.Hex("#E6F4EA"), xui.Hex("#1E7E34"), xui.Hex("#B7E1CD")))
 
-	xui.ItemFill(hint(v2.Handle, "可点击(链接形态): 回调 + 悬停下划线"))
+	xui.ItemFill(hint(v2.Handle, "可点击(链接形态): 回调 / 直接打开 URL + 悬停下划线"))
 	rc := xui.HStack(v2.Handle, 24, 8)
 	clickBadge := ui.NewBadge(0, 0, 0, 0, "打开文档", rc.Handle,
 		ui.WithBadgeVariant(ui.BadgeLink), ui.WithBadgeTrailingIcon(icons.IconArrowUpRight))
 	clickTip := ui.NewLabel(0, 0, 0, 20, "点一下试试", rc.Handle).SetMuted().SetFontSize(14)
 	xui.ItemWidth(clickTip, 120)
 	clickBadge.OnClick(func() { clickTip.SetText("已点击 ✓").Redraw() })
+	ui.NewLinkBadge(0, 0, 0, 0, "shadcn 文档", "https://ui.shadcn.com", rc.Handle,
+		ui.WithBadgeTrailingIcon(icons.IconArrowUpRight))
 
 	xui.ItemFill(ui.NewSeparator(0, 0, 0, v2.Handle))
 
