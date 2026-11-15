@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **补充说明: 固定高行里的按钮按下时底边被削平(行高要给足按压预留)**(2026-11-15, 用户反馈截图):
+  - **现象**: 「提交」「切换「用户名」必填」、文件对话框的四个按钮、表单2 的「聚焦 / 聚焦后失焦」、导航3 的「上一步 / 下一步 / 推进进度」在**按下时**下边框与下圆角消失, 底边变成一条平线; 松开又恢复正常。
+  - **根因**: 按钮的 `active:translate-y-px` 是整块下沉 1px, 所以元素高 = 视觉高 + 1px 按压预留(Default 33 / Sm 29 / Xs 25 / Lg 37)。这些按钮都放在高度**只等于视觉高**(h-32)甚至更小(h-28, sm 按钮)的固定高 HStack 里, 父级把元素底部那 1px 裁掉, 按下时下移的底边正好落在裁切线外 → 下边框被削平。不按下时壳体底边在预留边之上, 所以看不出来。弹层触发区(`hasPopup`)本来就不下沉, 不受影响。
+  - **结论**: 保留原本"整块下沉"的按压几何, **不改成底边固定**; 这是使用方留空间的问题。`ButtonSize` 补 `Height()` 返回视觉高(Default 32 / Sm 28 / Xs 24 / Lg 36), 约束写进 `NewButton` 与 `press.go` 的注释、DESIGN 第四节末与第八节 208: 按钮放进固定高行时, 行高至少给 `ButtonSizeXxx.Height() + 1`(Default 33 / Sm 29 / Xs 25 / Lg 37), 或让行高 Auto。demo 已把表单3 的提交 / 文件对话框行、表单2 的聚焦行、导航3 的两行按钮、基础3 的弹层按钮行改成 `Height()+1`。
+  - **验收**: 150% DPI 亮/暗按住截图, 行高给足后 primary(提交) / outline(h-32 与 h-28 两档) 的下边框与下圆角都完整; 原生像素扫描按下态底部逐行收窄(暗色提交按钮 529 行 254..283, 中段 249..288), 不再是整行平切; `go build ./...` / `go vet ./...` / `go test ./...` 全绿。
+
 - ✅ **组件特性核查清单第五批: Field 必填与校验基础设施(I3 / S9 / L3 / RG3 / FL3 同批设计)**(2026-11-15, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md)):
   - **Field(必填 / 校验器)**: `WithFieldRequired()` / `SetRequired` / `Required` 在标签后追加破坏性色 `*`(同上游 Input#Required 的 `Required Field *`), 运行时切换立即显隐; `WithFieldRequiredMessage` / `SetRequiredMessage` 覆盖必填文案(默认 "This field is required."); `WithFieldValidator` / `AddValidator(func(value string) error)` 注册字段级规则。`Validate()` 一次收集必填与全部校验器文案, 写进已 `AttachError` 的错误区并置 invalid, 通过时清空并恢复配色; `ValidationErrors()` 返回最近一次结果(没接错误区也能取到), `Value()` 读第一个可报告值的已接控件。
   - **控件取值(S9 / RG3)**: 新增可选接口 `FieldValueProvider`(`FieldValue() string`, 空串 = 未填写), 内置 Input / Textarea / Select / Combobox / NativeComboBox / NativeSelect / RadioGroup / Checkbox / Switch / CheckboxGroup / InputGroup / InputOTP / TagInput / DatePicker / TimePicker / ToggleGroup / Slider / Radio / Toggle 均已实现 —— 文本控件返回文本, 选择类返回选中值, 勾选类返回 "1"/"", CheckboxGroup/ToggleGroup/TagInput 以逗号连接。自定义控件实现该接口即可参与必填与校验器。

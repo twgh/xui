@@ -124,7 +124,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 
 | 组件 | 说明 |
 |---|---|
-| Button | 6 变体(default/secondary/outline/ghost/destructive/link)× 8 尺寸档;图标按钮 / 图标+文字 / 内容对齐 / 胶囊;加载态可在 inline-start/end,图标与颜色可换;运行时 `SetSize` 切高度档;As Link = `NewLinkButton`(Link 样式 + 手型 + 点击用系统默认程序打开 URL);`cx` 传 0 按文字自动量宽;禁用指针 not-allowed,普通控件默认箭头(`UsePointerCursor(true)` 全局改手型) |
+| Button | 6 变体(default/secondary/outline/ghost/destructive/link)× 8 尺寸档;图标按钮 / 图标+文字 / 内容对齐 / 胶囊;加载态可在 inline-start/end,图标与颜色可换;运行时 `SetSize` 切高度档;As Link = `NewLinkButton`(Link 样式 + 手型 + 点击用系统默认程序打开 URL);`cx` 传 0 按文字自动量宽;禁用指针 not-allowed,普通控件默认箭头(`UsePointerCursor(true)` 全局改手型);**元素高 = 视觉高 + 1px 按压预留,视觉高用 `ButtonSizeXxx.Height()` 取;固定高行按 `Height()+1` 给足(Default 33 / Sm 29 / Xs 25 / Lg 37),否则按下时下边框被裁平** |
 | ButtonGroup | 按钮组:横向/纵向、首尾外角 + 相邻边直角、宽高按内容自撑;可混放 Button / Input / NativeComboBox |
 | Alert | 提示条:图标 + 标题 + 描述 + 右上动作槽;两变体(default/destructive),高度按内容自撑、文字自动折行 |
 | Empty | 空状态容器:图标底板 + 标题 + 描述 + 动作区;三个槽位 `Header()` / `Content()` / `Body()`,不画边框 |

@@ -31,7 +31,8 @@ func buildNav3Page(body *widget.LayoutEle) {
 	hSteps := ui.NewSteps(0, 0, 0, 0, vst.Handle, stepItems, ui.WithStepsCurrent(1))
 	xui.ItemFill(hSteps)
 
-	stepRow := xui.HStack(vst.Handle, 32, 8)
+	// 行高给足按钮元素高(视觉高 + 按压预留 1); 只给视觉高时按下会裁掉下边框。
+	stepRow := xui.HStack(vst.Handle, ui.ButtonSizeDefault.Height()+1, 8)
 	prevStep := ui.NewButton(0, 0, 0, 0, "上一步", stepRow.Handle, ui.WithVariant(ui.ButtonOutline))
 	xui.ItemWidth(prevStep, 88)
 	nextStep := ui.NewButton(0, 0, 0, 0, "下一步", stepRow.Handle, ui.WithVariant(ui.ButtonOutline))
@@ -70,7 +71,7 @@ func buildNav3Page(body *widget.LayoutEle) {
 		{Title: "完成"},
 	}, ui.WithStepsCurrent(1), ui.WithStepsSize(ui.StepsSmall), ui.WithStepsInitial(2))
 	xui.ItemFill(smallSteps)
-	progressRow := xui.HStack(vst.Handle, 32, 8)
+	progressRow := xui.HStack(vst.Handle, ui.ButtonSizeDefault.Height()+1, 8)
 	progressBtn := ui.NewButton(0, 0, 0, 0, "推进进度", progressRow.Handle, ui.WithVariant(ui.ButtonOutline))
 	xui.ItemWidth(progressBtn, 88)
 	progressPct := int32(35)

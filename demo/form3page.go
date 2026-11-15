@@ -244,7 +244,8 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(planErr)
 	fPlan.AttachError(planErr)
 
-	valRow := xui.HStack(vVal.Handle, 32, 8)
+	// 行高给足按钮元素高(视觉高 + 按压预留 1); 只给视觉高时按下会裁掉下边框。
+	valRow := xui.HStack(vVal.Handle, ui.ButtonSizeDefault.Height()+1, 8)
 	btnSubmit := ui.NewButton(0, 0, 0, 0, "提交", valRow.Handle)
 	btnToggleReq := ui.NewButton(0, 0, 0, 0, "切换「用户名」必填", valRow.Handle,
 		ui.WithVariant(ui.ButtonOutline))
@@ -307,7 +308,7 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 		fdState.Redraw()
 	}
 
-	fdRow := xui.HStack(vfd.Handle, 32, 8)
+	fdRow := xui.HStack(vfd.Handle, ui.ButtonSizeDefault.Height()+1, 8)
 	btnOpen := ui.NewButton(0, 0, 0, 0, "打开文件", fdRow.Handle, ui.WithVariant(ui.ButtonOutline))
 	btnOpen.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		if path := fd.Open(); path != "" {

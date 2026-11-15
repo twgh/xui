@@ -28,7 +28,8 @@ func buildPopoverCard(body *widget.LayoutEle) {
 		ui.PopoverDescription(h.Handle, "调整弹层宽度与内容间距。")
 		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "宽度 288 · 内边距 16", c).SetMuted().SetFontSize(14))
 		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "下方优先, 空间不足自动翻转", c).SetMuted().SetFontSize(14))
-		btns := xui.HStack(c, 32, 8)
+		// 行高给足按钮元素高(视觉高 + 按压预留 1); 只给视觉高时按下会裁掉下边框。
+		btns := xui.HStack(c, ui.ButtonSizeDefault.Height()+1, 8)
 		ui.NewButton(0, 0, 72, 0, "保存", btns.Handle)
 		ui.NewButton(0, 0, 72, 0, "取消", btns.Handle, ui.WithVariant(ui.ButtonOutline))
 	}))

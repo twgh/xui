@@ -97,6 +97,16 @@ func (s buttonSpec) radius(t *xui.Theme) int32 {
 	return s.radiusCap
 }
 
+// Height 返回该尺寸档的**视觉高度**(不含 1px 按压预留): Xs 24 / Sm 28 /
+// Default 32 / Lg 36, 方形档同高; 未知值按 Default。
+// 放进固定高行时行高用 Height() + 1 (见 press.go 的 pressShift)。
+func (s ButtonSize) Height() int32 {
+	if sp, ok := buttonSpecs[s]; ok {
+		return sp.height
+	}
+	return buttonSpecs[ButtonSizeDefault].height
+}
+
 // Button 自绘按钮: 嵌入原生 widget.Button 获得全部交互行为,
 // 隐藏原生外观后在绘制事件中按主题绘制壳体, 文字仍由原生绘制。
 type Button struct {
@@ -206,6 +216,11 @@ func WithButtonLoadingColorFunc(fn func(*xui.Theme) xui.Color) ButtonOption {
 
 // NewButton 创建自绘按钮。cy 传 0 时按尺寸预设自适应高度;
 // cx 传 0 时按文字/行内图标的量测宽度自适应(纯图标按钮用方形预设)。
+//
+// 元素高 = 视觉高 + 1px(按压下沉的预留, 见 press.go); 视觉高用
+// ButtonSize.Height() 取(Default 32 / Sm 28 / Xs 24 / Lg 36)。放进固定高行时
+// 行高至少给 Height()+1; 只给视觉高时, 按下态的下边框会被父级裁掉, 底边变成
+// 平线(不按压时看不出)。让行高 Auto 或多留 1px 即可。
 func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOption) *Button {
 	b := &Button{size: ButtonSizeDefault, autoWidth: cx <= 0, autoHeight: cy <= 0}
 	autoW, autoH := b.autoWidth, b.autoHeight

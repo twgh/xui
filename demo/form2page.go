@@ -105,7 +105,8 @@ func buildForm2Page(body *widget.LayoutEle) {
 	ui.NewRating(0, 0, 0, 0, rtIcons.Handle, ui.WithRatingKeyboard(false), ui.WithRatingValue(3))
 
 	xui.ItemFill(hint(v2.Handle, "焦点 / 按键回调 + Blur()(聚焦后失焦按钮依次触发两个事件)"))
-	rtFocusRow := xui.HStack(v2.Handle, 28, 8)
+	// 行高给足 sm 按钮元素高(视觉高 + 按压预留 1); 只给视觉高时按下会裁掉下边框。
+	rtFocusRow := xui.HStack(v2.Handle, ui.ButtonSizeSm.Height()+1, 8)
 	focusBtn := ui.NewButton(0, 0, 0, 0, "聚焦", rtFocusRow.Handle,
 		ui.WithSize(ui.ButtonSizeSm), ui.WithVariant(ui.ButtonOutline))
 	focusBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {

@@ -260,7 +260,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | Table | 原生 List + 项模板 | 表头/行底/边框/滚动条全自绘(绘制回调按**单元格**触发, 见第八节 40); 原生 Table(Shape 系)与 shadcn 语义不符, 不单独做; 另有 `TableColumn.Align`(原生文本对齐)、`Table.SetColumns` 换列结构(重建适配器, 见 169)、内部 `onCellExtra` 单元格扩展钩子(见 167/168) | Basic/List 示例 |
 | DataTable | LayoutEle(工具栏 + Table + 页脚) | 在 Table 之上做排序/筛选/分页/双击编辑: `view` = 过滤 + 稳定多键排序后的原始行下标, 排序与分页全部在 Go 侧做(不启用原生 `SetSort`, 见第八节 162); 排序图标由 Table 的内部表头扩展钩子绘制(另注册 DrawItem 会被底色盖掉); 表头悬停 / 列拖拽订阅表头元素鼠标事件(见 176), 显示顺序存在 `order`、隐藏列位置保留; 筛选是带清除钮的 Input(清除按钮要自己广播变更, 见 163); 页脚每页行数用 Select、翻页用 outline 图标钮; 空状态画在 List 的 `PAINT_END`(见 162); cy=0 时根高度按工具栏/每页行数/页脚配好(见 164); 勾选列 / 列头菜单 / 分面筛选 / 富单元格分别见 167~175 | shadcn data-table 文档(tasks 示例 + TanStack Table 的 autoResetPageIndex / enableSortingRemoval / multiSort 语义) |
 | Tree | 原生 Tree + 项模板 | `XE_TREE_DRAWITEM` 自绘行底/参考线/chevron, 模板子元素保留(第八节 42); 勾选模式在模板里加 16px 占位、复选框由 DrawItem 自绘, 状态按项 ID 存并由直接子项聚合(第八节 170) | 库文档 |
-| Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53); 简洁 / 仅导航 / 只留图标三种形态; 一个 Tab 站点 + 内部方向键(键盘必须挂窗口级, 第八节 152/153) | — |
+| Pagination | 纯自绘单元素 | 条目行 `[上一页][页码…][下一页]`, 逐项 hover 过渡; 恒定槽位折叠(第八节 53); 简洁 / 仅导航 / 只留图标三种形态; 一个 Tab 站点 + 内部方向键(键盘必须挂窗口级, 第八节 152/153); 元素高 = 视觉高 + 1(按压预留), 放进固定高行时行高要给足(见 208) | — |
 | Steps | 纯自绘单元素 | 横向等宽列(圆点在上、标题/说明居中)或竖向固定行高(圆点在左、文字在右); 状态 = 已完成(主色实心 + 对勾) / 进行中(主色环 + 主色编号) / 未达(边框环 + 弱化编号) / 出错(破坏色实心 + X, 指向它的连接线也转破坏色), 按 `current` 推导、`StepItem.Status` 可单步覆盖; 已完成段连接线取主色, `StepItem.Percent` 在进行中圆点上画进度弧; `StepItem.Icon` 非空时圆点内改画该图标(代替序号/对勾/X, 状态由圆点/连接线颜色区分); 默认只有已完成步可点回, `WithStepsClickable` 放开任意非禁用步、`StepItem.Disabled` 单步禁用; `WithStepsSize(StepsSmall)` 走独立几何/字号表、`WithStepsInitial` 只偏移编号; 一个 Tab 站点 + 内部方向键(键盘挂窗口级, 同第八节 152), 方向键在所有步骤间移动焦点、Enter/Space 激活可点步, 按任意键即切键盘焦点态; 焦点环外扩 3px, 元素四周预留 pad; `SetBackdrop` 跟随宿主底色 | shadcn 无官方 stepper, 社区通行语义 + Ant Design Steps |
 | Timeline | 竖向/水平 LayoutEle + 每项一个 LayoutEle | 轴线与节点由条目自绘, 节点列先铺宿主底色擦除; 竖向: 圆点对齐**第一个可见子项**的垂直中心、条目间距用底部内边距表达, 轴线连续; 水平: 条目等分容器宽, 尺寸变化时实测各条内容高并按共享轴线写上下内边距; 内置 Label 时间/标题/说明, 内容槽可继续加任意元素; 节点支持实心/空心/语义色/自定义图标/加载态; 首条无上游线、末条无下游线 | 社区 timeline 通行语义 + Ant Design Timeline(shadcn 无官方组件) |
 | Icon | 直通 D2D 几何绘制 | lucide path → 描边几何 + `DrawGeometry`(圆角样式), 色点走 `FillGeometry`(第八节 43); 回落折线描边 / `svg.Svg` | svg 包 |
@@ -299,7 +299,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 | 文本域 = 输入框同款壳体/焦点环/校验环/禁用态 + **高度随内容自动增长**(min-h 64、上下内边距 8, 内容装得下所以没有滚动条);选中/输入法/右键菜单全部是原生多行 Edit 行为 | textarea.tsx(`field-sizing-content` / `min-h-16` / `py-2`) + 第八节 166 |
 | disabled:opacity-50 原色半透明 | 各组件 disabled:* |
 | **禁用/未选态的半透明令牌要"乘"不要"覆盖", 且先铺宿主底色**(暗色 input/border 令牌自带 alpha) | checkbox/radio/switch/input.tsx + 第八节 61 |
-| active:translate-y-px 按下整体下沉 1px(含文字→文字手动绘制);**aria-haspopup 触发区(菜单/下拉)不下沉**;aria-expanded 展开时 outline/ghost 换 bg-muted、secondary 保持 secondary 底 | button.tsx 基类 + aria-expanded 变体 |
+| active:translate-y-px 按下整体下沉 1px(含文字→文字手动绘制);元素高 = 视觉高 + 1px 按压预留(视觉高用 `ButtonSize.Height()` 取,Default 32 / Sm 28 / Xs 24 / Lg 36),**放进固定高行时行高要给 `Height()+1`**,只给视觉高时按下态下边框会被裁平(见第八节 208);**aria-haspopup 触发区(菜单/下拉)不下沉**;aria-expanded 展开时 outline/ghost 换 bg-muted、secondary 保持 secondary 底 | button.tsx 基类 + aria-expanded 变体 + 第八节 208 |
 | **button group**: 首尾保留外圆角、相邻边收直角;xs/sm/icon-xs/icon-sm 在组内圆角统一成 rounded-lg;直系子项相邻边框自然并成 1px;组内嵌组时直接子项间距 8(gap-2);文本块/分隔条拉伸到按钮视觉高 | button-group.tsx + button.tsx 的 `in-data-[slot=button-group]` 规则 + 第八节 86 |
 | **button 加载态**: 行内前置图标位置换成 lucide loader-circle(纯图标按钮替换图标), 1s/圈 linear 持续旋转, 常配 `disabled`;只负责视觉, 是否禁用由调用方决定;`WithButtonLoadingAtEnd` 把转圈放到 inline-end(有尾随图标时替换它)并同时开启加载态, `WithButtonLoadingIcon` 换图标、`WithButtonLoadingColorFunc` 换颜色 | shadcn button 文档的 spinner 示例(`LoaderCircleIcon animate-spin` + disabled, `data-icon="inline-end"`)+ 第八节 87 |
 | **button 运行时尺寸 / As Link / 光标**: `SetSize(ButtonSize)` 切换高度档(方形档同时改宽, 自动宽按钮重新量宽并沿父链重排);`NewLinkButton(x,y,cx,cy,text,url,parent,opts...)` = Link 变体 + 手型光标 + 点击用系统默认程序打开 URL(`SetLinkURL` 可改地址, 空串不响应);普通控件默认箭头, 需要手型时 `UsePointerCursor(true)` 全局开启, 禁用控件恒 not-allowed | 上游 As Link 用 `asChild` 包 `<a>`(Go 侧没有 Slot, 由按钮调 `ShellExecuteW`); Tailwind v4 默认 cursor 是箭头, pointer 只在显式 `cursor-pointer` 处出现 |
@@ -836,6 +836,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **205** 自绘圆形头像的位图要按元素物理尺寸生成、按元素矩形整块绘制, 否则圆边被裁成直角
 - **206** 布局项的宽/高类型可读; 原生控件的高度类型是 `Disable` 不是 `Fixed`, 响应式切横排按「Fill 宽 + 非 Auto 高」收窄控件
 - **207** 原生控件放进布局父级默认宽为 0: 横向行里的 Label 必须显式 `Auto` 宽, 否则整块看不见
+- **208** 按钮元素高 = 视觉高 + 1px 按压预留: 固定高行要给足(Default 33 / Sm 29 / Xs 25 / Lg 37), 否则按下时下边框被削平
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 
