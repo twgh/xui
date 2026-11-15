@@ -40,7 +40,7 @@
       "deps": []
     },
     "label": {
-      "files": ["label.go"],
+      "files": ["label.go", "group.go"],
       "deps": []
     },
     "separator": {
@@ -180,7 +180,7 @@
       "deps": ["label"]
     },
     "field": {
-      "files": ["field.go"],
+      "files": ["field.go", "choicecard.go", "cursor.go"],
       "deps": ["label"]
     },
     "kbd": {

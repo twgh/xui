@@ -3,10 +3,7 @@ package main
 import (
 	"strings"
 
-	"github.com/twgh/xcgui/wapi"
 	"github.com/twgh/xcgui/widget"
-	"github.com/twgh/xcgui/xc"
-	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 	ui "github.com/twgh/xui/components"
 )
@@ -193,42 +190,19 @@ func buildRadioChoiceCards(parent int) {
 	}
 	grp := ui.NewRadioGroup(parent, ui.WithRadioGroupValue("pro"), ui.WithRadioGroupSpacing(12))
 	xui.ItemFill(grp)
-	cards := make([]*choiceCard, 0, len(plans))
+	cards := make([]*ui.FieldChoiceCard, 0, len(plans))
 	for _, plan := range plans {
-		card := newChoiceCard(grp.Handle, 6)
+		card := ui.NewFieldChoiceCard(0, 0, 0, 0, grp.Handle)
 		if card == nil {
 			continue
 		}
 		cards = append(cards, card)
-		title := ui.NewLabel(0, 0, 0, 20, plan.title, card.Content().Handle).SetFontSize(14).SetMedium()
-		title.EnableMouseThrough(true) // 文本不接鼠标, 点击落到卡片
-		xui.ItemFill(title)
-		desc := ui.NewLabel(0, 0, 0, 20, plan.desc, card.Content().Handle).SetMuted().SetFontSize(14)
-		desc.EnableMouseThrough(true)
-		xui.ItemFill(desc)
-
-		radio := ui.NewRadio(0, 0, 0, 0, "", card.Handle())
-		xui.ItemSize(radio, 24, 24)
-		// 点击统一交给卡片: 指示器本身不参与命中, 避免父子各处理一次
-		radio.EnableMouseThrough(true)
-		// 键盘焦点环由卡片代理(同 shadcn FieldLabel 包裹选择卡片), 指示器不再画自己的环
-		radio.SetFocusRingProxy(true)
-		card.setFocusRing(radio.Handle)
-		radio.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int { card.redraw(); return 0 })
-		radio.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int { card.redraw(); return 0 })
-		// 卡片选中态底色是 Accent, 指示器的宿主底色要跟着走(否则元素矩形留下 Card 色方块)
-		radio.SetBackdrop(func(t *xui.Theme) xui.Color {
-			if radio.Selected() {
-				return t.Accent
-			}
-			return t.Card
-		})
-		radio.OnChange(func(on bool) { card.setActive(on) })
-		xui.ItemMarginTop(radio, 12)
-		card.onClick(func() {
-			radio.Select()
-			xui.FocusElement(radio.Handle)
-		})
+		xui.ItemFill(card)
+		// 先建内容列 → 指示器排在右端
+		card.Label(plan.title)
+		card.Description(plan.desc)
+		radio := ui.NewRadio(0, 0, 0, 0, "", card.Handle)
+		card.Attach(radio) // 穿透 / 焦点环代理 / 宿主底色 / 点卡片换选都由卡片处理
 		grp.Attach(radio, plan.value)
 	}
 	// 选中变化时同步所有卡片: 条目分属不同父级(各自卡片), 原生互斥管不到别的卡片,
@@ -236,13 +210,13 @@ func buildRadioChoiceCards(parent int) {
 	grp.OnChange(func(v string) {
 		for i, plan := range plans {
 			if i < len(cards) {
-				cards[i].setActive(plan.value == v)
+				cards[i].SetActive(plan.value == v)
 			}
 		}
 	})
 	for i, plan := range plans {
 		if i < len(cards) && plan.value == grp.Value() {
-			cards[i].setActive(true)
+			cards[i].SetActive(true)
 		}
 	}
 }
@@ -250,185 +224,15 @@ func buildRadioChoiceCards(parent int) {
 // buildCheckboxChoiceCard 是 shadcn checkbox「描述」示例: 指示器在左, 标题 + 说明在右,
 // 点卡片任意位置切换勾选(整卡一个命中区, 与 shadcn 的 Field label 包裹一致)。
 func buildCheckboxChoiceCard(parent int) {
-	card := newChoiceCard(parent, 6)
+	card := ui.NewFieldChoiceCard(0, 0, 0, 0, parent)
 	if card == nil {
 		return
 	}
-	cb := ui.NewCheckbox(0, 0, 24, 24, "", card.Handle())
-	xui.ItemSize(cb, 24, 24)
+	xui.ItemFill(card)
+	// 指示器先建 → 内容列排在右端
+	cb := ui.NewCheckbox(0, 0, 24, 24, "", card.Handle)
 	cb.SetChecked(true)
-	cb.EnableMouseThrough(true) // 同单选卡片: 命中区只留卡片一层
-	cb.SetFocusRingProxy(true)  // 键盘焦点环由卡片代理
-	card.setFocusRing(cb.Handle)
-	cb.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int { card.redraw(); return 0 })
-	cb.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int { card.redraw(); return 0 })
-	cb.SetBackdrop(func(t *xui.Theme) xui.Color {
-		if cb.Checked() {
-			return t.Accent
-		}
-		return t.Card
-	})
-	cb.OnChange(func(checked bool) { card.setActive(checked) })
-	card.setActive(cb.Checked())
-	xui.ItemMarginTop(cb, 12)
-
-	title := ui.NewLabel(0, 0, 0, 20, "启用通知", card.Content().Handle).SetFontSize(14).SetMedium()
-	title.EnableMouseThrough(true) // 文本不接鼠标, 点击落到卡片
-	xui.ItemFill(title)
-	desc := ui.NewLabel(0, 0, 0, 20, "你可以随时开启或关闭通知。",
-		card.Content().Handle).SetMuted().SetFontSize(14)
-	desc.EnableMouseThrough(true)
-	xui.ItemFill(desc)
-	card.onClick(func() {
-		cb.Toggle()
-		xui.FocusElement(cb.Handle)
-	})
-}
-
-// choiceCard 是一张"整卡可选"的卡片(shadcn 选择卡片): rounded-lg border p-3,
-// 选中态 border-primary + bg-accent; 内部横向排 —— 内容列吃剩余宽度, 指示器放另一侧。
-//
-// 卡片自绘是因为选中态要同时改底色和边框; 点击区域是整张卡片(子项一律鼠标穿透),
-// 指示器本身不接鼠标, 由卡片统一调 Radio.Select / Checkbox.Toggle。
-type choiceCard struct {
-	card     *widget.LayoutEle
-	content  *widget.LayoutEle
-	gap      int32
-	active   bool
-	focusEle int // 焦点环代理控件(指示器把键盘焦点环交给整张卡片画)
-}
-
-// Handle 返回卡片元素句柄(子项都挂在卡片下)。
-func (c *choiceCard) Handle() int {
-	if c == nil || c.card == nil {
-		return 0
-	}
-	return c.card.Handle
-}
-
-// newChoiceCard 创建卡片骨架。左右内边距用元素 padding(Fill 子项才会按内容宽解析,
-// 见 DESIGN 129), 上下内边距用子项外边距(计入卡片的 Auto 高)。
-func newChoiceCard(parent int, gap int32) *choiceCard {
-	ele := widget.NewLayoutEle(0, 0, 0, 0, parent)
-	if ele == nil {
-		return nil
-	}
-	c := &choiceCard{card: ele, gap: gap}
-	// 布局元素默认是"纯排版壳"(鼠标穿透), 要自己当命中区必须显式关掉穿透
-	ele.EnableMouseThrough(false)
-	ele.EnableHorizon(true)
-	ele.EnableLayout(true)
-	ele.EnableBkTransparent(true)
-	ele.EnableAutoWrap(false)
-	ele.SetSpace(12)
-	ele.SetAlignV(xcc.Layout_Align_Top)
-	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-	ele.SetPadding(12, 0, 8, 0)
-	ele.AddEvent_Paint(c.onPaint)
-	xui.AttachWindow(ele.Handle)
-	return c
-}
-
-// Content 返回卡片内的内容列(Weight 1, Auto 高)。首次调用时创建, 所以调用顺序决定
-// 指示器在左还是在右: 先建指示器 → 内容列在其右侧; 先取 Content() → 指示器在右端。
-func (c *choiceCard) Content() *widget.LayoutEle {
-	if c == nil {
-		return nil
-	}
-	if c.content == nil {
-		// col 会在列宽变化时把 Fill 子项锁 Fixed(横排 Weight 列的必要处理, 见 DESIGN 101/130)
-		c.content = xui.VStack(c.card.Handle, 1, c.gap)
-		xui.ItemMarginTop(c.content, 12)
-		xui.ItemMarginBottom(c.content, 12)
-		c.content.EnableMouseThrough(true)
-	}
-	return c.content
-}
-
-// onClick 让整张卡片成为点击区域。子项都设了鼠标穿透, 事件在这里统一处理。
-func (c *choiceCard) onClick(fn func()) {
-	if c == nil {
-		return
-	}
-	c.card.SetCursor(choiceCardCursor())
-	c.card.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-		xui.NotePointerPress() // 鼠标点出来的焦点不画键盘焦点环
-		return 0
-	})
-	c.card.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-		if fn != nil {
-			fn()
-		}
-		return 0
-	})
-}
-
-func (c *choiceCard) setActive(v bool) {
-	if c == nil || c.active == v {
-		return
-	}
-	c.active = v
-	c.card.Redraw(false)
-}
-
-// setFocusRing 指定由卡片代理键盘焦点环的控件句柄。
-func (c *choiceCard) setFocusRing(hEle int) {
-	if c == nil {
-		return
-	}
-	c.focusEle = hEle
-}
-
-func (c *choiceCard) redraw() {
-	if c != nil && c.card != nil {
-		c.card.Redraw(false)
-	}
-}
-
-func (c *choiceCard) onPaint(hEle int, hDraw int, pbHandled *bool) int {
-	p := xui.BeginPaint(hEle, hDraw)
-	if p == nil {
-		return 0
-	}
-	*pbHandled = true
-	t := xui.Current()
-	bg, border := t.Card, t.Border
-	if c.active {
-		bg, border = t.Accent, t.Primary
-	}
-	// 卡片是透明的自绘元素, 整块铺底既擦上一帧也给出选中底色; 描边内缩 1px 免得被裁
-	radius := t.RadiusLg()
-	p.FillRound(&p.Rc, bg, radius)
-	rc := p.Rc
-	rc.Left++
-	rc.Top++
-	rc.Right--
-	rc.Bottom--
-	p.StrokeRound(&rc, border, radius-1, 1)
-	// 指示器的键盘焦点环由卡片代理(Checkbox/Radio.SetFocusRingProxy),
-	// 对应 shadcn FieldLabel 包裹选择卡片时的整卡焦点环。
-	if c.focusEle != 0 {
-		st := xui.StateOf(c.focusEle)
-		if st.Focused && xui.FocusedByKeyboard() {
-			fr := p.Rc
-			fr.Left += 2
-			fr.Top += 2
-			fr.Right -= 2
-			fr.Bottom -= 2
-			p.StrokeRound(&fr, t.Ring.WithAlpha(160), radius-2, 3)
-		}
-	}
-	return 0
-}
-
-var choiceCardHand uintptr
-
-// choiceCardCursor 懒加载系统手型光标(shadcn 卡片是 cursor-pointer)。
-func choiceCardCursor() uintptr {
-	if choiceCardHand == 0 {
-		choiceCardHand = wapi.LoadImageW(0, wapi.IDC_HAND, wapi.IMAGE_CURSOR, 0, 0,
-			wapi.LR_DEFAULTSIZE|wapi.LR_SHARED)
-	}
-	return choiceCardHand
+	card.Attach(cb)
+	card.Label("启用通知")
+	card.Description("你可以随时开启或关闭通知。")
 }

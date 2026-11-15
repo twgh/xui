@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查清单第四批: Progress 宽度过渡 / Field 响应式取向与选择卡片**(2026-11-15, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) PR2 / FL1 / FL2):
+  - **Progress(PR2)**: 值变化时指示器宽度按 150ms 过渡(上游 Indicator 的 `transition-all`), 从**当前显示宽度**续跑 —— 过渡中途再改值不会跳回起点; 动画由运行时 `PresenceOnce` 逐帧推进, 组件不自起定时器、不在 paint 里缓存插值; 到位帧的重绘在 done 之前, done 里补一次重绘保证终值落地。不确定态仍是短条往返, 值过渡与它互不干扰。
+  - **Field(FL1)**: `FieldResponsive` —— 宽度 ≥ 448(上游 `@md/field-group` 容器查询 = 28rem)时横排、不足时竖排, 窗口/卡片尺寸变化跨断点自动切换; 新增运行时 `SetOrientation` / `Horizontal`(查实际取向)。切换时标签按竖排满宽 / 横排吃剩余(Weight), `Content` 横排固定 240、竖排满宽; 直属的「Fill 宽 + 高度非 Auto」控件(Input / Button 等)横排收成 240(上游 responsive 的 `[&>*]:w-auto`), 切回竖排恢复满宽, 期间被调用方改成别的固定宽的不动。断点判定与重排走 `AfterFunc`, 不在尺寸事件里重入布局。踩坑记入 DESIGN 第八节 206。
+  - **Field(FL2)**: `NewFieldChoiceCard` 把整卡可选模式从 demo 提升为组件 —— 卡片是唯一命中区(内容文字与指示器都鼠标穿透), 点整卡 = 聚焦指示器 + 切换/选中; 选中 = bg-accent + border-primary, 指示器宿主底色跟随卡片(不留异色方块), 键盘焦点环由卡片代理; `Label/Description/Content` 建内容列, `Attach(Checkbox/Radio/Switch)` 一次接好穿透 / 焦点环 / 底色 / 选中同步。`Switch` 补 `SetBackdrop`(轨道前的宿主底色, 同 Checkbox/Radio)。RadioGroup 里被别的卡片换下时 Radio 不会回调 false, 需在组 `OnChange` 里对其余卡片批量 `SetActive(false)`(demo 已示范)。
+  - **顺带修复**: `registry.json` 的 label 闭包补 `group.go` —— `label.go` 的 `SetText` 引用 `group.go` 的 `repaintTextBounds`, 之前单独 `xui add label` 会编译失败(依赖回归时发现); field 闭包同时登记新增的 `choicecard.go` 与 `cursor.go`。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 临时项目逐个 `add field / progress / label / card / alert / checkbox / radio / radio-group / switch / button` 与 `add --all` 后 `go build ./ui` 均通过; 按已发布运行时下限(v0.13.0, 不带 replace)`add --all` + `go build` 也通过(未新增运行时导出)。demo 150% DPI 实测(亮/暗): 进度条 30% → 点 0%(中帧实测 37/421 px)→ 中途点 100%(中帧 323/421 px, 从当前宽度向上续跑)→ 终值 421/421 px, 全程无跳变; 表单3 响应式字段在宽卡片横排(标签左、Content 240)、窗口拖窄跨 448 后竖排(输入框满宽)、最大化后恢复横排, 固定 320 窄容器恒竖排, 直属输入框横排收窄/竖排恢复; 表单5 点 Plus 标题整卡换选(Pro 同步取消)、点复选框卡说明整卡取消勾选且卡片底色/复选框宿主底色一起还原。
+  - **登记**: `registry.json` 改 `field` 的 files 与 `label` 的 files; `runtime` / `cliChange` 不动(未打 tag)。
+
 - ✅ **修复: 头像右下角被裁成直角 + 徽标环溢出**(2026-11-14, 用户反馈截图):
   - **现象**: lg 尺寸头像的右下角是**方的** —— 圆的轮廓在那一块被切平, 徽标环和卡片底色连成一片; 只在带头像/徽标时出现。
   - **根因(两层)**: ① 位图边长按"直径 × 4"(或逻辑直径)生成, 绘制时又传一个**内缩过**的目标矩形(色环让出 2px); 位图与目标矩形像素尺寸不一致时, 框架按位图自身像素尺寸落图, 多出的部分被元素矩形裁掉 —— 圆的最低/最右弧线正好落在裁切线外, 四边被切平、角变直角。② 徽标盒贴到元素右下角, 盒角落在圆外; 徽标环是 `Background` 色(与卡片同色), 圆外那部分与卡片融为一体, 视觉上圆角被"啃"掉。

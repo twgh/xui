@@ -43,6 +43,7 @@ type Switch struct {
 	readOnly bool // 用户不可切换, 程序化 SetChecked 仍生效(对应 Base UI 的 readOnly)
 	// focusRingProxy: 由外层标签/选择卡片代理键盘焦点环(同 Checkbox)。
 	focusRingProxy bool
+	backdrop       func(t *xui.Theme) xui.Color
 	changes        []func(checked bool)
 	vetoes         []func(checked bool) bool
 }
@@ -208,6 +209,18 @@ func (s *Switch) SetFocusRingProxy(v bool) *Switch {
 // FocusRingProxy 返回是否由外层代理键盘焦点环。
 func (s *Switch) FocusRingProxy() bool { return s != nil && s.focusRingProxy }
 
+// SetBackdrop 指定绘制开头铺的宿主底色(默认按"放在 Card 上"用 t.Card)。
+// 组件是自绘的局部形状, 重绘不擦底, 必须先铺宿主底色; 放进有底色的容器
+// (例如选中态 bg-accent 的选择卡片)时必须跟随, 否则元素矩形会留下一个异色块。
+func (s *Switch) SetBackdrop(fn func(t *xui.Theme) xui.Color) *Switch {
+	if s == nil {
+		return s
+	}
+	s.backdrop = fn
+	s.Redraw(false)
+	return s
+}
+
 // SetInvalid 设置/清除校验失败态(见 WithSwitchInvalid)。
 func (s *Switch) SetInvalid(v bool) *Switch {
 	if s.invalid == v {
@@ -270,8 +283,13 @@ func (s *Switch) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 先铺宿主底色(整元素): 透明元素重绘**不擦底**(见 DESIGN 第八节 28) —— 暗色下
 	// 未选轨道是半透明令牌(dark:data-unchecked:bg-input/80), 不铺底会透出上一帧的实心
-	// 轨道/滑块, 键盘焦点环消失后也会把灰环留在画布上。组件按"放在 Card 上"设计。
-	p.FillRound(&p.Rc, t.Card, 0)
+	// 轨道/滑块, 键盘焦点环消失后也会把灰环留在画布上。组件按"放在 Card 上"设计,
+	// 异色容器(选择卡片选中态)用 SetBackdrop 跟随。
+	host := t.Card
+	if s.backdrop != nil {
+		host = s.backdrop(t)
+	}
+	p.FillRound(&p.Rc, host, 0)
 
 	// 轨道在元素内居中(四周留出 switchRingPad 给焦点环/校验环)
 	spec := switchSpecs[s.size]
@@ -361,3 +379,13 @@ func (s *Switch) thumbColor(t *xui.Theme, checked bool) xui.Color {
 	}
 	return t.Foreground
 }
+
+// ===== FieldChoiceCard 适配(接口方法不导出, 只有内置控件能当选择卡片指示器) =====
+
+func (s *Switch) choiceCardHandle() int                            { return s.Handle }
+func (s *Switch) choiceCardToggle()                                { s.Toggle() }
+func (s *Switch) choiceCardActive() bool                           { return s.Checked() }
+func (s *Switch) choiceCardOnChange(fn func(bool))                 { s.OnChange(fn) }
+func (s *Switch) choiceCardFocusProxy()                            { s.SetFocusRingProxy(true) }
+func (s *Switch) choiceCardBackdrop(fn func(*xui.Theme) xui.Color) { s.SetBackdrop(fn) }
+func (s *Switch) choiceCardSize() (int32, int32)                   { return 0, 0 } // 轨道尺寸固定, 不锁 24

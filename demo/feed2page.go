@@ -186,6 +186,25 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemFill(pMin)
 	pMin.SetValue(12)
 
+	xui.ItemFill(hint(v4.Handle, "值变化过渡(transition-all): 点按钮看指示器宽度缓动"))
+	pAnim := ui.NewProgress(0, 0, 0, 0, v4.Handle)
+	xui.ItemFill(pAnim)
+	animRow := xui.HStack(v4.Handle, 32, 8)
+	for _, it := range []struct {
+		text string
+		v    float64
+	}{{"25%", 25}, {"80%", 80}, {"100%", 100}, {"0%", 0}} {
+		it := it
+		b := ui.NewButton(0, 0, 0, 0, it.text, animRow.Handle,
+			ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+		xui.ItemWidth(b, 64)
+		b.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+			pAnim.SetValue(it.v)
+			return 0
+		})
+	}
+	pAnim.SetValue(30)
+
 	xui.ItemFill(hint(v4.Handle, "带标题与数值(ProgressField, 对应文档 Labels 示例)"))
 	pf := ui.NewProgressField(0, 0, 0, 0, v4.Handle,
 		ui.WithProgressFieldTitle("上传进度"), ui.WithProgressFieldValue(66))

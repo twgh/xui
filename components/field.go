@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -24,17 +25,22 @@ const (
 	fieldErrorGap int32 = 4
 	fieldErrorMl  int32 = 16
 	fieldContentW int32 = 240 // 横向 Field 的 Content 默认宽(嵌套布局只认 Fixed 宽)
+
+	// fieldResponsiveBreakpoint 是响应式取向的切换宽度, 取上游 `@md/field-group`
+	// 容器查询的 28rem(= 448px)。按字段自身宽度判定: 字段在组里满宽, 与上游按
+	// FieldGroup 量宽等价。
+	fieldResponsiveBreakpoint int32 = 448
 )
 
 // FieldOrientation 字段取向, 对应 shadcn field.tsx 的 orientation。
-//
-// 上游还有 responsive(按容器宽度在 @md 断点切换横竖), Go 侧没有容器查询,
-// 需要响应式时由调用方按窗口宽度自行选 FieldVertical / FieldHorizontal。
 type FieldOrientation int
 
 const (
 	FieldVertical   FieldOrientation = iota // 竖排: 标签在上、控件在下
 	FieldHorizontal                         // 横排: 标签在左、控件在右, 垂直居中
+	// FieldResponsive 响应式: 宽度 >= 448px(上游 @md 容器查询)时横排, 不足时竖排;
+	// 窗口/卡片尺寸变化跨过断点时自动切换。运行时也可用 SetOrientation 手动切。
+	FieldResponsive
 )
 
 // FieldOption 字段配置项。
@@ -101,16 +107,22 @@ type fieldFocusProxy interface {
 //	f.Description("我们只会用它发送登录链接。")
 type Field struct {
 	*widget.LayoutEle
-	orientation  FieldOrientation
-	invalid      bool
-	disabled     bool
-	labelProxy   bool
-	labels       []*Label
-	texts        []*Label
-	content      *widget.LayoutEle
-	controls     []FieldControl
-	errors       []*FieldError
-	origDisabled map[FieldControl]bool
+	orientation FieldOrientation
+	// horizontal 是当前**实际**取向: FieldResponsive 按宽度解析后的结果,
+	// 标签/内容列的布局项宽度也按它设置。
+	horizontal    bool
+	resizePending bool
+	invalid       bool
+	disabled      bool
+	labelProxy    bool
+	labels        []*Label
+	texts         []*Label
+	content       *widget.LayoutEle
+	controls      []FieldControl
+	errors        []*FieldError
+	origDisabled  map[FieldControl]bool
+	// fillControls 记录"切横排时被收成固定宽"的直属控件, 切回竖排要恢复 Fill。
+	fillControls map[int]bool
 }
 
 // fieldReg 记录"字段句柄 → Field", 供 FieldError 沿父链找回所属字段。
@@ -150,25 +162,171 @@ func NewField(x, y, cx, cy int32, hParent int, opts ...FieldOption) *Field {
 		delete(fieldReg, hEle)
 		return 0
 	})
+	// 响应式取向要跟着字段宽走: 尺寸事件里只做判定/推迟, AfterFunc 里再改布局,
+	// 避免重入布局。非响应式字段在这里直接返回。
+	ele.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		f.scheduleResponsive()
+		return 0
+	})
 	return f
 }
 
+// applyOrientation 按配置取向初始化实际取向(创建期调用一次)。
 func (f *Field) applyOrientation() {
-	if f.orientation == FieldHorizontal {
+	horizontal := f.orientation == FieldHorizontal
+	if f.orientation == FieldResponsive {
+		horizontal = f.GetWidth() >= fieldResponsiveBreakpoint
+	}
+	f.setHorizontal(horizontal)
+}
+
+// setHorizontal 应用实际取向, 并同步已创建子项的布局项宽度:
+// 竖排标签满宽、横排标签吃剩余宽度; Content 横排固定 240(嵌套 Fill 会塌成 0,
+// 见 DESIGN 第八节 101)、竖排满宽。
+func (f *Field) setHorizontal(horizontal bool) {
+	f.horizontal = horizontal
+	if horizontal {
 		f.EnableHorizon(true)
 		f.SetAlignV(xcc.Layout_Align_Center)
 	} else {
 		f.EnableHorizon(false)
 		f.SetAlignH(xcc.Layout_Align_Left)
 	}
+	for _, l := range f.texts {
+		f.setChildWidth(l)
+	}
+	if f.content != nil {
+		if horizontal {
+			f.content.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, fieldContentW)
+		} else {
+			f.content.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+		}
+	}
+	if horizontal {
+		f.narrowFillControls()
+	} else {
+		f.restoreFillControls()
+	}
 }
 
-// Orientation 返回当前取向。
+// narrowFillControls 在切到横排时把直属控件(占满宽、高度不是 Auto)收成内容列同宽:
+// 竖排时它们是 Fill(满宽), 横排下 Fill 会独占整行、把标签挤到下一行(见 DESIGN 8.55),
+// 对应上游 responsive 的 `[&>*]:w-auto`。错误区/自定义容器是 Auto 高, 保持原样;
+// Field 自己创建的标签与 Content 另行处理。
+func (f *Field) narrowFillControls() {
+	skip := make(map[int]struct{}, len(f.texts)+1)
+	for _, l := range f.texts {
+		if l != nil {
+			skip[l.Handle] = struct{}{}
+		}
+	}
+	if f.content != nil {
+		skip[f.content.Handle] = struct{}{}
+	}
+	if f.fillControls == nil {
+		f.fillControls = map[int]bool{}
+	}
+	n := xc.XEle_GetChildCount(f.Handle)
+	for i := int32(0); i < n; i++ {
+		h := xc.XEle_GetChildByIndex(f.Handle, i)
+		if h == 0 || f.fillControls[h] {
+			continue
+		}
+		if _, ok := skip[h]; ok {
+			continue
+		}
+		var wt xcc.Layout_Size_
+		var w int32
+		xc.XWidget_LayoutItem_GetWidth(h, &wt, &w)
+		if wt != xcc.Layout_Size_Fill {
+			continue
+		}
+		var ht xcc.Layout_Size_
+		var hh int32
+		xc.XWidget_LayoutItem_GetHeight(h, &ht, &hh)
+		if ht == xcc.Layout_Size_Auto {
+			continue // 错误区/自定义容器: Auto 高, 宽度由自己管
+		}
+		if e := widget.NewElementByHandle(h); e != nil {
+			xui.ItemWidth(e, fieldContentW)
+			f.fillControls[h] = true
+		}
+	}
+}
+
+// restoreFillControls 切回竖排时把 narrowFillControls 收窄过的控件恢复满宽。
+// 期间被调用方改成别的固定宽(不是 240)的不动, 视为调用方自己的覆盖。
+func (f *Field) restoreFillControls() {
+	for h := range f.fillControls {
+		if h == 0 || !xc.XC_IsHXCGUI(h, xcc.XC_ELE) {
+			continue
+		}
+		var wt xcc.Layout_Size_
+		var w int32
+		xc.XWidget_LayoutItem_GetWidth(h, &wt, &w)
+		if wt == xcc.Layout_Size_Fixed && w == fieldContentW {
+			if e := widget.NewElementByHandle(h); e != nil {
+				xui.ItemFill(e)
+			}
+		}
+	}
+	f.fillControls = nil
+}
+
+// scheduleResponsive 在字段宽度变化时按断点解析 FieldResponsive 的实际取向。
+func (f *Field) scheduleResponsive() {
+	if f == nil || f.orientation != FieldResponsive || f.resizePending {
+		return
+	}
+	if (f.GetWidth() >= fieldResponsiveBreakpoint) == f.horizontal {
+		return
+	}
+	f.resizePending = true
+	app.AfterFunc(0, func() {
+		f.resizePending = false
+		if f.Handle == 0 || !xc.XC_IsHXCGUI(f.Handle, xcc.XC_ELE) || f.orientation != FieldResponsive {
+			return
+		}
+		horizontal := f.GetWidth() >= fieldResponsiveBreakpoint
+		if horizontal == f.horizontal {
+			return
+		}
+		f.setHorizontal(horizontal)
+		// 取向变化会改变字段高度: 逐级通知 Auto 高的祖先重排并整窗重绘擦旧像素。
+		adjustFieldAncestors(f.Handle)
+	})
+}
+
+// Orientation 返回配置的取向(FieldResponsive 时返回 FieldResponsive, 实际横竖见 Horizontal)。
 func (f *Field) Orientation() FieldOrientation {
 	if f == nil {
 		return FieldVertical
 	}
 	return f.orientation
+}
+
+// Horizontal 报告字段当前的实际取向(FieldResponsive 按宽度解析后的结果)。
+func (f *Field) Horizontal() bool {
+	return f != nil && f.horizontal
+}
+
+// SetOrientation 运行时切换取向。FieldResponsive 会按当前宽度立即解析一次,
+// 之后随字段宽度变化自动切换。切换会同步已创建标签/内容列的布局项宽度并重排。
+func (f *Field) SetOrientation(o FieldOrientation) *Field {
+	if f == nil || f.orientation == o {
+		return f
+	}
+	f.orientation = o
+	switch o {
+	case FieldHorizontal:
+		f.setHorizontal(true)
+	case FieldResponsive:
+		f.setHorizontal(f.GetWidth() >= fieldResponsiveBreakpoint)
+	default:
+		f.setHorizontal(false)
+	}
+	adjustFieldAncestors(f.Handle)
+	return f
 }
 
 // Label 创建字段标签(text-sm, font-medium), 并纳入 SetInvalid 的统一改色。
@@ -290,7 +448,7 @@ func (f *Field) Content() *widget.LayoutEle {
 		c.EnableAutoWrap(false)
 		c.SetSpace(6) // gap-1.5
 		c.SetAlignH(xcc.Layout_Align_Left)
-		if f.orientation == FieldHorizontal {
+		if f.horizontal {
 			// 横向 Content 默认固定宽 240, 需要更宽/更窄用 xui.ItemWidth 覆盖。
 			// xcgui 不会把 Weight/Percent 宽度传给嵌套布局的 Fill 子项(实测: 子项宽度恒为 0,
 			// 内容整块不显示), 只有 Fixed 宽才可靠; 竖排的 Fill 不受影响。
@@ -407,7 +565,7 @@ func (f *Field) applyTextEnabled() {
 }
 
 func (f *Field) setChildWidth(l *Label) {
-	if f.orientation == FieldHorizontal {
+	if f.horizontal {
 		xui.ItemWeight(l, 1)
 	} else {
 		xui.ItemFill(l)

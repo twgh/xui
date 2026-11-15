@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
@@ -16,6 +17,7 @@ import (
 // 与 shadcn progress.tsx(radix-nova) 对齐:
 //   - 轨道: h-1(4px) w-full rounded-full bg-muted;
 //   - 指示器: bg-primary, 宽度 = 轨道宽 x 百分比(overflow-hidden 由轨道圆角天然形成);
+//     值变化时宽度按 150ms 过渡(对应 Indicator 的 transition-all, 运行时过渡表驱动);
 //   - value/max: 百分比 = value / max(radix 的 max 默认 100), 也支持 value=null 的
 //     不确定态(indeterminate): 指示器按"短条左右往返"呈现, 不报告百分比;
 //   - 指示器颜色可覆盖(radix 的 Indicator 可加自定义 className)。
@@ -28,6 +30,8 @@ type Progress struct {
 	indicator     func(*xui.Theme) xui.Color // 指示器颜色解析器(nil = Primary)
 	track         func(*xui.Theme) xui.Color // 轨道颜色解析器(nil = Muted)
 	radius        int32                      // 圆角覆盖(0 = 高度的一半, 胶囊)
+	displayPct    float64                    // 当前显示的百分比(值过渡的插值结果)
+	animSeq       uint64                     // 过渡代次: 新值到来后旧过渡不再写值
 }
 
 // progressRange 是内部进度范围: 用千分比保留 0.1% 精度, 对外 API 是实际值域。
@@ -35,6 +39,10 @@ const progressRange int32 = 1000
 
 // progressIndeterminatePercent 是不确定态指示器占轨道的百分比(短条往返的视觉长度)。
 const progressIndeterminatePercent int32 = 30
+
+// progressTransition 是值变化的宽度过渡时长(上游 Indicator 的 transition-all,
+// tailwind 默认 150ms)。过渡由运行时 PresenceOnce 驱动, SetAnimationScale 同样生效。
+const progressTransition = 150 * time.Millisecond
 
 // ProgressOption 进度条配置项。
 type ProgressOption func(*Progress)
@@ -128,6 +136,7 @@ func NewProgress(x, y, cx, cy int32, hParent int, opts ...ProgressOption) *Progr
 	})
 	xui.AttachWindow(pb.Handle)
 	p.syncPos()
+	p.displayPct = p.clampPct(p.percentOf(p.value))
 	return p
 }
 
@@ -169,6 +178,7 @@ func (p *Progress) SetValue(v float64) *Progress {
 	}
 	p.value = v
 	p.syncPos()
+	p.retarget()
 	p.Redraw(false)
 	return p
 }
@@ -186,6 +196,7 @@ func (p *Progress) SetMax(max float64) *Progress {
 		p.value = max
 	}
 	p.syncPos()
+	p.retarget()
 	p.Redraw(false)
 	return p
 }
@@ -204,6 +215,7 @@ func (p *Progress) SetMin(min float64) *Progress {
 		p.value = min
 	}
 	p.syncPos()
+	p.retarget()
 	p.Redraw(false)
 	return p
 }
@@ -218,8 +230,52 @@ func (p *Progress) SetIndeterminate(v bool) *Progress {
 		return p
 	}
 	p.indeterminate = v
+	p.animSeq++ // 停掉未完成的值过渡
+	if v {
+		p.displayPct = p.clampPct(p.percentOf(p.value))
+	}
 	p.Redraw(false)
 	return p
+}
+
+// clampPct 把百分比夹到 0~100。
+func (p *Progress) clampPct(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
+// retarget 让显示百分比从当前位置过渡到当前值(对应 Indicator 的 transition-all)。
+//
+// 用运行时 PresenceOnce 驱动: 每次值变化开始一段带新键的过渡, 到位条目自动回收;
+// 旧过渡还没跑完时由 animSeq 让它停止写值 —— 否则新旧两段会同时改 displayPct,
+// 宽度来回跳。过渡与"弹层进场"共用运行时过渡表, 不自起定时器。
+func (p *Progress) retarget() {
+	to := p.clampPct(p.percentOf(p.value))
+	from := p.displayPct
+	p.animSeq++
+	seq := p.animSeq
+	if p.indeterminate || from == to {
+		p.displayPct = to
+		return
+	}
+	xui.PresenceOnce(p.Handle, true, progressTransition, func(v float64) {
+		if seq != p.animSeq {
+			return
+		}
+		p.displayPct = from + (to-from)*v
+	}, func(float64) {
+		if seq != p.animSeq {
+			return
+		}
+		p.displayPct = to
+		// 到位帧的重绘发生在 done 之前, 终值要再补一次(同 anim.go 的 settledNow 语义)。
+		p.Redraw(false)
+	})
 }
 
 // SetIndicatorColor 覆盖指示器颜色(固定色; 与主题无关)。
@@ -333,7 +389,9 @@ func (p *Progress) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		f := 1 - math.Abs(2*phase-1)
 		left = pt.Rc.Left + int32(math.Round(f*float64(trackW-barW)))
 	} else {
-		barW = int32(float64(trackW) * p.percentOf(p.value) / 100)
+		// 值变化时宽度按过渡插值(上游 Indicator 的 transition-all): displayPct
+		// 由 retarget 启动的运行时过渡逐帧更新, 这里只读当前显示值。
+		barW = int32(float64(trackW) * p.displayPct / 100)
 		if barW <= 0 {
 			return 0
 		}

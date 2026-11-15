@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/xc"
+	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 	ui "github.com/twgh/xui/components"
 )
@@ -128,6 +131,61 @@ func buildForm3Page(body *widget.LayoutEle, hWindow int) {
 	xui.ItemWidth(lang, 160)
 	lang.SetSelected(0)
 	fLang.Attach(lang)
+
+	// ---- 响应式取向: 宽度跨过 448px(上游 @md 容器查询)自动横/竖 ----
+	xui.ItemFill(hint(vf2.Handle,
+		"响应式取向(FieldResponsive): 宽度 ≥ 448 时横排, 不足时竖排(上游 @md 容器查询)"))
+	fResp := ui.NewField(0, 0, 0, 0, vf2.Handle,
+		ui.WithFieldOrientation(ui.FieldResponsive))
+	xui.ItemFill(fResp)
+	fResp.Label("响应式字段(随宽度切换)")
+	respContent := fResp.Content()
+	respInput := ui.NewInput(0, 0, 0, 0, respContent.Handle)
+	xui.ItemFill(respInput)
+	respInput.SetValue("拖动窗口宽度跨过 448px")
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "横排时内容列固定 240, 竖排时满宽。",
+		respContent.Handle).SetMuted())
+	fResp.Attach(respInput)
+	respState := ui.NewLabel(0, 0, 0, 20, "", vf2.Handle).SetMuted().SetFontSize(13)
+	xui.ItemFill(respState)
+	syncResp := func() {
+		if respState.Handle == 0 || !xc.XC_IsHXCGUI(respState.Handle, xcc.XC_ELE) {
+			return
+		}
+		if fResp.Horizontal() {
+			respState.SetText("当前取向: 横排(宽度 ≥ 448)")
+		} else {
+			respState.SetText("当前取向: 竖排(宽度 < 448)")
+		}
+		respState.Redraw()
+	}
+	app.AfterFunc(0, syncResp)
+	fResp.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		app.AfterFunc(0, syncResp)
+		return 0
+	})
+
+	xui.ItemFill(hint(vf2.Handle, "直属控件(不放 Content): 切横排时自动从满宽收成 240"))
+	fResp2 := ui.NewField(0, 0, 0, 0, vf2.Handle,
+		ui.WithFieldOrientation(ui.FieldResponsive))
+	xui.ItemFill(fResp2)
+	fResp2.Label("直属输入框(自动收窄)")
+	respInput2 := ui.NewInput(0, 0, 0, 0, fResp2.Handle)
+	xui.ItemFill(respInput2)
+	respInput2.SetValue("横排时不再独占整行")
+	fResp2.Attach(respInput2)
+
+	xui.ItemFill(hint(vf2.Handle, "固定 320 宽的窄容器: 同一个响应式字段在这里保持竖排"))
+	narrow := xui.VStack(vf2.Handle, 1, 0)
+	xui.ItemWidth(narrow, 320)
+	fNarrow := ui.NewField(0, 0, 0, 0, narrow.Handle,
+		ui.WithFieldOrientation(ui.FieldResponsive))
+	xui.ItemFill(fNarrow)
+	fNarrow.Label("窄容器字段")
+	narrowInput := ui.NewInput(0, 0, 0, 0, fNarrow.Handle)
+	xui.ItemFill(narrowInput)
+	narrowInput.SetValue("宽度不足, 保持竖排")
+	fNarrow.Attach(narrowInput)
 
 	// ---- 文件对话框(系统原生, 不套主题) ----
 	_, vfd := autoCard(body.Handle, 10)

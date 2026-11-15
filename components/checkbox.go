@@ -478,6 +478,16 @@ func (c *Checkbox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	return 0
 }
 
+// ===== FieldChoiceCard 适配(接口方法不导出, 只有内置控件能当选择卡片指示器) =====
+
+func (c *Checkbox) choiceCardHandle() int                            { return c.Handle }
+func (c *Checkbox) choiceCardToggle()                                { c.Toggle() }
+func (c *Checkbox) choiceCardActive() bool                           { return c.Checked() }
+func (c *Checkbox) choiceCardOnChange(fn func(bool))                 { c.OnChange(fn) }
+func (c *Checkbox) choiceCardFocusProxy()                            { c.SetFocusRingProxy(true) }
+func (c *Checkbox) choiceCardBackdrop(fn func(*xui.Theme) xui.Color) { c.SetBackdrop(fn) }
+func (c *Checkbox) choiceCardSize() (int32, int32)                   { return 24, 24 }
+
 // drawCheck 在指示器内绘制勾号。几何取 lucide Check 的 24 网格点
 // (20,6)-(9,17)-(4,12): shadcn 的指示器是 16px 边框盒, 1px 边框内 14px 内容区
 // 放 size-3.5(14px) 图标, 所以 24 网格映射到内缩 1px 的区域。

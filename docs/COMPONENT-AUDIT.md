@@ -10,7 +10,7 @@
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
-> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#23(#1 / #3 / #5 与第一批 16 个条目已落地,见第十节;其余条目仍出清单待确认),**下一轮核查从 #24 Accordion 起**。
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#23(逐组件结论见各节,实现进度见第十节),**下一轮核查从 #24 Accordion 起**。
 
 ## 一、按常用性排序的总表
 
@@ -35,8 +35,8 @@
 | 17 | Table | `table` | 已核查 | 结论见第七节;3 项可实现 |
 | 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现;官方是组合模式,差异见 DESIGN 第七节 |
 | 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现,PO1/PO2/PO3 已落地(见第十节);本批开合控制最完整 |
-| 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min 与 PR3 轨道配色/圆角已落地(见第十节) |
-| 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL4 错误区同源已落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
+| 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min / PR3 轨道配色与圆角 / PR2 宽度过渡已落地(见第十节) |
+| 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL4 错误区同源 / FL1 响应式取向 / FL2 Choice Card 已落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
 | 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现,IG1/IG2 已落地(见第十节);11 个官方示例仅缺 Custom Input |
 | 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1/AV2/AV3/AV4 已落地(见第十节) |
 | 24 | Accordion | `accordion` | 待核查 | 下一轮起点 |
@@ -539,4 +539,12 @@
 | AV3 | Avatar | `WithAvatarInteractive()` / `SetInteractive(bool)`:打开焦点与 Tab, 作 Popover/Menu 触发区;键盘焦点环画在圆内侧 2px |
 | PR3 | Progress | 轨道配色 `WithProgressTrackColor/[...Func]`、`WithProgressRadius`,运行时 `SetTrackColorFunc/SetRadius`;`ProgressField` 同款 |
 
-**下一批建议**: PR2 指示器宽度过渡 → FL1 `orientation=responsive` → FL2 Choice Card → AV3 头像作触发区;I3 / S9 / L3 / RG3 / FL3 需同批设计;PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求。
+**第四批**(进度 / 字段取向 / 选择卡片,已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| PR2 | Progress | 值变化时指示器宽度 150ms 过渡(对应 Indicator 的 `transition-all`): 从当前显示宽度续跑, 中途再改值不跳变; 运行时 `PresenceOnce` 驱动, 不自起定时器、不新增运行时导出 |
+| FL1 | Field | `FieldResponsive`(宽度 ≥ 448 = 上游 `@md/field-group` 容器查询时横排, 不足竖排) + 运行时 `SetOrientation` / `Horizontal`; 跨断点自动切横竖并重排; 切横排时直属「Fill 宽 + 非 Auto 高」控件收成 240、切回竖排恢复满宽; `Content` 横排固定 240 / 竖排满宽 |
+| FL2 | Field | `NewFieldChoiceCard` + `Label/Description/Content` + `Attach(Checkbox/Radio/Switch)`: 整卡命中(子项与指示器鼠标穿透)、点整卡聚焦并切换、选中 = bg-accent + border-primary、指示器宿主底色跟随卡片、键盘焦点环代理; `Switch` 补 `SetBackdrop` |
+
+**下一批建议**: I3 / S9 / L3 / RG3 / FL3(Field 必填与校验器基础设施)必须同批设计 → PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求; 下一轮核查从 #24 Accordion 起。

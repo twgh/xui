@@ -351,3 +351,13 @@ func (r *Radio) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p.Text(r.GetText(), &textRC, textColor, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	return 0
 }
+
+// ===== FieldChoiceCard 适配(接口方法不导出, 只有内置控件能当选择卡片指示器) =====
+
+func (r *Radio) choiceCardHandle() int                            { return r.Handle }
+func (r *Radio) choiceCardToggle()                                { r.Select() }
+func (r *Radio) choiceCardActive() bool                           { return r.Selected() }
+func (r *Radio) choiceCardOnChange(fn func(bool))                 { r.OnChange(fn) }
+func (r *Radio) choiceCardFocusProxy()                            { r.SetFocusRingProxy(true) }
+func (r *Radio) choiceCardBackdrop(fn func(*xui.Theme) xui.Color) { r.SetBackdrop(fn) }
+func (r *Radio) choiceCardSize() (int32, int32)                   { return 24, 24 }
