@@ -241,6 +241,10 @@ func (l *Label) SetAutoWrap() *Label {
 func (l *Label) SetText(name string) *widget.Button {
 	var b *widget.Button
 	repaintTextBounds(l.Handle, func() { b = l.Button.SetText(name) })
+	// 等宽标签(Fill / Fixed 宽)与嵌套在 ScrollArea(LayoutFrame 子窗)里的标签: 文本
+	// 变化不改元素矩形, repaintUnionWith 不会触发重绘, 原生按钮自己也不保证刷新 ——
+	// 必须显式重绘, 否则同高度内改字画面停在旧字(见第八节 196)。
+	l.Redraw(false)
 	if l.autoWrap {
 		l.wrapW = -1
 		l.scheduleAutoWrap()
