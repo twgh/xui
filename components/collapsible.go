@@ -102,6 +102,10 @@ func NewCollapsible(x, y, cx, cy int32, hParent int, opts ...CollapsibleOption) 
 	ele.EnableBkTransparent(true)
 	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	// 根容器只是布局壳, 不接收焦点/不画焦点框: 点触发区之外的空白会命中它,
+	// 框架随即在整块容器上描一圈系统高亮色(触发区禁用时尤其容易点到)。
+	ele.EnableFocus(false)
+	ele.EnableDrawFocus(false)
 	xui.AttachWindow(ele.Handle)
 	// 内容区不能在这里建: 它是根容器的子项, 必须等调用方先放好触发区/其它子项,
 	// 否则 Content 会排在它们前面(子元素按创建顺序参与布局)。
@@ -233,6 +237,9 @@ func (c *Collapsible) ensureContent() {
 	l.EnableBkTransparent(true)
 	l.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	l.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	// 内容区也是纯布局容器: 点文字右侧的空白不该把焦点给它(会画一圈焦点框)。
+	l.EnableFocus(false)
+	l.EnableDrawFocus(false)
 	if !c.open {
 		l.Show(false)
 		l.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 0)

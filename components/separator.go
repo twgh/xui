@@ -74,6 +74,13 @@ func NewSeparator(x, y, cx int32, hParent int, opts ...SeparatorOption) *Separat
 	// 2 行(实测)。必须关掉, 让下面的自绘全权负责。
 	ele.EnableBkTransparent(true)
 	ele.EnableDrawBorder(false)
+	// 分隔线是纯装饰: 不接收鼠标、不参与焦点、也不让框架画默认焦点框。
+	// 少了这几行, 点手风琴两项之间那条 1px 线会把线自己设成焦点元素, 框架随即在
+	// 它的元素矩形上描一圈系统高亮色 —— 1px 高的元素被描成一整个蓝色细矩形(实测在
+	// 整组禁用后最明显: 触发区不接收鼠标, 点击会直接落到分隔线上)。
+	ele.EnableMouseThrough(true)
+	ele.EnableFocus(false)
+	ele.EnableDrawFocus(false)
 	if s.vertical && s.stretch {
 		ele.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
 	}

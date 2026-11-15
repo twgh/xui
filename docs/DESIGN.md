@@ -845,6 +845,7 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **207** 原生控件放进布局父级默认宽为 0: 横向行里的 Label 必须显式 `Auto` 宽, 否则整块看不见
 - **208** 按钮元素高 = 视觉高 + 1px 按压预留: 固定高行要给足(Default 33 / Sm 29 / Xs 25 / Lg 37), 否则按下时下边框被削平
 - **209** 程序化改 Edit 文本(`SetText` / `AddText`)不派发变更事件: 长度上限这类约束要在写入后补一次, 不能只靠变更回调
+- **210** 装饰/布局用的普通 Element 默认可聚焦并画焦点框: 分隔线、容器空白、内容占位块被点到会冒出一圈系统高亮色, 创建时关 `EnableMouseThrough` / `EnableFocus` / `EnableDrawFocus`
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 

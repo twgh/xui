@@ -85,6 +85,10 @@ func NewAccordion(x, y, cx, cy int32, hParent int, opts ...AccordionOption) *Acc
 	ele.SetSpace(0)
 	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
+	// 根容器只是布局壳, 不能拿焦点: 否则点击条目之间的空白会把焦点给它, 框架在整块
+	// 容器上描一圈系统高亮色的焦点框(整组禁用后触发区不接收鼠标, 一点就露出来)。
+	ele.EnableFocus(false)
+	ele.EnableDrawFocus(false)
 	xui.AttachWindow(ele.Handle)
 	return a
 }
@@ -423,6 +427,11 @@ func (it *AccordionItem) ensureBottomPad() {
 	// 否则展开后内容区会出现一个整宽的细矩形(看起来像多了一条分隔线)。
 	sp.EnableBkTransparent(true)
 	sp.EnableDrawBorder(false)
+	// 占位块也是纯装饰: 点它(内容最后一行与分隔线之间那 10px)不该抢焦点,
+	// 否则框架会在它上面描一圈焦点框(整组禁用后最容易点到, 实测)。
+	sp.EnableMouseThrough(true)
+	sp.EnableFocus(false)
+	sp.EnableDrawFocus(false)
 	xui.ItemFill(sp)
 	sp.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
 	it.pad = sp
