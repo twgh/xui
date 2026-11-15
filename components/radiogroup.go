@@ -134,6 +134,11 @@ func (g *RadioGroup) applyItemWidths() {
 		return
 	}
 	for _, it := range g.items {
+		// 只调整**组容器直下**的条目: 放进 Field / 选择卡片里的条目宽度由宿主决定
+		// (选择卡片的指示器一旦 Fill, 会把卡片里的标题/说明列挤成 0 宽)。
+		if it.GetParentEle() != g.Handle {
+			continue
+		}
 		if g.horizontal {
 			xui.ItemWidth(it, it.naturalWidth())
 		} else {

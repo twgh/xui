@@ -355,8 +355,15 @@ func (s *Select) Open() *Select {
 	if s.pendingScroll > 0 {
 		s.scroll.ScrollPosYV(s.pendingScroll)
 	}
-	// 打开时把焦点/高亮放到选中条目(radix 内容获得焦点, 选中项 bg-accent)
-	s.setActive(s.rowOfValue(s.value), s.pendingScroll <= 0)
+	// 打开时把焦点/高亮放到选中条目(radix 内容获得焦点, 选中项 bg-accent)。
+	// highlightItemOnHover=false 时**不高亮任何行**: 高亮完全交给键盘(按下方向键才出现),
+	// 否则选中/首项会一直顶着满色底, 看起来像"第一项永远是悬停态"(实测用户就是这样理解的)。
+	active := s.rowOfValue(s.value)
+	if s.noHoverHl {
+		s.active = active
+	} else {
+		s.setActive(active, s.pendingScroll <= 0)
+	}
 	s.notifyOpen(true)
 	return s
 }
@@ -871,10 +878,11 @@ func (s *Select) paintItem(r *selectRow, hEle int, hDraw int, pbHandled *bool) {
 	hv := xui.Hover(hEle, hoverOK || focusOK)
 	if hv > 0 {
 		// highlightItemOnHover=false 时: 键盘高亮(focus)仍是满色 bg-accent,
-		// 纯悬停退成一层很淡的底, 让人看得出鼠标在哪儿, 又不冒充当前项。
+		// 纯悬停只有一半浓度的 accent —— 能看出鼠标在哪儿, 又明显轻于当前项。
+		// 不要用 Muted: 默认主题里 Muted 与 Accent 同值, 换上去和没换一样(实测看不出来)。
 		col := t.Accent
 		if s.noHoverHl && hoverOK && !focusOK {
-			col = t.Muted
+			col = t.Accent.ScaleAlpha(0.5)
 		}
 		p.FillRound(&p.Rc, col.ScaleAlpha(hv), t.RadiusSm())
 	}

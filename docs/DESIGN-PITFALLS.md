@@ -1635,5 +1635,17 @@ hover 背景底边正好贴住弹层底边、滚轮还能再滚一下。
 213. **可移入的提示气泡: 去掉 `WS_EX_TRANSPARENT` 才会收到鼠标, 离开要延迟确认, 判定用物理像素**(`tooltip.go` 的 `WithTipHoverable` / `scheduleBubbleHide` / `cursorInBubble`):
      - **现象**: 给 Tooltip 加"鼠标可以移进气泡、移出才关"(`disableHoverableContent=false`)时, 气泡窗挂 MouseMove / MouseLeave 完全收不到事件, 光标一离开锚点提示就立刻消失, 根本走不到气泡上。
      - **根因**: 提示气泡窗默认带 `WS_EX_TRANSPARENT`(鼠标穿透, 压在别的元素上也不挡鼠标), 这个样式让窗口**收不到任何鼠标消息**; 而锚点的 MouseLeave 又是立即隐藏, 光标从锚点移向气泡时必然先经过这段间隙。
-     - **修法**: 按本次显示的配置动态切换穿透位 —— `GetWindowLongPtrW(hwnd, GWL_EXSTYLE)` 后对 `WS_EX_TRANSPARENT` 做 `&^` / `|` 再写回; 锚点 MouseLeave 不直接隐藏, 而是延迟 120ms 后确认: 光标在气泡矩形内、或在锚点矩形内就保持, 否则才隐藏。判断"在气泡内"用 `GetWindowRect` + `GetCursorPos` 的**物理像素**直接比较 —— 不要混用 `XWnd_ScreenToClient` 这类内部做了 DPI 适配的 API, 两边的坐标系不一样, 150% 缩放下会算错半屏。
-     - **实测**: 悬停按钮弹出提示后把光标平移进气泡, 气泡保持显示、`IsOpen` 仍为 true; 移出气泡 120ms 后收起; 不开启该项时行为与以前完全一致(窗口保持穿透, 不挡下层点击)。
+     - **修法**: 按本次显示的配置动态切换穿透位 —— `GetWindowLongPtrW(hwnd, GWL_EXSTYLE)` 后对 `WS_EX_TRANSPARENT` 做 `&^` / `|` 再写回; 锚点 MouseLeave 不直接隐藏, 而是延迟确认(实现为 300ms, 见 214 的连通区判定)。判断"在气泡内"用 `GetWindowRect` + `GetCursorPos` 的**物理像素**直接比较 —— 不要混用 `XWnd_ScreenToClient` 这类内部做了 DPI 适配的 API, 两边的坐标系不一样, 150% 缩放下会算错半屏。
+     - **实测**: 悬停按钮弹出提示后把光标平移进气泡, 气泡保持显示、`IsOpen` 仍为 true; 移出连通区 300ms 后收起; 不开启该项时行为与以前完全一致(窗口保持穿透, 不挡下层点击)。
+
+214. **可移入的提示气泡不能只靠锚点 MouseLeave: 窗口级命中测试会立刻关掉它**(`tooltip.go` 的 `hitTest` / `cursorInHoverZone` / `scheduleBubbleHide`):
+     - **现象**: 给 `WithTipHoverable()` 的气泡, 光标从触发按钮往气泡方向平移, 只要不是"从箭头那一小块慢慢挪上去", 提示就直接消失, 根本进不到气泡里。
+     - **根因**: 气泡与锚点之间隔着箭头那几像素, 那段路在**宿主窗口**上。宿主窗口的窗口级 `MouseMove`(以及锚点的 `MouseLeave`)都会走命中测试, 而命中测试对"不在任何已绑定元素上"的判定是**无条件 Hide** —— 延迟确认只在锚点的 MouseLeave 分支里做了, 窗口级这条没做。箭头那一小块之所以能用, 是因为它属于气泡窗口, 宿主根本收不到事件。
+     - **修法**: 命中测试里加一个例外: 当前气泡是 hoverable 且正在显示、光标落在"锚点 + 气泡 + 两者之间"的连通区(`cursorInHoverZone`: 两矩形各外扩 8 物理像素, 再用包围盒桥接中间走廊)时直接返回、不收。延迟确认从 120ms 提到 300ms, 并改用同一个连通区判定。
+     - **实测**: 悬停"可移入"按钮后横着/斜着慢慢移进气泡都保持显示, 移出连通区 300ms 后收起; 普通(不可移入)提示的行为与之前完全一致。
+
+215. **RadioGroup 只该声明"组容器直下"条目的宽度: 选择卡片里的指示器变 Fill 会把标签挤成 0 宽**(`radiogroup.go` 的 `applyItemWidths` / `Attach`):
+     - **现象**: 支持横向排列时把条目宽度声明抽到 `Attach` 里统一做, 结果「选择卡片(RadioGroup)」的三张卡片只剩左边的圆点, 标题与说明全都不见了。
+     - **根因**: 选择卡片把 `Radio` 当**右端指示器**嵌在自己的横向布局里, 再 `grp.Attach(radio)` 入组。竖向组的默认声明是 `ItemFill`(条目铺满组宽), 一旦也作用到这个指示器, 它就在卡片的横向行里独占整宽, 把左侧内容列压成 0。
+     - **修法**: `applyItemWidths` 先判 `it.GetParentEle() == g.Handle` —— 只有组容器的直接子项才改宽度, 放进 Field / 卡片里的条目由宿主决定。
+     - **实测**: 探针里选择卡片标题宽 704(整卡内容宽, 不再为 0); 横向组的四个条目宽 47/47/47/62, 同一行排开。

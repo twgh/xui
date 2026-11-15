@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复: 第八批上线后四个回归(徽章红环有缝 / 可移入气泡进不去 / Select 首项恒高亮 / 选择卡片文字消失)**(2026-11-15, 用户截图反馈, 根因与实测见 DESIGN 第八节 214/215):
+  - **Badge 校验环贴边**: 内侧环原来按 2px 内缩画, 与最外 1px 描边之间留下一条底色缝隙(看起来像两道不相干的红边)。改成 1px 内缩(环覆盖 1~4px), 紧贴描边; 150% DPI 抓像素: 边框行 `rgb(231,0,11)` 之后立即是 `rgb(250,204,206)` 的淡红, 不再有白缝。
+  - **Tooltip 可移入**: 光标从锚点移向气泡时, 中间那几像素属于宿主窗口, 窗口级命中测试在"不在任何绑定元素上"时**无条件 Hide**, 于是只能从箭头那一小块(属于气泡窗口)挪进去。修法: 命中测试与延迟确认都改用"锚点 + 气泡 + 两者之间"的连通区判定(`cursorInHoverZone`, 两矩形各外扩 8 物理像素 + 包围盒桥接), 延迟 120 → 300ms。记入 DESIGN 214。
+  - **Select 悬停高亮开关**: `highlightItemOnHover=false` 时打开不再预亮首项/选中项(高亮完全交给键盘), 纯悬停改成**半浓度 accent**。原来用的 `Muted` 与默认主题的 `Accent` 同值, 换上去肉眼无差别。
+  - **RadioGroup 横向布局回归**: `applyItemWidths` 只改**组容器直下**条目的宽度(`GetParentEle() == g.Handle`)。原来 `Attach` 里统一声明宽度, 把选择卡片右端的单选指示器也 `ItemFill`, 卡片内容列被挤成 0 宽 → 标题/说明全部消失。记入 DESIGN 215。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 几何探针: 选择卡片标题宽 704(原为 0), 横向组条目 47/47/47/62 同一行; demo 受影响页面逐页启动正常。
+
 - ✅ **组件特性核查清单第八批: 可直接排期条目一次性落地(28 条, 跨 18 个组件)**(2026-11-15, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节的"可直接排期"清单):
   - **Input / Textarea(I1 / I6 / TA2 / TA3)**: `WithFileInput(dlgOpts...)` / `WithFileInputMulti` / `WithFileInputMaxFiles` 把输入框变成文件输入 —— 只读显示文件名(多选 `首个 +N`)+ 右侧"选择文件"文字钮, 点它调 FileDialog(类型过滤器 / 标题 / 初始目录透传), 取消不改值; `SetFiles` / `Files` / `ClearFiles` / `OnFilesChange`, `FieldValue()` 在文件形态下返回路径列表(必填 = 必须选文件)。`WithTextareaRows(n)` 的最小高度按实际行高换算(与 cy 二选一), `WithTextareaResize()` 右下角抓手拖拽改最小高度(屏幕物理增量 ÷ DPI, 抓手区用斜向光标, 自动长高继续生效)。原生 Edit 侧补 `WithInputSelectColor`(选区底色, 默认主色 25%)/ `WithInputCaretWidth` / `WithInputAutoSelect` / `Undo` / `Redo`。
   - **Select(S6)**: `WithSelectHighlightOnHover(false)` / `SetHighlightOnHover` —— 悬停只给一层淡底, 键盘高亮不跟着鼠标走(Base UI 的 `highlightItemOnHover`)。

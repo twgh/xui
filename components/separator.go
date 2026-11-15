@@ -552,7 +552,9 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		ring = t.Ring.WithAlpha(128)
 	}
 	if !ring.IsNone() {
-		inset := int32(2)
+		// 环必须**贴住**描边: 描边占最外 1px, 环从 1px 处起画 3px(1~4)。
+		// 用 2 会留出 1px 底色缝隙, 看起来像"两道不相干的红边"(实测 150% DPI 下很明显)。
+		inset := int32(1)
 		inner := xc.RECT{
 			Left:   p.Rc.Left + inset,
 			Top:    p.Rc.Top + inset,

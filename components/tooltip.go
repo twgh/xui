@@ -354,8 +354,13 @@ func (t *Tooltip) hitTest(hWnd int, pt *xc.POINT) {
 		t.request(hEle)
 		return
 	}
-	// 光标不在任何绑定元素上: 该关的就关(拖动/滚动时也能及时消失)
+	// 光标不在任何绑定元素上: 该关的就关(拖动/滚动时也能及时消失)。
+	// 可移入的气泡是唯一例外 —— 光标从锚点移向气泡时会跨过中间的缝隙, 那段路属于宿主
+	// 窗口, 这里无条件 Hide 会让气泡"只能从箭头处慢慢挪进去"(实测用户就是这么绕的)。
 	if t.shownEle != 0 || t.pending != nil {
+		if t.hoverable && t.shown && t.cursorInHoverZone() {
+			return
+		}
 		t.Hide()
 	}
 }
@@ -578,65 +583,104 @@ func (t *Tooltip) scheduleBubbleHide() {
 	if t.hideTimer != nil {
 		return
 	}
-	t.hideTimer = app.AfterFunc(120*time.Millisecond, func() {
+	t.hideTimer = app.AfterFunc(300*time.Millisecond, func() {
 		t.hideTimer = nil
 		if t.win == nil || !t.shown {
 			return
 		}
-		if t.cursorInBubble() {
-			return
-		}
-		if t.cursorOnAnchor() {
+		if t.cursorInHoverZone() {
 			return
 		}
 		t.Hide()
 	})
 }
 
-// cursorInBubble 用**物理像素**判断光标是否落在气泡窗口内。
+// bubbleScreenRect 取气泡窗口的屏幕矩形(物理像素)。
 //
 // 这里不要用 XWnd_ScreenToClient 之类的 DPI 适配 API: GetCursorPos 给的是物理屏幕坐标,
 // 而气泡窗的位置/尺寸也是物理的(ShowNow 里乘过 DPI), 两边同单位直接比最稳。
-func (t *Tooltip) cursorInBubble() bool {
+func (t *Tooltip) bubbleScreenRect() (wapi.RECT, bool) {
+	var wr wapi.RECT
 	if t.win == nil {
-		return false
+		return wr, false
 	}
 	hwnd := t.win.GetHWND()
-	var wr wapi.RECT
 	if hwnd == 0 || !wapi.GetWindowRect(hwnd, &wr) {
-		return false
+		return wr, false
 	}
-	var pt wapi.POINT
-	if !wapi.GetCursorPos(&pt) {
-		return false
-	}
-	return pt.X >= wr.Left && pt.X < wr.Right && pt.Y >= wr.Top && pt.Y < wr.Bottom
+	return wr, true
 }
 
-// cursorOnAnchor 判断光标是否还压在锚点元素上(用元素未裁剪的客户区矩形)。
-func (t *Tooltip) cursorOnAnchor() bool {
+// anchorScreenRect 取锚点元素的屏幕矩形(物理像素, 未裁剪的客户区)。
+func (t *Tooltip) anchorScreenRect() (wapi.RECT, bool) {
+	var out wapi.RECT
 	if t.shownEle == 0 || !xc.XC_IsHXCGUI(t.shownEle, xcc.XC_ELE) {
-		return false
+		return out, false
 	}
 	hwnd := xc.XWidget_GetHWND(t.shownEle)
 	if hwnd == 0 {
-		return false
-	}
-	var pt wapi.POINT
-	if !wapi.GetCursorPos(&pt) {
-		return false
+		return out, false
 	}
 	var wr wapi.RECT
 	if !wapi.GetWindowRect(hwnd, &wr) {
-		return false
+		return out, false
 	}
 	var rc xc.RECT
 	xc.XEle_GetWndClientRectDPI(t.shownEle, &rc) // 物理像素, 与窗口矩形同单位
 	if rc.Right <= rc.Left || rc.Bottom <= rc.Top {
+		return out, false
+	}
+	out.Left, out.Top = wr.Left+rc.Left, wr.Top+rc.Top
+	out.Right, out.Bottom = wr.Left+rc.Right, wr.Top+rc.Bottom
+	return out, true
+}
+
+// cursorInHoverZone 判断光标是否落在"锚点 + 气泡 + 两者之间的缝隙"里。
+//
+// 只查气泡矩形是不够的: 气泡与锚点中间隔着箭头那几像素的缝隙, 光标跨过缝隙时
+// 既不在锚点上、也不在气泡窗里, 窗口级命中测试与锚点 MouseLeave 都会判成"离开"。
+// 所以两块各外扩 8 物理像素, 再用两矩形的包围盒把中间的走廊一起算进来。
+func (t *Tooltip) cursorInHoverZone() bool {
+	var pt wapi.POINT
+	if !wapi.GetCursorPos(&pt) {
 		return false
 	}
-	x, y := int32(pt.X)-wr.Left, int32(pt.Y)-wr.Top
-	return x >= rc.Left && x < rc.Right && y >= rc.Top && y < rc.Bottom
+	in := func(r wapi.RECT, pad int32) bool {
+		return int32(pt.X) >= r.Left-pad && int32(pt.X) < r.Right+pad &&
+			int32(pt.Y) >= r.Top-pad && int32(pt.Y) < r.Bottom+pad
+	}
+	const pad int32 = 8
+	ar, aok := t.anchorScreenRect()
+	br, bok := t.bubbleScreenRect()
+	if aok && in(ar, pad) {
+		return true
+	}
+	if bok && in(br, pad) {
+		return true
+	}
+	if aok && bok {
+		mn := func(a, b int32) int32 {
+			if a < b {
+				return a
+			}
+			return b
+		}
+		mx := func(a, b int32) int32 {
+			if a > b {
+				return a
+			}
+			return b
+		}
+		u := wapi.RECT{
+			Left:   mn(ar.Left, br.Left) - pad,
+			Top:    mn(ar.Top, br.Top) - pad,
+			Right:  mx(ar.Right, br.Right) + pad,
+			Bottom: mx(ar.Bottom, br.Bottom) + pad,
+		}
+		return int32(pt.X) >= u.Left && int32(pt.X) < u.Right &&
+			int32(pt.Y) >= u.Top && int32(pt.Y) < u.Bottom
+	}
+	return false
 }
 
 // measure 量气泡的内容尺寸与窗口尺寸(逻辑像素)。
