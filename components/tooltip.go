@@ -890,8 +890,11 @@ func (t *Tooltip) showNow(hEle int) {
 		// 切换目标(不重播进场): 上一次进场可能被打断在半透明, 这里直接钉到不透明。
 		xui.SetElementsAlpha(1, t.ele.Handle)
 	}
-	t.win.SetWindowPos(xcc.HWND_TOPMOST, px, py,
-		int32(float64(ww)*scale), int32(float64(wh)*scale),
+	// 尺寸**不要**再乘 scale: `XWnd_SetWindowPos` 的位置参数是物理像素(上面的 px/py),
+	// 但宽高按逻辑像素处理、由框架再乘一次 DPI。两边都乘会得到 1.5² 倍大的窗口 ——
+	// 表现是气泡窗口比可见气泡大一圈、底边压进触发元素 20 多像素, 可移入提示的命中区
+	// 跟着压到按钮上, 光标离开按钮也不收(实测 150% DPI: 逻辑 213×35 被建成 479×78)。
+	t.win.SetWindowPos(xcc.HWND_TOPMOST, px, py, ww, wh,
 		xcc.SWP_NOACTIVATE|xcc.SWP_SHOWWINDOW)
 	wapi.ShowWindow(t.win.GetHWND(), 4) // SW_SHOWNOACTIVATE
 	t.ele.Redraw(false)

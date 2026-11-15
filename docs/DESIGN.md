@@ -419,8 +419,8 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 
 | **input 文件形态**(I1, 对应 `<input type="file">`): `WithFileInput(dlgOpts...)` = 只读显示 + 右侧"选择文件"文字钮(幽灵底、悬停 accent、高度 22), 点它调系统对话框; 显示文本只取**文件名**(多选 = `首个文件名 +N`), 完整路径在 `Files()` / `OnFilesChange`; 取消不改值; 必填 = 没选文件(`FieldValue()` 返回空串) | 浏览器 file input 的 "Choose file / No file chosen" + 上游 `file:*` 样式 |
 | **textarea 行数与拖拽**(TA2 / TA3): `WithTextareaRows(n)` 的最小高度按**实际行高**实时换算(与创建参数的 cy 二选一, rows 优先); `WithTextareaResize()` 在右下角画两条 45° 短线作抓手, 拖动改的是**最小高度**(内容更高时仍自动长高, 等价 CSS min-height + field-sizing-content), 拖动用屏幕物理坐标增量 ÷ 窗口 DPI 换算, 抓手区用斜向调整光标 | 原生 `<textarea rows>` 与默认 resize 手柄 |
-| **select 悬停高亮开关**(S6): `WithSelectHighlightOnHover(false)` 时**初始高亮照旧**落在选中项/首项, 键盘也能移动它; 只有"鼠标悬停"不再把高亮搬到指针下 —— 纯悬停只画半浓度 accent(能看出指针位置, 又不冒充当前项)。对应 Base UI 的 `highlightItemOnHover=false` | Base UI Select Root 的 `highlightItemOnHover` |
-| **tooltip 可移入与箭头内距**(TT1 / TT2): `WithTipHoverable()` 让气泡窗口去掉 `WS_EX_TRANSPARENT` 接收鼠标 —— 光标从锚点移进气泡时保持显示, 离开气泡才收: 锚点离开与窗口级命中测试都改成"延迟 200ms + 按锚点/气泡两个矩形确认"(不能只靠锚点 MouseLeave, 见第八节 214; 也不能用两者包围盒, 那样范围会大到按钮外都不收); `WithTipArrowPadding(px)` 让箭头中心离气泡两端至少这么远(默认 0 = 只保证三角形落在气泡内) | Base UI Tooltip 的 `disableHoverableContent=false` 与 `arrowPadding` |
+| **select 悬停高亮开关**(S6): `WithSelectHighlightOnHover(false)` 时**初始高亮照旧**落在选中项/首项, 键盘也能移动它; 鼠标悬停**不产生任何视觉反馈**(既不搬高亮也不画淡底/描边, 与上游 `highlightItemOnHover=false` 一致)。默认模式下悬停会把高亮搬指针下的条目 —— 原生按钮的悬停不挪焦点, 由组件自己搬(见第八节 217) | Base UI Select Root 的 `highlightItemOnHover` |
+| **tooltip 可移入与箭头内距**(TT1 / TT2): `WithTipHoverable()` 让气泡窗口去掉 `WS_EX_TRANSPARENT` 接收鼠标 —— 光标从锚点移进气泡时保持显示, 离开气泡才收: 锚点离开与窗口级命中测试都改成"延迟 200ms + 按锚点/气泡两个矩形确认"(不能只靠锚点 MouseLeave, 见第八节 214; 也不能用两者包围盒, 那样范围会大到按钮外都不收); 气泡窗**位置按物理像素、宽高按逻辑像素**落位(两边都乘 DPI 会得到 1.5² 倍大的窗口, 命中区跟着压进按钮, 见第八节 216); `WithTipArrowPadding(px)` 让箭头中心离气泡两端至少这么远(默认 0 = 只保证三角形落在气泡内) | Base UI Tooltip 的 `disableHoverableContent=false` 与 `arrowPadding` |
 | **badge 焦点环与校验态**(BA1): 可点击徽章(OnClick / NewLinkBadge)进 Tab 链、Enter/空格触发, focus-visible 环与 aria-invalid 环都画在**胶囊内侧** 2px(元素矩形就是胶囊, 3px 外环会被裁); `WithBadgeInvalid` / `SetInvalid` = 描边 destructive + 常驻红环 | badge.tsx 的 `focus-visible:ring-[3px]` / `aria-invalid:*` |
 | **tabs 禁用回退与指示条滑动**(TB3 / TB4): 选中项被 `SetDisabled` 禁用时自动落到最近的可用标签(全都禁用则清空选中), 程序化 `SetActive` 仍可选中禁用项; line 变体的下划线/竖条在切换时从旧标签**滑到**新标签(150ms, 运行时过渡表驱动), 不在过渡中时每帧跟住当前标签矩形(缩放/换行重排不会落后) | Base UI Tabs 的 disabled fallback + 标签的 `transition-all` |
 | **switch 滑块位移**(SW3): 切换时滑块从一端滑到另一端(150ms, 运行时一次性过渡), 回滚(只读/否决)同样跟着回, 构造时的初始值直接落位不滑动 | switch.tsx 的 thumb `transition-transform` |
@@ -865,8 +865,11 @@ func (b *Button) onPaint(hEle, hDraw int, pbHandled *bool) int {
 - **211** 原生 List 的行区铺满整块客户区, 没有"表外横带": 表格的说明文字 / 合计行只能做成同父兄弟元素, 兄弟顺序按 z 序
 - **212** 布局项的外边距逃不出父元素的元素 padding: 卡片通栏块必须做卡片的直接子项, 负外边距会让 Fill 子项按错误宽度解析
 - **213** 可移入的提示气泡要动态去掉 `WS_EX_TRANSPARENT`, 离开锚点要延迟确认; 判断"光标在气泡内"用物理像素对齐两边矩形
-- **214** 可移入提示不能只靠锚点 MouseLeave: 窗口级命中测试会立刻收掉它, 要按"锚点 + 气泡 + 中间走廊"的连通区判定
+- **214** 可移入提示不能只靠锚点 MouseLeave: 窗口级命中测试会立刻收掉它, 要按锚点/气泡两个矩形判定(包围盒会把按钮外空区算进来)
 - **215** RadioGroup 只能声明组容器直下条目的宽度: 选择卡片里的单选指示器一旦 Fill, 会把卡片内容列挤成 0 宽
+- **216** 提示窗的宽高是逻辑像素、位置是物理像素: 两边都乘 DPI 会得到 1.5² 倍大的窗口, 命中区压进按钮
+- **217** 原生按钮的悬停不挪焦点: Select 的"悬停即高亮"要自己搬高亮, 关掉时纯悬停不画任何反馈
+- **218** 可移入提示别用定时巡检兜底: 首次显示还进不了 shown 状态, 还会误收键盘聚焦弹出的提示
 
 ## 九、本设计依赖的已验证 API 清单(xcgui 1.4.3)
 

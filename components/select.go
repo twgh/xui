@@ -30,6 +30,9 @@ type Select struct {
 	valueText     func(item SelectItem) string // 触发区文字格式化(S8), nil = 用条目文字
 	// noHoverHl: 鼠标悬停不把条目高亮成"当前项"底色(Base UI Root 的 highlightItemOnHover=false)。
 	noHoverHl bool
+	// hoverIdx 是当前被鼠标悬停的条目下标(-1 = 没有)。原生按钮的悬停不搬焦点,
+	// 也不会在移出后把旧行刷回去, 所以自己记一份用于搬高亮与重绘。
+	hoverIdx int32
 	panel         *popoverPanel
 	scroll        *ScrollArea
 	rows          *widget.LayoutEle
@@ -54,6 +57,7 @@ type selectRow struct {
 	item SelectItem
 	btn  *widget.Button
 	ele  *widget.Element
+	idx  int32 // 在 flat 里的下标(悬停判定用)
 	top  int32 // 打开时重算: 相对滚动内容顶部的 y
 	seq  int32 // 可聚焦条目的序号(键盘导航用), 非条目 = -1
 }
@@ -112,8 +116,9 @@ func WithSelectValueText(fn func(item SelectItem) string) SelectOption {
 // WithSelectHighlightOnHover 设置鼠标悬停条目时是否把它画成"当前高亮"底色
 // (对应 Base UI Select Root 的 highlightItemOnHover, 默认 true)。
 //
-// 关闭后悬停只给一层很淡的底, 键盘高亮不跟着鼠标走 —— 适合"鼠标只用来指, 选中态
-// 完全由键盘决定"的场景。运行时切换用 SetHighlightOnHover。
+// 关闭后鼠标悬停**不产生任何视觉反馈**(既不搬高亮也不画淡底), 高亮只由键盘与
+// 初始选中项决定 —— 适合"鼠标只用来指, 选中态完全由键盘决定"的场景。
+// 运行时切换用 SetHighlightOnHover。
 func WithSelectHighlightOnHover(on bool) SelectOption {
 	return func(s2 *Select) { s2.noHoverHl = !on }
 }
@@ -121,7 +126,7 @@ func WithSelectHighlightOnHover(on bool) SelectOption {
 // NewSelect 创建下拉选择框。cx/cy 传 0: cy 用尺寸档高度, cx 按内容量宽
 // (放卡片里通常配 xui.ItemFill 让它铺满)。
 func NewSelect(x, y, cx, cy int32, hParent int, opts ...SelectOption) *Select {
-	s := &Select{size: SelectSizeDefault, active: -1}
+	s := &Select{size: SelectSizeDefault, active: -1, hoverIdx: -1}
 	for _, o := range opts {
 		o(s)
 	}
@@ -181,6 +186,7 @@ func (s *Select) SetItems(items []SelectItem) *Select {
 func (s *Select) SetGroups(groups []SelectGroup) *Select {
 	s.groups = groups
 	s.built = false
+	s.hoverIdx = -1 // 行要重建, 旧下标失效
 	if s.panel != nil {
 		s.panel.Destroy()
 		s.panel, s.scroll, s.rows = nil, nil, nil
@@ -275,6 +281,11 @@ func (s *Select) SetHighlightOnHover(on bool) *Select {
 		return s
 	}
 	s.noHoverHl = !on
+	// 切回默认模式时指针可能正停在某条目上(MouseStay 已经记过 hoverIdx): 立刻把
+	// 高亮搬过去, 否则要等下一次鼠标移动才追上。
+	if on && s.hoverIdx >= 0 && int(s.hoverIdx) < len(s.flat) && !s.flat[s.hoverIdx].item.Disabled {
+		s.setActive(s.hoverIdx, false)
+	}
 	for _, r := range s.flat {
 		if r.btn != nil {
 			r.btn.Redraw(false)
@@ -349,6 +360,7 @@ func (s *Select) Open() *Select {
 	if s.panel == nil {
 		return s
 	}
+	s.hoverIdx = -1 // 每次打开从"没有悬停"开始(行元素可能已重建)
 	x, y := s.itemAlignedPos()
 	s.panel.ShowAt(s.Handle, x, y)
 	// item-aligned: 内容超高时把选中项滚到触发区中心(radix 的滚动对位)
@@ -368,6 +380,7 @@ func (s *Select) Close() *Select {
 	if s.panel != nil {
 		s.panel.Hide()
 	}
+	s.hoverIdx = -1
 	return s
 }
 
@@ -462,8 +475,21 @@ func (s *Select) build() {
 				return 0
 			})
 			idx := i
+			r.idx = int32(idx)
 			btn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 				s.choose(s.flat[idx])
+				return 0
+			})
+			// 悬停: 默认(highlightItemOnHover=true)把高亮搬到指针下的条目 —— 原生按钮的
+			// 悬停不会挪焦点, 不主动搬的话"打开时高亮的选中项/首项"会一直亮着, 而悬停行
+			// 也亮, 看起来像两项都处于悬停态(实测用户反馈)。关掉悬停高亮时只记悬停下标
+			// 供重绘/运行时切回, 纯悬停不画任何反馈。
+			btn.AddEvent_MouseStay(func(hEle int, pbHandled *bool) int {
+				s.setHover(int32(idx))
+				return 0
+			})
+			btn.AddEvent_MouseLeave(func(hEle int, hEleStay int, pbHandled *bool) int {
+				s.setHover(-1)
 				return 0
 			})
 		case selectRowLabel:
@@ -623,13 +649,48 @@ func (s *Select) setActive(idx int32, reveal bool) {
 	if idx < 0 || idx >= int32(len(s.flat)) {
 		return
 	}
+	prev := s.active
 	s.active = idx
+	// 高亮随焦点走, 焦点change 不一定让旧行重绘(原生按钮只有状态变化才刷), 显式补两笔
+	if prev != idx && prev >= 0 && int(prev) < len(s.flat) {
+		if b := s.flat[prev].btn; b != nil {
+			b.Redraw(false)
+		}
+	}
 	r := s.flat[idx]
 	if r.btn != nil {
 		r.btn.SetFocus()
+		r.btn.Redraw(false)
 	}
 	if reveal {
 		s.revealRow(idx)
+	}
+}
+
+// setHover 记录鼠标悬停的条目下标(-1 = 离开), 并重绘受影响的两行。
+//
+// 默认模式下同时把"当前高亮"搬过去(setActive): 原生按钮的悬停不改焦点, 不搬的话
+// 打开时高亮的选中项/首项会一直亮着, 而悬停行也亮, 看起来像两项都处于悬停态。
+func (s *Select) setHover(idx int32) {
+	if s == nil || s.hoverIdx == idx {
+		return
+	}
+	prev := s.hoverIdx
+	s.hoverIdx = idx
+	if prev >= 0 && int(prev) < len(s.flat) {
+		if b := s.flat[prev].btn; b != nil {
+			b.Redraw(false)
+		}
+	}
+	if idx < 0 || int(idx) >= len(s.flat) {
+		return
+	}
+	r := s.flat[idx]
+	if r.btn != nil {
+		r.btn.Redraw(false)
+	}
+	if !s.noHoverHl && !r.item.Disabled {
+		s.setActive(idx, false)
 	}
 }
 
@@ -856,8 +917,9 @@ func (s *Select) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 // ===== 弹层条目绘制 =====
 
-// paintItem 自绘条目行: 高亮(悬停/焦点)rounded-md bg-accent, 选中右侧 check,
-// 禁用 opacity-50。文字/图标颜色实时取令牌(主题切换由弹窗整窗重绘带动)。
+// paintItem 自绘条目行: 高亮 rounded-md bg-accent(键盘/初始选中项; 默认模式下悬停
+// 也会把高亮搬过来), 选中右侧 check, 禁用 opacity-50。文字/图标颜色实时取令牌
+// (主题切换由弹窗整窗重绘带动)。
 func (s *Select) paintItem(r *selectRow, hEle int, hDraw int, pbHandled *bool) {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
@@ -868,18 +930,15 @@ func (s *Select) paintItem(r *selectRow, hEle int, hDraw int, pbHandled *bool) {
 	st := xui.StateOf(hEle)
 
 	p.FillRound(&p.Rc, t.Popover, 0) // 擦底(透明元素重绘不擦底)
-	hoverOK := st.Hover && !r.item.Disabled
-	focusOK := st.Focused && !r.item.Disabled
-	hv := xui.Hover(hEle, hoverOK || focusOK)
-	if hv > 0 {
-		// highlightItemOnHover=false 时: 键盘高亮(focus)仍是满色 bg-accent,
-		// 纯悬停只有一半浓度的 accent —— 能看出鼠标在哪儿, 又明显轻于当前项。
-		// 不要用 Muted: 默认主题里 Muted 与 Accent 同值, 换上去和没换一样(实测看不出来)。
-		col := t.Accent
-		if s.noHoverHl && hoverOK && !focusOK {
-			col = t.Accent.ScaleAlpha(0.5)
-		}
-		p.FillRound(&p.Rc, col.ScaleAlpha(hv), t.RadiusSm())
+	// highlightItemOnHover=false 是"纯悬停完全不画反馈"(上游语义), 不是"画得更淡":
+	// 默认主题 Accent 本来就接近白, 半浓度 accent 与底色只差几级明度, 指针扫过时
+	// 看起来就是忽明忽暗的闪烁(实测用户反馈)。所以这里只有焦点/初始高亮一种笔画。
+	lit := st.Focused && !r.item.Disabled
+	if !s.noHoverHl {
+		lit = lit || (s.hoverIdx == r.idx && !r.item.Disabled)
+	}
+	if hv := xui.Hover(hEle, lit); hv > 0 {
+		p.FillRound(&p.Rc, t.Accent.ScaleAlpha(hv), t.RadiusSm())
 	}
 
 	fore := t.PopoverForeground

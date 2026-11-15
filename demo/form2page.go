@@ -178,9 +178,9 @@ func buildForm2Page(body *widget.LayoutEle) {
 			{Value: "svelte", Text: "Svelte"},
 		})))
 
-	xui.ItemFill(hint(v5.Handle, "悬停不高亮(WithSelectHighlightOnHover(false): 键盘高亮不跟鼠标)"))
+	xui.ItemFill(hint(v5.Handle, "悬停无反馈(WithSelectHighlightOnHover(false): 高亮只跟键盘/初始选中项)"))
 	xui.ItemFill(ui.NewSelect(0, 0, 0, 0, v5.Handle,
-		ui.WithSelectHighlightOnHover(false), ui.WithSelectPlaceholder("悬停只给淡底"),
+		ui.WithSelectHighlightOnHover(false), ui.WithSelectPlaceholder("悬停无反馈"),
 		ui.WithSelectItems([]ui.SelectItem{
 			{Value: "a", Text: "条目 A"},
 			{Value: "b", Text: "条目 B"},

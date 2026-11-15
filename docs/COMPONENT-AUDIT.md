@@ -727,7 +727,7 @@
 | I1 | Input / Textarea | `WithFileInput(dlgOpts...)` / `WithFileInputMulti` / `WithFileInputMaxFiles`: 只读显示文件名(多选 `首个 +N`) + 右侧"选择文件"文字钮调 FileDialog, 取消不改值; `SetFiles/Files/ClearFiles/OnFilesChange`, 文件形态下 `FieldValue()` 返回路径列表(必填 = 必须选文件) |
 | I6 | Input / Textarea | `WithInputSelectColor`(选区底色, 默认主色 25%)、`WithInputCaretWidth`、`WithInputAutoSelect`、`Undo` / `Redo` |
 | TA2 / TA3 | Textarea | `WithTextareaRows(n)` 最小高按实际行高换算(与 cy 二选一); `WithTextareaResize()` 右下角抓手拖拽改最小高度(屏幕物理增量 ÷ DPI, 自动长高继续生效) |
-| S6 | Select | `WithSelectHighlightOnHover(false)` / `SetHighlightOnHover`: 悬停只给淡底, 键盘高亮不跟鼠标走 |
+| S6 | Select | `WithSelectHighlightOnHover(false)` / `SetHighlightOnHover`: 纯悬停不画任何反馈, 高亮只跟键盘/初始选中项(默认模式悬停搬高亮) |
 | TT1 / TT2 | Tooltip | `WithTipHoverable()`(气泡可移入: 动态去 `WS_EX_TRANSPARENT` + 锚点离开延迟确认)、`WithTipArrowPadding(px)` |
 | BA1 | Badge | 可点击徽章进 Tab 链 + Enter/空格触发; focus-visible 与 aria-invalid 环画在胶囊内侧 2px; `WithBadgeInvalid` / `SetInvalid` |
 | TB3 / TB4 | Tabs | 选中项被禁用时自动回退到最近可用标签(全禁用则清空); line 变体指示条 150ms 滑动 |
