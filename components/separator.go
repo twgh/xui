@@ -318,8 +318,12 @@ func WithBadgeColors(bg, fore, border xui.Color) func(*Badge) {
 	}
 }
 
-// WithBadgeInvalid 让徽章初始即为校验失败态(对应 aria-invalid): 1px 描边变 destructive,
-// 最外 3px 环带填 destructive/20, 与 Input / Select 的校验态同一口径(不要求焦点)。
+// WithBadgeInvalid 让徽章初始即为校验失败态(对应 aria-invalid): 1px 描边变 destructive。
+//
+// 官方 badge.tsx 的 aria-invalid 只写了 `ring-destructive/20`(环色), **没有**
+// `aria-invalid:ring-3`(环宽) —— 环宽只在 `focus-visible:ring-[3px]` 里给,
+// 所以未聚焦的校验徽章只有红描边, 不要照抄 Input / Select 的常驻 3px 红环
+// (它们的类名里有 aria-invalid:ring-3), 见 DESIGN 第八节 218。
 func WithBadgeInvalid() func(*Badge) {
 	return func(b *Badge) { b.invalid = true }
 }
@@ -537,24 +541,26 @@ func (b *Badge) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	// focus-visible:ring-[3px] ring-ring/50 / aria-invalid:ring-destructive/20
 	//
+	// 官方的 badge **没有** aria-invalid:ring-3(Input / Textarea / Select 才有):
+	// aria-invalid:ring-destructive/20 只设环色、不设环宽, 未聚焦的校验徽章只有
+	// 1px 红描边。所以这里不画常驻红环, 只有 focus-visible 才出现 3px 环。
+	//
 	// 徽章的胶囊就是元素本身(没有按钮那种按压预留), 3px 环画在**外侧**会被裁掉;
-	// 这里改画在胶囊内侧的环带上(与 Avatar 的键盘环同一手法)。
+	// 这里画在胶囊内侧的环带上(与 Input / Select 的焦点环同一手法): 最外 3px 是环带,
+	// 胶囊底色与 1px 描边画在内缩 3px 的矩形上。不要把描边留在最外、环带贴在里面 ——
+	// 小尺寸下那一圈会和描边连成一片, 被读成"更粗的边框"(见 DESIGN 第八节 218)。
 	st := xui.StateOf(hEle)
 	ring := xui.None
-	switch {
-	case b.invalid:
-		ring = t.Destructive.WithAlpha(51)
-		if t.IsDark() {
-			ring = t.Destructive.WithAlpha(102)
-		}
-	case st.Focused && xui.FocusedByKeyboard():
+	if st.Focused && xui.FocusedByKeyboard() {
 		ring = t.Ring.WithAlpha(128)
+		if b.invalid {
+			ring = t.Destructive.WithAlpha(51)
+			if t.IsDark() {
+				ring = t.Destructive.WithAlpha(102)
+			}
+		}
 	}
 	if !ring.IsNone() {
-		// 环带 + 内芯: 最外 3px 是环带, 胶囊底色与 1px 描边画在内缩 3px 的矩形上 ——
-		// 与 Input / Select 的 aria-invalid 同一画法。不要把描边留在最外、环带贴在里面:
-		// 小尺寸下那一圈会和描边连成一片, 被读成"更粗的边框"(用户反馈"校验失败环
-		// 看起来就像边框")。
 		const inset = int32(3)
 		p.FillRound(&p.Rc, ring, radius)
 		inner := xc.RECT{

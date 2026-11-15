@@ -47,7 +47,7 @@ func buildBase2Page(body *widget.LayoutEle) {
 	ui.NewLinkBadge(0, 0, 0, 0, "shadcn 文档", "https://ui.shadcn.com", rc.Handle,
 		ui.WithBadgeTrailingIcon(icons.IconArrowUpRight))
 
-	xui.ItemFill(hint(v2.Handle, "键盘可达(可点击徽章进 Tab 链, Enter/空格触发) / 校验失败(内侧红环)"))
+	xui.ItemFill(hint(v2.Handle, "键盘可达(可点击徽章进 Tab 链, Enter/空格触发) / 校验失败(红描边; 官方 ring 类只有颜色, 无环宽)"))
 	rb := xui.HStack(v2.Handle, 24, 8)
 	kb := ui.NewBadge(0, 0, 0, 0, "可聚焦徽章", rb.Handle,
 		ui.WithBadgeVariant(ui.BadgeOutline), ui.WithBadgeLeadingIcon(icons.IconCircleCheck))

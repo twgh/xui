@@ -342,7 +342,7 @@
 
 | # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
 |---:|---|---|---|---|---|
-| BA1 | `focus-visible` 环与 `aria-invalid` 校验环 | `badge.tsx` 的 `focus-visible:ring-[3px]` / `aria-invalid:border-destructive` | Badge 是纯 Element,没有焦点环也没有 `SetInvalid` | 可点击形态启用焦点 + 手绘环(同 Button);补 `WithBadgeInvalid` / `SetInvalid(bool)` 画 destructive 环 | 小-中 / 中 |
+| BA1 | `focus-visible` 环与 `aria-invalid` 校验态 | `badge.tsx` 的 `focus-visible:ring-[3px]` / `aria-invalid:border-destructive`(注意:`aria-invalid:ring-destructive/20` 只有环色、**没有环宽**, Input / Textarea / Select 才有 `aria-invalid:ring-3`) | Badge 是纯 Element,没有焦点环也没有 `SetInvalid` | 可点击形态启用焦点 + 手绘环(同 Button);补 `WithBadgeInvalid` / `SetInvalid(bool)` 只画 destructive 描边, 不画常驻红环(见 DESIGN 第八节 218) | 小-中 / 中 |
 | BA2 | 行内图标侧内距收窄 | `badge.tsx` 的 `has-data-[icon=inline-start]:pl-1.5` / `pr-1.5` | `naturalWidth` 用固定 `badgePadX*2` 再加图标宽,**有图标时那一侧没有收窄** | 按 `leading` / `trailing` / `loading` 把对应侧内距从 `padX` 换成 6(同 Button 412 的做法) | 极小 / 中 |
 | BA3 | Link 变体真正打开链接 | 官方 Link 示例用 `render` 渲染 `<a>` | link 只是样式,`OnClick` 要调用方自己写 ShellExecute | `NewLinkBadge(...)` / `SetLinkURL(url)`,复用 Button 的 `NewLinkButton` 逻辑 | 小 / 中 |
 
@@ -729,7 +729,7 @@
 | TA2 / TA3 | Textarea | `WithTextareaRows(n)` 最小高按实际行高换算(与 cy 二选一); `WithTextareaResize()` 右下角抓手拖拽改最小高度(屏幕物理增量 ÷ DPI, 自动长高继续生效) |
 | S6 | Select | `WithSelectHighlightOnHover(false)` / `SetHighlightOnHover`: 纯悬停不画任何反馈, 高亮只跟键盘/初始选中项(默认模式悬停搬高亮) |
 | TT1 / TT2 | Tooltip | `WithTipHoverable()`(气泡可移入: 动态去 `WS_EX_TRANSPARENT` + 锚点离开延迟确认)、`WithTipArrowPadding(px)` |
-| BA1 | Badge | 可点击徽章进 Tab 链 + Enter/空格触发; focus-visible 与 aria-invalid 走"环带+内芯"(最外 3px 环带, 底色与 1px 描边内缩 3px); `WithBadgeInvalid` / `SetInvalid` |
+| BA1 | Badge | 可点击徽章进 Tab 链 + Enter/空格触发; aria-invalid 只有 1px 红描边(官方 ring 类只有颜色、无环宽), focus-visible 的 3px 环走"环带+内芯"; `WithBadgeInvalid` / `SetInvalid` |
 | TB3 / TB4 | Tabs | 选中项被禁用时自动回退到最近可用标签(全禁用则清空); line 变体指示条 150ms 滑动 |
 | SW3 | Switch | 滑块位移过渡 150ms(回滚同样跟着回, 初始值直接落位) |
 | RG4 | Radio Group | `WithRadioGroupHorizontal` / `SetHorizontal`: 横向排列, 条目宽按文字量成固定宽 |
