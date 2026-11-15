@@ -10,42 +10,42 @@
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
-> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#30(逐组件结论见各节,实现进度见第十节),**下一轮核查从 #31 Toast 起**。
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#30(逐组件结论见第三节,实现进度见第五节),**下一轮核查从 #31 Toast 起**。
 
 ## 一、按常用性排序的总表
 
 | # | 官方组件 | 本库 key / 实现 | 状态 | 备注 |
 |---:|---|---|---|---|
 | 1 | Button | `button` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 2 | Input | `input` | 已核查 | 结论见第三节;8 项可实现,I2 / I7 / I3 / I4 已落地(见第十节;I3 走 Field 必填与校验) |
+| 2 | Input | `input` | 已核查 | 结论见 3.1;8 项可实现,I2 / I7 / I3 / I4 已落地(见第五节;I3 走 Field 必填与校验) |
 | 3 | Checkbox | `checkbox` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 4 | Select | `select` | 已核查 | 结论见第四节;9 项可实现,S3 / S9 / S4 / S8 已落地(见第十节;S9 走 Field 必填) |
+| 4 | Select | `select` | 已核查 | 结论见 3.2;9 项可实现,S3 / S9 / S4 / S8 已落地(见第五节;S9 走 Field 必填) |
 | 5 | Combobox | `combobox` | 已核查 | 三批补齐,见 `23bdfc5` / `725d329` / `7441a77` |
-| 6 | Dialog | `dialog` | 已核查 | 结论见第五节;6 项可实现,D1 / D2 / D3 已落地(见第十节) |
-| 7 | Card | `card` | 已核查 | 结论见第五节;5 项可实现(含 1 项能力边界重评估),C1 / C2 已落地(见第十节) |
-| 8 | Label | `label` | 已核查 | 结论见第五节;4 项可实现,L1 / L2 / L3 / L4 已落地(见第十节;L3 由 Field 统一出星号) |
-| 9 | Textarea | `textarea` | 已核查 | 结论见第六节;与 Input 同源 + 3 项特有,TA1(随 Input 的 I2 / I7 与 Field 必填)已落地 |
-| 10 | Tabs | `tabs` | 已核查 | 结论见第六节;4 项可实现,TB1 / TB2 已落地(见第十节) |
-| 11 | Switch | `switch` | 已核查 | 结论见第六节;3 项可实现,SW1 / SW2 已落地(见第十节) |
-| 12 | Radio Group | `radio-group` | 已核查 | 结论见第六节;3 项可实现(+1 扩展),RG1 / RG2 / RG3 已落地(见第十节;RG3 走 Field 必填) |
-| 13 | Dropdown Menu | `menu` | 已核查 | 结论见第六节;5 项可实现,DM1 已落地(见第十节);#56 Context Menu 同一实现 |
-| 14 | Tooltip | `tooltip` | 已核查 | 结论见第七节;3 项可实现 |
-| 15 | Badge | `badge` | 已核查 | 结论见第七节;3 项可实现,BA2 / BA3 已落地(见第十节);文件 `separator.go` |
-| 16 | Alert | `alert` | 已核查 | 结论见第七节;2 项可实现,AL1 已落地(见第十节) |
-| 17 | Table | `table` | 已核查 | 结论见第七节;3 项可实现 |
-| 18 | Data Table | `data-table` | 已核查 | 结论见第七节;3 项可实现,DT2 已落地(见第十节);官方是组合模式,差异见 DESIGN 第七节 |
-| 19 | Popover | `popover` | 已核查 | 结论见第八节;6 项可实现,PO1/PO2/PO3 已落地(见第十节);本批开合控制最完整 |
-| 20 | Progress | `progress` | 已核查 | 结论见第八节;4 项可实现,PR1 min / PR3 轨道配色与圆角 / PR2 宽度过渡已落地(见第十节) |
-| 21 | Field | `field` | 已核查 | 结论见第八节;4 项可实现,FL1 / FL2 / FL3 / FL4 已全部落地(见第十节);Form 亦收敛在此;本地无 `field.tsx` |
-| 22 | Input Group | `input-group` | 已核查 | 结论见第八节;2 项可实现,IG1/IG2 已落地(见第十节);11 个官方示例仅缺 Custom Input |
-| 23 | Avatar | `avatar` | 已核查 | 结论见第八节;5 项可实现,AV1/AV2/AV3/AV4 已落地(见第十节) |
-| 24 | Accordion | `accordion` | 已核查 | 结论见第八之二节;ACC1 / ACC2 / ACC3 已落地;余 Trigger 内容槽与 demo 缺口 |
-| 25 | Slider | `slider` | 已核查 | 结论见第八之二节;SL1 / SL2 / SL3 已落地;余碰撞策略与单滑块禁用 |
-| 26 | Alert Dialog | `alert-dialog` | 已核查 | 结论见第八之二节;AD1 已落地;其余与 Dialog D4 / D5 同源 |
-| 27 | Sheet | `sheet` | 已核查 | 结论见第八之二节;SH1~SH4 已落地;余内容槽与遮罩配色 |
-| 28 | Separator | `separator` | 已核查 | 结论见第八之二节;SEP1 / SEP2 已落地;余 demo 对照 |
-| 29 | Skeleton | `skeleton` | 已核查 | 结论见第八之二节;SK1 已落地(配色改 bg-muted);余示例卡 |
-| 30 | Scroll Area | `scroll-area` | 已核查 | 结论见第八之二节;SA1 已落地(滚动条常显);余横向滚动 |
+| 6 | Dialog | `dialog` | 已核查 | 结论见 3.3;6 项可实现,D1 / D2 / D3 已落地(见第五节) |
+| 7 | Card | `card` | 已核查 | 结论见 3.3;5 项可实现(含 1 项能力边界重评估),C1 / C2 已落地(见第五节) |
+| 8 | Label | `label` | 已核查 | 结论见 3.3;4 项可实现,L1 / L2 / L3 / L4 已落地(见第五节;L3 由 Field 统一出星号) |
+| 9 | Textarea | `textarea` | 已核查 | 结论见 3.4;与 Input 同源 + 3 项特有,TA1(随 Input 的 I2 / I7 与 Field 必填)已落地 |
+| 10 | Tabs | `tabs` | 已核查 | 结论见 3.4;4 项可实现,TB1 / TB2 已落地(见第五节) |
+| 11 | Switch | `switch` | 已核查 | 结论见 3.4;3 项可实现,SW1 / SW2 已落地(见第五节) |
+| 12 | Radio Group | `radio-group` | 已核查 | 结论见 3.4;3 项可实现(+1 扩展),RG1 / RG2 / RG3 已落地(见第五节;RG3 走 Field 必填) |
+| 13 | Dropdown Menu | `menu` | 已核查 | 结论见 3.4;5 项可实现,DM1 已落地(见第五节);#56 Context Menu 同一实现 |
+| 14 | Tooltip | `tooltip` | 已核查 | 结论见 3.5;3 项可实现 |
+| 15 | Badge | `badge` | 已核查 | 结论见 3.5;3 项可实现,BA2 / BA3 已落地(见第五节);文件 `separator.go` |
+| 16 | Alert | `alert` | 已核查 | 结论见 3.5;2 项可实现,AL1 已落地(见第五节) |
+| 17 | Table | `table` | 已核查 | 结论见 3.5;3 项可实现 |
+| 18 | Data Table | `data-table` | 已核查 | 结论见 3.5;3 项可实现,DT2 已落地(见第五节);官方是组合模式,差异见 DESIGN 第七节 |
+| 19 | Popover | `popover` | 已核查 | 结论见 3.6;6 项可实现,PO1/PO2/PO3 已落地(见第五节);本批开合控制最完整 |
+| 20 | Progress | `progress` | 已核查 | 结论见 3.6;4 项可实现,PR1 min / PR3 轨道配色与圆角 / PR2 宽度过渡已落地(见第五节) |
+| 21 | Field | `field` | 已核查 | 结论见 3.6;4 项可实现,FL1 / FL2 / FL3 / FL4 已全部落地(见第五节);Form 亦收敛在此;本地无 `field.tsx` |
+| 22 | Input Group | `input-group` | 已核查 | 结论见 3.6;2 项可实现,IG1/IG2 已落地(见第五节);11 个官方示例仅缺 Custom Input |
+| 23 | Avatar | `avatar` | 已核查 | 结论见 3.6;5 项可实现,AV1/AV2/AV3/AV4 已落地(见第五节) |
+| 24 | Accordion | `accordion` | 已核查 | 结论见 3.7;ACC1 / ACC2 / ACC3 已落地;余 Trigger 内容槽与 demo 缺口 |
+| 25 | Slider | `slider` | 已核查 | 结论见 3.7;SL1 / SL2 / SL3 已落地;余碰撞策略与单滑块禁用 |
+| 26 | Alert Dialog | `alert-dialog` | 已核查 | 结论见 3.7;AD1 已落地;其余与 Dialog D4 / D5 同源 |
+| 27 | Sheet | `sheet` | 已核查 | 结论见 3.7;SH1~SH4 已落地;余内容槽与遮罩配色 |
+| 28 | Separator | `separator` | 已核查 | 结论见 3.7;SEP1 / SEP2 已落地;余 demo 对照 |
+| 29 | Skeleton | `skeleton` | 已核查 | 结论见 3.7;SK1 已落地(配色改 bg-muted);余示例卡 |
+| 30 | Scroll Area | `scroll-area` | 已核查 | 结论见 3.7;SA1 已落地(滚动条常显);余横向滚动 |
 | 31 | Toast | `toast` | 待核查 | sonner 形态;下一轮起点 |
 | 32 | Toggle | `toggle` | 待核查 | |
 | 33 | Toggle Group | `toggle-group` | 待核查 | |
@@ -99,7 +99,12 @@
 
 三次核查的结论均已写入 CHANGELOG 与 DESIGN 第四节末语义表,本表只留索引,不重复内容。
 
-## 三、核查:#2 Input
+## 三、逐组件核查结论(#1 ~ #30)
+
+> 本节收纳**全部逐组件核查**, 按批次分成小节(每批一组组件/一轮核查), 新批次往末尾追加小节, **不再新增 H2 章节**。
+> 每小节形如: 依据 → 已具备 → 未实现但可实现(表格, 编号 + 实现路径 + 代价/优先级) → 明确不做。落地状态只在第五节记录, 这里不改写。
+
+### 3.1 Input(#2)
 
 **官方 base/input 文档页示例**:Basic / Field / Field Group / Disabled / Invalid / **File** / Inline / Grid / **Required** / Badge / Input Group / Button Group / Form / RTL(排除)。组件源码 `input.tsx` 只有一层样式壳,其余全部是原生 `<input>` 属性转发 + Field 组合。
 
@@ -125,7 +130,7 @@
 - `name` / `form` / `autoComplete` / 原生表单提交(Go 无表单提交语义,布局与校验展示归 Field 系列)。
 - 文字/光标/选区/IME 完全自绘(DESIGN 第七节能力边界);`::selection` 之外的富文本排版。
 
-## 四、核查:#4 Select
+### 3.2 Select(#4)
 
 **官方 base/select 文档页**:Usage / Composition / **Align Item With Trigger** / Groups / Scrollable / Disabled / Invalid / RTL(排除) / API Reference(指向 Base UI)。本地参照实现 `select.tsx` 是 base-nova 版本,暴露 `alignItemWithTrigger` 与 `SelectScrollUpButton/ScrollDownButton`,Root props 由 Base UI 提供。
 
@@ -152,11 +157,11 @@
 - `name` / `form` / `autoComplete` / 隐藏 input 提交(Go 无表单提交);`modal=false`(桌面弹层是独立窗口,点外部失焦即关闭,「锁页面滚动 / 禁用外部交互」无等价需求);Arrow/Indicator(shadcn 默认示例不启用,桌面弹层无箭头语义)。
 - `data-slot` / `data-highlighted` / `render` / `asChild` 等 DOM 概念(React 专属,Go 侧无对应物)。
 
-## 五、追加核查:#6 Dialog / #7 Card / #8 Label
+### 3.3 Dialog / Card / Label(#6 / #7 / #8)
 
 依据:官方 `base/dialog`、`base/card`、`base/label` 文档页(含 Card 的 API Reference 与 Spacing Variable Changelog)、Base UI Dialog Root props 表、本地 base-nova `dialog.tsx` / `card.tsx` / `label.tsx`、本库 `dialog.go` / `card.go` / `label.go`、DESIGN 第四节末映射表与第七节差异表。RTL 三页都有示例,按约定排除。
 
-### Dialog(#6)
+#### Dialog(#6)
 
 **官方页**:Usage / Composition / Custom Close Button / No Close Button(`showCloseButton={false}`) / Sticky Footer / Scrollable Content / RTL(排除) / API Reference → Base UI。
 
@@ -175,7 +180,7 @@
 
 **明确不做 / 能力边界**:RTL;zoom-in-95 缩放进场(DESIGN 第七节:元素级缩放对自绘元素无效,已用淡入覆盖);DOM 概念(`handle` / `triggerId` / `actionsRef` / `children` render / `onOpenChangeComplete`);`aria-describedby` 自动关联;原生 CSS 层背景模糊(已用抓窗快照 + Go 盒式模糊替代,见 DESIGN 第八节 47)。
 
-### Card(#7)
+#### Card(#7)
 
 **官方页**:Usage / Composition(CardHeader / Title / Description / Action / Content / Footer) / `size="sm"` / **Spacing(`--card-spacing` 16/20/24/32)** / 负边距通栏内容 / Image(首图通栏、自动圆角) / RTL(排除) / API Reference / Spacing Variable Changelog。
 
@@ -193,7 +198,7 @@
 
 **明确不做 / 能力边界**:RTL;CSS 变量与 `className` / `data-slot` / `group-data-[size]` 选择器(Go 无 DOM,以选项 API 表达);背景 `overflow-hidden` 语义(DESIGN 第七节,但 C4 的图片裁剪不受此限)。
 
-### Label(#8)
+#### Label(#8)
 
 **官方页**:Usage(`<Label htmlFor="email">`)、Checkbox 组合、Label in Field(FieldLabel/FieldDescription/FieldError)、RTL(排除)、API Reference → Base UI Label;`label.tsx` 是原生 `<label>` + `group-data-[disabled]` / `peer-disabled` 变淡样式。
 
@@ -212,13 +217,13 @@
 
 **本批实现顺序建议**:C2 → C1 → D1 → D2 → L1 → D3(小改动、对齐收益明显);随后 C3 / C4 / L2 / L3 / D4;C5 / L4 / D5 低优先,D6 建议不做。C4 需先决定 DESIGN 第七节那条能力边界是否修订。
 
-## 六、追加核查:#9 Textarea / #10 Tabs / #11 Switch / #12 Radio Group / #13 Dropdown Menu
+### 3.4 Textarea / Tabs / Switch / Radio Group / Dropdown Menu(#9 ~ #13)
 
 依据:官方 `base/textarea`、`base/tabs`、`base/switch`、`base/radio-group`、`base/dropdown-menu` 文档页(含 Dropdown Menu 的 Composition 与 11 个示例)、Base UI Tabs / Menu / Switch / Radio Root props 表、本地 base-nova 五份 `*.tsx`、本库 `textarea.go` / `tabs.go` / `switch.go` / `radio.go` / `radiogroup.go` / `menu.go` / `menu_model.go`、DESIGN 第四节末映射表与第七节差异表。RTL 五页都有示例,按约定排除。
 
 > **共用实现提示**:Textarea 内嵌 `*Input`(`textarea.go`),Input 侧的 I2 / I3 / I4 / I5 / I6 / I7 一旦落地,Textarea 自动获得;Dropdown Menu 与 #56 Context Menu 共用 `menu.go`,本节的结论可直接复用,只需另核右键触发特有的行为。
 
-### Textarea(#9)
+#### Textarea(#9)
 
 **官方页**:Basic / Field / Disabled / Invalid / Button / RTL(排除)。**没有 API Reference** —— Base UI 也未提供独立的 textarea 组件(取 `base-ui.com/react/components/textarea.md` 失败),tsx 就是原生 `<textarea>` 加一层样式壳,因此属性全部来自 HTML 标准。
 
@@ -235,7 +240,7 @@
 
 **明确不做**:RTL;固定高度 + 溢出滚动(已有替代方案 `Input + WithMultiline`,DESIGN 437);`cols` / `wrap` 的浏览器细节(Edit 折行已覆盖);`name` / `form` 表单提交。
 
-### Tabs(#10)
+#### Tabs(#10)
 
 **官方页**:Usage / Composition / Line / Vertical / Disabled / Icons / RTL(排除) / API → Base UI Tabs。Root props 含 `defaultValue` / `value` / `onValueChange` / `orientation`,并明确 **`value=null` 时无选中项**、`onValueChange` 的 `eventDetails.cancel()` 可取消用户切换、选中项被禁用或移除时有自动回退(reason=`disabled` / `missing`)。
 
@@ -252,7 +257,7 @@
 
 **明确不做**:RTL;CSS 选择器 / `render` / `data-activation-direction`;事件 reason 枚举(DOM 概念)。
 
-### Switch(#11)
+#### Switch(#11)
 
 **官方页**:Basic / Description / Choice Card / Disabled / Invalid / **Size** / RTL(排除) / API → Base UI Switch Root(`checked` / `defaultChecked` / `onCheckedChange` / `disabled` / **`readOnly`** / `required` / `name` / `value` / `uncheckedValue` / `form`)。
 
@@ -268,7 +273,7 @@
 
 **其余**:`required` 归 Field 层(I3 / S9 / RG3 同一套);Choice Card 整卡可点依赖 L1(Label 点击关联)。**明确不做**:RTL;`name` / `value` / `uncheckedValue` / `form` 表单提交;`nativeButton` / `render`;自定义 thumb children(Go 无 Slot)。
 
-### Radio Group(#12)
+#### Radio Group(#12)
 
 **官方页**:Basic / Composition / Description / Choice Card / Fieldset / Disabled / Invalid / RTL(排除) / API → Base UI Radio Root(`value` / `disabled` / **`readOnly`** / `required`)。
 
@@ -285,7 +290,7 @@
 
 **明确不做**:RTL;roving tabindex(DESIGN 307 已记桌面惯例差异:Tab 遍历各项);`name` / `form` 表单提交。
 
-### Dropdown Menu(#13)
+#### Dropdown Menu(#13)
 
 **官方页**:Usage / Composition(Trigger / Content / Group / Label / Item / CheckboxItem / RadioGroup / RadioItem / Separator / Shortcut / Sub / SubTrigger / SubContent)+ 11 个示例(Basic / Submenu / Shortcuts / Icons / Checkboxes / Checkboxes Icons / Radio Group / Radio Icons / Destructive / Avatar / Complex)+ RTL(排除)+ API → Base UI Menu。Root props 含 `open` / **`onOpenChange`** / `highlightItemOnHover` / `closeParentOnEsc` / `loopFocus` / `modal` / `orientation` / `disabled` / `onItemHighlighted`;`Content` 还有 `align` / `alignOffset` / `side` / `sideOffset`(默认 align=start、side=bottom、sideOffset=4)。
 
@@ -305,13 +310,13 @@
 
 **本批实现顺序建议**:SW1 → RG1 → DM1 → TA1(随 Input 一起) → TB1 → SW2 / RG2 / TB2 / TB3 / DM2 / DM3;其后 SW3 / TB4 / DM4 / TA2 / TA3。SW1 / RG1 与 Checkbox 的 readOnly 是同一套原生事件回滚做法,建议三处一起改并一起验收;TB1 / RG2 / SW2 的「可否决回调」也宜统一 API 形态。
 
-## 七、追加核查:#14 Tooltip / #15 Badge / #16 Alert / #17 Table / #18 Data Table
+### 3.5 Tooltip / Badge / Alert / Table / Data Table(#14 ~ #18)
 
 依据:官方 `base/tooltip`、`base/badge`、`base/alert`、`base/table`、`base/data-table` 文档页(含 Badge / Alert 的 API Reference、Data Table 的 TanStack v9 指南目录)、本地 base-nova `tooltip.tsx` / `badge.tsx` / `table.tsx`(Alert 与 Data Table 无独立 tsx,按 HANDOFF 待办记录)、本库 `tooltip.go` / `separator.go` / `alert.go` / `table.go` / `datatable.go`、DESIGN 第四节末映射表与第七节差异表。RTL 五页都有示例(或阿拉伯语示例),按约定排除。
 
 > **本批特点**:五个组件的主体能力都已对齐,缺口集中在少量 API 形态与配置开关;Tooltip / Badge / Table 甚至已有上游文档未明确列出的能力(键盘焦点触发、行内转圈、行 hover 过渡)。
 
-### Tooltip(#14)
+#### Tooltip(#14)
 
 **官方页**:Installation 明确要挂 `TooltipProvider`(delay=0)、Usage / Composition、Side(left/top/bottom/right)、With Keyboard Shortcut、Disabled Button(用 span 包禁用按钮)、RTL(排除)、API → Base UI Tooltip。本地 `tooltip.tsx` 的 Content 还有 `align` / `alignOffset` / `side` / `sideOffset` 与 `TooltipPrimitive.Arrow`。
 
@@ -327,7 +332,7 @@
 
 **低优先小项**:`alignOffset`(tsx 默认 0,本库 `tipConfig` 无该字段)、禁用按钮上的提示(官方用 span 包裹;本库可绑到父元素或提供矩形绑定)。**明确不做**:RTL;zoom 进场(异型透明窗整窗 alpha 冻结,DESIGN 8.57);`render` / `data-slot` 等 DOM 概念。
 
-### Badge(#15)
+#### Badge(#15)
 
 **官方页**:6 个 variant、With Icon(`data-icon=inline-start/end`)、With Spinner、Link(`render` 成 `<a>`)、Custom Colors、RTL(排除)、API Reference(6 变体 + className)。
 
@@ -343,7 +348,7 @@
 
 **明确不做**:RTL;`[a]:hover:*` 只有包在链接里才生效的条件(DESIGN 415 已记差异:Go 侧无链接概念,悬停恒生效);`render` / `className`。
 
-### Alert(#16)
+#### Alert(#16)
 
 **官方页**:Composition(Icon / Title / Description / Action)、Basic、Destructive、Action、Custom Colors、RTL(排除)、API Reference(variant = default / destructive + 三个子组件)。
 
@@ -358,7 +363,7 @@
 
 **已知差异 / 明确不做**:RTL;动作槽按实际宽度缩短文本列 vs 上游固定 `pr-18=72`(DESIGN 420 已记,如需严格对齐可加 `WithAlertActionFixed(bool)`,低优先);`role=alert` / `aria-*` 无障碍元数据;可关闭(dismissible)上游未提供。
 
-### Table(#17)
+#### Table(#17)
 
 **官方页**:Composition(`TableCaption` / `TableHeader` / `TableBody` / `TableFooter` / `TableRow` / `TableHead` / `TableCell`)、Footer 示例、Actions 示例(每行 `<DropdownMenu />`)、Data Table 组合指引、RTL(排除)。
 
@@ -374,7 +379,7 @@
 
 **低优先扩展**:列宽拖拽调整(表头 MouseDown/Move 已有,但当前只用于换列顺序;TanStack 有 column sizing,官方 Table 页未列,不计入本批清单)。**明确不做**:RTL;HTML `<colgroup>` / `colSpan` / `rowSpan` 语义(原生 List 无对应物);`data-state=selected` 之外的 DOM 状态钩子。
 
-### Data Table(#18)
+#### Data Table(#18)
 
 **官方页**:定位是「用 TanStack Table v9 + `<Table />` 自己组合」的指南,**不是可安装组件**;目录覆盖 Set up Table Features / Basic Table / Cell Formatting / Row Actions / Pagination / Sorting / Filtering / Visibility / Row Selection / Reusable Components。示例里有「No results.」空态行、金额格式化/右对齐、页脚 `0 of 5 row(s) selected.`、分页 Previous/Next。
 
@@ -392,11 +397,11 @@
 
 **本批实现顺序建议**:BA2 → BA3 → BA1 → TT2 → AL1 → TBL1 → DT2(小改动);随后 TT1 / AL2 / TBL2 / TBL3 / DT1;TT3 与 DT3 需要先确认需求。TT1 / TT2 是 DESIGN 428 里已白纸黑字记为「未做」的两项,若决定补齐,应同步更新第四节末映射表与第七节差异描述。
 
-## 八、追加核查:#19 Popover / #20 Progress / #21 Field / #22 Input Group / #23 Avatar
+### 3.6 Popover / Progress / Field / Input Group / Avatar(#19 ~ #23)
 
 依据:官方 base 五页(Field / Input Group 页自带 API Reference 表)、Base UI Popover / Progress / Avatar 的 Root·Positioner·Popup props、本地 base-nova `popover.tsx` / `progress.tsx` / `input-group.tsx` / `avatar.tsx`(本批本地参考实现**没有 `field.tsx`**,Field 以官方 API Reference 表为准)、`components/*.go`、DESIGN 第四节末语义表与第七节差异表。**只出结论,未改组件代码。**
 
-### Popover(#19)
+#### Popover(#19)
 
 **官方页**:Usage / Composition(`Popover` + `PopoverTrigger` + `PopoverContent`)、Basic、Align(start/center/end)、With Form、RTL(排除)、API Reference → Base UI Popover。`popover.tsx` 从 Positioner Props 里 Pick 了 `align` / `alignOffset` / `side` / `sideOffset`,默认 `center` / `0` / `bottom` / `4`。
 
@@ -415,7 +420,7 @@
 
 **已知差异 / 明确不做**:RTL;进场 zoom/slide(DESIGN 573 能力边界);`render` / `data-slot` / `aria-*` DOM 概念;`actionsRef` / `onOpenChangeComplete` 这类外部动画协同;函数式 `sideOffset` / `alignOffset`(读锚点尺寸动态算,桌面收益低)。
 
-### Progress(#20)
+#### Progress(#20)
 
 **官方页**:Usage `<Progress value={33} />`、Composition(`Progress` / `ProgressLabel` / `ProgressValue` / `ProgressTrack` / `ProgressIndicator`)、Label、Controlled(由 Slider 控制)、RTL(排除)、API Reference → Base UI Progress。Base UI Root 有 `value: number|null`(null = indeterminate)、`min=0` / `max=100`、`format` / `locale` / `getAriaValueText` / `aria-valuetext`。
 
@@ -432,7 +437,7 @@
 
 **已知差异 / 明确不做**:RTL;不确定态「短条往返」vs 上游空轨道(DESIGN 589 已记,是主动视觉选择);`format` / `locale` / `getAriaValueText` / `aria-valuetext`(Intl 与无障碍元数据,桌面由 `WithProgressFieldFormat` 覆盖格式化);`data-state=complete` 上游也无独立视觉;`render` DOM 概念。
 
-### Field(#21)
+#### Field(#21)
 
 **官方页**:自带完整 API Reference(FieldSet / FieldLegend `variant` / FieldGroup / Field `orientation` + `data-invalid` / FieldContent / FieldLabel / FieldTitle / FieldDescription / FieldSeparator / FieldError `errors` + Standard Schema `issues`)、Anatomy、Form(React Hook Form 等)、Input / Textarea / Select / Slider / Fieldset / Checkbox / Radio / Switch / Choice Card / Field Group 示例、Responsive Layout、Validation and Errors、Accessibility、RTL(排除)。本批本地参考实现无 `field.tsx`,依官方表比对。
 
@@ -449,7 +454,7 @@
 
 **已知差异 / 明确不做**:RTL;`FieldLabel htmlFor` 是 #8 Label L1,**不在此重复计项**;Standard Schema `issues` / `errors` 对象数组 / React Hook Form 等 JS 生态概念(DOM/框架语义,但 FL3 会提供等价的 Go 侧聚合入口);`role=group` / `aria-*` 无障碍元数据;横向 `Content` 只认 Fixed 宽(DESIGN 565 能力边界);描述/错误默认单行(DESIGN 566,`SetAutoWrap()` 已有替代)。
 
-### Input Group(#22)
+#### Input Group(#22)
 
 **官方页**:Usage / Composition、Align 四档(inline-start/end、block-start/end,API Reference 明确 `align` 默认 inline-start 且注明「Input 用 inline、Textarea 用 block」)、Icon / Text / Button / Kbd / Dropdown / Spinner / Textarea / Custom Input(`data-slot="input-group-control"` 让第三方控件也吃到焦点态)、RTL(排除)、`InputGroupButton` 的 `size`(xs/icon-xs/sm/icon-sm)与 `variant` 六档。
 
@@ -464,7 +469,7 @@
 
 **明确不做**:RTL;`data-slot` DOM 属性本身(只取其「统一焦点态」语义);`aria-invalid` / `role=group` 无障碍元数据;负外边距(项目硬规则,通栏用独立容器)。**已覆盖不要重复列**:Button 的 size/variant 档、block 组合、Dropdown(MenuButton)、Spinner、Kbd、Textarea。
 
-### Avatar(#23)
+#### Avatar(#23)
 
 **官方页**:Usage / Composition(`Avatar` + `AvatarImage` + `AvatarFallback` + `AvatarBadge`;`AvatarGroup` + `AvatarGroupCount`)、Basic、Badge(可用 `className` 自定义颜色尺寸)、Badge with Icon、Avatar Group / Group Count / Group with Icon、Sizes(sm/default/lg)、Dropdown(头像作为菜单触发区)、RTL(排除)、API Reference。Base UI Avatar 的 Fallback 有 `delay`,Image 有 `onLoadingStatusChange`。
 
@@ -484,11 +489,11 @@
 
 **本批实现顺序建议**:PO1 → IG1 → FL4 → AV1 → PR1(小改动、收益明确);随后 PO2 / PO3 / PR2 / PR3 / FL1 / FL2 / IG2 / AV2 / AV3 / AV4;FL3 与 Input I3 / Select S9 / Label L3 必须同批设计;PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求。PO1 与 Menu DM2、PO2 与 Dialog D3、PO5 与 Tooltip TT2、FL2 与 Label L1、AV3 与 Label L1 都建议共用同一套 API 形态,避免各写一份。
 
-## 八之二、追加核查:#24 Accordion ~ #30 Scroll Area
+### 3.7 Accordion ~ Scroll Area(#24 ~ #30)
 
 依据:官方 `base/accordion`、`base/slider`、`base/alert-dialog`、`base/sheet`、`base/separator`、`base/skeleton`、`base/scroll-area` 七页(示例清单与正文行为说明),Base UI **v1.9.0** 的 Accordion / Slider Root·Item·Thumb props 表(含 `onValueChange` / `onOpenChange` 的 `eventDetails.cancel()`、`thumbAlignment`、`largeStep`),本地 base-nova 的 `accordion.tsx` / `slider.tsx` / `sheet.tsx` / `separator.tsx` / `skeleton.tsx` / `scroll-area.tsx`(alerts-dialog.tsx 本地未装,按官方页 + Base UI Dialog 比对),本库 `accordion.go` / `slider.go` / `alertdialog.go` / `sheet.go` / `dialog.go` / `separator.go` / `skeleton.go` / `scrollarea.go` / `scrollbar.go`,DESIGN 第四节末语义表与第七节差异表。RTL 七页都有示例,按约定排除。
 
-### Accordion(#24)
+#### Accordion(#24)
 
 **官方页**:Basic(`defaultValue` 数组)/ Multiple / Disabled / Borders / Card / RTL(排除) / API → Base UI。tsx:root `flex w-full flex-col`;item `not-last:border-b`;trigger `py-2.5 text-sm hover:underline focus-visible:ring-3 aria-disabled:opacity-50` + 两枚 chevron 互换;content `data-open:animate-accordion-down` + 内层 div `pb-2.5`。
 
@@ -506,7 +511,7 @@
 
 **明确不做**:RTL;`hiddenUntilFound`(浏览器页内查找专属);`orientation` / `loopFocus`(Base UI 已标废弃);`render` / `data-slot`。
 
-### Slider(#25)
+#### Slider(#25)
 
 **官方页**:Range / Multiple Thumbs / Vertical / Controlled / Disabled / RTL(排除)。tsx 明确写 `thumbAlignment="edge"`;Base UI Root 还有 `thumbCollisionBehavior` / `largeStep` / `minStepsBetweenValues` / `format` / `locale`。
 
@@ -524,7 +529,7 @@
 
 **明确不做**:RTL;`format` / `locale` / `getAriaValueText`(Intl 与无障碍元数据);每 thumb 独立 roving tabindex(已记第七节差异);`name` / `form` 表单提交。
 
-### Alert Dialog(#26)
+#### Alert Dialog(#26)
 
 **官方页**:Basic / Small(`size="sm"`)/ Media / Small with Media / Destructive / RTL(排除) / API(仅列出 `size`)。Composition = Trigger + Content(Header[Media/Title/Description] + Footer[Cancel/Action])。
 
@@ -541,7 +546,7 @@
 
 **明确不做**:RTL;zoom-in-95 与 text-balance(能力边界);`render` / `aria-*`。**不计入**:Initial Focus / Final Focus / 可否决关闭 —— D3 已给 AlertDialog 用(Cancel 聚焦),`OnClosing` 也已在 Dialog 侧可用。
 
-### Sheet(#27)
+#### Sheet(#27)
 
 **官方页**:Side / No Close Button / RTL(排除) / API → Base UI Dialog(`side`、`showCloseButton`)。tsx:面板 **bg-popover**、`gap-4`、关闭钮 **top-3 right-3 + icon-sm**、SheetHeader **`gap-0.5`**、SheetFooter `gap-2 p-4`、四向平移 2.5rem + 200ms。
 
@@ -561,7 +566,7 @@
 
 **明确不做**:RTL;shadow-lg(元素无圆角投影);内容超面板高自动滚动(裁剪,已在第七节);`render` / `aria-*`。
 
-### Separator(#28)
+#### Separator(#28)
 
 **官方页**:Vertical / Menu / List / RTL(排除) / API → Base UI Separator(`orientation`)。
 
@@ -577,7 +582,7 @@
 
 **明确不做**:RTL;`decorative` / `role` / `aria-orientation`(无障碍 DOM 元数据)。
 
-### Skeleton(#29)
+#### Skeleton(#29)
 
 **官方页**:默认示例 + Avatar / Card / Text / Form / Table / RTL(排除);**没有 API Reference**,tsx 只有 `animate-pulse rounded-md bg-muted`。
 
@@ -592,7 +597,7 @@
 
 **明确不做**:RTL;`className` / `data-slot`。
 
-### Scroll Area(#30)
+#### Scroll Area(#30)
 
 **官方页**:默认示例 / Horizontal / RTL(排除) / API → Base UI。tsx:Root `relative`、Viewport `size-full rounded-[inherit] focus-visible:ring-3`、ScrollBar 10px(`w-2.5 p-px`)+ thumb `rounded-full bg-border`、Corner。
 
@@ -608,17 +613,17 @@
 
 **明确不做**:RTL;视口 focus-visible 环与键盘滚动(容器不进 xcgui 的 Tab 链,第八节 157);`rounded-[inherit]` 圆角裁剪(能力边界);Corner(只纵向时不存在);`size-full` / `data-slot`。
 
-**本批实现顺序建议**:ACC1 → ACC2 → ACC3 → SL1 → SL2 → SL3 → SK1 → SEP1 → SEP2 → SA1 → SH1~SH4 → AD1(本批已全部落地,见第十节);ACC4 / AD3 / SH5 是同一形态(内容槽)建议一起设计;SL4 / SL5 / SA2 / SH7 需先确认需求或成本较高。
+**本批实现顺序建议**:ACC1 → ACC2 → ACC3 → SL1 → SL2 → SL3 → SK1 → SEP1 → SEP2 → SA1 → SH1~SH4 → AD1(本批已全部落地,见第五节);ACC4 / AD3 / SH5 是同一形态(内容槽)建议一起设计;SL4 / SL5 / SA2 / SH7 需先确认需求或成本较高。
 
-## 九、实现顺序建议(仅 Input / Select 批次, 待确认后执行)
+## 四、实现顺序建议(Input / Select 批次,已执行完)
 
-1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化。
-2. **中改动、功能缺口**:I1 文件输入 → I3/S9 必填校验 → I4 上限 → S1 定位开关 → S2 typeahead。
-3. **需先确认需求或成本较高**:S5 多选、S7 滚动箭头、S6 悬停开关、I6 原生 Edit 视觉 API、I8 demo 对照。
+1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化 —— **已全部落地**(见第五节)。
+2. **中改动、功能缺口**:I3/S9 必填校验、I4 上限 **已落地**;I1 文件输入、S1 定位开关、S2 typeahead **未做**(I1 见下方"待确认"之外,可直接排期)。
+3. **需先确认需求或成本较高**:S5 多选、S7 滚动箭头、S6 悬停开关、I6 原生 Edit 视觉 API、I8 demo 对照 —— 均未做,取舍见第五节末尾的"待确认需求"。
 
-实现时按仓库固定流程:先查 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build ./...` / `go vet ./...` / `go test ./...`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。本轮**只核查,未改任何组件代码**。
+落地时按仓库固定流程:先查 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build ./...` / `go vet ./...` / `go test ./...`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
 
-## 十、实现进度(已落地条目)
+## 五、实现进度(已落地条目)
 
 按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~七批已落地。
 
@@ -715,4 +720,15 @@
 | SH4 | Sheet | 对齐 base-nova: 关闭钮 `top-3 right-3`(12)、SheetHeader 间距 `gap-0.5`(2)、面板底色 `bg-popover`(Drawer 仍用页面底色) |
 | AD1 | AlertDialog | 转发 `OnOpenChange` / `SetOpen`: 与 Dialog / Sheet 口径统一 |
 
-**下一批建议**: 余下条目中 PO4 / PO5 / PO6 / PR4 / AV5 建议先确认需求再动手(定位策略 / 箭头 / 模态焦点圈禁 / 独立 Progress 部件 / 头像加载状态); S1 / S2 / S5 / DL4~6 / TB3 / DM2~5 / TT1~3 / TBL1~3 / DT3 等中等改动按组件集中排; 其余小改动可随时排; ACC4 / AD3 / SH5 是同一形态(面板内容槽), SL4 / SL5 / SA2 / SH7 需先确认需求; 下一轮核查从 #31 Toast 起。
+**下一批建议**: 分两类 —— 需要先拍板的见下表(Q1~Q4), 其余可直接排期(按组件集中做, 不用逐条确认)。下一轮**核查**(不是实现)从 #31 Toast 起。
+
+**待确认需求(不动手前需要拍板)**:
+
+| # | 涉及条目 | 要确认的问题 | 建议默认 |
+|---|---|---|---|
+| Q1 | D4 / AD3 / SH5 / ACC4 / TT3 / TBL3 | "面板/容器里放任意控件"要不要统一设计一套接口?六条是同一件事, 分散做会出六套形态 | 统一成 `Header()/Footer()/Content()` 返回 `LayoutEle`(Card/Alert 现成形态, 调用方自己 `ItemFill`), 第一批只做 Dialog / Sheet / AlertDialog; Accordion 触发区、Tooltip 内容、Table 单元格按需 |
+| Q2 | S5 / S7 / S1 / S2 | Select 的四个大项哪个要做?S5 多选成本最高(触发区摘要 + chips + 全选 + 与只读/否决的组合), S7 悬停自动滚要新增逐帧滚动带, S1 定位开关与 S2 typeahead 相对便宜 | 先做 S1 + S2(定位与键盘键入跳转); S5 / S7 等真实需求 |
+| Q3 | SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3 | 桌面端收益存疑的大项: 滑块拖动推挤(`push`)、单滑块禁用、ScrollArea 横向滚动、非模态弹层(`modal=false`)、Popover 定位策略可配、表格列宽拖拽 | 全部暂不做; 有真实场景再单独立项(SA2 若要做, 需先定"加横向模式"还是"新建 HScrollArea") |
+| Q4 | C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2 | 两类: C4 卡片图片槽(依赖圆角裁剪, 只能做直角图片块)与 5 组纯 demo 示例(不改组件) | demo 示例可以补(便宜, 提升文档完整度); C4 只做"直角图片槽 + 自适应高", 不做圆角 |
+
+**可直接排期(无需确认)**: I1 文件输入 / I6 原生 Edit 视觉与行为 API / S6 悬停高亮开关 / C3 通栏内容 / C5 header 响应式 / TA2 resize / TA3 rows / TB3 选中回退 / TB4 指示条过渡 / SW3 过渡 / RG4 横向 / DM2 菜单定位参数 / DM3 受控 RadioGroup / DM4 Root 级小项 / TT1 hoverable / TT2 箭头内距 / BA1 焦点环与校验环 / AL2 多行描述 / TBL1 caption / TBL2 合计行 / DT1 手动分页 / PR4 独立 Label/Value / AV5 图片状态回调 / SH6 遮罩样式 / SH7 进场位移 / AD2 media 图片 / AD4 遮罩样式 / SA3 ScrollTo。其中 I1 优先级最高(桌面高频), DM2 次之(靠边/右键菜单常需)。
