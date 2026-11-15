@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **v0.14.0 发布(2026-11-15)**: 自 v0.13.0 以来组件特性核查八批落地(跨 20+ 组件)、Combobox 三种形态、Field 必填/校验基础设施, 修复装饰元素焦点框 / 改字改尺寸残影 / 头像圆边 / Tooltip 可移入 / Badge 校验态 / Select 悬停 / 过渡到位帧等一批问题; 同批修复裸 `xui update` 漏更上游新增文件的已装组件。组件与 API 变更走 minor, **无破坏性变更**(两处默认视觉行为可回退: Slider `edge` 对齐 / Sheet 进场)。
+  - **顺序**: 修复与文档提交(`222bea1`)→ 版本示例 + `fallbackXuiVersion` 提交(`33615f2`)→ 轻量 tag `v0.14.0`(指向 `33615f2`)→ `registry.runtime` / `cliChange` 同时抬到 v0.14.0(`dfbe10c`, tag 之后)。最初按 patch 建的 `v0.13.1` tag(`b0866a1`)在发 Release 前已从本地与四个远端删除(未建 Release); 本周期含组件/API 变更, 按约定最终版本号定为 v0.14.0。
+  - **推送**: `git push origin main v0.14.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。数据源是 main, 推送当刻新组件与设计文档即对用户生效, 不等 tag。
+  - **Release**: https://github.com/twgh/xui/releases/tag/v0.14.0 , 名称 `v0.14.0 — 组件语义批量补齐 / Combobox 三形态 / CLI 更新判定修复`; name/body 用 `[IO.File]::ReadAllText(..., UTF8)` 读文件后转 UTF-8 字节 POST(`gh auth token` 取 token), 线上校验名称、正文与 `.verify/v0.14.0.md` 逐字一致, `draft=false / prerelease=false`。
+  - **下限回归**: 临时项目 `go mod edit -require=github.com/twgh/xui@v0.14.0` → 本地 registry `add --all --no-install` → `go mod tidy && go build ./ui` 通过(goproxy.cn 拉新 tag 报 stream INTERNAL_ERROR, 改用 `GOPROXY=direct GOSUMDB=off`, 并 `GOWORK=off`)。
+  - **CI**: push 后 `b0866a1` / `33615f2` / `dfbe10c` 的 CI run 均 success(按 `runtime=v0.14.0` 的已发布 tag 取运行时逐组件编译)。
+  - **线上校验**: GitHub `main` = `dfbe10c`, `registry.json` 为 `runtime=v0.14.0 / cliChange=v0.14.0`; README 两处版本示例与 `fallbackXuiVersion` 已指向 v0.14.0; tag `refs/tags/v0.14.0` = `33615f2`; notes 草稿在 `.verify/v0.14.0.md`。
+
 - ✅ **修复: 裸 `xui update` 漏更「上游新增了文件」的已装组件**(2026-11-15, 用户用本地 registry 升级 stocktools 时发现):
   - **现象**: `XUI_REGISTRY=<本地仓库> xui update -p ui` 只刷 10 个组件; 项目里装过的 input / switch / checkbox / radio / separator / textarea / sidebar 一个都没动。`go build` 照样通过, 所以看不出来, 只能显式点名 19 个组件才刷干净。
   - **根因**: `installedComponents` 要求 registry 里该组件列出的**全部文件**都在本地才算"已装"(本意是防止只装了 select 时把 date-picker / popover / dialog 全判成已装)。上游给组件新增共享助手文件(`cursor.go` / `filedialog.go` / `checkboxgroup.go`)后, 这些组件反而因"缺新文件"被判成未安装 —— 恰恰是最该升级的一批。点名路径由 `dropUninstalled` 的宽松判定兜住了(其注释也写了"跨版本升级常在组件里新增共享文件"), 但裸 update 不经过它, 两条路径口径不一致。
