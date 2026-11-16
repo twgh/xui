@@ -127,7 +127,7 @@ func buildNav2Page(body *widget.LayoutEle) {
 	_, vbc := autoCard(xui.VStack(r.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "面包屑", vbc.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Breadcrumb: 链接 muted → 悬停过渡到前景色; 分隔符 14, 条目间距 6, 列表间距 10 并自动换行", vbc.Handle))
+		"Breadcrumb: 链接 muted → 悬停过渡到前景色; 分隔符可用 14px 图标或文字; 条目间距 6, 列表间距 10 并自动换行", vbc.Handle))
 
 	bcInfo := ui.NewLabel(0, 0, 0, 20, "点击任意链接查看回调", vbc.Handle).SetFontSize(14).SetMuted()
 	xui.ItemFill(bcInfo)
@@ -148,17 +148,20 @@ func buildNav2Page(body *widget.LayoutEle) {
 	itCur := ui.NewBreadcrumbItem(bc.Handle)
 	ui.NewBreadcrumbPage(itCur.Handle, "面包屑")
 
-	xui.ItemFill(hint(vbc.Handle, "折叠省略号(36×36, 可自行挂菜单事件)"))
+	xui.ItemFill(hint(vbc.Handle, "自定义分隔符「/」+ 可点击省略号(36×36, 进 Tab 链、Enter 触发)"))
 	bc2 := ui.NewBreadcrumb(0, 0, 0, 0, vbc.Handle)
 	xui.ItemFill(bc2)
 	itHome := ui.NewBreadcrumbItem(bc2.Handle)
 	ui.NewBreadcrumbLink(itHome.Handle, "首页")
-	ui.NewBreadcrumbSeparator(bc2.Handle)
-	ui.NewBreadcrumbEllipsis(bc2.Handle)
-	ui.NewBreadcrumbSeparator(bc2.Handle)
+	ui.NewBreadcrumbSeparatorText(bc2.Handle, "/")
+	itEll := ui.NewBreadcrumbItem(bc2.Handle)
+	ui.NewBreadcrumbEllipsis(itEll.Handle, ui.WithBreadcrumbEllipsisOnClick(func() {
+		bcInfo.SetText("点击了省略号(可挂菜单)").Redraw(false)
+	}))
+	ui.NewBreadcrumbSeparatorText(bc2.Handle, "/")
 	itSet := ui.NewBreadcrumbItem(bc2.Handle)
 	ui.NewBreadcrumbLink(itSet.Handle, "设置")
-	ui.NewBreadcrumbSeparator(bc2.Handle)
+	ui.NewBreadcrumbSeparatorText(bc2.Handle, "/")
 	itMe := ui.NewBreadcrumbItem(bc2.Handle)
 	ui.NewBreadcrumbPage(itMe.Handle, "个人资料")
 }

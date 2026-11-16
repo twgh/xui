@@ -21,6 +21,7 @@ const collapsibleDuration = 200 * time.Millisecond
 //
 // 与 shadcn / radix 的 Collapsible 对齐:
 //   - 状态只有展开/收起两种, `open` / `onOpenChange` 对应 Open()/SetOpen()/OnOpenChange();
+//     用户切换可经 OnOpenChangeVeto 否决(Base UI 的 eventDetails.cancel());
 //   - 触发按钮由调用方创建, 用 BindTrigger 绑定: 点击切换、展开时带 aria-expanded 底色,
 //     禁用时按钮一起禁用;
 //   - 内容放进 Content()/ContentStack(), 收起时内容隐藏(不可见、不占布局), 展开时按内容自撑高度。
@@ -40,6 +41,7 @@ type Collapsible struct {
 
 	triggers []*Button
 	onChange []func(open bool)
+	veto     func(open bool) bool
 
 	duration time.Duration
 	presKey  int32 // 每个实例独立的 presence 键(见 xui.NextPresenceKey)
@@ -191,12 +193,17 @@ func (c *Collapsible) SetOpen(open bool) *Collapsible {
 	return c
 }
 
-// Toggle 反转展开状态(Disabled 时无效)。
+// Toggle 反转展开状态(Disabled 时无效)。用户交互(点击触发区、空格/回车、Toggle)
+// 会先经过 OnOpenChangeVeto; 程序化 SetOpen 不经过。
 func (c *Collapsible) Toggle() *Collapsible {
 	if c == nil || c.disabled {
 		return c
 	}
-	return c.SetOpen(!c.open)
+	next := !c.open
+	if c.veto != nil && !c.veto(next) {
+		return c
+	}
+	return c.SetOpen(next)
 }
 
 // SetDisabled 启用/禁用全部触发区。已展开的内容不会因此收起(同 radix)。
@@ -223,6 +230,17 @@ func (c *Collapsible) OnOpenChange(fn func(open bool)) *Collapsible {
 		return c
 	}
 	c.onChange = append(c.onChange, fn)
+	return c
+}
+
+// OnOpenChangeVeto 注册可否决的切换回调(对应 Base UI Root 的 onOpenChange 里
+// eventDetails.cancel()): 返回 false 取消这次用户切换(点击触发区 / Toggle),
+// 状态与回调都不变; 程序化 SetOpen 不经过否决(同 Tabs / Accordion)。
+func (c *Collapsible) OnOpenChangeVeto(fn func(open bool) bool) *Collapsible {
+	if c == nil || fn == nil {
+		return c
+	}
+	c.veto = fn
 	return c
 }
 

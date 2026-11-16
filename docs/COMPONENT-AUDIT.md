@@ -10,7 +10,7 @@
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
-> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#30(逐组件结论见第三节,实现进度见第五节),**下一轮核查从 #31 Toast 起**。
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#44(逐组件结论见第三节,实现进度见第五节),**下一轮核查从 #45 Carousel 起**。
 
 ## 一、按常用性排序的总表
 
@@ -53,13 +53,13 @@
 | 35 | Command | `command` | 已核查 | 结论见 3.8;CMD1~CMD3 已落地;搜索行 InputGroup 化待确认 |
 | 36 | Calendar | `calendar` | 已核查 | 结论见 3.8;CAL1 / CAL2 已落地;键盘/默认几何待确认;RTL / Jalali / timeZone 为能力边界 |
 | 37 | Date Picker | `date-picker` | 已核查 | 结论见 3.8;DP1~DP3 已落地;自然语言宽解析为能力边界 |
-| 38 | Hover Card | `hover-card` | 待核查 | |
-| 39 | Collapsible | `collapsible` | 待核查 | |
-| 40 | Breadcrumb | `breadcrumb` | 待核查 | |
-| 41 | Navigation Menu | `navigation-menu` | 待核查 | |
-| 42 | Menubar | `menubar` | 待核查 | |
-| 43 | Sidebar | `sidebar` | 待核查 | |
-| 44 | Resizable | `resizable` | 待核查 | |
+| 38 | Hover Card | `hover-card` | 已核查 | 结论见 3.9;HC1 默认几何/延时/聚焦已落地;HC2 动画深度暂缓 |
+| 39 | Collapsible | `collapsible` | 已核查 | 结论见 3.9;CL1 否决已落地;CL2 任意布局待确认 |
+| 40 | Breadcrumb | `breadcrumb` | 已核查 | 结论见 3.9;BC1 文字分隔符 / BC2 可点击省略号已落地;BC3 链接焦点待确认 |
+| 41 | Navigation Menu | `navigation-menu` | 已核查 | 结论见 3.9;NM1 base-nova 几何/配色/active/图标已落地;NM2 嵌套子菜单待确认 |
+| 42 | Menubar | `menubar` | 已核查 | 结论见 3.9;MB1 整条禁用/开合通知、MB4 单选组值已落地;MB2/MB3 几何与指示器待确认 |
+| 43 | Sidebar | `sidebar` | 已核查 | 结论见 3.9;SB1 骨架行已落地;SB2 自定义按钮内容待确认 |
+| 44 | Resizable | `resizable` | 已核查 | 结论见 3.9;文档示例已覆盖;RS1/RS2/RS4 待确认 |
 | 45 | Carousel | `carousel` | 待核查 | |
 | 46 | Aspect Ratio | `aspect-ratio` | 待核查 | |
 | 47 | Kbd | `kbd` | 待核查 | |
@@ -742,6 +742,131 @@
 
 **本批实现顺序**:TS1 → TG1~TG3 → TGR1~TGR3 → PG1 → CMD1~CMD3 → CAL1 / CAL2 → DP1~DP3(本批已全部落地);TS2、CMD4 / CMD5、CAL3~CAL5 需先拍板(见第五节 Q5);其余为能力边界或暂缓。
 
+### 3.9 Hover Card / Collapsible / Breadcrumb / Navigation Menu / Menubar / Sidebar / Resizable(#38 ~ #44)
+
+上游取自 base-nova:`hover-card.tsx`(Base UI PreviewCard)、`collapsible.tsx`(Base UI Collapsible)、`breadcrumb` 文档(本地无 tsx)、`navigation-menu.tsx`(Base UI NavigationMenu)、`menubar.tsx`(Base UI Menubar + DropdownMenu)、`sidebar.tsx`、`resizable.tsx`(react-resizable-panels v4)。Hover Card 官方示例显式传 `delay={10} closeDelay={100}`,Base UI Trigger 的默认值是 **600/300**(本库取默认);Sidebar / Resizable 没有 Base UI 底层,以 shadcn 文档与 tsx 为准。
+
+#### Hover Card(#38)
+
+**官方页**:Basic(delay 10 / closeDelay 100 覆盖)、Trigger Delays、Positioning(side/align)、Sides、RTL。tsx:`w-64 p-2.5 rounded-lg bg-popover text-sm shadow-md ring-1 ring-foreground/10`,sideOffset 4 / alignOffset 4;进场 `fade-in-0 + zoom-in-95` 加按方位的 `slide-in-from-*`(100ms)。Base UI PreviewCard 默认 `delay=600` / `closeDelay=300`,键盘聚焦触发区即打开(reason `trigger-focus`),失焦按 closeDelay 关闭。
+
+**已具备**:任意元素触发;600ms 悬停打开 / 300ms 离开关闭;指针移入卡片保持打开;非激活弹层不抢焦点、卡片内容可鼠标交互;宽度 256 / 内边距 10 / side + align + alignOffset + sideOffset 可配(默认 bottom / center / 4 / 4);编程 `Open/Close/SetOpen/IsOpen`、`OnOpenChange`、`Refresh`、内容构建后测高;工作区夹取与翻转;主题令牌实时取色。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| HC1 | 默认几何/延时 + 聚焦打开 | tsx 的 w-64 / p-2.5 / sideOffset 4 / alignOffset 4;Base UI 默认 delay 600 / closeDelay 300、`trigger-focus` | 700ms、卡片 288 / 内边距 12、无 alignOffset,不支持聚焦打开 | 已落地:600/300、256/10/4/4,`WithHoverCardAlignOffset`;触发区 `SetFocus` 立即打开、`KillFocus` 按 300ms 关 | 已落地 |
+| HC2 | 进场 fade + zoom + slide | tsx 的 `animate-in fade-in-0 zoom-in-95` 与 `slide-in-from-*` | 共享弹层只做整面板淡入 | 需确认:分层阴影窗的整窗缩放/位移有闪烁与崩溃风险(见 DESIGN 第八节 47/64),元素级缩放只能逐帧改矩形;暂缓,与其它弹层统一考虑 | 中 / 低 |
+
+**明确不做**:Portal / Container / `render` prop、`duration` 数值、`data-side` / `data-open` 等 DOM 属性、RTL。
+
+#### Collapsible(#39)
+
+**官方页**:Basic / Settings Panel / File Tree / Controlled State / RTL;tsx 是 Base UI Collapsible 的薄封装(Root / Trigger / Panel)。Basic 的根加 `data-open:bg-muted`;Trigger 可换任意元素(render),Panel 可放在根树的任意位置(示例放在两列栅格里,触发区在栅格外侧)。
+
+**已具备**:`open` / `SetOpen` / `Toggle` / `OnOpenChange`;多个 Trigger 绑定(点击 / 空格 / 回车);Disabled(程序化 `SetOpen` 仍生效);内容高度 200ms 过渡、收起后隐藏且不占布局;嵌套折叠(文件树);主题实时取色。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| CL1 | 用户切换可否决 | Base UI Root 的 `onOpenChange` 里 `eventDetails.cancel()` | 无 | 已落地:`OnOpenChangeVeto(func(open bool) bool)`;点击 / 空格回车 / Toggle 走否决,程序化 `SetOpen` 不经过;被否决时不改状态、不播过渡 | 已落地 |
+| CL2 | 触发区/内容区任意布局 | 根是普通 div,Trigger / Panel 可分别摆(设置面板的内容在栅格里、触发区在旁) | 根固定竖向流,内容固定排在全部触发区之后 | 待确认:需要把内容改为"可挂到任意父级"的独立元素,由调用方声明位置并仍由组件接管高度;会改动根管线与自动高度测量 | 中-高 / 中 |
+| CL3 | 展开态根底色 | Basic 示例的 `data-open:bg-muted` | 根透明 | 暂缓:调用方可用 Card / 自绘容器包一层;做成选项只省一行 | 小 / 低 |
+| CL4 | 内容是否常驻(`keepMounted`) | Base UI 默认收起时卸载 Panel | 收起只把高度归 0,元素常驻 | 不做:常驻能保留输入控件状态,桌面侧更符合预期;卸载语义需要调用方重建 UI,没有对应需求 | 不做 |
+
+**明确不做**:`data-state` / `aria-expanded` 等 DOM 属性、RTL、任意 React children。
+
+#### Breadcrumb(#40)
+
+**官方页**:Basic / Custom separator / Dropdown / Collapsed / Link component / RTL;列表 `flex flex-wrap items-center gap-1.5 text-sm`,链接 `hover:text-foreground`,当前页前景色;分隔符默认 ChevronRight(14),可传任意 children;省略号 36×36 + MoreHorizontal(16);省略号常与 DropdownMenu 组合。
+
+**已具备**:列表自动换行;条目 gap 6;链接 hover 过渡;当前页;图标 / 文字分隔符(文字按字号量宽、换主题重量);省略号 36×36 可选点击(悬停底色、键盘焦点环、Enter / 空格);主题令牌。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| BC1 | 文字分隔符 | `BreadcrumbSeparator` 的 children 可为任意内容(官方示例用 DotIcon) | 只能图标 | 已落地:`NewBreadcrumbSeparatorText(parent, "/")`,muted 单行、按字号量宽 | 已落地 |
+| BC2 | 可点击省略号 | 官方 Dropdown 示例把省略号包在 DropdownMenuTrigger 里 | 纯装饰 | 已落地:`WithBreadcrumbEllipsisOnClick`;悬停 Accent 底、焦点环、Enter / 空格触发;下拉菜单由回调里自行组合 | 已落地 |
+| BC3 | 链接进入 Tab 链 | `BreadcrumbLink` 渲染 `<a>`,天然可聚焦、Enter 激活 | 链接是自绘文本,不参与焦点链 | 待确认:需给每个链接加可聚焦元素 + 键盘焦点环 + Enter / 空格,会改变整页 Tab 顺序;现有差异见 DESIGN 第七节 | 小-中 / 中 |
+| BC4 | 链接/当前页的任意内容 | children 可为图标 + 文字或自定义组件 | API 只接受 text | 暂缓:需要内容槽或接受元素句柄;面包屑以纯文字为主 | 中 / 低 |
+
+**明确不做**:`href` / Next Link(桌面用 `OnClick`)、`aria-current` / `aria-hidden`、RTL。
+
+#### Navigation Menu(#41)
+
+**官方页**:Default(3 个触发区 + ListItem + With Icon + 顶级普通链接)、Link Component、RTL;tsx viewport 模式:列表 gap-0,触发区 `h-9 px-2.5 rounded-lg text-sm`,悬停 / 展开 `bg-muted`(展开 50%),视口 sideOffset 8 + p-1;ListItem 标题 + `line-clamp-2` 说明,内容链接可带 16px 图标,当前页 `bg-muted/50`。
+
+**已具备**:共享视口;悬停 50ms 打开 / 离开 50ms 收起、关闭后 300ms 跳过延时;点击开合;内容切换 350ms 滑入 208 + 淡入;chevron 300ms 旋转;顶级普通链接;链接前置图标、active 底色;标题 + 说明行(说明可空);多列网格(`LinkIn`);键盘 ←→ / ↓ / Enter / 空格 / ESC / Tab、Home / End;禁用项;值回调。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| NM1 | base-nova 几何/配色/图标/当前页 | 见上 | 老 radix 值:悬停 accent、无图标 / active | 已落地:gap 0 / p-1 / sideOffset 8;悬停 / 按下 / 展开取 `Muted`(展开 50%,悬停回全亮);链接 `SetIcon` / `SetActive`(`bg-muted/50`);视口圆角 `RadiusLg` | 已落地 |
+| NM2 | 嵌套子菜单 | Base UI NavigationMenu 支持内容里再开一层 | 只有一级内容页 | 待确认:共享视口里要再弹子视口并维护 hover intent / 键盘层级,成本高;常见导航用一级网格已够 | 高 / 低 |
+| NM3 | 纵向 `orientation` | Root 的 orientation | 只有横向 | 暂缓:侧边导航用 Sidebar;顶部横向是主场景 | 中 / 低 |
+| NM4 | 视口宽高过渡 | Base UI 弹层的尺寸过渡 | 切页时宽高即时变化,只有内容滑入 | 需确认:宽高过渡要逐帧重排内容,且视口贴在列表左下;当前与官方差距主要在内容滑入,已具备 | 中 / 低 |
+| NM5 | 说明两行(`line-clamp-2`) | ListItem 说明最多两行 | 固定一行 20,长文省略 | 暂缓:两行会让视口高度随文案跳变;长文案建议缩短或自定义内容 | 小 / 低 |
+
+**明确不做**:Sub / `viewport=false` / Indicator(见 DESIGN 第七节)、DOM `data-*` 属性、RTL。
+
+#### Menubar(#42)
+
+**官方页**:Default(File / Edit / View / Profiles)、Checkbox、Radio、Submenu、With Icons、RTL;tsx(base-nova):根 `h-8 p-[3px] gap-0.5 rounded-lg border`,触发区 `px-1.5 py-[2px] text-sm medium`,悬停 / 展开 `bg-muted`;弹层 `min-w-36 p-1 rounded-lg`,条目 `px-1.5 py-1`(28),勾选 / 单选指示器在右(`pr-8` / `right-2`),子菜单 `min-w-24`,内联图标 16、inset 文字 28。
+
+**已具备**:自绘根条 + 每个菜单一个弹层;悬停切换;点击开合;条目 / 勾选 / 单选(组内互斥)/ 子菜单 / 快捷键 / Label / 分隔 / 禁用 / destructive / 图标 / inset;键盘 ↑↓ / Home / End / Enter / ←→ / ESC / Tab;子菜单非激活不抢焦点;整条禁用 + `OnOpenChange`;单选组按组读写值;主题实时取色;工作区夹取。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| MB1 | 整条禁用 + 开合通知 | Base UI Menubar Root 的 `disabled` / `onOpenChange` | 只能逐菜单禁用,无整条状态 | 已落地:`WithMenubarDisabled` / `SetDisabled` / `Disabled`(触发器置灰、鼠标与键盘均不响应,已开的弹层关闭);`OnOpenChange(bool)` 只在"打开任一 / 全部关闭"变化时发 | 已落地 |
+| MB2 | base-nova 根/条目几何 | h-8 p-[3px] gap-0.5、条目 28、弹层 min-w-36、子菜单 min-w-24 | 根 36 / 内距 4 / 间距 4、条目 32、弹层 192、子菜单 128 | 待确认:触发区要 24 高 + 6 内距,现 Button 没有高度 / 内距覆盖;需给 Button 加覆盖选项或改自绘触发区,再整页回归 | 中 / 中 |
+| MB3 | 勾选/单选指示器在右 | base-nova 的 check / radio 在 `right-2`,文字从 6 起(单行图标在左) | 指示器在左,文字从 32 起 | 待确认:要改行绘制、宽度公式与快捷键让位;与 Menu(原生菜单)已右侧不一致,建议与 MB2 同批做 | 中 / 中 |
+| MB4 | 单选组 value / onValueChange | MenubarRadioGroup 的 `value` / `onValueChange` | 只有每项 checked + `MenuGroup` / `MenuOnCheck` | 已落地:`RadioGroupValue` / `SetRadioGroupValue` / `OnRadioGroupChange`(条目文本即组值,与 Menu 同一口径);组内互斥已具备 | 已落地 |
+
+**明确不做**:Alt 键访问 / typeahead(见 DESIGN 第七节)、RTL、DOM 属性。
+
+#### Sidebar(#43)
+
+**官方页**:SidebarProvider(structure / width / 快捷键 / controlled)、Sidebar props、useSidebar、Header / Footer / Content / Group / Menu / MenuButton / MenuAction / Sub / Badge / Skeleton / Trigger / Rail、Theming、Styling、RTL;tsx:展开 256 / 图标 48;分组 p-2;菜单按钮 h-8;骨架行 h-8 px-2 gap-2(16 图标块 + 16 高文字条,宽度随机 50~90%)。
+
+**已具备**:单对象合并 Provider + 面板;side / variant(3)/ collapsible(3);宽度 / 图标宽 / 初始开合;Ctrl+B;rail;trigger;Header / Content(ScrollArea)/ Footer;Group(label / action / menu);菜单项 variant / size / active / badge / tooltip / disabled / action(showOnHover);子菜单;icon 折叠与 tooltip;200ms 宽度过渡;骨架行;主题令牌。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| SB1 | 菜单骨架行 | `SidebarMenuSkeleton`(h-8、图标块 + 50~90% 文字条、animate-pulse) | 无 | 已落地:`NewSidebarMenuSkeleton` / `SidebarGroup.AddSkeleton`;`WithSidebarSkeletonIcon` / `WithSidebarSkeletonWidth`(10~100);2s 不透明脉冲;图标栏只留图标块 | 已落地 |
+| SB2 | 菜单按钮自定义内容 | `SidebarMenuButton` 接受任意 children(团队切换器 / 用户卡:头像 + 两行文字 + 尾部 chevron) | 只有 text + icon 的固定形态 | 待确认:需要内容槽(`Content()` 返回布局容器)与折叠态下的显隐约定;现有 Header / Footer 可自己拼容器绕过 | 中 / 中 |
+| SB3 | 分组可折叠 | 文档用 Collapsible 包 SidebarGroup,组标签作 Trigger | 分组标签不是触发区;可用外部 Collapsible 包组,但标签无法绑定 | 暂缓:需要标签支持触发器绑定或开放自定义标签元素;真实需求再加 | 小-中 / 低 |
+| SB4 | 移动端 Sheet / Provider 上下文 | `isMobile` 断点 + Sheet;`useSidebar` | 无移动分支,状态在 Sidebar 实例上 | 不做:桌面窗口没有移动断点;Go 侧显式持有 `Sidebar` 指针即可;`SidebarInput` 用 Input 组合 | 不做 |
+
+**明确不做**:RTL、rem / CSS 变量宽度、DOM `data-*` 属性、移动断点。
+
+#### Resizable(#44)
+
+**官方页**:Default(嵌套组合)、Vertical、Handle、RTL;底层 react-resizable-panels v4(orientation / `defaultSize` 百分比 / min / max / collapsible / collapsedSize / onCollapse / onExpand / onLayoutChange / F6 / preserve-pixel-size / autoSaveId)。
+
+**已具备**:横 / 纵向;百分比尺寸 + min / max;拖动(4px 热区 + 1px 线,可选 4×24 抓手);键盘 5% / Home / End、双击复位;`OnResize` / `SetSizes` / `Sizes`;组级禁用;嵌套分组;相对比例保持;尺寸变化按累计边界取整。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| RS1 | collapsible / collapsedSize + Enter 折叠 | 上游 Panel 的 `collapsible` / `collapsedSize`,Enter 折叠 / 展开 | 无折叠,只能靠 min 限制 | 待确认:折叠态要保留 collapsedSize、双击 / 方向键恢复,与 min 语义叠加;需要面板级状态与拖动阈值 | 中 / 中 |
+| RS2 | preserve-pixel-size | 上游 PanelGroup 的 `preserve-pixel-size` | 始终保持相对比例 | 待确认:做成开关后窗口缩放时保住像素宽、压缩其它面板;需要重算归一化口径 | 中-高 / 低 |
+| RS3 | F6 在分隔条间跳焦点 | 上游键盘文档 | 分隔条可 Tab 聚焦,无 F6 循环 | 暂缓:窗口级 F6 钩子与其它组件的 F6 预留冲突 | 中 / 低 |
+| RS4 | 面板 / 分隔条级禁用 | 上游没有对应 prop(只能整组);本库扩展 | 只有组级 disabled | 暂缓:有单栏锁定场景再扩展 | 小 / 低 |
+| RS5 | 布局持久化(`autoSaveId`) | 上游 PanelGroup 的 autoSaveId(localStorage) | 无 | 不做:Go 侧由调用方保存 `Sizes()` 并在下次构造时 `SetSizes`,更可控 | 不做 |
+
+**明确不做**:RTL、任意尺寸单位(px / rem)、DOM `data-panel`。
+
+**本批实现顺序**:HC1 → CL1 → BC1 / BC2 → NM1 → MB1 / MB4 → SB1(本批已全部落地);其余按 Q6 分流:MB2 / MB3、CL2 / SB2、BC3 / NM2、RS1 / RS2 / RS4 需先拍板;HC2、NM3~NM5、CL3、SB3、RS3 暂缓;能力边界见各组件"明确不做"。
+
 ## 四、实现顺序建议(Input / Select 批次,已执行完)
 
 1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化 —— **已全部落地**(见第五节)。
@@ -889,7 +1014,19 @@
 | CAL1 / CAL2 | Calendar | `WithCalendarCaptionLabel()` 纯文字标题(无下拉热区);`WithCalendarHideOutsideDays()` 越界格留空且不参与命中 |
 | DP1~DP3 | Date Picker | `WithDatePickerOnOpenChange` / `OnOpenChange`;输入过程中解析成功即同步选中值;可输入形态弹层改右对齐 / sideOffset 10 / alignOffset -8(`popoverPanel.ShowAligned`) |
 
-**下一批建议**: 实现侧的可直接排期清单已清空, 待确认项见 Q5。剩余均为**已明确暂缓**的项, 有真实需求再单独立项:
+**第十一批**(#38~#44 首轮核查的可直接排期项, 跨 7 个组件; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| HC1 | Hover Card | 悬停 600ms / 离开 300ms、卡片 256 / 内边距 10 / sideOffset 4 / alignOffset 4(`WithHoverCardAlignOffset`); 触发区键盘聚焦立即打开、失焦按 300ms 关 |
+| CL1 | Collapsible | `OnOpenChangeVeto(func(open bool) bool)`: 点击 / 空格回车 / Toggle 可否决, 程序化 `SetOpen` 不经过; 否决时不改状态、不播过渡 |
+| BC1 / BC2 | Breadcrumb | `NewBreadcrumbSeparatorText` 文字分隔符(按字号量宽); `WithBreadcrumbEllipsisOnClick` 让省略号可点击(悬停 Accent 底、键盘焦点环、Enter / 空格触发) |
+| NM1 | Navigation Menu | base-nova 几何与配色: 列表 gap 0 / 视口 p-1 + sideOffset 8、悬停/按下/展开取 `Muted`(展开 50%); 链接 `SetIcon`(16px 前置)与 `SetActive`(`bg-muted/50`); 视口圆角 `RadiusLg` |
+| MB1 | Menubar | 整条 `WithMenubarDisabled` / `SetDisabled` / `Disabled`(触发器置灰、鼠标与键盘不响应, 已开弹层关闭); `OnOpenChange` 只在"任一打开 / 全部关闭"变化时发 |
+| MB4 | Menubar | `RadioGroupValue` / `SetRadioGroupValue` / `OnRadioGroupChange`(条目文本即组值, 与 Menu 同一口径; 组内互斥沿用现有模型) |
+| SB1 | Sidebar | `NewSidebarMenuSkeleton` / `SidebarGroup.AddSkeleton`(`WithSidebarSkeletonIcon` / `WithSidebarSkeletonWidth`): 32 高行 + 16 图标块 + 16 高文字条(宽度 10~100%), 2s 不透明脉冲, 图标栏只留图标块 |
+
+**下一批建议**: 第十一批的可直接排期清单已清空, 待确认项见 Q6。剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -898,7 +1035,7 @@
 | Q3(SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3) | 不做 | 推挤碰撞、单滑块禁用、横向 ScrollArea、非模态对话框、Popover 模态与定位策略、表格列宽拖拽: 桌面收益存疑, 有场景再立项 |
 | Q4(C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2) | 部分排期 | C4 只做"直角图片槽 + 自适应高"(不做圆角), 排在本批之后; 五组纯 demo 示例不单独立项, 随对应组件下次改动补 |
 
-下一轮**核查**(不是实现)从 #38 Hover Card 起。
+下一轮**核查**(不是实现)从 #45 Carousel 起。
 
 **待确认需求(本轮已拍板)**:
 
@@ -913,4 +1050,15 @@
 | Q5-3 | CAL3 / CAL4 / CAL5 / CAL6 | 先改默认几何(28 / p-2 / bg-background, CAL4)并给 `WithCalendarCellSize`(CAL5), DatePicker 弹层同步;键盘网格(CAL3)随后;纵向折叠(CAL6)不做 | CAL4 / CAL5 待拍板; CAL3 随后; CAL6 不做 |
 | Q5-4 | DP4 | 保持中文窄口径解析(今天/N 天后/常见格式), 不引入 chrono-node 等价物 | 不做 |
 
-**可直接排期(无需确认)**: 已全部落地(第八批 / 第十批, 见第五节)。其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
+**待确认需求(第十一批, Q6)**:
+
+| # | 涉及条目 | 建议 | 状态 |
+|---|---|---|---|
+| Q6-1 | MB2 / MB3 | Menubar 完整对齐 base-nova: 根 h-8 p-[3px] gap-0.5、条目 28、弹层 min-w-36、子菜单 min-w-24, 勾选/单选指示器移到右侧; 需先给 Button 补高度/内距覆盖或改自绘触发区, 再整页回归 | 待拍板 |
+| Q6-2 | CL2 / SB2 / SB3 | 布局自由度: SB2(菜单按钮内容槽, 团队切换器/用户卡)优先; CL2(触发区/内容任意挂载)要改根管线, 成本最高; SB3(分组折叠)看侧栏需求 | 待拍板 |
+| Q6-3 | BC3 / NM2 | 键盘与子导航: BC3(链接进入 Tab 链)会改整页 Tab 顺序; NM2(嵌套子菜单)成本高, 建议不排 | 待拍板 |
+| Q6-4 | RS1 / RS2 / RS4 | Resizable 扩展: RS1(collapsible)优先, RS4(单栏锁定)顺手; RS2(preserve-pixel-size)低优先 | 待拍板 |
+| Q6-5 | HC2 / NM3 / NM4 / NM5 / CL3 / RS3 | 暂缓: 弹层 zoom/slide 动画深度、纵向导航、视口尺寸过渡、两行说明、展开态根底色、F6 跳分隔条 | 暂缓 |
+| Q6-6 | CL4 / BC4 / SB4 / RS5 / Menubar Alt | 不做或组合式: keepMounted 卸载语义、富内容面包屑、移动端 Sheet / Provider 上下文、布局持久化、Menubar Alt/typeahead | 不做 |
+
+**可直接排期(无需确认)**: 已全部落地(第八批 / 第十批 / 第十一批, 见第五节)。其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。

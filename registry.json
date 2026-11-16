@@ -196,7 +196,7 @@
       "deps": []
     },
     "breadcrumb": {
-      "files": ["breadcrumb.go"],
+      "files": ["breadcrumb.go", "cursor.go"],
       "deps": []
     },
     "item": {

@@ -1,7 +1,12 @@
 package main
 
 import (
+	"time"
+
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/xc"
+	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
 	ui "github.com/twgh/xui/components"
 	"github.com/twgh/xui/icons"
@@ -15,7 +20,7 @@ func buildNav6Page(body *widget.LayoutEle) {
 	_, v := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "侧边栏", v.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Sidebar: inset 外观 + 图标折叠; 分组/子菜单/徽章/动作钮; 子菜单点父项开合(chevron 旋转); 收起后悬停菜单项出右侧提示; Ctrl+B 开合", v.Handle))
+		"Sidebar: inset 外观 + 图标折叠; 分组/子菜单/徽章/动作钮/骨架加载行; 子菜单点父项开合(chevron 旋转); 收起后悬停菜单项出右侧提示; Ctrl+B 开合", v.Handle))
 
 	sb := ui.NewSidebar(0, 0, 0, 560, v.Handle,
 		ui.WithSidebarVariant(ui.SidebarVariantInset),
@@ -93,9 +98,39 @@ func buildNav6Page(body *widget.LayoutEle) {
 		ui.WithSidebarItemTooltip("文档"),
 		ui.WithSidebarItemOnClick(func() { setActive(docs, "文档") }))
 
+	// ---- 骨架加载组: 分组动作重播一次 1.2s 的加载 ----
+	g3 := sb.AddGroup("加载中")
+	sk1 := g3.AddSkeleton(ui.WithSidebarSkeletonIcon())
+	sk2 := g3.AddSkeleton(ui.WithSidebarSkeletonIcon())
+	sk3 := g3.AddSkeleton(ui.WithSidebarSkeletonIcon())
+	var loaded *ui.SidebarMenuButton
+	loaded = g3.AddItem("已加载的数据", icons.IconFileText,
+		ui.WithSidebarItemTooltip("已加载的数据"),
+		ui.WithSidebarItemOnClick(func() { setActive(loaded, "已加载的数据") }))
+	loaded.Show(false)
+	g3.SetAction(icons.IconRefreshCw, func() {
+		sk1.Show(true)
+		sk2.Show(true)
+		sk3.Show(true)
+		loaded.Show(false)
+		g3.Menu().AdjustLayout().Redraw(false)
+		status.SetText("最近操作: 正在加载…").Redraw(false)
+		app.AfterFunc(1200*time.Millisecond, func() {
+			if !xc.XC_IsHXCGUI(loaded.Handle, xcc.XC_ELE) {
+				return
+			}
+			sk1.Show(false)
+			sk2.Show(false)
+			sk3.Show(false)
+			loaded.Show(true)
+			g3.Menu().AdjustLayout().Redraw(false)
+			status.SetText("最近操作: 加载完成").Redraw(false)
+		})
+	})
+
 	sb.AddFooterItem("twgh", icons.IconUser,
 		ui.WithSidebarItemSize(ui.SidebarSizeLg), ui.WithSidebarItemTooltip("twgh"))
 
 	xui.ItemFill(hint(v.Handle,
-		"点触发钮或 Ctrl+B 收起; 收起后菜单项只留图标, 悬停出提示; 点子菜单父项可展开/收起(右侧 chevron 旋转); 子菜单/徽章/动作随折叠隐藏。"))
+		"点触发钮或 Ctrl+B 收起; 收起后菜单项只留图标, 悬停出提示; 子菜单父项可展开/收起; 分组「加载中」右侧的刷新图标可重播骨架加载。"))
 }

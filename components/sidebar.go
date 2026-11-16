@@ -21,24 +21,25 @@ import (
 //   - 子菜单: mx-3.5(14) + border-l + px-2.5(10), 子项 h-7(28);
 //   - 组标签 h-8(32) px-2 text-xs(12); 菜单动作/组动作 20×20; 徽章 h-5 min-w-5 px-1。
 const (
-	sidebarWidth    int32 = 256
-	sidebarIconW    int32 = 48
-	sidebarPad      int32 = 8
-	sidebarGap      int32 = 8
-	sidebarItemIcon int32 = 16
-	sidebarIconGap  int32 = 8
-	sidebarChevron  int32 = 16 // 子菜单展开/收起 chevron(size-4)
-	sidebarChevronX int32 = 8  // 距条目右缘 8(ml-auto + p-2)
-	sidebarSubMarX  int32 = 14
-	sidebarSubPadL  int32 = 11
-	sidebarSubPadR  int32 = 10
-	sidebarRate     int32 = 20 // 动作钮边长
-	sidebarBadgeH   int32 = 20
-	sidebarBadgePad int32 = 4
-	sidebarLabelH   int32 = 32
-	sidebarGroupGap int32 = 4
-	sidebarAnimMs         = 200 * time.Millisecond
-	sidebarRingW    int32 = 2 // focus-visible:ring-2
+	sidebarWidth     int32 = 256
+	sidebarIconW     int32 = 48
+	sidebarPad       int32 = 8
+	sidebarGap       int32 = 8
+	sidebarItemIcon  int32 = 16
+	sidebarIconGap   int32 = 8
+	sidebarChevron   int32 = 16 // 子菜单展开/收起 chevron(size-4)
+	sidebarChevronX  int32 = 8  // 距条目右缘 8(ml-auto + p-2)
+	sidebarSubMarX   int32 = 14
+	sidebarSubPadL   int32 = 11
+	sidebarSubPadR   int32 = 10
+	sidebarRate      int32 = 20 // 动作钮边长
+	sidebarBadgeH    int32 = 20
+	sidebarBadgePad  int32 = 4
+	sidebarLabelH    int32 = 32
+	sidebarSkeletonH int32 = 32
+	sidebarGroupGap  int32 = 4
+	sidebarAnimMs          = 200 * time.Millisecond
+	sidebarRingW     int32 = 2 // focus-visible:ring-2
 )
 
 // SidebarSide 侧栏贴哪一边, 对应 shadcn sidebar.tsx 的 side。
@@ -156,8 +157,8 @@ func WithSidebarOnOpenChange(fn func(open bool)) SidebarOption {
 //
 // 与 shadcn sidebar.tsx 对齐的部分: 展开/收起(offcanvas 滑出 / icon 图标栏 / none)、
 // 左右贴边、sidebar / floating / inset 三种外观、Header / Content / Footer 三段、
-// 分组标签与组动作、菜单按钮(选中/徽章/尾随动作/子菜单)、折叠后悬停出右侧 tooltip、
-// Ctrl+B 开合、200ms 线性宽度过渡、全部使用 --sidebar-* 令牌。
+// 分组标签与组动作、菜单按钮(选中/徽章/尾随动作/子菜单)、加载骨架行、
+// 折叠后悬停出右侧 tooltip、Ctrl+B 开合、200ms 线性宽度过渡、全部使用 --sidebar-* 令牌。
 //
 // 用法(必须在确定高度的容器里, 侧栏内容区按剩余高度滚动):
 //
@@ -947,6 +948,120 @@ func (g *SidebarGroup) Menu() *widget.LayoutEle {
 		return nil
 	}
 	return g.menu
+}
+
+// ===== 骨架条目 =====
+
+// SidebarSkeletonOption 骨架条目配置项。
+type SidebarSkeletonOption func(*sidebarSkeletonCfg)
+
+type sidebarSkeletonCfg struct {
+	icon     bool
+	widthPct int32
+}
+
+// WithSidebarSkeletonIcon 在骨架行左侧画 16×16 图标占位(对应上游 showIcon)。
+func WithSidebarSkeletonIcon() SidebarSkeletonOption {
+	return func(c *sidebarSkeletonCfg) { c.icon = true }
+}
+
+// WithSidebarSkeletonWidth 文字条占可用宽的百分比(上游随机 50~90), 默认 70。
+func WithSidebarSkeletonWidth(percent int32) SidebarSkeletonOption {
+	return func(c *sidebarSkeletonCfg) {
+		if percent >= 10 && percent <= 100 {
+			c.widthPct = percent
+		}
+	}
+}
+
+// SidebarMenuSkeleton 菜单骨架行, 对应上游 SidebarMenuSkeleton: 32 高, 左侧可选
+// 16×16 图标方块 + 16 高文字条, bg-muted + 2s 脉冲; 图标栏收起态只保留图标方块。
+type SidebarMenuSkeleton struct {
+	*widget.Element
+	sidebar  *Sidebar
+	showIcon bool
+	widthPct int32
+}
+
+// NewSidebarMenuSkeleton 创建骨架行(宽铺满父级、高 32), 放进分组菜单或任意竖向容器。
+func NewSidebarMenuSkeleton(hParent int, opts ...SidebarSkeletonOption) *SidebarMenuSkeleton {
+	cfg := sidebarSkeletonCfg{widthPct: 70}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	ele := widget.NewElement(0, 0, 0, sidebarSkeletonH, hParent)
+	if ele == nil {
+		return nil
+	}
+	s := &SidebarMenuSkeleton{Element: ele, showIcon: cfg.icon, widthPct: cfg.widthPct}
+	ele.EnableBkTransparent(true)
+	ele.EnableDrawBorder(false)
+	ele.EnableFocus(false)
+	ele.EnableSwitchFocus(false)
+	ele.EnableMouseThrough(true)
+	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, sidebarSkeletonH)
+	ele.AddEvent_Paint(s.onPaint)
+	xui.AttachWindow(ele.Handle)
+	return s
+}
+
+// AddSkeleton 在分组菜单里追加一行加载骨架(上游 SidebarMenuSkeleton)。
+func (g *SidebarGroup) AddSkeleton(opts ...SidebarSkeletonOption) *SidebarMenuSkeleton {
+	if g == nil || g.menu == nil {
+		return nil
+	}
+	s := NewSidebarMenuSkeleton(g.menu.Handle, opts...)
+	if s == nil {
+		return nil
+	}
+	s.sidebar = g.sidebar
+	if g.sidebar != nil {
+		g.sidebar.panel.AdjustLayout()
+		g.sidebar.content.AdjustLayout()
+	}
+	return s
+}
+
+func (s *SidebarMenuSkeleton) onPaint(hEle int, hDraw int, pbHandled *bool) int {
+	p := xui.BeginPaint(hEle, hDraw)
+	if p == nil {
+		return 0
+	}
+	*pbHandled = true
+	t := xui.Current()
+	// 透明元素重绘不擦底: 先铺侧栏面板底色再画占位。脉冲是**不透明**混色
+	// (同 Skeleton), 直接用半透明色叠加会越叠越亮(见 DESIGN 第八节 28)。
+	p.FillRound(&p.Rc, t.Sidebar, 0)
+	phase := xui.Pulse(hEle, true)
+	opacity := 0.75 + 0.25*math.Cos(2*math.Pi*phase)
+	col := t.Sidebar.Mix(t.Muted, opacity)
+	radius := t.RadiusMd()
+	cy := (p.Rc.Top + p.Rc.Bottom) / 2
+	x := p.Rc.Left + sidebarPad
+	iconOnly := s.sidebar != nil && s.sidebar.iconMode()
+	if s.showIcon {
+		if iconOnly {
+			x = p.Rc.Left + (p.W()-sidebarItemIcon)/2
+		}
+		rc := xc.RECT{Left: x, Top: cy - sidebarItemIcon/2, Right: x + sidebarItemIcon, Bottom: cy + sidebarItemIcon/2}
+		p.FillRound(&rc, col, radius)
+		x += sidebarItemIcon + sidebarIconGap
+	}
+	if iconOnly {
+		return 0
+	}
+	avail := p.Rc.Right - sidebarPad - x
+	if avail <= 0 {
+		return 0
+	}
+	w := int32(math.Round(float64(avail) * float64(s.widthPct) / 100))
+	if w < 8 {
+		w = 8
+	}
+	rc := xc.RECT{Left: x, Top: cy - 8, Right: x + w, Bottom: cy + 8}
+	p.FillRound(&rc, col, radius)
+	return 0
 }
 
 // SetLabel 设置分组标签文字(label 为空则隐藏标签)。

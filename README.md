@@ -130,7 +130,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Empty | 空状态容器:图标底板 + 标题 + 描述 + 动作区;三个槽位 `Header()` / `Content()` / `Body()`,不画边框 |
 | Field | 表单字段布局:Label / Title / Description / Content / 校验错误区,垂直或水平取向;`Attach(控件)` 后 `SetInvalid` / `SetDisabled` 级联(内置控件与实现 `FieldControl` 的自定义控件都可接入,字段禁用保留控件原本的单独禁用状态);`WithFieldFocusProxy` 让外层卡片代理键盘焦点环;必填与校验器 `WithFieldRequired` / `WithFieldValidator` + `Validate()`(`FieldValueProvider` 提供控件值),`FieldGroup.Validate/Submit` 做组级提交;横向时内容默认 240 宽(嵌套布局只认 Fixed 宽) |
 | Item | 列表项:媒体 + 内容 + 动作区 + 头/尾槽位,三变体两尺寸;配 ItemGroup / ItemSeparator / ItemTitle / ItemDescription |
-| Breadcrumb | 面包屑:链接(hover 过渡 + `OnClick`)/ 当前页 / 分隔符 / 省略号 |
+| Breadcrumb | 面包屑:链接(hover 过渡 + `OnClick`)/ 当前页 / 图标或文字分隔符 / 省略号(可点击并进键盘焦点) |
 | Kbd | 键帽:宽度按文字自适应;`NewKbdGroup` 排组合键 |
 | Skeleton | 骨架屏:主题圆角 + 2s 脉冲;`WithSkeletonCircle` 做头像占位 |
 | Spinner | 加载指示器:图标 1s/圈旋转,尺寸/配色可调 |
@@ -143,7 +143,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Accordion | 手风琴:single 单开互斥(可全收)或多开;200ms 高度过渡。**注意**内容里的子项要 `xui.ItemFill` 声明宽度 |
 | Collapsible | 可折叠面板:任意控件绑作触发区,内容放进 `ContentStack()`;收起后不占布局 |
 | Popover | 弹出卡片:点击触发、点外部/ESC 关闭;内容里嵌了会自己弹窗的控件(如 ColorPicker)时要 `WithPopoverKeepOnBlur(true)`,否则本卡片会先失焦关掉 |
-| HoverCard | 悬停卡片:悬停 700ms 打开、移出 300ms 关闭,可交互且不抢焦点;适合用户资料预览 |
+| HoverCard | 悬停卡片:悬停 600ms 打开、移出 300ms 关闭,键盘聚焦触发区也能打开;可交互且不抢焦点;适合用户资料预览 |
 | Avatar / AvatarGroup | 圆形头像:图片居中裁圆、无图回落首字母、右下徽标;组做负间距叠放 |
 | Message / MessageGroup | 会话消息:页眉 → [头像 + 内容列] → 页脚,`align=end` 整行镜像(头像在右);头像/页眉/页脚都是按需使用的槽位,不用不占布局;内容列里放 Bubble / Attachment |
 | Bubble / BubbleGroup | 文本气泡:7 变体(default/secondary/muted/tinted/outline/ghost/destructive)、宽度上限父级 80%(ghost 全宽);反应条 = 叠在底/顶边的可点文字胶囊;`WithBubbleOnClick` 整块可点;富内容放 `Message.Content()` |
@@ -156,9 +156,9 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Dialog | 模态对话框:全窗遮罩 + 居中面板,标题/描述折行 + 任意内容 + 页脚按钮;`WithDialogScroll` 内容区滚动而头部/页脚固定,`BindClose` 把任意控件变成关闭钮 |
 | AlertDialog | 警示对话框:必须明确选择(无 X、点遮罩不关,ESC 关,焦点落在 Cancel);可与 Dialog 共用遮罩/模糊/焦点陷阱,支持再叠一层 |
 | Menu | 下拉菜单 / 右键菜单(原生菜单承载行为 + 自绘皮肤):条目/勾选/单选/子菜单/快捷键/禁用/破坏性/前置图标;`NewContextMenu(元素, build)` 右键触发,每次重建 |
-| Menubar | 菜单栏:条目 API 与 Menu 共用;打开任一菜单后鼠标移到其它触发区即切换,全套键盘导航,子菜单悬停展开 |
-| NavigationMenu | 导航菜单:所有菜单共用一个视口,悬停开、切换时视口随内容收放、新页面从切换方向滑入;内容里可 `LinkIn` 进 `xui.HStack` 做多列网格 |
-| Sidebar | 侧边栏:返回"面板 + 主内容区",分组/子菜单/徽章/动作钮/折叠(offcanvas/icon/none, Ctrl+B)/左右贴边;三种外观 sidebar/floating/inset |
+| Menubar | 菜单栏:条目 API 与 Menu 共用;打开任一菜单后鼠标移到其它触发区即切换,全套键盘导航,子菜单悬停展开;整条可禁用、可监听开合,单选组按组读写 |
+| NavigationMenu | 导航菜单:所有菜单共用一个视口,悬停开、切换时视口随内容收放、新页面从切换方向滑入;链接可带图标与当前页底色;内容里可 `LinkIn` 进 `xui.HStack` 做多列网格 |
+| Sidebar | 侧边栏:返回"面板 + 主内容区",分组/子菜单/徽章/动作钮/加载骨架行/折叠(offcanvas/icon/none, Ctrl+B)/左右贴边;三种外观 sidebar/floating/inset |
 | Command | 命令面板:输入即过滤(可用 `WithCommandFilter` 换匹配规则)、↑↓ 循环跳过禁用、Enter/ESC;可放进 `ui.NewDialog` 组合成 ⌘K 弹窗 |
 | Combobox | "输入即过滤"的建议列表(= Popover + Command):默认按钮触发 + 弹层搜索框(`WithComboboxMultiple` 多选保持打开、`WithComboboxChips` 换成 chips 展示、`WithComboboxClear` 有值时显示清除钮、`WithComboboxAutoHighlight` 控制过滤后是否自动高亮首条),`WithComboboxInput` 改成输入框即触发层(上游 Basic,打字即过滤);`WithComboboxEditable` 换成可编辑组合框:输入任意文字(不搜索、不过滤),点箭头或 ↓ 展开固定选项,文字在 Enter / 失焦时提交(命中条目取条目值,否则整段文字就是值);条目模型与 Select 共用;`xui add combobox` |
 | NativeComboBox | **注意**: 这是原生 ComboBox 载体(对应 shadcn 的 `select`),不是上面那个 Combobox;要"输入即过滤"用 Combobox;`xui add native-combobox` |

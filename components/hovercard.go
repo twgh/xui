@@ -11,16 +11,18 @@ import (
 	"github.com/twgh/xcgui/xcc"
 )
 
-// HoverCard 几何与延时(逻辑像素 / 时间), 对齐 shadcn hover-card.tsx:
-// w-64(256) / p-4(16) / sideOffset=4; radix 默认 openDelay=700ms、closeDelay=300ms。
+// HoverCard 几何与延时(逻辑像素 / 时间), 对齐 shadcn hover-card.tsx(base-nova):
+// w-64(256) / p-2.5(10) / sideOffset=4 / alignOffset=4;
+// Base UI PreviewCard 的 Trigger 默认 delay=600ms、closeDelay=300ms。
 const (
-	hoverCardDefaultW int32 = 256
-	hoverCardPad      int32 = 16
-	hoverCardGap      int32 = 4
+	hoverCardDefaultW   int32 = 256
+	hoverCardPad        int32 = 10
+	hoverCardGap        int32 = 4
+	hoverCardDefaultOff int32 = 4
 )
 
 const (
-	hoverCardOpenDelay  = 700 * time.Millisecond
+	hoverCardOpenDelay  = 600 * time.Millisecond
 	hoverCardCloseDelay = 300 * time.Millisecond
 )
 
@@ -41,13 +43,19 @@ func WithHoverCardWidth(w int32) HoverCardOption {
 	}
 }
 
-// WithHoverCardPadding 覆盖四周内边距(默认 16 = p-4)。
+// WithHoverCardPadding 覆盖四周内边距(默认 10 = p-2.5)。
 func WithHoverCardPadding(pad int32) HoverCardOption {
 	return func(h *HoverCard) {
 		if pad >= 0 {
 			h.padding = pad
 		}
 	}
+}
+
+// WithHoverCardAlignOffset 设置交叉轴偏移(对应 Base UI Positioner 的 alignOffset,
+// 默认 4 = tsx): 上下方位正数向右、左右方位正数向下。
+func WithHoverCardAlignOffset(px int32) HoverCardOption {
+	return func(h *HoverCard) { h.alignOffset = px }
 }
 
 // WithHoverCardSide 设置优先方位(默认下方, 放不下自动翻转)。
@@ -77,19 +85,21 @@ func WithHoverCardOnOpenChange(fn func(open bool)) HoverCardOption {
 	return func(h *HoverCard) { h.changes = append(h.changes, fn) }
 }
 
-// HoverCard 悬停卡片, 对应 shadcn hover-card.tsx: 鼠标在触发区停留 700ms 后弹出,
-// 移出触发区/卡片 300ms 后关闭; 卡片本身可以交互, 打开期间不抢焦点。
+// HoverCard 悬停卡片, 对应 shadcn hover-card.tsx: 鼠标在触发区停留 600ms 后弹出,
+// 移出触发区/卡片 300ms 后关闭; 键盘聚焦触发区立即打开(Base UI 的 trigger-focus),
+// 失焦后按 closeDelay 关闭。卡片本身可以交互, 打开期间不抢焦点。
 //
-// 与 shadcn 的差异: 进场只淡入, 不做 zoom/slide; 不做键盘焦点打开(鼠标悬停语义)。
+// 与 shadcn 的差异: 进场只淡入, 不做 zoom/slide。
 type HoverCard struct {
 	trigger int
 	build   func(content int)
 
-	width   int32
-	padding int32
-	gap     int32
-	side    PopoverSide
-	align   PopoverAlign
+	width       int32
+	padding     int32
+	gap         int32
+	alignOffset int32
+	side        PopoverSide
+	align       PopoverAlign
 
 	openDelay  time.Duration
 	closeDelay time.Duration
@@ -113,12 +123,13 @@ func NewHoverCard(hTrigger int, opts ...HoverCardOption) *HoverCard {
 		return nil
 	}
 	h := &HoverCard{
-		trigger:    hTrigger,
-		width:      hoverCardDefaultW,
-		padding:    hoverCardPad,
-		gap:        hoverCardGap,
-		openDelay:  hoverCardOpenDelay,
-		closeDelay: hoverCardCloseDelay,
+		trigger:     hTrigger,
+		width:       hoverCardDefaultW,
+		padding:     hoverCardPad,
+		gap:         hoverCardGap,
+		alignOffset: hoverCardDefaultOff,
+		openDelay:   hoverCardOpenDelay,
+		closeDelay:  hoverCardCloseDelay,
 	}
 	for _, o := range opts {
 		o(h)
@@ -143,6 +154,19 @@ func NewHoverCard(hTrigger int, opts ...HoverCardOption) *HoverCard {
 			h.scheduleClose()
 		} else {
 			h.cancelTimer()
+		}
+		return 0
+	})
+	// 键盘聚焦触发区立即打开(对应 Base UI 的 trigger-focus); 失焦后按 closeDelay
+	// 走同一套指针判定, 指针仍停在触发区/卡片上时不会误关。
+	ele.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int {
+		h.cancelTimer()
+		h.Open()
+		return 0
+	})
+	ele.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int {
+		if h.IsOpen() {
+			h.scheduleClose()
 		}
 		return 0
 	})
@@ -176,7 +200,7 @@ func (h *HoverCard) Open() *HoverCard {
 	if !h.measured {
 		h.measure()
 	}
-	x, y := popupPosition(h.trigger, h.width, h.panel.ch, h.side, h.align, h.gap)
+	x, y := popupPositionOffset(h.trigger, h.width, h.panel.ch, h.side, h.align, h.gap, h.alignOffset)
 	h.panel.ShowAt(h.trigger, x, y)
 	h.notify(true)
 	return h

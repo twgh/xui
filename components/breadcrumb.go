@@ -231,10 +231,11 @@ func WithBreadcrumbSeparatorIcon(icon string) BreadcrumbSeparatorOption {
 	return func(s *BreadcrumbSeparator) { s.icon = icon }
 }
 
-// BreadcrumbSeparator 面包屑分隔符: 14×14 的 muted 图标。
+// BreadcrumbSeparator 面包屑分隔符: 默认 14×14 的 muted 图标; 文字分隔符按文字量宽。
 type BreadcrumbSeparator struct {
 	*widget.Element
 	icon string
+	text string
 }
 
 // NewBreadcrumbSeparator 创建分隔符(默认 chevron-right)。
@@ -259,6 +260,34 @@ func NewBreadcrumbSeparator(hParent int, opts ...BreadcrumbSeparatorOption) *Bre
 	return s
 }
 
+// NewBreadcrumbSeparatorText 用文字做分隔符(如 "/" 或 ">"), 对应上游给
+// BreadcrumbSeparator 传任意 children(官方示例是 DotIcon); 文字 muted、单行。
+func NewBreadcrumbSeparatorText(hParent int, text string) *BreadcrumbSeparator {
+	s := &BreadcrumbSeparator{text: text}
+	w := breadcrumbTextWidth(xui.Current(), text)
+	h := breadcrumbTextH
+	ele := widget.NewElement(0, 0, w, h, hParent)
+	if ele == nil {
+		return nil
+	}
+	s.Element = ele
+	ele.EnableBkTransparent(true)
+	ele.EnableDrawBorder(false)
+	ele.EnableFocus(false)
+	ele.EnableSwitchFocus(false)
+	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
+	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
+	ele.AddEvent_Paint(s.onPaint)
+	xui.AttachWindow(ele.Handle)
+	xui.OnThemeChangeFor(ele.Handle, func(t *xui.Theme) {
+		w := breadcrumbTextWidth(t, text)
+		s.SetWidth(w)
+		s.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, w)
+		s.Redraw(false)
+	})
+	return s
+}
+
 func (s *BreadcrumbSeparator) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
@@ -266,23 +295,45 @@ func (s *BreadcrumbSeparator) onPaint(hEle int, hDraw int, pbHandled *bool) int 
 	}
 	*pbHandled = true
 	t := xui.Current()
+	if s.text != "" {
+		if f := breadcrumbFont(t); f != 0 {
+			p.Draw.SetFont(f)
+		}
+		p.Text(s.text, &p.Rc, t.MutedForeground,
+			xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
+		return 0
+	}
 	p.Icon(s.icon, &p.Rc, t.MutedForeground, 2)
 	return 0
 }
 
+// BreadcrumbEllipsisOption 省略号配置项。
+type BreadcrumbEllipsisOption func(*BreadcrumbEllipsis)
+
+// WithBreadcrumbEllipsisOnClick 把省略号变成可点击的收起项(对应官方 Dropdown 示例里
+// 包在 DropdownMenuTrigger 里的用法): 进入 Tab 链、悬停出底色、Enter/空格/点击触发;
+// 不传时仍是纯装饰(不进焦点、不响应鼠标)。
+func WithBreadcrumbEllipsisOnClick(fn func()) BreadcrumbEllipsisOption {
+	return func(e *BreadcrumbEllipsis) { e.onClick = fn }
+}
+
 // BreadcrumbEllipsis 折叠省略号: 36×36 区域居中画 more-horizontal(16)。
-// 上游本身不可点击; 需要展开菜单时给它挂鼠标事件即可。
 type BreadcrumbEllipsis struct {
 	*widget.Element
+	onClick func()
+	hover   bool
 }
 
 // NewBreadcrumbEllipsis 创建省略号。
-func NewBreadcrumbEllipsis(hParent int) *BreadcrumbEllipsis {
+func NewBreadcrumbEllipsis(hParent int, opts ...BreadcrumbEllipsisOption) *BreadcrumbEllipsis {
 	ele := widget.NewElement(0, 0, breadcrumbEllipsisSize, breadcrumbEllipsisSize, hParent)
 	if ele == nil {
 		return nil
 	}
 	e := &BreadcrumbEllipsis{Element: ele}
+	for _, o := range opts {
+		o(e)
+	}
 	ele.EnableBkTransparent(true)
 	ele.EnableDrawBorder(false)
 	ele.EnableFocus(false)
@@ -290,8 +341,58 @@ func NewBreadcrumbEllipsis(hParent int) *BreadcrumbEllipsis {
 	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, breadcrumbEllipsisSize)
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, breadcrumbEllipsisSize)
 	ele.AddEvent_Paint(e.onPaint)
+	if e.onClick != nil {
+		ele.EnableFocus(true)
+		ele.EnableSwitchFocus(true)
+		ele.EnableDrawFocus(false)
+		ele.SetCursor(linkCursor())
+		ele.AddEvent_MouseStay(func(hEle int, pbHandled *bool) int {
+			e.hover = true
+			ele.Redraw(false)
+			return 0
+		})
+		ele.AddEvent_MouseLeave(func(hEle, hEleStay int, pbHandled *bool) int {
+			e.hover = false
+			ele.Redraw(false)
+			return 0
+		})
+		// 原生 Element 要先接住按下, 同一次操作的抬起才会派发到它。
+		ele.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+			return 0
+		})
+		ele.AddEvent_LButtonUp(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+			e.fire()
+			return 0
+		})
+		ele.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
+			if wParam == breadcrumbVKEnter || wParam == breadcrumbVKSpace {
+				e.fire()
+				*pbHandled = true
+			}
+			return 0
+		})
+		ele.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int {
+			ele.Redraw(false)
+			return 0
+		})
+		ele.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int {
+			ele.Redraw(false)
+			return 0
+		})
+	}
 	xui.AttachWindow(ele.Handle)
 	return e
+}
+
+const (
+	breadcrumbVKEnter uintptr = 0x0D
+	breadcrumbVKSpace uintptr = 0x20
+)
+
+func (e *BreadcrumbEllipsis) fire() {
+	if e != nil && e.onClick != nil {
+		e.onClick()
+	}
 }
 
 func (e *BreadcrumbEllipsis) onPaint(hEle int, hDraw int, pbHandled *bool) int {
@@ -301,6 +402,20 @@ func (e *BreadcrumbEllipsis) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	*pbHandled = true
 	t := xui.Current()
+	if e.onClick != nil {
+		radius := t.RadiusMd()
+		st := xui.StateOf(hEle)
+		hv := xui.Hover(hEle, e.hover && !st.Disabled)
+		if st.Focused && !st.Disabled && xui.FocusedByKeyboard() {
+			hole := t.Card
+			if hv > 0 {
+				hole = t.Card.Mix(t.Accent, hv)
+			}
+			p.FocusFrame(t.Ring, hole, radius)
+		} else if hv > 0 {
+			p.FillRound(&p.Rc, t.Accent.ScaleAlpha(hv), radius)
+		}
+	}
 	inset := (breadcrumbEllipsisSize - breadcrumbEllipsisGlyph) / 2
 	rc := p.Rc
 	rc.Left += inset

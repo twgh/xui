@@ -45,9 +45,18 @@ const (
 	mbVKTab   uintptr = 0x09
 )
 
+// MenubarOption 菜单栏配置项。
+type MenubarOption func(*Menubar)
+
+// WithMenubarDisabled 创建后立即禁用整条菜单栏(触发区不可点/不参与焦点, 等价 Base UI
+// Menubar 的 disabled)。条目级 MenuDisabled 仍独立生效。
+func WithMenubarDisabled() MenubarOption {
+	return func(mb *Menubar) { mb.disabled = true }
+}
+
 // Menubar 菜单栏: 一排横向触发钮 + 每个钮下面的自绘下拉菜单。
 //
-// 与 shadcn menubar.tsx(radix-nova) 对齐:
+// 与 shadcn menubar.tsx 对齐:
 //   - 根: h-9 圆角描边条、bg-background、p-1 gap-1; 触发区 rounded-sm px-2(text-sm medium),
 //     悬停 / 展开 bg-accent;
 //   - 弹层: bg-popover rounded-md 1px border shadow-md, min-w-[12rem], 位于触发区下方
@@ -58,7 +67,10 @@ const (
 //   - 子菜单: 悬停/Enter 在右侧弹出第二个弹层(非激活, 不抢焦点), 移出即收起;
 //   - 交互: **打开任一菜单后, 鼠标移到其它触发区即切换**; 触发区点击切换开合;
 //     ↑↓/Home/End 在条目间移动(跳过禁用/标签/分隔线), Enter 选中, ←→ 切换顶级菜单,
-//     ESC 关闭并把焦点还给触发区, Tab 关闭。
+//     ESC 关闭并把焦点还给触发区, Tab 关闭; 单选组可按组读值/设值/监听变化
+//     (RadioGroupValue / SetRadioGroupValue / OnRadioGroupChange, 条目文本即组值);
+//     整条可经 SetDisabled 禁用(Root 的 disabled);
+//     OnOpenChange 报告"任一菜单打开 / 全部关闭"。
 //
 // 弹层为什么不用原生 Menu: `XMenu_Popup` 是阻塞的(菜单关闭后才返回), 期间主窗口
 // 收不到鼠标移动, 无法实现 radix 的"悬停切换菜单"语义; 这里用自绘弹层
@@ -80,9 +92,13 @@ type Menubar struct {
 	triggers []*Button
 	menus    []*menubarView
 	open     int // 当前打开的顶级菜单下标; -1 = 全关
+	disabled bool
 
 	lastClose    time.Time // 点击触发区关闭后, 250ms 内的同一次点击不要再打开
 	lastCloseIdx int
+
+	changes     []func(open bool)
+	lastEmitted bool
 }
 
 // MenubarMenu 是菜单栏里某个触发钮下的菜单(也是子菜单的构造入口)。
@@ -94,6 +110,7 @@ type MenubarMenu struct {
 type menubarView struct {
 	mb         *Menubar
 	items      []*menuItem
+	radioCB    func(group int32, value string) // 单选组变化回调(条目文本即组值)
 	subs       map[int32]*menubarView
 	parent     *menubarView
 	parentItem *menuItem
@@ -120,7 +137,7 @@ type mbRow struct {
 
 // NewMenubar 创建菜单栏。hParent 是承载它的父元素(通常是一张卡片的内容区);
 // 根容器宽高按内容自撑, 放进任意流式布局即可。
-func NewMenubar(hParent int) *Menubar {
+func NewMenubar(hParent int, opts ...MenubarOption) *Menubar {
 	bar := widget.NewElement(0, 0, mbBarH, mbBarH, hParent)
 	if bar == nil {
 		return nil
@@ -146,6 +163,9 @@ func NewMenubar(hParent int) *Menubar {
 		return 0
 	})
 	mb := &Menubar{hWnd: xc.XWidget_GetHWINDOW(bar.Handle), bar: bar, open: -1}
+	for _, o := range opts {
+		o(mb)
+	}
 	xui.AttachWindow(bar.Handle)
 	// 弹层窗口是懒创建、只隐藏不销毁的 —— 宿主窗口销毁时必须跟着销毁, 否则
 	// 消息循环的退出条件(所有窗口对象都销毁)永远不满足, 关窗后进程不退出
@@ -209,8 +229,14 @@ func (mb *Menubar) AddMenu(text string) *MenubarMenu {
 	// 高度/圆角仍走 sm 预设, 然后按新字号重量宽。
 	btn.fontPx = 14
 	btn.FitWidth()
+	if mb.disabled {
+		btn.Enable(false)
+	}
 	btn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		*pbHandled = true
+		if mb.disabled {
+			return 0
+		}
 		if mb.open == idx {
 			mb.closeAll(true)
 			return 0
@@ -224,12 +250,18 @@ func (mb *Menubar) AddMenu(text string) *MenubarMenu {
 		return 0
 	})
 	btn.AddEvent_MouseMove(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
+		if mb.disabled {
+			return 0
+		}
 		if mb.open >= 0 && mb.open != idx {
 			mb.openMenu(idx, false)
 		}
 		return 0
 	})
 	btn.AddEvent_KeyDown(func(hEle int, wParam, lParam uintptr, pbHandled *bool) int {
+		if mb.disabled {
+			return 0
+		}
 		switch wParam {
 		case mbVKDown, mbVKEnter, mbVKSpace:
 			mb.openMenu(idx, true)
@@ -292,6 +324,50 @@ func (mb *Menubar) IsOpen() bool {
 	return mb != nil && mb.open >= 0
 }
 
+// SetDisabled 禁用/启用整条菜单栏(对应 Base UI Menubar 的 disabled): 禁用时关闭
+// 已打开的菜单, 触发区不响应点击/悬停切换/键盘, 也不参与焦点; 条目级禁用独立保留。
+func (mb *Menubar) SetDisabled(v bool) *Menubar {
+	if mb == nil || mb.disabled == v {
+		return mb
+	}
+	if v {
+		mb.closeAll(false)
+	}
+	mb.disabled = v
+	for _, tr := range mb.triggers {
+		if tr != nil && xc.XC_IsHXCGUI(tr.Handle, xcc.XC_ELE) {
+			tr.Enable(!v)
+		}
+	}
+	return mb
+}
+
+// Disabled 报告整条菜单栏是否禁用。
+func (mb *Menubar) Disabled() bool { return mb != nil && mb.disabled }
+
+// OnOpenChange 注册整条菜单栏的开合回调: 任一菜单打开时 true, 全部关闭时 false。
+func (mb *Menubar) OnOpenChange(fn func(open bool)) *Menubar {
+	if mb != nil && fn != nil {
+		mb.changes = append(mb.changes, fn)
+	}
+	return mb
+}
+
+// emitOpen 只在"任一菜单打开"状态真的变化时回调一次(切换菜单不重复通知)。
+func (mb *Menubar) emitOpen() {
+	if mb == nil {
+		return
+	}
+	open := mb.open >= 0
+	if open == mb.lastEmitted {
+		return
+	}
+	mb.lastEmitted = open
+	for _, fn := range mb.changes {
+		fn(open)
+	}
+}
+
 // focusTrigger 把键盘焦点移到某个触发钮(←→ 在触发区之间移动)。
 func (mb *Menubar) focusTrigger(idx int) {
 	if idx < 0 || idx >= len(mb.triggers) {
@@ -302,7 +378,7 @@ func (mb *Menubar) focusTrigger(idx int) {
 
 // openMenu 打开第 idx 个菜单。keyboard=true 时高亮第一个可选项。
 func (mb *Menubar) openMenu(idx int, keyboard bool) {
-	if idx < 0 || idx >= len(mb.menus) {
+	if mb == nil || mb.disabled || idx < 0 || idx >= len(mb.menus) {
 		return
 	}
 	v := mb.menus[idx]
@@ -332,6 +408,7 @@ func (mb *Menubar) openMenu(idx int, keyboard bool) {
 	// ShowAt 之前先按最终大小重绘一次内容, 避免首帧空白(弹层窗口在屏幕外预显示)
 	v.body.Redraw(true)
 	v.panel.ShowAt(mb.triggers[idx].Handle, x, y)
+	mb.emitOpen()
 }
 
 // popupPos 返回弹层左上角的屏幕逻辑坐标(alignOffset -4, sideOffset 8)。
@@ -370,6 +447,7 @@ func (mb *Menubar) onPanelHidden(v *menubarView) {
 		mb.lastCloseIdx = mb.open
 		mb.triggers[mb.open].SetExpanded(false)
 		mb.open = -1
+		mb.emitOpen()
 	}
 	v.hover = -1
 }
@@ -395,6 +473,7 @@ func (mb *Menubar) closeAll(focusTrigger bool) {
 	mb.open = -1
 	mb.lastClose = time.Now()
 	mb.lastCloseIdx = idx
+	mb.emitOpen()
 	if focusTrigger {
 		mb.focusTriggerLater(idx)
 	}
@@ -448,6 +527,45 @@ func (m *MenubarMenu) Check(text string, checked bool, opts ...MenuOpt) *Menubar
 // Radio 添加单选条目(同 MenuGroup 互斥)。
 func (m *MenubarMenu) Radio(text string, checked bool, opts ...MenuOpt) *MenubarMenu {
 	return m.add(&menuItem{kind: menuKindRadio, text: text, checked: checked}, opts)
+}
+
+// RadioGroupValue 返回某个单选组(MenuGroup)当前勾选条目的文本, 没有勾选时为空串。
+func (m *MenubarMenu) RadioGroupValue(group int32) string {
+	if m == nil || m.v == nil {
+		return ""
+	}
+	for _, it := range m.v.items {
+		if it.kind == menuKindRadio && it.group == group && it.checked {
+			return it.text
+		}
+	}
+	return ""
+}
+
+// SetRadioGroupValue 按条目文本设置某个单选组的勾选状态(条目文本即组值, 与
+// RadioGroupValue / OnRadioGroupChange 同一口径)。菜单栏条目常驻, 在菜单打开前
+// 用它反映调用方持有的当前值。
+func (m *MenubarMenu) SetRadioGroupValue(group int32, value string) *MenubarMenu {
+	if m == nil || m.v == nil {
+		return m
+	}
+	for _, it := range m.v.items {
+		if it.kind != menuKindRadio || it.group != group {
+			continue
+		}
+		it.checked = value != "" && it.text == value
+	}
+	return m
+}
+
+// OnRadioGroupChange 注册单选组变化回调(用户选中某项时触发一次, value = 条目文本),
+// 对应 MenubarRadioGroup 的 onValueChange。
+func (m *MenubarMenu) OnRadioGroupChange(fn func(group int32, value string)) *MenubarMenu {
+	if m == nil || m.v == nil {
+		return m
+	}
+	m.v.radioCB = fn
+	return m
 }
 
 // Label 添加分组标签(不可聚焦、不可点)。
@@ -701,6 +819,9 @@ func (v *menubarView) dispatch(it *menuItem) {
 		}
 		if it.onCheck != nil {
 			it.onCheck(true)
+		}
+		if v.radioCB != nil {
+			v.radioCB(it.group, it.text)
 		}
 	default:
 		if it.onSelect != nil {

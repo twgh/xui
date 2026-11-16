@@ -14,20 +14,21 @@ import (
 	"github.com/twgh/xui/icons"
 )
 
-// NavigationMenu 的几何常量(逻辑像素), 对齐 shadcn navigation-menu.tsx(radix-nova):
-// 触发区 h-9(36) / px-4(16), 列表 gap-1(4), 视口 mt-1.5(6) + p-2(8);
-// 内容链接行是文档示例的 ListItem(p-3 + 标题 20 + 间距 4 + 一行说明 20)。
+// NavigationMenu 的几何常量(逻辑像素), 对齐 shadcn navigation-menu.tsx(base-nova):
+// 触发区 h-9(36) / px-2.5(10), 列表 gap-0, 视口 sideOffset 8 + p-1(4);
+// 内容链接行是文档示例的 ListItem(p-2 + 标题 20 + 间距 4 + 一行说明 20)。
 const (
 	navH         int32 = 36 // 触发区 / 列表高
-	navGap       int32 = 4  // 列表 gap-1
-	navPadX      int32 = 16 // 触发区 px-4
-	navLinkPadX  int32 = 8  // 顶级普通链接 p-2
+	navGap       int32 = 0  // 列表 gap-0
+	navPadX      int32 = 10 // 触发区 px-2.5
+	navLinkPadX  int32 = 10 // 顶级普通链接同 navigationMenuTriggerStyle 的 px-2.5
 	navIcon      int32 = 12 // chevron size-3
 	navIconGap   int32 = 4  // chevron ml-1
-	navPanelGap  int32 = 6  // 视口 mt-1.5
-	navContentPd int32 = 8  // 视口 p-2
+	navPanelGap  int32 = 8  // sideOffset
+	navContentPd int32 = 4  // 视口 p-1
 	navDefaultW  int32 = 400
-	navLinkPd    int32 = 12 // ListItem p-3
+	navLinkPd    int32 = 8  // ListItem p-2
+	navLinkIcon  int32 = 16 // 链接前置图标 size-4
 	navLinkTitle int32 = 20 // text-sm 行高
 	navLinkGap   int32 = 4  // 标题与说明的间距
 	navLinkH     int32 = navLinkPd*2 + navLinkTitle + navLinkGap + navLinkTitle
@@ -35,15 +36,14 @@ const (
 	navSlide     int32 = 208 // 内容切换的横向滑入距离(slide-in-from-*-52 = 208)
 )
 
-// NavigationMenu 的过渡时长, 对齐 radix NavigationMenu.Root 的默认值:
-// delayDuration 200 / 离开视口后 150ms 收起 / skipDelayDuration 300;
-// chevron rotate-180 是 duration-300, 内容切换动画 duration-200。
+// NavigationMenu 的过渡时长, 对齐 base-nova: 悬停 50ms 打开、离开 50ms 收起;
+// 内容页切换 350ms(cubic-bezier 由 Presence 的默认缓动承担), chevron 旋转 300ms。
 const (
-	navOpenDelay  = 200 * time.Millisecond
-	navCloseDelay = 150 * time.Millisecond
+	navOpenDelay  = 50 * time.Millisecond
+	navCloseDelay = 50 * time.Millisecond
 	navSkipDelay  = 300 * time.Millisecond
 	navChevronDur = 300 * time.Millisecond
-	navContentDur = 200 * time.Millisecond
+	navContentDur = 350 * time.Millisecond
 )
 
 const (
@@ -66,15 +66,17 @@ func navFont() int {
 }
 
 // NavigationMenu 导航菜单: 一排触发区 + 一个**共享**的自绘视口, 对应 shadcn
-// navigation-menu.tsx(radix-nova, viewport 模式)。
+// navigation-menu.tsx(base-nova, viewport 模式)。
 //
 // 与 shadcn 对齐:
-//   - 触发区 h-9 px-4 rounded-md text-sm; 悬停 bg-accent, 展开态 bg-accent/50
-//     (悬停时回到全亮); chevron 12 随展开旋转 180°(300ms); 普通链接是 p-2 的菜单项;
-//   - 视口是一块共享弹层: 贴在列表左下方(mt-1.5), 宽高随当前菜单的内容变化,
-//     不会为每个触发区各开一块; 内容切换时新页面从切换方向滑入 208px 并淡入(200ms);
-//   - 交互: 悬停触发区 200ms 后打开; 离开触发区/视口 150ms 后收起(进入另一者即取消);
-//     打开后悬停其它触发区立即切换; 关闭后 300ms 内切到其它触发区立即打开;
+//   - 触发区 h-9 px-2.5 rounded-lg text-sm; 悬停 / 按下 bg-muted, 展开态 bg-muted/50
+//     (悬停时回到全亮); chevron 12 随展开旋转 180°(300ms); 普通链接同触发区样式;
+//   - 视口是一块共享弹层: 贴在列表左下方(sideOffset 8), 宽高随当前菜单的内容变化,
+//     不会为每个触发区各开一块; 内容切换时新页面从切换方向滑入 208px 并淡入(350ms);
+//   - 内容链接是"标题 + 一行说明"行: 悬停 bg-muted, 当前页(data-active)bg-muted/50,
+//     可加 16px 前置图标;
+//   - 交互: 悬停触发区 50ms 后打开; 离开触发区/视口 50ms 后收起(进入另一者即取消);
+//     打开后悬停其它触发区立即切换; 关闭后 300ms 内切到其它触发区直接打开;
 //     点击触发区开合; 点击内容里的链接后关闭; ESC / Tab / 宿主窗口失焦、移动、缩放关闭。
 //   - 键盘: ←→ 在顶级项之间移动焦点, ↓/Enter/Space 打开, ↓ 再进入内容;
 //     内容里 ↑↓←→/Home/End 移动高亮, Enter 激活, ESC 关闭。
@@ -162,13 +164,16 @@ type NavigationMenuContent struct {
 	ele  *widget.LayoutEle
 }
 
-// NavigationMenuLink 是内容页里的一行"标题 + 说明"链接。
+// NavigationMenuLink 是内容页里的一行"标题 + 说明"链接, 可带 16px 前置图标
+// (对应上游 NavigationMenuLink 的任意 children / With Icon 示例)与当前页状态。
 type NavigationMenuLink struct {
 	*widget.Element
-	nav   *NavigationMenu
-	title string
-	desc  string
-	click func()
+	nav    *NavigationMenu
+	title  string
+	desc   string
+	icon   string
+	active bool
+	click  func()
 }
 
 // NavigationMenuItemOption 配置顶级菜单项。
@@ -555,6 +560,29 @@ func (l *NavigationMenuLink) activate() {
 	}
 }
 
+// SetIcon 设置前置图标(16×16, 与标题同一行); 传空串清除。
+func (l *NavigationMenuLink) SetIcon(path string) *NavigationMenuLink {
+	if l == nil || l.icon == path {
+		return l
+	}
+	l.icon = path
+	l.Redraw(false)
+	return l
+}
+
+// SetActive 标记为当前页(上游 Link 的 active / data-active): bg-muted/50, 悬停回到全亮。
+func (l *NavigationMenuLink) SetActive(active bool) *NavigationMenuLink {
+	if l == nil || l.active == active {
+		return l
+	}
+	l.active = active
+	l.Redraw(false)
+	return l
+}
+
+// Active 报告是否为当前页。
+func (l *NavigationMenuLink) Active() bool { return l != nil && l.active }
+
 // ===== 展开 / 收起 =====
 
 // openItem 打开第 idx 个菜单。keyboard=true 时打开后进入内容键盘导航。
@@ -775,7 +803,7 @@ func (n *NavigationMenu) ensurePanel() bool {
 		return false
 	}
 	t := xui.Current()
-	p.paintRadius = t.RadiusMd()
+	p.paintRadius = t.RadiusLg()
 	p.paintBorderSolid = true
 	content := p.LayoutContent(navContentPd, 0)
 	if content == nil {
@@ -1300,7 +1328,7 @@ func (n *NavigationMenu) paintItem(it *navItem) func(hEle int, hDraw int, pbHand
 		t := xui.Current()
 		st := xui.StateOf(hEle)
 		host := t.Card
-		radius := t.RadiusMd()
+		radius := t.RadiusLg()
 		// 透明元素重绘不擦底: 先铺宿主底色(同 Accordion/Toggle)
 		p.FillRound(&p.Rc, host, 0)
 
@@ -1308,10 +1336,13 @@ func (n *NavigationMenu) paintItem(it *navItem) func(hEle int, hDraw int, pbHand
 		hv := xui.Hover(hEle, st.Hover && !disabled)
 		var bg xui.Color
 		if it.open {
-			// data-[state=open]:bg-accent/50, 悬停时回到全亮 bg-accent
-			bg = t.Accent.ScaleAlpha(0.5 + 0.5*hv)
+			// data-popup-open:bg-muted/50, 悬停时回到全亮 bg-muted
+			bg = t.Muted.ScaleAlpha(0.5 + 0.5*hv)
+		} else if st.Pressed && !disabled {
+			// data-pressed:bg-muted
+			bg = t.Muted
 		} else if hv > 0 {
-			bg = t.Accent.ScaleAlpha(hv)
+			bg = t.Muted.ScaleAlpha(hv)
 		}
 		if st.Focused && !disabled && xui.FocusedByKeyboard() {
 			p.FocusFrame(t.Ring, host, radius)
@@ -1332,12 +1363,6 @@ func (n *NavigationMenu) paintItem(it *navItem) func(hEle int, hDraw int, pbHand
 		}
 
 		fore := t.Foreground
-		if a := hv; it.open || a > 0 {
-			if it.open && a < 1 {
-				a = 1 // 展开态文字就是 accent-foreground
-			}
-			fore = xui.Fade(fore, t.AccentForeground, a)
-		}
 		if disabled {
 			fore = fore.Mix(host, 0.5)
 		}
@@ -1380,8 +1405,8 @@ func (n *NavigationMenu) paintItem(it *navItem) func(hEle int, hDraw int, pbHand
 	}
 }
 
-// onPaint 绘制内容链接行: 悬停/键盘高亮铺 accent, 键盘高亮另画 focus-visible 环;
-// 标题 14px, 说明一行 14px muted(超宽省略号)。
+// onPaint 绘制内容链接行: 悬停/键盘高亮铺 muted, 当前页 bg-muted/50, 键盘高亮另画
+// focus-visible 环; 标题 14px, 说明一行 14px muted(超宽省略号)。
 func (l *NavigationMenuLink) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
@@ -1390,7 +1415,7 @@ func (l *NavigationMenuLink) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	*pbHandled = true
 	t := xui.Current()
 	st := xui.StateOf(hEle)
-	radius := t.RadiusSm()
+	radius := t.RadiusMd()
 	// 弹层底色是 Popover, 不是 Card
 	p.FillRound(&p.Rc, t.Popover, 0)
 
@@ -1398,20 +1423,35 @@ func (l *NavigationMenuLink) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	hovered := st.Hover || (l.nav != nil && l.nav.hoverLink == l)
 	hv := xui.Hover(hEle, hovered)
 	if kb {
-		p.FocusFrame(t.Ring, t.Accent, radius)
+		p.FocusFrame(t.Ring, t.Muted, radius)
+	} else if l.active {
+		// data-active:bg-muted/50, 悬停回到全亮
+		p.FillRound(&p.Rc, t.Muted.ScaleAlpha(0.5+0.5*hv), radius)
 	} else if hv > 0 {
-		p.FillRound(&p.Rc, t.Accent.ScaleAlpha(hv), radius)
+		p.FillRound(&p.Rc, t.Muted.ScaleAlpha(hv), radius)
 	}
 
 	f := navFont()
 	if f != 0 {
 		p.Draw.SetFont(f)
 	}
+	textX := p.Rc.Left + navLinkPd
 	titleRc := xc.RECT{
-		Left:   p.Rc.Left + navLinkPd,
+		Left:   textX,
 		Top:    p.Rc.Top + navLinkPd - 1,
 		Right:  p.Rc.Right - navLinkPd,
 		Bottom: p.Rc.Top + navLinkPd + navLinkTitle - 1,
+	}
+	if l.icon != "" {
+		iconRc := xc.RECT{
+			Left:   textX,
+			Top:    (titleRc.Top + titleRc.Bottom - navLinkIcon) / 2,
+			Right:  textX + navLinkIcon,
+			Bottom: (titleRc.Top + titleRc.Bottom + navLinkIcon) / 2,
+		}
+		p.Icon(l.icon, &iconRc, t.Foreground, 2)
+		textX += navLinkIcon + navLinkGap
+		titleRc.Left = textX
 	}
 	p.Text(l.title, &titleRc, t.Foreground,
 		xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap|

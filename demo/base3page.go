@@ -15,7 +15,7 @@ func buildPopoverCard(body *widget.LayoutEle) {
 	_, vpop := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "弹出层", vpop.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Popover: 点击触发、外部/ESC 关闭, side/align/alignOffset 可调; HoverCard: 悬停预览且不抢焦点", vpop.Handle))
+		"Popover: 点击触发、外部/ESC 关闭, side/align/alignOffset 可调; HoverCard: 悬停或聚焦预览, 不抢焦点", vpop.Handle))
 
 	popRow := xui.HStack(vpop.Handle, 36, 12)
 	popBtn := ui.NewButton(0, 0, 0, 0, "打开 Popover", popRow.Handle,
@@ -80,9 +80,12 @@ func buildPopoverCard(body *widget.LayoutEle) {
 			ui.WithAvatarSize(ui.AvatarSizeLg), ui.WithAvatarImageData(demoAvatar()))
 		col := xui.VStackWeight(r.Handle, 1, 2)
 		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "@xui", col.Handle).SetMedium().SetFontSize(14))
-		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "shadcn 风格 xcgui 自绘组件库", col.Handle).SetMuted().SetFontSize(14))
+		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "xcgui 自绘组件库", col.Handle).SetMuted().SetFontSize(14))
 		xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "加入于 2026 年 10 月", c).SetMuted().SetFontSize(14))
 	}))
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20,
+		"HoverCard: 悬停 600ms 或 Tab 聚焦打开, 移开 300ms 收起; 卡片宽 256 / 内边距 10 / alignOffset 4",
+		vpop.Handle).SetFontSize(14).SetMuted())
 
 }
 

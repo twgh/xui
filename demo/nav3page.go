@@ -116,7 +116,7 @@ func buildNav3Page(body *widget.LayoutEle) {
 	_, v4 := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可折叠面板", v4.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"radix Collapsible: 触发区 + 内容区两种组合; 内容高度 200ms 过渡, 收起后不占布局", v4.Handle))
+		"Collapsible: 触发区 + 内容区两种组合; 内容高度 200ms 过渡, 收起后不占布局; 用户切换可否决", v4.Handle))
 	ex := row(v4.Handle, 0, 24)
 	left := xui.VStack(ex.Handle, 1, 8)
 	buildCollapsibleOrder(left.Handle)
@@ -125,7 +125,7 @@ func buildNav3Page(body *widget.LayoutEle) {
 }
 
 func buildCollapsibleTextTrigger(parent int) {
-	xui.ItemFill(hint(parent, "整宽触发区 · 文字靠左 / 箭头贴右"))
+	xui.ItemFill(hint(parent, "整宽触发区 · 可否决收起(模拟未保存内容)"))
 	panel := ui.NewCollapsible(0, 0, 0, 0, parent)
 	panel.SetSpace(8)
 	xui.ItemFill(panel)
@@ -138,7 +138,29 @@ func buildCollapsibleTextTrigger(parent int) {
 	panel.OnOpenChange(func(open bool) {
 		btn.SetTrailingIcon(common.Choose(open, icons.IconChevronUp, icons.IconChevronDown))
 	})
+	locked := false
+	status := ui.NewLabel(0, 0, 0, 20, "状态: 未锁定, 可正常收起", panel.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(status)
+	panel.OnOpenChangeVeto(func(open bool) bool {
+		if !open && locked {
+			status.SetText("已拦截收起: 请先解除锁定").Redraw(false)
+			return false
+		}
+		return true
+	})
 	body := panel.ContentStack(8)
+	lock := ui.NewCheckbox(0, 0, 0, 0, "锁定收起(模拟未保存内容)", body.Handle)
+	xui.ItemFill(lock)
+	lock.OnCheckedChange(func(on bool) bool {
+		locked = on
+		if on {
+			status.SetText("状态: 已锁定, 收起会被拦截")
+		} else {
+			status.SetText("状态: 未锁定, 可正常收起")
+		}
+		status.Redraw(false)
+		return true
+	})
 	desc := ui.NewLabel(0, 0, 0, 20, "通知与隐私相关的开关都放在这里; 展开/收起走同一个高度过渡。",
 		body.Handle).SetFontSize(14).SetMuted()
 	xui.ItemFill(desc)

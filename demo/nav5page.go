@@ -4,6 +4,7 @@ import (
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xui"
 	ui "github.com/twgh/xui/components"
+	"github.com/twgh/xui/icons"
 )
 
 // ===== 页 14: 导航5(导航菜单 / 菜单栏) =====
@@ -13,23 +14,41 @@ func buildNav5Page(body *widget.LayoutEle) {
 	_, vn := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "导航菜单", vn.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"共享视口贴在列表下方: 悬停 200ms 打开、离开 150ms 收起; 切换菜单时视口随内容收放, 新页面从切换方向滑入", vn.Handle))
+		"共享视口贴在列表下方: 悬停 50ms 打开、离开 50ms 收起; 切换菜单时视口随内容收放, 新页面从切换方向滑入; 当前页链接带 data-active 底色", vn.Handle))
 	navStatus := ui.NewLabel(0, 0, 0, 20, "尚未选择链接", vn.Handle).SetFontSize(14).SetMuted()
 	xui.ItemFill(navStatus)
 	setNavStatus := func(text string) { navStatus.SetText(text).Redraw(false) }
 	navState := ui.NewLabel(0, 0, 0, 20, "菜单: 已收起", vn.Handle).SetFontSize(14).SetMuted()
 	xui.ItemFill(navState)
 
+	var activeNav *ui.NavigationMenuLink
+	setNavActive := func(l *ui.NavigationMenuLink, text string) {
+		if activeNav != nil && activeNav != l {
+			activeNav.SetActive(false)
+		}
+		activeNav = l
+		if l != nil {
+			l.SetActive(true)
+		}
+		setNavStatus(text)
+	}
+
 	nav := ui.NewNavigationMenu(vn.Handle)
 	nav.AddMenu("开始使用", func(c *ui.NavigationMenuContent) {
-		c.Link("组件介绍", "可复用的自绘组件, 基于 xcgui 构建", func() {
-			setNavStatus("开始使用 / 组件介绍")
+		var l1, l2, l3 *ui.NavigationMenuLink
+		l1 = c.Link("组件介绍", "可复用的自绘组件, 基于 xcgui 构建", func() {
+			setNavActive(l1, "开始使用 / 组件介绍")
 		})
-		c.Link("安装", "把组件源码拷进你的项目", func() {
-			setNavStatus("开始使用 / 安装")
+		l1.SetActive(true)
+		if activeNav == nil {
+			activeNav = l1
+		}
+		l2 = c.Link("安装", "把组件源码拷进你的项目", func() {
+			setNavActive(l2, "开始使用 / 安装")
 		})
-		c.Link("排版", "标题、正文与间距的基本规则", func() {
-			setNavStatus("开始使用 / 排版")
+		l2.SetIcon(icons.IconDownload)
+		l3 = c.Link("排版", "标题、正文与间距的基本规则", func() {
+			setNavActive(l3, "开始使用 / 排版")
 		})
 	}, ui.WithNavigationMenuWidth(400))
 	nav.AddMenu("组件", func(c *ui.NavigationMenuContent) {
@@ -39,11 +58,12 @@ func buildNav5Page(body *widget.LayoutEle) {
 			{{"月历", "范围选择 / 多月并排"}, {"通知", "堆叠、倒计时与富文本配色"}},
 		}
 		for _, pair := range grid {
-			rh := xui.HStack(c.Handle(), 68, 8)
+			rh := xui.HStack(c.Handle(), 60, 8)
 			for _, cell := range pair {
 				cell := cell // go.mod 还是 1.18: 循环变量按旧语义共享, 回调里必须拷一份
-				l := c.LinkIn(rh.Handle, cell[0], cell[1], func() {
-					setNavStatus("组件 / " + cell[0])
+				var l *ui.NavigationMenuLink
+				l = c.LinkIn(rh.Handle, cell[0], cell[1], func() {
+					setNavActive(l, "组件 / "+cell[0])
 				})
 				xui.ItemWeight(l, 1)
 			}
@@ -60,18 +80,28 @@ func buildNav5Page(body *widget.LayoutEle) {
 		}
 	})
 	xui.ItemFill(desc(vn.Handle,
-		"悬停 200ms 打开 · 离开 150ms 收起 · 关闭后 300ms 内切到其它触发区立即打开; ←→ 移动焦点, ↓ 进入内容, ↑↓ 选择, Enter 激活, ESC 关闭。"))
+		"悬停 50ms 打开 · 离开 50ms 收起 · 关闭后 300ms 内切到其它触发区直接打开; ←→ 移动焦点, ↓ 进入内容, ↑↓ 选择, Enter 激活, ESC 关闭。"))
 
 	_, v := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "菜单栏", v.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Menubar: 打开任一菜单后, 鼠标移到其它触发区即切换; 勾选/单选/子菜单/快捷键", v.Handle))
+		"Menubar: 打开任一菜单后, 鼠标移到其它触发区即切换; 勾选/单选/子菜单/快捷键; 可整条禁用并监听开合", v.Handle))
 
 	status := ui.NewLabel(0, 0, 0, 20, "尚未选择条目", v.Handle).SetFontSize(14).SetMuted()
 	xui.ItemFill(status)
 	setStatus := func(text string) { status.SetText(text).Redraw(false) }
+	mbState := ui.NewLabel(0, 0, 0, 20, "菜单栏: 已收起", v.Handle).SetFontSize(14).SetMuted()
+	xui.ItemFill(mbState)
 
 	mb := ui.NewMenubar(v.Handle)
+	mb.OnOpenChange(func(open bool) {
+		if open {
+			mbState.SetText("菜单栏: 已打开")
+		} else {
+			mbState.SetText("菜单栏: 已收起")
+		}
+		mbState.Redraw(false)
+	})
 
 	file := mb.AddMenu("文件")
 	file.Item("新建标签页", ui.MenuShortcut("Ctrl+T"), ui.MenuOnSelect(func() {
@@ -121,14 +151,33 @@ func buildNav5Page(body *widget.LayoutEle) {
 
 	profile := mb.AddMenu("用户")
 	profile.Label("账号")
-	profile.Radio("浅色主题", true, ui.MenuGroup(1), ui.MenuOnCheck(func(bool) {
-		setStatus("用户 / 主题: 浅色")
-	}))
-	profile.Radio("深色主题", false, ui.MenuGroup(1), ui.MenuOnCheck(func(bool) {
-		setStatus("用户 / 主题: 深色")
-	}))
+	profile.Radio("浅色主题", true, ui.MenuGroup(1))
+	profile.Radio("深色主题", false, ui.MenuGroup(1))
+	profile.OnRadioGroupChange(func(group int32, value string) {
+		setStatus("用户 / 主题: " + value)
+	})
 	profile.Separator()
 	profile.Item("退出登录", ui.MenuDestructive(), ui.MenuOnSelect(func() { setStatus("用户 / 退出登录") }))
+
+	row := xui.HStack(v.Handle, 28, 8)
+	xui.ItemFill(row)
+	disBtn := ui.NewButton(0, 0, 0, 0, "禁用菜单栏", row.Handle,
+		ui.WithVariant(ui.ButtonOutline), ui.WithSize(ui.ButtonSizeSm))
+	xui.ItemWidth(disBtn, 104)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 20, "禁用后触发区变灰、不响应鼠标与键盘", row.Handle).SetFontSize(14).SetMuted())
+	disBtn.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		disable := !mb.Disabled()
+		mb.SetDisabled(disable)
+		if disable {
+			disBtn.SetText("启用菜单栏")
+			setStatus("菜单栏已禁用")
+		} else {
+			disBtn.SetText("禁用菜单栏")
+			setStatus("菜单栏已启用")
+		}
+		disBtn.Redraw(false)
+		return 0
+	})
 
 	xui.ItemFill(desc(v.Handle,
 		"↑↓ 移动 · Enter 选中 · ←→ 切换顶级菜单 · ESC 关闭并把焦点还给触发区; 子菜单悬停展开(非激活弹层, 不抢焦点)。"))

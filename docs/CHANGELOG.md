@@ -5,6 +5,17 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第十一批: Hover Card / Collapsible / Breadcrumb / Navigation Menu / Menubar / Sidebar 对齐 base-nova**(2026-11-16, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的 3.9 与 Q6):
+  - **Hover Card(HC1)**: 默认延时改为 600ms 打开 / 300ms 关闭(Base UI PreviewCard 默认值; 官方示例传 10/100 是演示覆盖); 卡片几何对齐 `w-64 p-2.5`: 宽 256 / 内边距 10 / sideOffset 4 / alignOffset 4, 新增 `WithHoverCardAlignOffset`; 触发区键盘聚焦立即打开、失焦按 300ms 关(面板仍是非激活窗口, 不抢焦点)。demo 基础3 的卡片说明缩短到 256 宽内不再省略。
+  - **Collapsible(CL1)**: 补 `OnOpenChangeVeto(func(open bool) bool)`(Base UI Root 的 `eventDetails.cancel()`): 点击 / 空格回车 / Toggle 可否决, 程序化 `SetOpen` 不经过; 否决时不改状态、不播高度过渡。demo 导航3 的「高级设置」加了"锁定收起"复选框演示拦截。
+  - **Breadcrumb(BC1 / BC2)**: `NewBreadcrumbSeparatorText` 用文字做分隔符(按字号量宽、换主题重量); 省略号新增 `WithBreadcrumbEllipsisOnClick`, 可悬停反馈、进键盘焦点环、Enter / 空格触发(下拉菜单在回调里自行组合)。demo 导航2 换成「首页 / … / 设置 / 个人资料」。
+  - **Navigation Menu(NM1)**: 几何与配色对齐 base-nova —— 列表 gap 0、视口 p-1 + sideOffset 8、圆角 `RadiusLg`; 触发区 / 链接悬停与按下取 `Muted`, 展开态 50%(悬停回全亮), 去掉 accent 配色; 链接新增 `SetIcon`(16px 前置图标, 标题右移)与 `SetActive`(当前页 `bg-muted/50`)。demo 导航5 更新说明与"安装"链接图标。
+  - **Menubar(MB1 / MB4)**: 整条 `WithMenubarDisabled` / `SetDisabled` / `Disabled`(触发器置灰、鼠标与键盘均不响应, 已开的弹层关闭); `OnOpenChange` 只在"任一菜单打开 / 全部关闭"变化时发。单选组补齐 `RadioGroupValue` / `SetRadioGroupValue` / `OnRadioGroupChange`(条目文本即组值, 与 Menu 同一口径; 组内互斥沿用现有模型)。demo 导航5 加"禁用/启用菜单栏"按钮, 用户菜单改用组回调。
+  - **Sidebar(SB1)**: 新增 `NewSidebarMenuSkeleton` / `SidebarGroup.AddSkeleton`: 32 高行, 可选 16px 图标块 + 16 高文字条(宽度 10~100%, 默认 70%), 2s 不透明脉冲, 图标栏只留图标块。demo 导航6 加「加载中」组, 分组动作重播 1.2s 骨架加载, 完成后换出真实条目(同时补了隐藏/显示后的重绘)。
+  - **分流**: 无破坏性变更; MB2 / MB3(Menubar 完整 base-nova 几何与右侧指示器)、CL2(触发区/内容任意布局)、SB2(菜单按钮内容槽)、BC3(链接 Tab 焦点)、NM2(嵌套子菜单)、RS1 / RS2 / RS4 列为 Q6 待拍板; HC2(弹层 zoom/slide)等暂缓, keepMounted / 移动端等为能力边界。下一轮核查从 #45 Carousel 起。
+  - **回归修复**: `breadcrumb.go` 新用 `linkCursor()` 后, `registry.json` 的 breadcrumb 文件清单漏了共享助手 `cursor.go`, 逐组件单独安装时报 `undefined: linkCursor`; 已补上清单。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 7 个组件逐个单独 `add` 后 `go build ./ui` 通过(该步骤发现并修复了 breadcrumb 的 cursor.go 缺登记), `add --all` 后 `go build ./ui` 通过; demo 150% DPI 实机核对 —— HoverCard 600ms 打开且卡片宽 256/p-2.5、聚焦打开、省略号点击与文字分隔符正确、折叠面板锁定后收起被拦截、导航菜单展开态为 Muted 且当前页/图标正确、菜单栏禁用后不响应且开合状态正确、单选组回调返回条目文本、侧栏 3 条骨架行脉冲并在 1.2s 后换成真实条目; 暗色下导航菜单与侧栏骨架配色同样正确。
+
 - ✅ **修复: 命令面板清空搜索词后两项同时高亮**(2026-11-16, 用户反馈: 悬停「日历」→ 搜索「设置」→ 删除关键字):
   - **现象**: 清空搜索词后, 「日历」和「设置」两行同时带选中底色, 键盘上下键的高亮起点与视觉不一致。
   - **根因**: `applyFilter` 在重建可见列表前没有清掉旧高亮: 旧 `active` 下标只对旧列表有效, 却直接被置为 -1; 若那条仍匹配新列表, 它的 `active` 标记会留着, 随后「自动高亮第一项」再点亮另一条, 于是两项同时亮。
