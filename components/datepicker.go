@@ -57,6 +57,7 @@ type DatePicker struct {
 	yearTo    int
 	disabled  func(time.Time) bool
 	presets   []CalendarPreset
+	cellPx    int32 // 弹层月历的格子边长(--cell-size), 0 = 默认 28
 
 	editable      bool
 	edit          *widget.Edit
@@ -147,6 +148,20 @@ func WithDatePickerDisabled(fn func(time.Time) bool) DatePickerOption {
 // 完整区间; 单选模式点击预设即选中并关闭弹层。
 func WithDatePickerPresets(presets ...CalendarPreset) DatePickerOption {
 	return func(d *DatePicker) { d.presets = append(d.presets, presets...) }
+}
+
+// WithDatePickerCellSize 放大弹层里的月历(格子边长, 单位逻辑像素, 默认 28)。
+//
+// 弹层与月历的尺寸都由格子反算, 所以这一个值就把「弹层 + 月历 + 字号」整组放大:
+// 36 ≈ 125% 观感, 42 ≈ 150%。范围模式(两个并排月份)一起放大, 宽度是单月的两倍多,
+// 显示器窄时注意弹层可能贴边。
+func WithDatePickerCellSize(px int32) DatePickerOption {
+	return func(d *DatePicker) {
+		if px < 0 {
+			px = 0
+		}
+		d.cellPx = px
+	}
 }
 
 // WithDatePickerEditable 把触发区换成可输入形态(InputGroup): 文字区是原生 Edit,
@@ -584,15 +599,16 @@ func (d *DatePicker) ensurePopup() bool {
 	if d.rangeMode {
 		months = 2
 	}
-	cw := CalWidthFor(months)
-	ch := CalHeightForMonths(cw, months)
+	// 弹层尺寸跟着月历走: 格子尺寸(WithDatePickerCellSize)会同时改宽高与字号。
+	cw := calDefaultWidth(months, false, d.cellPx)
+	ch := calHeightForCell(cw, months, d.cellPx)
 	// 预设按钮在月历页脚里绘制, 弹层高度要把换行后的页脚算进来
 	if len(d.presets) > 0 {
 		items := make([]CalendarFooterItem, len(d.presets))
 		for i, p := range d.presets {
 			items[i] = CalendarFooterItem{Text: p.Label, OnClick: func() {}}
 		}
-		ch += calLayoutFooter(cw, months, false, 0, items).totalH
+		ch += calLayoutFooter(cw, months, false, d.cellPx, items).totalH
 	}
 	panel := newPopoverPanel(cw, ch, d.Handle)
 	if panel == nil {
@@ -604,6 +620,9 @@ func (d *DatePicker) ensurePopup() bool {
 		}
 	}
 	opts := []CalendarOption{WithCalendarFlat(), WithCalendarMonths(months)}
+	if d.cellPx > 0 {
+		opts = append(opts, WithCalendarCellSize(d.cellPx))
+	}
 	if d.rangeMode {
 		opts = append(opts,
 			WithCalendarRange(),

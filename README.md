@@ -171,7 +171,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块:都有禁用与校验态;Progress 可 indeterminate 短条往返与 `ui.NewProgressField`(标题 + 百分比 + 条);Slider 支持值域/步进、范围与多滑块、垂直、反向 |
 | Rating | 星级评分(纯自绘):整星 / 半星、悬停预览、只读与禁用;点击提交(再点当前星清零)、聚焦后 ←/↓ 减一档、→/↑ 加一档、Home/End 两端;`WithRatingSize` 三档尺寸、`WithRatingLabels` 文案展现、`WithRatingIcons` 自定义图标、`OnHoverChange` 预览回调、`WithRatingKeyboard(false)` 关闭键盘;`OnFocus`/`OnBlur`/`OnKeyDown` 焦点与按键回调、`Blur()` 移除焦点 |
 | Calendar | 月历(全自绘):6×7 网格、范围选择(两次点击落区间)、多月并排、ISO 周数列、禁用与预订划线、年月可下拉或纯文字标题、可隐藏越界日期、页脚/预设;键盘方向键移动(自动翻月)、PageUp/Down 换月、Enter 选中;格子大小 `WithCalendarCellSize`,尺寸有 helper 算宽 |
-| DatePicker | 日期框:outline 触发区 + 弹层内放 Calendar,下方放不下自动翻到上方;范围模式并排两个月、预设按钮、禁用日期、可输入形态(键入 `2026-10-22` / `今天` / `3天后`,输入即解析)、`OnOpenChange` 开合回调 |
+| DatePicker | 日期框:outline 触发区 + 弹层内放 Calendar,下方放不下自动翻到上方;范围模式并排两个月、预设按钮、禁用日期、可输入形态(键入 `2026-10-22` / `今天` / `3天后`,输入即解析)、`OnOpenChange` 开合回调;弹层月历大小用 `WithDatePickerCellSize(px)` 放大(默认 28) |
 | TimePicker | 时间框:弹层内"时/分"两列滚动列表,选择即生效、弹层保持打开 |
 | ColorPicker | 颜色选择器:触发区(色块 + `#rrggbb` + chevron)+ 弹层(SV 方块 / 色相条 / 预设色 / Hex 输入);颜色以 `#rrggbb` 进出 |
 | FileDialog | 系统原生文件对话框:打开 / 多选 / 保存 / 选择文件夹;过滤器 = 名称 + 通配符,取消返回空串 / nil;不套 xui 主题 |

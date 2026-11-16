@@ -505,13 +505,16 @@ func (c *Command) onRowPaint(hEle int, hDraw int, pbHandled *bool) int {
 	t := xui.Current()
 	// 搜索行 = InputGroup chip: command.tsx 把 InputGroup 覆盖成
 	// `border-input/30 bg-input/30 shadow-none rounded-lg h-8`, 亮色下也带底色
-	// (InputGroup 默认只在暗色下 bg-input/30)。底色 = popover 上叠 30% input;
-	// 描边同比例再叠一层 —— 与直接把 30% 透明色画在同色底上等价, 又不必依赖
-	// 绘制层的 alpha 混合路径。
-	bg := t.Popover.Mix(t.Input, 0.3)
+	// (InputGroup 默认只在暗色下 bg-input/30)。
+	//
+	// 这里必须按**不透明度**叠加(`ScaleAlpha(0.3)`), 不能把令牌 Mix 进底色: 暗色的
+	// input 令牌是"白 15%"(alpha 38), Mix 会把 alpha 一起插值成 75% 不透明, 画出来
+	// 是一块明显偏亮的灰(chip 的底色与描边都吃这个错误)。真实口径是 15% × 30% =
+	// 4.5% 白, 叠在面板底上几乎看不出来, 只在暗色下"深一点点"。
+	chip := t.Input.ScaleAlpha(0.3)
 	radius := t.RadiusLg()
-	p.FillRound(&p.Rc, bg, radius)
-	p.StrokeRound(&p.Rc, bg.Mix(t.Input, 0.3), radius, 1)
+	p.FillRound(&p.Rc, chip, radius)
+	p.StrokeRound(&p.Rc, chip, radius, 1)
 	return 0
 }
 

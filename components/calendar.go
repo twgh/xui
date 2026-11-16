@@ -343,6 +343,15 @@ func CalHeightForMonths(width int32, months int) int32 {
 	return calBaseHeight(calMetricsFor(width, months, false, 0))
 }
 
+// calHeightForCell 是 CalHeightForMonths 的内部版本: cellPx > 0 时按显式格子尺寸算
+// (DatePicker 弹层用它把弹层与月历一起放大)。
+func calHeightForCell(width int32, months int, cellPx int32) int32 {
+	if width <= 0 {
+		width = calDefaultWidth(months, false, cellPx)
+	}
+	return calBaseHeight(calMetricsFor(width, months, false, cellPx))
+}
+
 // CalFooterHeightFor 返回指定宽度下页脚的高度(单行基准)。页脚按钮较多换行时,
 // 实际高度以元素自撑(cy 传 0)为准。
 func CalFooterHeightFor(width int32) int32 { return CalFooterHeightForMonths(width, 1) }

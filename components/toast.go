@@ -42,6 +42,10 @@ const (
 	toastFoldStep float64 = 0.1
 	toastFoldMin  float64 = 0.5
 
+	// 展开/收起与增删卡片后的归位过渡: 卡片从当前位置插值到新位置(Base UI 的
+	// stacked viewport 对 position/scale/height 都有过渡, 不是瞬移)。
+	toastMoveDuration = 180 * time.Millisecond
+
 	toastDefaultWidth   int32 = 356
 	toastDefaultOffset  int32 = 24
 	toastDefaultGap     int32 = 10
@@ -258,6 +262,15 @@ type Toast struct {
 	baseX, baseY int32
 	geom         toastGeom
 
+	// 位置过渡: cur 是元素当前矩形(卡片坐标, 不含投影留白), moveDest 是这段过渡的
+	// 目标, moving 为真时 layout 不再直接落位(让插值接管)。
+	cur      toastRect
+	moveDest toastRect
+	moving   bool
+	// hideContent 为真时不画卡片内容(折叠中的后排卡片; 展开/收起过渡途中也不画 ——
+	// 元素比完整卡片小一圈时文字会被挤压变形)。
+	hideContent bool
+
 	closed     bool // 已开始退场(或已销毁)
 	entered    bool // 进场动画已完成
 	destroyed  bool
@@ -313,7 +326,7 @@ func NewToaster(hWnd int, opts ...ToasterOption) *Toaster {
 	// Body 矩形重钉布局项位置 —— 否则缩放后的窗口级布局趟会拿旧 inset 把元素拉伸
 	// 变形(布局项置位置是四边 inset, 见 pin 注释)。
 	win.AddEvent_Size(func(hWindow int, nFlags uint, pPt *xc.SIZE, pbHandled *bool) int {
-		t.layout()
+		t.layoutEx(false) // 跟手, 不走过渡
 		return 0
 	})
 	// 悬停暂停: 走**窗口级** MouseMove + GetStayEle, 不用元素自己的 MouseStay/MouseLeave
@@ -723,7 +736,7 @@ func (it *Toast) close(auto bool) {
 			return
 		}
 		xui.SetElementsAlpha(v, hEle)
-		toastSetRect(hEle, baseX+int32(float64(dx)*(1-v)+0.5), baseY+int32(float64(dy)*(1-v)+0.5), dw, dh)
+		it.setRect(baseX+int32(float64(dx)*(1-v)+0.5), baseY+int32(float64(dy)*(1-v)+0.5), dw, dh)
 		toastAnimRedraw(hWnd, hOwner)
 	}, func(float64) {
 		it.destroy()
@@ -799,7 +812,7 @@ func (it *Toast) enter() {
 		it.t.position == ToastBottomCenter {
 		offset = -offset // 底部堆叠(含底部居中): 从更下方滑上来
 	}
-	toastSetRect(hEle, it.baseX, it.baseY-offset, it.dw, it.dh)
+	it.setRect(it.baseX, it.baseY-offset, it.dw, it.dh)
 	toastRedrawWindow(hWnd)
 
 	xui.Presence(hOwner, it.key, true, toastEnterDuration, func(v float64) {
@@ -807,7 +820,7 @@ func (it *Toast) enter() {
 			return
 		}
 		xui.SetElementsAlpha(v, hEle)
-		toastSetRect(hEle, it.baseX, it.baseY-int32(float64(offset)*(1-v)), it.dw, it.dh)
+		it.setRect(it.baseX, it.baseY-int32(float64(offset)*(1-v)), it.dw, it.dh)
 		toastAnimRedraw(hWnd, hOwner)
 	}, func(float64) {
 		it.entered = true
@@ -851,6 +864,78 @@ func (t *Toaster) removeItem(it *Toast) {
 	}
 }
 
+// toastRect 是卡片的逻辑矩形(左上角 + 宽高, 不含投影留白)。
+type toastRect struct{ x, y, w, h int32 }
+
+// animOwner 返回过渡挂靠的窗口: 屏幕通知挂宿主窗口, 否则挂自己所在的窗口。
+func (it *Toast) animOwner() int {
+	if it.t == nil {
+		return 0
+	}
+	if it.t.animOwner != 0 {
+		return it.t.animOwner
+	}
+	return it.t.hWnd
+}
+
+// setRect 落一次卡片矩形并记下当前值(过渡的起点要用它)。
+func (it *Toast) setRect(x, y, w, h int32) {
+	it.cur = toastRect{x: x, y: y, w: w, h: h}
+	if it.ele != nil {
+		toastSetRect(it.ele.Handle, x, y, w, h)
+	}
+}
+
+// moveTo 把卡片从当前位置过渡到目标矩形(展开/收起、增删卡片后的归位)。
+//
+// 每次都用 PresenceOnce 起一条新过渡: 展开→收起再来一次时, 常规 Presence 会命中
+// 已到位的条目而不再动(见 DESIGN 第八节 183)。目标没变时不动 —— 否则每帧鼠标移动
+// 都会重启过渡, 卡片永远走不到终点。
+func (it *Toast) moveTo(x, y, w, h int32) {
+	target := toastRect{x: x, y: y, w: w, h: h}
+	if it.moving && it.moveDest == target {
+		return
+	}
+	from := it.cur
+	if from == target {
+		it.moving = false
+		it.hideContent = it.scale < 0.999
+		return
+	}
+	it.moveDest, it.moving = target, true
+	// 变小(收起)立刻停止画内容: 元素已经比完整卡片小, 内容会被挤变形。
+	if target.w < from.w || target.h < from.h {
+		it.hideContent = true
+	}
+	owner := it.animOwner()
+	xui.PresenceOnce(owner, true, toastMoveDuration, func(v float64) {
+		if it.closed || it.destroyed || it.ele == nil || !xc.XC_IsHXCGUI(it.ele.Handle, xcc.XC_ELE) {
+			return
+		}
+		it.setRect(
+			toastLerp(from.x, target.x, v),
+			toastLerp(from.y, target.y, v),
+			toastLerp(from.w, target.w, v),
+			toastLerp(from.h, target.h, v),
+		)
+		toastAnimRedraw(it.t.hWnd, owner)
+	}, func(float64) {
+		if it.closed || it.destroyed || it.ele == nil || !xc.XC_IsHXCGUI(it.ele.Handle, xcc.XC_ELE) {
+			it.moving = false
+			return
+		}
+		it.setRect(target.x, target.y, target.w, target.h)
+		it.moving = false
+		it.hideContent = it.scale < 0.999
+		toastAnimRedraw(it.t.hWnd, owner)
+	})
+}
+
+// toastLerp 按进度插值(四舍五入, 避免反复截断导致卡片尺寸永远差 1px)。
+func toastLerp(from, to int32, v float64) int32 {
+	return from + int32(math.Round(float64(to-from)*v))
+}
+
 // layout 重新量宽/量高并把所有通知摆到静止位置。正在进场/退场的条目由各自的
 // apply 回调控制位置, 这里只更新它的 baseX/baseY/dw/dh(下一帧自动跟上)。
 //
@@ -858,7 +943,11 @@ func (t *Toaster) removeItem(it *Toast) {
 // 最前一条(最新)贴边保持原尺寸, 后面的每层中心水平对齐、上/下边缘每层各让
 // toastPeek(12), 并逐层缩小 toastFoldStep(10%)。被前一张完全盖住的区域不画内容
 // (见 onPaint), 所以缩放不需要重排文字。鼠标进入整组时展开成平铺(见 setPaused)。
-func (t *Toaster) layout() {
+func (t *Toaster) layout() { t.layoutEx(true) }
+
+// layoutEx 是 layout 的实现: animate=false 时直接落位(窗口缩放等"每帧都要跟手"的
+// 场景, 走过渡会一直追不上)。
+func (t *Toaster) layoutEx(animate bool) {
 	if t == nil || t.win == nil || len(t.items) == 0 {
 		return
 	}
@@ -926,9 +1015,18 @@ func (t *Toaster) layout() {
 		}
 	}
 	for _, it := range t.items {
-		// 动画中的条目不要直接落位(会被下一帧 apply 覆盖, 但旧位置会留残影)。
-		if it.entered {
-			toastSetRect(it.ele.Handle, it.baseX, it.baseY, it.dw, it.dh)
+		if !it.entered {
+			// 进场动画自己驱动位置与尺寸(layout 只更新 base/dw/dh 给它读)。
+			it.hideContent = it.scale < 0.999
+			it.pin(br)
+			continue
+		}
+		if animate {
+			it.moveTo(it.baseX, it.baseY, it.dw, it.dh)
+		} else {
+			it.moving = false
+			it.setRect(it.baseX, it.baseY, it.dw, it.dh)
+			it.hideContent = it.scale < 0.999
 		}
 		it.pin(br)
 	}
@@ -1247,7 +1345,7 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 折叠堆叠里的后排卡片: 只露出最上面 toastPeek(12) 高度的一条, 而卡片内边距
 	// 是 16 —— 露出的部分里没有任何内容, 直接停在卡片底/描边即可。这样"缩放"只
 	// 需要改元素矩形, 不必重排文字(元素比卡片小一圈, 内容本来就会被裁掉)。
-	if it.scale < 0.999 {
+	if it.hideContent {
 		return 0
 	}
 
@@ -1340,7 +1438,7 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 // onLButtonUp 处理动作按钮与关闭按钮的点击(卡片其余区域不响应)。
 func (it *Toast) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if pPt == nil || it.closed || it.destroyed || it.scale < 0.999 {
+	if pPt == nil || it.closed || it.destroyed || it.hideContent {
 		return 0 // 折叠中的后排卡片没有可见的按钮
 	}
 	x, y := pPt.X-toastShadow, pPt.Y-toastShadow
@@ -1363,7 +1461,7 @@ func (it *Toast) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *boo
 
 // onMouseMove 更新两个按钮的悬停态(整张卡片是一个元素, 需要自己判命中)。
 func (it *Toast) onMouseMove(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if pPt == nil || it.scale < 0.999 {
+	if pPt == nil || it.hideContent {
 		return 0
 	}
 	x, y := pPt.X-toastShadow, pPt.Y-toastShadow

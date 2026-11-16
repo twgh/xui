@@ -109,6 +109,14 @@ func buildForm4Page(body *widget.LayoutEle) {
 		dp2Val.SetText("输入值: " + t.Format("2006年1月2日")).Redraw()
 	})
 
+	// ---- 左列 3: 放大弹层的日期框(格子 36 = 上游 28 的 1.29 倍) ----
+	_, v12 := autoCard(colL2.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "放大的日期框弹层", v12.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"WithDatePickerCellSize(36): 弹层与月历随格子一起放大, 字号也跟着变; 不传则用默认 28", v12.Handle))
+	dpBig := ui.NewDatePicker(0, 0, 0, 0, v12.Handle, ui.WithDatePickerCellSize(36))
+	xui.ItemFill(dpBig)
+
 	// ---- 右列 1: 范围月历(宽度跟随列, 高度按宽度自动配平) ----
 	_, v9 := autoCard(colR2.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "范围月历", v9.Handle))
