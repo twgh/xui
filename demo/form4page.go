@@ -21,7 +21,7 @@ func buildForm4Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0, "触发区自绘(outline 按钮), 弹层是自建阴影窗: 月历全自绘, 时间框两列滚动列表", v5.Handle))
 
 	xui.ItemFill(hint(v5.Handle, "日期框(点击弹出月历卡片)"))
-	dp := ui.NewDatePicker(0, 0, 0, 0, v5.Handle, ui.WithDatePickerPlaceholder("选择日期"))
+	dp := ui.NewDatePicker(0, 0, 0, 0, v5.Handle, ui.WithDatePickerPlaceholder("选择日期"), ui.WithDatePickerCellSize(36))
 	xui.ItemFill(dp)
 	dpVal := ui.NewLabel(0, 0, 0, 0, "", v5.Handle).SetMuted()
 	dpVal.SetText("未选择")
@@ -70,7 +70,7 @@ func buildForm4Page(body *widget.LayoutEle) {
 	rf := time.Date(now.Year(), time.January, 20, 0, 0, 0, 0, time.Local)
 	rt := rf.AddDate(0, 0, 20)
 	dr := ui.NewDatePicker(0, 0, 0, 0, v7.Handle,
-		ui.WithDatePickerRangeValue(rf, rt),
+		ui.WithDatePickerRangeValue(rf, rt), ui.WithDatePickerCellSize(36),
 		ui.WithDatePickerYearRange(2000, now.Year()+1),
 		ui.WithDatePickerPresets(
 			ui.CalPreset("今天", 0, 0),
@@ -94,7 +94,7 @@ func buildForm4Page(body *widget.LayoutEle) {
 		"InputGroup 形态: 键入 2026-10-22 / 2026年10月22日 / 明天 / 3天后, 构成合法日期即回写; 右侧日历图标打开弹层", v8.Handle))
 	xui.ItemFill(hint(v8.Handle, "出生日期(年份范围 1900 - 今天, 弹层带年月下拉)"))
 	dp2 := ui.NewDatePicker(0, 0, 0, 0, v8.Handle,
-		ui.WithDatePickerEditable(),
+		ui.WithDatePickerEditable(), ui.WithDatePickerCellSize(36),
 		ui.WithDatePickerYearRange(1900, now.Year()),
 		ui.WithDatePickerPlaceholder("1990-01-01 或 明天"),
 		ui.WithDatePickerValue(time.Date(1990, time.January, 1, 0, 0, 0, 0, time.Local)))
@@ -108,14 +108,6 @@ func buildForm4Page(body *widget.LayoutEle) {
 		}
 		dp2Val.SetText("输入值: " + t.Format("2006年1月2日")).Redraw()
 	})
-
-	// ---- 左列 3: 放大弹层的日期框(格子 36 = 上游 28 的 1.29 倍) ----
-	_, v12 := autoCard(colL2.Handle, 10)
-	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "放大的日期框弹层", v12.Handle))
-	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"WithDatePickerCellSize(36): 弹层与月历随格子一起放大, 字号也跟着变; 不传则用默认 28", v12.Handle))
-	dpBig := ui.NewDatePicker(0, 0, 0, 0, v12.Handle, ui.WithDatePickerCellSize(36))
-	xui.ItemFill(dpBig)
 
 	// ---- 右列 1: 范围月历(宽度跟随列, 高度按宽度自动配平) ----
 	_, v9 := autoCard(colR2.Handle, 10)
@@ -144,7 +136,7 @@ func buildForm4Page(body *widget.LayoutEle) {
 		booked = append(booked, now.AddDate(0, 0, 3+i))
 	}
 	calWeek := ui.NewCalendar(0, 0, 0, 0, v10.Handle,
-		ui.WithCalendarCellSize(32),
+		ui.WithCalendarCellSize(36),
 		ui.WithCalendarWeekNumbers(),
 		ui.WithCalendarSelected(now),
 		ui.WithCalendarDisabled(ui.CalendarDisableDates(booked...)),
@@ -153,8 +145,9 @@ func buildForm4Page(body *widget.LayoutEle) {
 			ui.CalPreset("今天", 0, 0),
 			ui.CalPreset("明天", 1, 0),
 			ui.CalPreset("一周后", 7, 0)))
-	// 周数日历保持默认宽度: 被卡片拉满会把格子/字号一起放大。
-	xui.ItemWidth(calWeek, ui.CalWidthForWeekNumbers(1))
+	// 配了 WithCalendarCellSize 就直接铺满卡片宽: 格子按 36 固定、多出来的宽度左右
+	// 均分(卡片比自然宽还窄时自动退回按宽度均分, 不会溢出)。
+	xui.ItemFill(calWeek)
 
 	// ---- 右列 3: base-nova 形态(纯文字标题 + 隐藏越界日期) ----
 	_, v11 := autoCard(colR2.Handle, 10)
@@ -162,11 +155,11 @@ func buildForm4Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
 		"标题只显示年月(无下拉); 本月之外的日期留空、不可点、无悬停", v11.Handle))
 	calPlain := ui.NewCalendar(0, 0, 0, 0, v11.Handle,
-		ui.WithCalendarCellSize(32),
+		ui.WithCalendarCellSize(36),
 		ui.WithCalendarCaptionLabel(),
 		ui.WithCalendarHideOutsideDays(),
 		ui.WithCalendarSelected(now))
-	xui.ItemWidth(calPlain, ui.CalWidth())
+	xui.ItemFill(calPlain)
 }
 
 // dateRangeText 是 demo 里展示范围用的短文本。

@@ -260,25 +260,44 @@ func calScaleFor(width int32, months int, weekNumbers bool, cellPx int32) float6
 	return s
 }
 
+// calCellScaleFits 报告按缩放 s 算出来的格子能不能在 width 里排下(含内边距与月间距)。
+func calCellScaleFits(width int32, months int, cols int32, s float64) bool {
+	px := func(v int32) int32 { return int32(math.Round(float64(v) * s)) }
+	need := px(calCell)*int32(months)*cols + 2*px(calPad) + int32(months-1)*px(calMonthGap)
+	return need <= width
+}
+
 // calMetricsFor 算固定尺寸。实际月份内容宽度可能与设想的宽度差 1~2px(取整), 绘制时居中。
 // cellPx > 0 表示格子尺寸被显式指定(见 WithCalendarCellSize), 0 = 按宽度等比缩放。
 func calMetricsFor(width int32, months int, weekNumbers bool, cellPx int32) calMetrics {
 	months = calClampMonths(months)
-	s := calScaleFor(width, months, weekNumbers, cellPx)
-	px := func(v int32) int32 { return int32(math.Round(float64(v) * s)) }
-	pad := px(calPad)
-	monthGap := px(calMonthGap)
 	cols := int32(7)
 	if weekNumbers {
 		cols = 8
 	}
-	// 格子宽按"可用宽度均分"算: 先把四舍五入吃掉的零头留在两侧, 而不是从格子里扣
-	// —— 否则默认宽(212 / 240)会从 28 掉到 27, 6 行下来整卡矮 6px。
+	s := calScaleFor(width, months, weekNumbers, cellPx)
+	// 指定了格子尺寸(WithCalendarCellSize)但元素宽度放不下时**整块退回按宽度等比缩放**:
+	// 只把格子退回去、内边距与字号仍按指定格子放大, 就又变回"只放大了字"。这条兜底是
+	// 给"只加了格子尺寸、没把元素宽度一起放大"的调用方留的(硬按指定格子画会整块溢出)。
+	if cellPx > 0 && !calCellScaleFits(width, months, cols, s) {
+		s = calScaleFor(width, months, weekNumbers, 0)
+	}
+	px := func(v int32) int32 { return int32(math.Round(float64(v) * s)) }
+	pad := px(calPad)
+	monthGap := px(calMonthGap)
+	// 格子宽: 固定格子放得下时就是它, 这时宽度只决定左右留白(见 calGeom.monthsLeft 的
+	// 居中); 否则按"可用宽度均分"算 —— 先把四舍五入吃掉的零头留在两侧, 而不是从格子里
+	// 扣, 否则默认宽(212 / 240)会从 28 掉到 27, 6 行下来整卡矮 6px。
+	var cell int32
 	avail := width - 2*pad - int32(months-1)*monthGap
 	if avail <= 0 {
 		avail = int32(months) * cols * px(calCell)
 	}
-	cell := avail / (int32(months) * cols)
+	if cellPx > 0 {
+		cell = px(calCell)
+	} else {
+		cell = avail / (int32(months) * cols)
+	}
 	if cell <= 0 {
 		cell = px(calCell)
 	}
@@ -312,6 +331,26 @@ func calMetricsFor(width int32, months int, weekNumbers bool, cellPx int32) calM
 func calBaseHeight(m calMetrics) int32 {
 	return 2*m.pad + m.titleH + m.gapTitle + m.weekH + m.gapWeek +
 		int32(calRows)*m.cell + int32(calRows-1)*m.rowGap
+}
+
+// NaturalWidth 返回**本元素**当前配置下的自然宽度(含 WithCalendarCellSize 与周数列)。
+//
+// 布局里要把日历宽度锁成默认值时用它, 别用包级的 `CalWidth()`: 那个不知道元素自己的
+// 格子尺寸, 会把 WithCalendarCellSize 放大过的日历又压回默认宽度(格子被挤回原尺寸,
+// 只有内边距与字号变大, 看起来像"只放大了字")。
+func (c *Calendar) NaturalWidth() int32 {
+	if c == nil {
+		return 0
+	}
+	return calDefaultWidth(calClampMonths(c.months), c.weekNums, c.cellPx)
+}
+
+// NaturalHeight 返回本元素当前配置下的自然高度(按 NaturalWidth 换算, 含页脚)。
+func (c *Calendar) NaturalHeight() int32 {
+	if c == nil {
+		return 0
+	}
+	return c.naturalHeightFor(c.NaturalWidth())
 }
 
 // CalWidth 返回单月、无周数列的默认宽度(逻辑像素, 212)。
