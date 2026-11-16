@@ -883,23 +883,24 @@ func (it *Toast) setRect(x, y, w, h int32) {
 	}
 }
 
-// contentHidden 报告这张卡片现在是否"比完整卡片小一圈"(折叠中的后排卡片、展开/
-// 入场过渡途中)。
+// foldedSteady 报告这张卡片是不是"已经收在折叠位上的后排卡片"。
 //
-// 判据取**元素当前实际矩形**而不是某个动画状态位, 也不用内部记的 cur: 状态位依赖
-// 到位回调, 回调没赶上(过渡刚跑完又来一次 layout / 窗口级 AdjustLayout 把元素钉回
-// 目标矩形 / 一次性过渡条目被提前回收)就会停在"隐藏", 于是卡片已是完整尺寸却画成
-// 空白; 而 cur 是"我们以为的位置", 元素被布局趟挪走后它同样会过期。直接量元素矩形
-// 就永远和画面一致 —— 小一圈时画文字会被挤压变形, 到尺寸就正常画。
-func (it *Toast) contentHidden() bool {
-	if it.ele == nil || it.w <= 0 || it.h <= 0 {
-		return false // 还没量过尺寸(首帧), 照常画
+// 判据 = 目标是折叠态(scale < 1) **且** 元素矩形正好等于折叠目标尺寸。只在这种
+// 稳定折叠态才跳过内容:
+//   - 展开过渡途中 scale 已经是 1, 内容照常画 —— 卡片长大时内容是逐步露出来的
+//     (裁在卡片边缘), 不会出现"先空白、到尺寸才刷出内容";
+//   - 收起过渡途中矩形还在缩(不等于折叠目标尺寸), 内容也照常画, 跟着卡片一起被裁;
+//   - 只有真的收好了(缝里只剩 16 的内边距)才不画 —— 顶部堆叠时后排卡片露的是底边,
+//     内容底部的描述行会从那条 12px 缝里露出半个字。
+//
+// 判据全部是"当前状态", 不依赖任何到位回调: 回调没赶上也不会把卡片停在空白上。
+func (it *Toast) foldedSteady() bool {
+	if it.scale >= 0.999 || it.ele == nil || it.dw <= 0 || it.dh <= 0 {
+		return false
 	}
 	var rc xc.RECT
 	xc.XEle_GetRect(it.ele.Handle, &rc)
-	w := rc.Right - rc.Left - 2*toastShadow
-	h := rc.Bottom - rc.Top - 2*toastShadow
-	return w < it.w || h < it.h
+	return rc.Right-rc.Left == it.dw+2*toastShadow && rc.Bottom-rc.Top == it.dh+2*toastShadow
 }
 
 // moveTo 把卡片从当前位置过渡到目标矩形(展开/收起、增删卡片后的归位)。
@@ -1352,11 +1353,10 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p.FillRound(&card, cardBg, radius)
 	p.StrokeRound(&card, cardBorder, radius, 1)
 
-	// 折叠堆叠里的后排卡片: 只露出最上面 toastPeek(12) 高度的一条, 而卡片内边距
-	// 是 16 —— 露出的部分里没有任何内容, 直接停在卡片底/描边即可。这样"缩放"只
-	// 需要改元素矩形, 不必重排文字(元素比卡片小一圈, 内容本来就会被裁掉)。
-	// 判据直接取本次绘制的卡片矩形(见 contentHidden 的说明: 不要用动画状态位)。
-	if it.w > 0 && it.h > 0 && (card.Right-card.Left < it.w || card.Bottom-card.Top < it.h) {
+	// 稳定折叠态的后排卡片: 只露出 toastPeek(12) 高度的一条, 而卡片内边距是 16 ——
+	// 露出的部分里没有任何内容, 直接停在卡片底/描边即可(见 foldedSteady 的说明:
+	// 过渡途中照常画内容, 这样展开就是"内容随卡片长大逐步露出来")。
+	if it.foldedSteady() {
 		return 0
 	}
 
@@ -1449,7 +1449,7 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 // onLButtonUp 处理动作按钮与关闭按钮的点击(卡片其余区域不响应)。
 func (it *Toast) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if pPt == nil || it.closed || it.destroyed || it.contentHidden() {
+	if pPt == nil || it.closed || it.destroyed || it.foldedSteady() {
 		return 0 // 折叠中的后排卡片没有可见的按钮
 	}
 	x, y := pPt.X-toastShadow, pPt.Y-toastShadow
@@ -1472,7 +1472,7 @@ func (it *Toast) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *boo
 
 // onMouseMove 更新两个按钮的悬停态(整张卡片是一个元素, 需要自己判命中)。
 func (it *Toast) onMouseMove(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if pPt == nil || it.contentHidden() {
+	if pPt == nil || it.foldedSteady() {
 		return 0
 	}
 	x, y := pPt.X-toastShadow, pPt.Y-toastShadow
