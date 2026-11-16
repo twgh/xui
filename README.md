@@ -28,7 +28,7 @@
 
 ### 示例图
 
-![xui](https://s41.ax1x.com/2026/11/01/pngSYCR.png)
+![xui](https://txc.gtimg.com/data/300444/2026/1116/2f6078f93372d0fbd481dc911478a174.webp)
 
 ## 快速开始
 
