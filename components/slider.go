@@ -228,7 +228,7 @@ func NewSlider(x, y, cx, cy int32, hParent int, opts ...SliderOption) *Slider {
 	e.AddEvent_MouseMove(s.onMouseMove)
 	e.AddEvent_LButtonUp(s.onLButtonUp)
 	e.AddEvent_KeyDown(s.onKeyDown)
-	xui.AttachWindow(e.Handle)
+	xui.AttachWindow(e.Handle, true)
 	return s
 }
 

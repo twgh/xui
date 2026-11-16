@@ -380,7 +380,7 @@ func NewBreadcrumbEllipsis(hParent int, opts ...BreadcrumbEllipsisOption) *Bread
 			return 0
 		})
 	}
-	xui.AttachWindow(ele.Handle)
+	xui.AttachWindow(ele.Handle, e.onClick != nil)
 	return e
 }
 

@@ -279,7 +279,7 @@ func NewTabsItems(x, y, cx int32, hParent int, items []TabsItem, opts ...TabsOpt
 		tb.scheduleWrap()
 	}
 	tb.installKeys()
-	xui.AttachWindow(el.Handle)
+	xui.AttachWindow(el.Handle, true)
 	return tb
 }
 

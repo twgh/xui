@@ -6,7 +6,7 @@
 >
 > **排除项(不计入「可实现」)**:
 > - **RTL / 方向性**:用户明确不做。官方几乎每个组件页都有 RTL 示例,本台账一律不列(范围决策见 DESIGN 第七节 Direction / Calendar 条目)。
-> - **已记为 xcgui 能力边界的差异**:DESIGN 第七节里「改组件代码也补不上」的条目(原生 Edit 文字/光标/IME、圆角裁剪、Tab 焦点链、弹层 zoom/slide 等)不算可实现项。第七节里标注「后续有需求再加」「暂不提供」的,属于本台账要列的项。
+> - **已记为 xcgui 能力边界的差异**:DESIGN 第七节里「改组件代码也补不上」的条目(原生 Edit 文字/光标/IME、圆角裁剪、弹层 zoom/slide 等)不算可实现项。第七节里标注「后续有需求再加」「暂不提供」的,属于本台账要列的项。**嵌套控件的 Tab 遍历已由运行时补齐**(`focus.go` 的跨层遍历, 见 DESIGN 第八节 218), 不再算能力边界。
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
@@ -611,7 +611,7 @@
 | SA2 | 横向滚动 | 官方 Horizontal 示例 + ScrollBar 的 `orientation` | 明确只做纵向 | 加 `WithScrollAreaHorizontal`/横向 ScrollArea:内容区改 Auto 宽、`ShowSBarH(true)`;需要同步自愈闸门与滚动条皮肤 | 中-高 / 中 |
 | SA3 | `ScrollTo(hEle)` / `ScrollIntoView` | 上游无(浏览器原生) | 只能 `ScrollToTop` / `ScrollPosYV` | 读目标元素相对内容区的 y,调 `ScrollPosYV`;本库扩展 | 小-中 / 低-中 |
 
-**明确不做**:RTL;视口 focus-visible 环与键盘滚动(容器不进 xcgui 的 Tab 链,第八节 157);`rounded-[inherit]` 圆角裁剪(能力边界);Corner(只纵向时不存在);`size-full` / `data-slot`。
+**明确不做**:RTL;视口 focus-visible 环与键盘滚动(视口是原生 LayoutFrame, 不是可聚焦控件);`rounded-[inherit]` 圆角裁剪(能力边界);Corner(只纵向时不存在);`size-full` / `data-slot`。
 
 **本批实现顺序建议**:ACC1 → ACC2 → ACC3 → SL1 → SL2 → SL3 → SK1 → SEP1 → SEP2 → SA1 → SH1~SH4 → AD1(本批已全部落地,见第五节);ACC4 / AD3 / SH5 是同一形态(内容槽)建议一起设计;SL4 / SL5 / SA2 / SH7 需先确认需求或成本较高。
 

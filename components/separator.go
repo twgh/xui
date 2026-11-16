@@ -231,6 +231,7 @@ func NewBadge(x, y, cx, cy int32, text string, hParent int, opts ...func(*Badge)
 	// (纯展示元素默认可聚焦, 点一下会冒出一圈系统高亮框)。
 	ele.EnableDrawFocus(false)
 	ele.EnableFocus(b.onClick != nil || b.linkURL != "")
+	ele.EnableSwitchFocus(b.onClick != nil || b.linkURL != "")
 	ele.AddEvent_Paint(b.onPaint)
 	// 悬停: ghost / link / outline 的变体语义要靠它体现
 	ele.AddEvent_MouseStay(func(hEle int, pbHandled *bool) int {
@@ -269,7 +270,7 @@ func NewBadge(x, y, cx, cy int32, text string, hParent int, opts ...func(*Badge)
 		*pbHandled = true
 		return 0
 	})
-	xui.AttachWindow(ele.Handle)
+	xui.AttachWindow(ele.Handle, b.onClick != nil || b.linkURL != "")
 	return b
 }
 

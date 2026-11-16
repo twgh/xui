@@ -1232,6 +1232,7 @@ func newSidebarIconAction(hParent int, icon string, fn func()) *sidebarIconActio
 	})
 	ele.EnableFocus(true)
 	ele.EnableSwitchFocus(true)
+	xui.AttachWindow(ele.Handle, true)
 	return a
 }
 

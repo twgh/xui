@@ -113,8 +113,11 @@ type HoverCard struct {
 	gen   int
 
 	hostWatched bool
-	dying       bool
-	changes     []func(open bool)
+	// skipRestoreFocus 标记"窗口重新激活时恢复的焦点": xcgui 在 WM_SETFOCUS 后会把
+	// 焦点还给原元素并再派发一次 SetFocus, 那不是新的键盘聚焦, 不能重开卡片。
+	skipRestoreFocus bool
+	dying            bool
+	changes          []func(open bool)
 }
 
 // NewHoverCard 把悬停卡片绑定到任意元素。
@@ -161,6 +164,10 @@ func NewHoverCard(hTrigger int, opts ...HoverCardOption) *HoverCard {
 	// 走同一套指针判定, 指针仍停在触发区/卡片上时不会误关。
 	ele.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int {
 		h.cancelTimer()
+		if h.skipRestoreFocus {
+			h.skipRestoreFocus = false
+			return 0
+		}
 		h.Open()
 		return 0
 	})
@@ -418,6 +425,15 @@ func (h *HoverCard) watchHost() {
 			h.cancelTimer()
 			if h.panel != nil {
 				h.panel.Hide()
+			}
+			h.skipRestoreFocus = true
+			return 0
+		})
+		// 重新激活窗口时恢复的焦点不算新的聚焦(见 skipRestoreFocus); 用户按 Tab
+		// 是新一次键盘操作, 先清标记, 让随后的 SetFocus 正常打开卡片。
+		w.AddEvent_KeyDown(func(hWindow int, wParam, lParam uintptr, pbHandled *bool) int {
+			if wParam == 0x09 {
+				h.skipRestoreFocus = false
 			}
 			return 0
 		})

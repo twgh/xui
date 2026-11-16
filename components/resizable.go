@@ -269,7 +269,7 @@ func (g *ResizableGroup) AddHandle(opts ...ResizableHandleOption) *ResizableHand
 		ele.Redraw(false)
 		return 0
 	})
-	xui.AttachWindow(ele.Handle)
+	xui.AttachWindow(ele.Handle, true)
 
 	g.handles = append(g.handles, h)
 	g.scheduleSync()

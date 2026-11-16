@@ -199,7 +199,7 @@ func NewPagination(x, y, cx, cy int32, hParent int, opts ...PaginationOption) *P
 		ele.Redraw(false)
 		return 0
 	})
-	xui.AttachWindow(ele.Handle)
+	xui.AttachWindow(ele.Handle, true)
 	// 键盘处理必须挂在**窗口级**: 元素开了 EnableSwitchFocus(Tab 才能进入)后, xcgui
 	// 会把 ←/→ 当成"切换焦点"并在元素 KeyDown 之前就执行 —— 探针实测元素回调里焦点
 	// 已经落到下一个控件上, 拦不住。窗口 KeyDown 先于元素派发且此时焦点还正确,

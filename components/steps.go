@@ -295,7 +295,7 @@ func NewSteps(x, y, cx, cy int32, hParent int, items []StepItem, opts ...StepsOp
 		ele.Redraw(false)
 		return 0
 	})
-	xui.AttachWindow(ele.Handle)
+	xui.AttachWindow(ele.Handle, true)
 	s.installKeys()
 	return s
 }

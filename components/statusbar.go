@@ -474,8 +474,8 @@ func WithStatusBarItemWidth(w int32) StatusBarItemOption {
 
 // StatusBarItem 状态栏条目: 自绘文字/图标 + 150ms hover 过渡 + 点击回调 + 提示气泡。
 //
-// 条目不是原生 Button, 不进 Tab 焦点链(与本库其它嵌套布局里的控件同一限制,
-// 见 DESIGN 157); 悬停/按下/禁用/激活四态都由自己的 paint 解析。
+// 条目是整块自绘的普通元素, 不声明焦点(状态栏不占用 Tab 序列);
+// 悬停/按下/禁用/激活四态都由自己的 paint 解析。
 type StatusBarItem struct {
 	*widget.Element
 	bar      *StatusBar

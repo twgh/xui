@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复: 嵌套控件 Tab 焦点 / HoverCard 激活重开 / 省略号焦点环卡住**(2026-11-16, 用户反馈):
+  - **现象**: ① 按 Tab 时 HoverCard 触发区的焦点环不出现(鼠标移到别处才补上), 卡片也不弹; ② 点过触发区后切换到其它窗口再切回来, 卡片必然重新弹出; ③ 点面包屑省略号后按 Tab, 焦点环一直留在省略号上。
+  - **根因**: xcgui 原生 Tab 只在当前焦点的**直接父容器**内循环(见 DESIGN 第八节 218): 卡片里的触发区 Tab 进不去, 省略号进去后也出不来。Button 的焦点环只在 paint 里按状态现画, 而 Tab 改焦点不触发重绘; HoverCard 则在窗口失焦收起后, 把重新激活时 xcgui 恢复焦点的 SetFocus 当成新的键盘聚焦重新打开。
+  - **修法**: 运行时 `focus.go` 在 `AttachWindow` 的窗口级 KeyDown 里接管 Tab —— 深度优先收集整棵元素树里的 Tab 站点并跨层移动(Shift+Tab 反向, `EnableKeyTab` 的编辑器保留 Tab 输入), 处理过的 Tab 置 handled; Button 补 SetFocus/KillFocus 重绘; HoverCard 在窗口 KillFocus 后忽略一次"焦点恢复"的 SetFocus(用户按 Tab 时先清标记, 新一次键盘聚焦照常打开)。
+  - **验收**: 探针(窗口含 LayoutFrame + 卡片 + HoverCard 触发区 + 面包屑省略号)—— Tab 从顶层按钮依次进入卡片里的触发区(焦点环出现、卡片打开)、第二个按钮、省略号, 再离开省略号到下一控件; Shift+Tab 反向; 最小化/还原后卡片保持关闭, 按 Tab 后照常打开; `go build ./...` / `go vet ./...` / `go test ./...` 全绿; button / hovercard 单独 add 与 `add --all` 后 `go build ./ui` 通过。
+
 - ✅ **组件特性核查第十一批: Hover Card / Collapsible / Breadcrumb / Navigation Menu / Menubar / Sidebar 对齐 base-nova**(2026-11-16, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的 3.9 与 Q6):
   - **Hover Card(HC1)**: 默认延时改为 600ms 打开 / 300ms 关闭(Base UI PreviewCard 默认值; 官方示例传 10/100 是演示覆盖); 卡片几何对齐 `w-64 p-2.5`: 宽 256 / 内边距 10 / sideOffset 4 / alignOffset 4, 新增 `WithHoverCardAlignOffset`; 触发区键盘聚焦立即打开、失焦按 300ms 关(面板仍是非激活窗口, 不抢焦点)。demo 基础3 的卡片说明缩短到 256 宽内不再省略。
   - **Collapsible(CL1)**: 补 `OnOpenChangeVeto(func(open bool) bool)`(Base UI Root 的 `eventDetails.cancel()`): 点击 / 空格回车 / Toggle 可否决, 程序化 `SetOpen` 不经过; 否决时不改状态、不播高度过渡。demo 导航3 的「高级设置」加了"锁定收起"复选框演示拦截。

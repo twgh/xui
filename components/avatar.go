@@ -166,7 +166,7 @@ func NewAvatar(x, y, cx, cy int32, hParent int, fallback string, opts ...AvatarO
 		return 0
 	})
 	a.syncImage()
-	xui.AttachWindow(ele.Handle)
+	xui.AttachWindow(ele.Handle, a.interactive)
 	return a
 }
 
@@ -287,6 +287,9 @@ func (a *Avatar) SetInteractive(on bool) *Avatar {
 	a.interactive = on
 	xc.XEle_EnableFocus(a.Handle, on)
 	xc.XEle_EnableSwitchFocus(a.Handle, on)
+	if on {
+		xui.AttachWindow(a.Handle, true) // 首次打开时补登记 Tab 站点
+	}
 	// 可交互头像要给焦点环让出 2px, 圆半径变了 → 位图重建
 	a.syncImage()
 	a.Redraw(true)

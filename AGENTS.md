@@ -14,6 +14,7 @@ shadcn 风格的 xcgui 自绘组件库(copy-not-install 分发)。**本文件只
 - **绘制坐标是逻辑像素**:`XEle_GetClientRect` 返回未缩放矩形,框架渲染时统一 DPI 变换;自绘**禁止**再按 DPI 预缩放(见 DESIGN 6/10)
 - **组件禁止缓存颜色**:paint 回调里 `xui.Current()` 实时取令牌;需要同步原生 API 的颜色用 `xui.OnThemeChangeFor(元素句柄, fn)`(元素销毁时自动反注册;仅非元素的长生命周期订阅才用裸 `OnThemeChange`)(见 DESIGN 3.2/3.3)
 - **事件一律 `AddEvent*` 系列**(有 2000 回调上限问题);不用背景管理器管理组件外观(见 DESIGN 2/3)
+- **自绘组件的可聚焦根元素要 `xui.AttachWindow(h, true)` 登记为 Tab 站点**: xcgui 原生 Tab 只在同一父容器内循环, 运行时的跨层遍历只收原生交互控件与显式登记的普通 Element(纯布局/装饰元素不要登记, 见 DESIGN 218)
 - **纯装饰 / 纯布局的普通 Element 必须关掉焦点三件套**:`EnableMouseThrough(true)` + `EnableFocus(false)` + `EnableDrawFocus(false)`。xcgui 的普通 Element 默认**可聚焦并画系统高亮焦点框**,1px 分隔线、占位块、容器空白被点到就会冒出一圈蓝框(禁用态最容易点到,见 DESIGN 210)
 - **手写探针程序做视觉/像素验证时,UI 进程必须真正激活**:`SetForegroundWindow` 常被前台锁拒绝,先 `ShowWindow(SW_MINIMIZE)` → `SW_RESTORE` → `SetForegroundWindow`;带坐标的 `SendMessage(WM_LBUTTONDOWN)` / `WM_MOUSEWHEEL` 要先把光标 `SetCursorPos` 到目标点(xcgui 按光标位置命中)。抓窗口自身内容用 `PrintWindow(hwnd, hdc, 2)`,不受遮挡影响
 - **渲染固定 Direct2D**:`app.New(true)`,demo 是标准样板(含无图标无三键标题栏样式,见 DESIGN 38)

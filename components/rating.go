@@ -236,7 +236,7 @@ func NewRating(x, y, cx, cy int32, hParent int, opts ...RatingOption) *Rating {
 		}
 		return 0
 	})
-	xui.AttachWindow(ele.Handle)
+	xui.AttachWindow(ele.Handle, true)
 	r.installKeys()
 	return r
 }

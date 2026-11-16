@@ -257,6 +257,16 @@ func NewButton(x, y, cx, cy int32, text string, hParent int, opts ...ButtonOptio
 	b.SetTextColor(0) // 文字颜色绘制时按主题实时设置
 	b.SetTextAlign(xcc.TextAlignFlag_Center | xcc.TextAlignFlag_Vcenter)
 	b.AddEvent_Paint(b.onPaint)
+	// 焦点环在 paint 里按状态现画; 原生 Tab 切换只改元素焦点标志, 不会重绘元素。
+	// 不补这两条会出现"Tab 已进入但环不出现, 要等鼠标悬停等无关重绘才补上"。
+	b.AddEvent_SetFocus(func(hEle int, pbHandled *bool) int {
+		b.Redraw(false)
+		return 0
+	})
+	b.AddEvent_KillFocus(func(hEle int, pbHandled *bool) int {
+		b.Redraw(false)
+		return 0
+	})
 	xui.AttachWindow(b.Handle)
 	b.AddEvent_LButtonDown(func(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 		xui.NotePointerPress()
