@@ -136,7 +136,6 @@ func buildForm4Page(body *widget.LayoutEle) {
 		booked = append(booked, now.AddDate(0, 0, 3+i))
 	}
 	calWeek := ui.NewCalendar(0, 0, 0, 0, v10.Handle,
-		ui.WithCalendarCellSize(36),
 		ui.WithCalendarWeekNumbers(),
 		ui.WithCalendarSelected(now),
 		ui.WithCalendarDisabled(ui.CalendarDisableDates(booked...)),
@@ -145,8 +144,8 @@ func buildForm4Page(body *widget.LayoutEle) {
 			ui.CalPreset("今天", 0, 0),
 			ui.CalPreset("明天", 1, 0),
 			ui.CalPreset("一周后", 7, 0)))
-	// 配了 WithCalendarCellSize 就直接铺满卡片宽: 格子按 36 固定、多出来的宽度左右
-	// 均分(卡片比自然宽还窄时自动退回按宽度均分, 不会溢出)。
+	// 铺满卡片宽: 格子/字号跟着宽度等比放大(卡片里的日历用这个形态; 要"格子固定、
+	// 多出来的宽度留白"才用 WithCalendarCellSize + NaturalWidth, 那种适合弹层)。
 	xui.ItemFill(calWeek)
 
 	// ---- 右列 3: base-nova 形态(纯文字标题 + 隐藏越界日期) ----
@@ -155,7 +154,6 @@ func buildForm4Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
 		"标题只显示年月(无下拉); 本月之外的日期留空、不可点、无悬停", v11.Handle))
 	calPlain := ui.NewCalendar(0, 0, 0, 0, v11.Handle,
-		ui.WithCalendarCellSize(36),
 		ui.WithCalendarCaptionLabel(),
 		ui.WithCalendarHideOutsideDays(),
 		ui.WithCalendarSelected(now))
