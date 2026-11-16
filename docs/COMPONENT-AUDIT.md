@@ -19,9 +19,9 @@
 | 1 | Button | `button` | 已核查 | 补齐清单已实现,见 `3342cad` |
 | 2 | Input | `input` | 已核查 | 结论见 3.1;8 项可实现,I2 / I7 / I3 / I4 已落地(见第五节;I3 走 Field 必填与校验) |
 | 3 | Checkbox | `checkbox` | 已核查 | 补齐清单已实现,见 `3342cad` |
-| 4 | Select | `select` | 已核查 | 结论见 3.2;9 项可实现,S3 / S9 / S4 / S8 已落地(见第五节;S9 走 Field 必填) |
+| 4 | Select | `select` | 已核查 | 结论见 3.2;9 项可实现,S3 / S9 / S4 / S8 已落地(见第五节;S9 走 Field 必填);S1 定位开关 / S2 typeahead 已落地(第九批) |
 | 5 | Combobox | `combobox` | 已核查 | 三批补齐,见 `23bdfc5` / `725d329` / `7441a77` |
-| 6 | Dialog | `dialog` | 已核查 | 结论见 3.3;6 项可实现,D1 / D2 / D3 已落地(见第五节) |
+| 6 | Dialog | `dialog` | 已核查 | 结论见 3.3;6 项可实现,D1 / D2 / D3 已落地(见第五节);D4 内容槽已落地(第九批) |
 | 7 | Card | `card` | 已核查 | 结论见 3.3;5 项可实现(含 1 项能力边界重评估),C1 / C2 已落地(见第五节) |
 | 8 | Label | `label` | 已核查 | 结论见 3.3;4 项可实现,L1 / L2 / L3 / L4 已落地(见第五节;L3 由 Field 统一出星号) |
 | 9 | Textarea | `textarea` | 已核查 | 结论见 3.4;与 Input 同源 + 3 项特有,TA1(随 Input 的 I2 / I7 与 Field 必填)已落地 |
@@ -41,8 +41,8 @@
 | 23 | Avatar | `avatar` | 已核查 | 结论见 3.6;5 项可实现,AV1/AV2/AV3/AV4 已落地(见第五节) |
 | 24 | Accordion | `accordion` | 已核查 | 结论见 3.7;ACC1 / ACC2 / ACC3 已落地;余 Trigger 内容槽与 demo 缺口 |
 | 25 | Slider | `slider` | 已核查 | 结论见 3.7;SL1 / SL2 / SL3 已落地;余碰撞策略与单滑块禁用 |
-| 26 | Alert Dialog | `alert-dialog` | 已核查 | 结论见 3.7;AD1 已落地;其余与 Dialog D4 / D5 同源 |
-| 27 | Sheet | `sheet` | 已核查 | 结论见 3.7;SH1~SH4 已落地;余内容槽与遮罩配色 |
+| 26 | Alert Dialog | `alert-dialog` | 已核查 | 结论见 3.7;AD1 已落地, AD2 / AD4 见第八批, AD3 内容槽见第九批 |
+| 27 | Sheet | `sheet` | 已核查 | 结论见 3.7;SH1~SH4 已落地, SH6 / SH7 见第八批, SH5 内容槽见第九批 |
 | 28 | Separator | `separator` | 已核查 | 结论见 3.7;SEP1 / SEP2 已落地;余 demo 对照 |
 | 29 | Skeleton | `skeleton` | 已核查 | 结论见 3.7;SK1 已落地(配色改 bg-muted);余示例卡 |
 | 30 | Scroll Area | `scroll-area` | 已核查 | 结论见 3.7;SA1 已落地(滚动条常显);余横向滚动 |
@@ -618,8 +618,8 @@
 ## 四、实现顺序建议(Input / Select 批次,已执行完)
 
 1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化 —— **已全部落地**(见第五节)。
-2. **中改动、功能缺口**:I3/S9 必填校验、I4 上限 **已落地**;I1 文件输入、S1 定位开关、S2 typeahead **未做**(I1 见下方"待确认"之外,可直接排期)。
-3. **需先确认需求或成本较高**:S5 多选、S7 滚动箭头、S6 悬停开关、I6 原生 Edit 视觉 API、I8 demo 对照 —— 均未做,取舍见第五节末尾的"待确认需求"。
+2. **中改动、功能缺口**:I3/S9 必填校验、I4 上限 **已落地**;I1 文件输入已在第八批落地;S1 定位开关、S2 typeahead 已在第九批落地。
+3. **需先确认需求或成本较高**:S5 多选、S7 滚动箭头、S6 悬停开关、I6 原生 Edit 视觉 API、I8 demo 对照 —— S6 / I6 已在第八批落地;S5 / S7 按 Q2 暂缓;I8 demo 随组件改动补,取舍见第五节末尾。
 
 落地时按仓库固定流程:先查 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build ./...` / `go vet ./...` / `go test ./...`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
 
@@ -742,15 +742,32 @@
 | SA3 | Scroll Area | `ScrollTo` / `ScrollIntoView` / `ScrollToCenter` |
 | SH6 / SH7 / AD2 / AD4 | Dialog / Sheet / AlertDialog | 遮罩配色与不透明度可配(默认对话框 10%、Sheet 50%); Sheet 进场改 2.5rem(40px)小位移 + 整组淡入(`WithSheetSlideDistance` 可回退); AlertDialog 媒体块可放图片(`WithAlertDialogMediaImage` / `SetMediaImage`, 圆角矩形蒙版) |
 
-**下一批建议**: 分两类 —— 需要先拍板的见下表(Q1~Q4), 其余暂无(可直接排期清单已清空)。下一轮**核查**(不是实现)从 #31 Toast 起。
+**第九批**(待确认项拍板后的第一批, 跨 4 个组件; 已全部落地):
 
-**待确认需求(不动手前需要拍板)**:
+| # | 组件 | 落地内容 |
+|---|---|---|
+| Q1 / D4 / AD3 / SH5 | Dialog / Sheet / AlertDialog | `Header()` / `Footer()` 返回布局容器(对应 DialogHeader / SheetHeader / DialogFooter / SheetFooter): 标题与描述成为头部槽的前两个子项, 追加控件排在它们后面; Dialog / AlertDialog 页脚横向(自定义在左、按钮靠右), Sheet 纵向(自定义在按钮上方), AlertDialog(sm) 在按钮行上方; 两个槽按布局占位量高, 标题/描述的上下外扩用负外边距抵消; 焦点顺序 = 头部槽 → 内容 → 页脚槽 → 页脚按钮 → 关闭钮; `Title()` / `Description()` 返回 Label 只改样式。`Content()` 维持返回句柄(已能放任意控件), 不另加 ContentStack |
+| Q2 / S1 | Select | `WithSelectAlignItem(false)` 关闭 item-aligned, 改常规锚定; `WithSelectSide` / `WithSelectAlign` / `WithSelectSideOffset` / `WithSelectAlignOffset` 对应 Base UI Positioner 的 side/align/sideOffset/alignOffset(默认 bottom/center/4/0), 翻转与夹工作区复用 `popupPositionOffset` |
+| Q2 / S2 | Select | 可打印字符 typeahead: A-Z / 0-9 / 小键盘 / 空格续接, 750ms 会话窗口, 标签前缀匹配(大小写不敏感、跳过禁用), 从当前高亮后一位环形查找; 同字符连按在匹配项间循环(含 llama 这类同首双字母时退回前缀增长); 打开/关闭清空会话 |
 
-| # | 涉及条目 | 要确认的问题 | 建议默认 |
+**下一批建议**: 实现侧的可直接排期清单已清空, 待确认项已按上表拍板并落地。剩余均为**已明确暂缓**的项, 有真实需求再单独立项:
+
+| # | 决定 | 说明 |
+|---|---|---|
+| Q1 余项(ACC4 / TT3 / TBL3) | 暂缓 | 内容槽统一形态已在 Dialog / Sheet / AlertDialog 落地; 手风琴触发区、Tooltip 内容、Table 单元格按需再做 |
+| Q2 余项(S5 / S7) | 暂缓 | Select 多选(触发区摘要 + chips + 与只读/否决组合, 成本最高)与悬停自动滚(内容区上下命中带 + 逐帧滚动)等真实需求 |
+| Q3(SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3) | 不做 | 推挤碰撞、单滑块禁用、横向 ScrollArea、非模态对话框、Popover 模态与定位策略、表格列宽拖拽: 桌面收益存疑, 有场景再立项 |
+| Q4(C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2) | 部分排期 | C4 只做"直角图片槽 + 自适应高"(不做圆角), 排在本批之后; 五组纯 demo 示例不单独立项, 随对应组件下次改动补 |
+
+下一轮**核查**(不是实现)从 #31 Toast 起。
+
+**待确认需求(本轮已拍板)**:
+
+| # | 涉及条目 | 拍板结果 | 落地状态 |
 |---|---|---|---|
-| Q1 | D4 / AD3 / SH5 / ACC4 / TT3 / TBL3 | "面板/容器里放任意控件"要不要统一设计一套接口?六条是同一件事, 分散做会出六套形态 | 统一成 `Header()/Footer()/Content()` 返回 `LayoutEle`(Card/Alert 现成形态, 调用方自己 `ItemFill`), 第一批只做 Dialog / Sheet / AlertDialog; Accordion 触发区、Tooltip 内容、Table 单元格按需 |
-| Q2 | S5 / S7 / S1 / S2 | Select 的四个大项哪个要做?S5 多选成本最高(触发区摘要 + chips + 全选 + 与只读/否决的组合), S7 悬停自动滚要新增逐帧滚动带, S1 定位开关与 S2 typeahead 相对便宜 | 先做 S1 + S2(定位与键盘键入跳转); S5 / S7 等真实需求 |
-| Q3 | SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3 | 桌面端收益存疑的大项: 滑块拖动推挤(`push`)、单滑块禁用、ScrollArea 横向滚动、非模态弹层(`modal=false`)、Popover 定位策略可配、表格列宽拖拽 | 全部暂不做; 有真实场景再单独立项(SA2 若要做, 需先定"加横向模式"还是"新建 HScrollArea") |
-| Q4 | C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2 | 两类: C4 卡片图片槽(依赖圆角裁剪, 只能做直角图片块)与 5 组纯 demo 示例(不改组件) | demo 示例可以补(便宜, 提升文档完整度); C4 只做"直角图片槽 + 自适应高", 不做圆角 |
+| Q1 | D4 / AD3 / SH5 / ACC4 / TT3 / TBL3 | 统一成 `Header()/Footer()` 返回 `LayoutEle`(Content 已有); 第一批只做 Dialog / Sheet / AlertDialog | 已落地(第九批); 余项暂缓 |
+| Q2 | S5 / S7 / S1 / S2 | 先做 S1 定位开关 + S2 typeahead; S5 / S7 等真实需求 | 已落地(第九批); S5 / S7 暂缓 |
+| Q3 | SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3 | 全部不做, 有真实场景再单独立项 | 不做 |
+| Q4 | C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2 | demo 随组件改动补; C4 只做直角图片槽 + 自适应高 | C4 待排期; demo 随批次 |
 
 **可直接排期(无需确认)**: 已全部落地(第八批, 见第五节)。其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。

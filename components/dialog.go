@@ -111,6 +111,8 @@ type Dialog struct {
 	backdrop    *widget.Element // 背景模糊层(shadcn 的 backdrop-blur-xs, 见 backdrop.go)
 	backdropImg int             // 模糊快照的图片句柄(每次 Show 刷新, 旧的释放)
 	content     *widget.Element // 内容容器(用户往这里放输入框等)
+	headerBox   *widget.LayoutEle // 头部内容槽: 标题/描述也是它的子项
+	footerBox   *widget.LayoutEle // 页脚内容槽: AddFooter 按钮之外的任意控件
 	title       *Label
 	desc        *Label
 	closeBtn    *Button
@@ -299,12 +301,19 @@ func NewDialog(hWnd int, opts ...DialogOption) *Dialog {
 	// 背景模糊层: 抓窗快照 + 盒式模糊, 在遮罩之下、其余内容之上(见 backdrop.go)
 	d.backdrop = newBackdrop(hWnd)
 
+	// 头部内容槽: 标题/描述是它的前两个子项, 调用方还能往后追加任意控件
+	// (对应 shadcn 的 DialogHeader / SheetHeader / AlertDialogHeader)。
+	d.headerBox = newDialogFlow(d.overlay.Handle, false, dlgHeadGap)
 	// shadcn: text-base font-medium(500) —— 16px + 中等字重(不是 Bold 的 17px)
-	d.title = NewLabel(0, 0, 0, dlgTitleH, "", d.overlay.Handle).SetMedium()
+	d.title = NewLabel(0, 0, 0, dlgTitleH, "", d.headerBox.Handle).SetMedium()
 	d.title.SetFontSize(16)
 	// 折行: 窄面板/长标题不会截断; 高度由 layout 按面板宽量出(见 textHeight)
 	d.title.SetWrap()
-	d.desc = NewLabel(0, 0, 0, dlgDescH, "", d.overlay.Handle).SetMuted().SetWrap()
+	d.title.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	d.title.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, dlgTitleH)
+	d.desc = NewLabel(0, 0, 0, dlgDescH, "", d.headerBox.Handle).SetMuted().SetWrap()
+	d.desc.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	d.desc.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, dlgDescH)
 
 	d.content = widget.NewElement(0, 0, 0, 0, d.overlay.Handle)
 	d.content.EnableBkTransparent(true)
@@ -477,6 +486,61 @@ func (d *Dialog) ContentWidth() int32 {
 		}
 	}
 	return w - 2*dlgPad
+}
+
+// Header 返回头部内容槽 —— 一个纵向流容器, 与 shadcn 的 DialogHeader /
+// SheetHeader / AlertDialogHeader 同位置。标题与描述是它的前两个子项, 调用方可以在
+// 它们后面追加徽章、头像、说明等任意控件; 不调用 SetTitle / SetDescription 时,
+// 这里就是唯一的头部内容。
+//
+// 追加控件时用 xui.ItemFill(整宽) / xui.ItemWidth(定宽) 声明尺寸, 高度用 Fixed/Auto
+// (填满型 Fill 高在槽里没有意义)。打开状态下改完内容后调用 Refresh() 重量高度。
+func (d *Dialog) Header() *widget.LayoutEle {
+	if d == nil {
+		return nil
+	}
+	return d.headerBox
+}
+
+// Title 返回标题 Label(可改字号 / 字重 / 配色; 改完调用 Refresh 重量折行高度)。
+func (d *Dialog) Title() *Label {
+	if d == nil {
+		return nil
+	}
+	return d.title
+}
+
+// Description 返回描述 Label(可改字号 / 配色; 改完调用 Refresh)。
+func (d *Dialog) Description() *Label {
+	if d == nil {
+		return nil
+	}
+	return d.desc
+}
+
+// Footer 返回页脚内容槽 —— 对应 shadcn 的 DialogFooter / SheetFooter / AlertDialogFooter
+// 里按钮之外的任意内容。普通 Dialog / AlertDialog 是横向容器(自定义内容在左、按钮在右),
+// Sheet 是纵向容器(自定义内容在按钮上方)。
+//
+// 往里面放控件后用 xui.ItemFill / xui.ItemWidth 声明宽度, 改完调用 Refresh()。
+// AddFooter 的按钮仍按原语义排布, 两者可以同时使用。
+func (d *Dialog) Footer() *widget.LayoutEle {
+	if d == nil {
+		return nil
+	}
+	if d.footerBox == nil {
+		l := newDialogFlow(d.overlay.Handle, !d.sheet, 0)
+		if l == nil {
+			return nil
+		}
+		if d.sheet {
+			l.SetSpace(sheetFooterGap)
+		} else {
+			l.SetSpace(dlgFooterGap)
+		}
+		d.footerBox = l
+	}
+	return d.footerBox
 }
 
 // addFooterButton 创建页脚按钮并登记(不绑定点击、不重排); AlertDialog 与 AddFooter 共用。
@@ -913,25 +977,34 @@ func (d *Dialog) layout() {
 		textW -= dlgCloseSize + dlgCloseOff
 	}
 
-	// 头部: 标题/描述按可用宽折行量高。两套行高/间距:
+	// 头部: 标题/描述与自定义内容都在 headerBox 里纵向排列。两套行高/间距:
 	//   - Dialog: text-base leading-none(16) / gap-2(8);
 	//   - AlertDialog: text-base 默认行高(24) / gap-1.5(6)。
 	titleLineH, headGap := dlgTitleH, dlgHeadGap
 	if d.alert {
 		titleLineH, headGap = alertDlgTitleH, alertDlgHeadGap
 	}
+	d.headerBox.SetSpace(headGap)
+	// 文本以 SetTitle / SetDescription 记录的为准: 空串隐藏, 不占头部高度。
+	// Title() / Description() 只用于改样式, 不在这里回读(直接改 Label 文本不受支持)。
+	d.title.SetText(d.titleText)
+	d.desc.SetText(d.descText)
+	d.title.Show(d.titleText != "")
+	d.desc.Show(d.descText != "")
 	titleH := d.textHeight(d.title, d.titleText, textW, titleLineH)
 	descH := d.textHeight(d.desc, d.descText, textW, dlgDescH)
-	headerH := int32(0)
 	if titleH > 0 {
-		headerH = titleH
+		// 元素矩形比行盒高 dlgTextOver: Label 的文字在元素内垂直居中, 行盒高度不够会裁字形。
+		// 负外边距把多出来的高度抵消掉, 布局占位仍是 titleH。
+		d.title.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, titleH+2*dlgTextOver)
+		xc.XWidget_LayoutItem_SetMargin(d.title.Handle, 0, -dlgTextOver, 0, -dlgTextOver)
 	}
 	if descH > 0 {
-		if headerH > 0 {
-			headerH += headGap
-		}
-		headerH += descH
+		d.desc.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, descH+2*dlgTextOver)
+		xc.XWidget_LayoutItem_SetMargin(d.desc.Handle, 0, -dlgTextOver, 0, -dlgTextOver)
 	}
+	headerContentH := measureFlowBlock(d.headerBox, textW)
+	headerH := headerContentH
 	if d.alert && mediaOn {
 		if mediaStacked {
 			headerH += alertDlgMediaSize + alertDlgMediaGapY
@@ -940,9 +1013,41 @@ func (d *Dialog) layout() {
 		}
 	}
 
-	footerH := int32(0)
+	btnRowH := int32(0)
 	if len(d.footers) > 0 {
-		footerH = dlgFooterH
+		btnRowH = dlgBtnH
+	}
+	btnWidth := footerButtonsWidth(d.footers)
+	customFootH := int32(0)
+	customFootW := int32(0)
+	if d.footerBox != nil {
+		customFootW = innerW
+		// 普通对话框的页脚是一行: 自定义内容在左、按钮靠右, 量宽要扣掉按钮占位;
+		// AlertDialog(sm) 的自定义内容在按钮行上方, 可用整宽。
+		if len(d.footers) > 0 && !(d.alert && d.alertSize == AlertDialogSizeSmall) {
+			customFootW = innerW - btnWidth - dlgFooterGap
+			if customFootW < 0 {
+				customFootW = 0
+			}
+		}
+		customFootH = measureFlowBlock(d.footerBox, customFootW)
+	}
+	footerH := int32(0)
+	if d.alert && d.alertSize == AlertDialogSizeSmall {
+		if customFootH > 0 || btnRowH > 0 {
+			footerH = dlgPad*2 + customFootH + btnRowH
+			if customFootH > 0 && btnRowH > 0 {
+				footerH += dlgGap
+			}
+		}
+	} else {
+		tall := btnRowH
+		if customFootH > tall {
+			tall = customFootH
+		}
+		if tall > 0 {
+			footerH = dlgPad*2 + tall
+		}
 	}
 
 	// 内容高度: 普通内容量子元素占位; 可滚动内容取 min(内容自然高, 上限)。
@@ -1004,21 +1109,8 @@ func (d *Dialog) layout() {
 			textX = innerX + alertDlgMediaSize + alertDlgMediaGapX
 		}
 	}
-	if titleH > 0 {
-		// 元素高度比行盒大 dlgTextOver: 文字在元素内垂直居中, 元素上下各外扩一点
-		// 才能既放得下字形(含折行时的行距)又不占布局高度
-		setEleRect(d.title.Handle, textX, y-dlgTextOver, textW, titleH+2*dlgTextOver)
-		d.title.SetText(d.titleText)
-		y += titleH
-	}
-	if descH > 0 {
-		if titleH > 0 {
-			y += headGap
-		}
-		setEleRect(d.desc.Handle, textX, y-dlgTextOver, textW, descH+2*dlgTextOver)
-		d.desc.SetText(d.descText)
-		y += descH
-	}
+	// 头部槽: 标题/描述与自定义控件已按 textW 排好, 这里只挪到最终位置。
+	setEleRect(d.headerBox.Handle, textX, y, textW, headerContentH)
 	if contentH > 0 {
 		cy := py + dlgPad + headerH
 		if headerH > 0 {
@@ -1032,13 +1124,24 @@ func (d *Dialog) layout() {
 		}
 	}
 
-	// 页脚按钮:
-	//   - Dialog / AlertDialog(default): 右对齐一行, gap-2;
-	//   - AlertDialog(sm): grid-cols-2, 两个按钮等宽各占一半。
+	// 页脚内容槽: 普通对话框与按钮同一行(自定义在左、按钮靠右), AlertDialog(sm)
+	// 在按钮行上方; 两者都在竖直方向居中/按顺序排。
+	if d.footerBox != nil && customFootH > 0 {
+		if d.alert && d.alertSize == AlertDialogSizeSmall {
+			setEleRect(d.footerBox.Handle, innerX, d.footerRc.Top+dlgPad, innerW, customFootH)
+		} else {
+			cy := d.footerRc.Top + (footerH-customFootH)/2
+			setEleRect(d.footerBox.Handle, innerX, cy, customFootW, customFootH)
+		}
+	}
 	if footerH > 0 {
-		by := d.footerRc.Top + dlgPad
+		by := d.footerRc.Top + (footerH-dlgBtnH)/2
 		if d.alert && d.alertSize == AlertDialogSizeSmall {
 			cellW := (innerW - dlgFooterGap) / 2
+			by = d.footerRc.Top + dlgPad + customFootH
+			if customFootH > 0 {
+				by += dlgGap
+			}
 			for i, b := range d.footers {
 				if i >= 2 {
 					break // AlertDialogFooter 只有 Cancel/Action 两个
@@ -1047,14 +1150,7 @@ func (d *Dialog) layout() {
 				setEleRect(b.Handle, x, by, cellW, b.GetHeight())
 			}
 		} else {
-			total := int32(0)
-			for i, b := range d.footers {
-				if i > 0 {
-					total += dlgFooterGap
-				}
-				total += b.GetWidth()
-			}
-			x := d.footerRc.Right - dlgPad - total
+			x := d.footerRc.Right - dlgPad - btnWidth
 			for _, b := range d.footers {
 				setEleRect(b.Handle, x, by, b.GetWidth(), b.GetHeight())
 				x += b.GetWidth() + dlgFooterGap
@@ -1340,8 +1436,15 @@ func (d *Dialog) currentIndex(fs []int) int {
 // (与 radix 打开时自动聚焦第一个可聚焦元素一致)。
 func (d *Dialog) focusables() []int {
 	var list []int
+	// 焦点顺序对齐 DOM: 头部自定义控件 → 内容 → 页脚自定义控件 → 页脚按钮 → 关闭钮。
+	if d.headerBox != nil {
+		collectFocusable(d.headerBox.Handle, &list)
+	}
 	if d.content != nil {
 		collectFocusable(d.content.Handle, &list)
+	}
+	if d.footerBox != nil {
+		collectFocusable(d.footerBox.Handle, &list)
 	}
 	for _, b := range d.footers {
 		if b.IsShow() {
@@ -1431,6 +1534,76 @@ func isFocusControl(h int) bool {
 func setEleRect(hEle int, x, y, cx, cy int32) {
 	xc.XEle_SetRect(hEle, &xc.RECT{Left: x, Top: y, Right: x + cx, Bottom: y + cy},
 		false, xcc.AdjustLayout_No)
+}
+
+// newDialogFlow 创建对话框头部/页脚用的流容器: 横向(页脚)或纵向(头部 / Sheet 页脚),
+// 宽度由调用方定位时给定, 高度按内容自撑。
+func newDialogFlow(parent int, horizontal bool, gap int32) *widget.LayoutEle {
+	l := widget.NewLayoutEle(0, 0, 0, 0, parent)
+	if l == nil {
+		return nil
+	}
+	l.EnableHorizon(horizontal)
+	l.EnableLayout(true)
+	l.EnableBkTransparent(true)
+	l.EnableAutoWrap(false)
+	if horizontal {
+		l.SetAlignV(xcc.Layout_Align_Center)
+	} else {
+		l.SetAlignV(xcc.Layout_Align_Top)
+	}
+	l.SetSpace(gap)
+	l.EnableFocus(false)
+	l.EnableSwitchFocus(false)
+	return l
+}
+
+// measureFlowBlock 按宽度 w 量出流容器的内容高度并收高。容器先在 (0,0) 处排版,
+// 位置由调用方随后用 setEleRect 挪过去 —— 子项是相对父级定位的, 平移不影响结果。
+//
+// 量的是"布局占位"而不是子项矩形底边: 标题/描述用负外边距把上下外扩量抵消掉
+// (元素矩形比行盒高 dlgTextOver), 直接把矩形底边当高度会多算一段。
+func measureFlowBlock(l *widget.LayoutEle, w int32) int32 {
+	if l == nil || w <= 0 {
+		return 0
+	}
+	setEleRect(l.Handle, 0, 0, w, 0)
+	l.AdjustLayout()
+	h := childrenOccupiedBottom(l.Handle)
+	setEleRect(l.Handle, 0, 0, w, h)
+	l.AdjustLayout()
+	return h
+}
+
+// childrenOccupiedBottom 返回可见子项"布局占位"的底边(矩形底边 + 下外边距)。
+func childrenOccupiedBottom(hParent int) int32 {
+	var maxB int32
+	n := xc.XEle_GetChildCount(hParent)
+	for i := int32(0); i < n; i++ {
+		h := xc.XEle_GetChildByIndex(hParent, i)
+		if h == 0 || !xc.XWidget_IsShow(h) {
+			continue
+		}
+		var rc, m xc.RECT
+		xc.XEle_GetRect(h, &rc)
+		xc.XWidget_LayoutItem_GetMargin(h, &m)
+		if b := rc.Bottom + m.Bottom; b > maxB {
+			maxB = b
+		}
+	}
+	return maxB
+}
+
+// footerButtonsWidth 返回页脚按钮一行/一列的总宽(含按钮间距)。
+func footerButtonsWidth(bs []*Button) int32 {
+	total := int32(0)
+	for i, b := range bs {
+		if i > 0 {
+			total += dlgFooterGap
+		}
+		total += b.GetWidth()
+	}
+	return total
 }
 
 // showEleTree 递归显隐元素及其子树。xcgui 的 Show 只改元素自身状态,

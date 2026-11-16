@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"strings"
+	"time"
+	"unicode"
+
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -30,6 +34,19 @@ type Select struct {
 	valueText     func(item SelectItem) string // 触发区文字格式化, nil = 用条目文字
 	// noHoverHl: 鼠标悬停不把条目高亮成"当前项"底色(Base UI Root 的 highlightItemOnHover=false)。
 	noHoverHl bool
+	// 弹层定位(Base UI SelectContent 的 Positioner 参数): alignItem 为 true 时走
+	// item-aligned(盖住触发区、选中项对位), 为 false 时按 side/align/间距常规锚定。
+	alignItem   bool
+	side        PopoverSide
+	align       PopoverAlign
+	sideOffset  int32
+	alignOffset int32
+	// typeahead: 可打印字符累积成前缀跳转(750ms 窗口, 同 Base UI 的 useTypeahead)。
+	typeBuf      string
+	typeAt       time.Time
+	typePrev     int32 // 本次键入会话开始前的高亮下标(搜索起点 = 它 + 1)
+	typeMatch    int32 // 最近一次匹配到的下标(同前缀连按循环的起点)
+	rapidCycle   bool  // 没有"前两个字母相同"的条目时, 同字符连按改为循环(同 Base UI)
 	// hoverIdx 是当前被鼠标悬停的条目下标(-1 = 没有)。原生按钮的悬停不搬焦点,
 	// 也不会在移出后把旧行刷回去, 所以自己记一份用于搬高亮与重绘。
 	hoverIdx int32
@@ -123,10 +140,42 @@ func WithSelectHighlightOnHover(on bool) SelectOption {
 	return func(s2 *Select) { s2.noHoverHl = !on }
 }
 
+// WithSelectAlignItem 设置 item-aligned 定位(默认 true, 对应 Base UI 的
+// alignItemWithTrigger): 弹层盖住触发区、选中项正对触发区。
+// 传 false 时按 side / align / sideOffset / alignOffset 常规锚定(下方优先、放不下翻转)。
+func WithSelectAlignItem(on bool) SelectOption {
+	return func(s2 *Select) { s2.alignItem = on }
+}
+
+// WithSelectSide 设置常规锚定时弹层相对触发区的方位(默认 PopoverSideBottom)。
+// alignItem 为 true 时不生效。
+func WithSelectSide(side PopoverSide) SelectOption {
+	return func(s2 *Select) { s2.side = side }
+}
+
+// WithSelectAlign 设置常规锚定时弹层与触发区在交叉轴上的对齐(默认 PopoverAlignCenter)。
+// alignItem 为 true 时不生效。
+func WithSelectAlign(align PopoverAlign) SelectOption {
+	return func(s2 *Select) { s2.align = align }
+}
+
+// WithSelectSideOffset 设置常规锚定时与触发区的间距(默认 4, 对应 Base UI 的 sideOffset)。
+// alignItem 为 true 时不生效。
+func WithSelectSideOffset(px int32) SelectOption {
+	return func(s2 *Select) { s2.sideOffset = px }
+}
+
+// WithSelectAlignOffset 设置常规锚定时沿交叉轴的偏移(默认 0, 对应 alignOffset):
+// 上下方位正数向右, 左右方位正数向下。alignItem 为 true 时不生效。
+func WithSelectAlignOffset(px int32) SelectOption {
+	return func(s2 *Select) { s2.alignOffset = px }
+}
+
 // NewSelect 创建下拉选择框。cx/cy 传 0: cy 用尺寸档高度, cx 按内容量宽
 // (放卡片里通常配 xui.ItemFill 让它铺满)。
 func NewSelect(x, y, cx, cy int32, hParent int, opts ...SelectOption) *Select {
-	s := &Select{size: SelectSizeDefault, active: -1, hoverIdx: -1}
+	s := &Select{size: SelectSizeDefault, active: -1, hoverIdx: -1,
+		alignItem: true, side: PopoverSideBottom, align: PopoverAlignCenter, sideOffset: 4}
 	for _, o := range opts {
 		o(s)
 	}
@@ -361,7 +410,16 @@ func (s *Select) Open() *Select {
 		return s
 	}
 	s.hoverIdx = -1 // 每次打开从"没有悬停"开始(行元素可能已重建)
-	x, y := s.itemAlignedPos()
+	s.resetTypeahead()
+	var x, y int32
+	if s.alignItem {
+		x, y = s.itemAlignedPos()
+	} else {
+		// 常规锚定: 与 Popover / Menu 共用同一套 side/align/翻转/夹工作区几何。
+		s.pendingScroll = 0
+		cw, ch := s.popupSize()
+		x, y = popupPositionOffset(s.Handle, cw, ch, s.side, s.align, s.sideOffset, s.alignOffset)
+	}
 	s.panel.ShowAt(s.Handle, x, y)
 	// item-aligned: 内容超高时把选中项滚到触发区中心(radix 的滚动对位)
 	if s.pendingScroll > 0 {
@@ -381,6 +439,7 @@ func (s *Select) Close() *Select {
 		s.panel.Hide()
 	}
 	s.hoverIdx = -1
+	s.resetTypeahead()
 	return s
 }
 
@@ -408,6 +467,7 @@ func (s *Select) notifyOpen(open bool) {
 func (s *Select) build() {
 	s.built = true
 	s.flat = s.flatten()
+	s.rapidCycle = selectAllowRapidCycle(s.flat)
 	if s.panel != nil {
 		s.panel.Destroy()
 		s.panel, s.scroll, s.rows = nil, nil, nil
@@ -431,8 +491,11 @@ func (s *Select) build() {
 	xui.ItemSize(s.scroll, cw-selectPad*2, ch-selectPad*2)
 	s.rows = s.scroll.ContentStack(0)
 
-	// 键盘: ↑/↓/Home/End 移动高亮, Enter 选中; ESC 关闭由 popup.go 兜底
+	// 键盘: 可打印字符做 typeahead; ↑/↓/Home/End 移动高亮, Enter 选中; ESC 关闭由 popup.go 兜底
 	panel.OnKeyDown = func(wParam uintptr) bool {
+		if s.typeaheadKey(wParam) {
+			return true
+		}
 		switch wParam {
 		case xcc.VK_Up:
 			s.moveActive(-1)
@@ -642,6 +705,117 @@ func (s *Select) firstEnabled(from int32, dir int32) int32 {
 		}
 	}
 	return -1
+}
+
+// ===== typeahead(Base UI useTypeahead 的桌面等价实现) =====
+
+// selectTypeaheadReset 是键入前缀的保留窗口(同 Base UI 的 resetMs 默认 750ms)。
+const selectTypeaheadReset = 750 * time.Millisecond
+
+// resetTypeahead 清空键入会话(打开/关闭弹层时)。
+func (s *Select) resetTypeahead() {
+	if s == nil {
+		return
+	}
+	s.typeBuf = ""
+	s.typeAt = time.Time{}
+}
+
+// typeaheadKey 处理可打印字符。空格只在已有前缀时续接(单独按空格不算 typeahead)。
+func (s *Select) typeaheadKey(wParam uintptr) bool {
+	ch, ok := selectTypeaheadChar(wParam)
+	if !ok || (ch == ' ' && s.typeBuf == "") {
+		return false
+	}
+	s.typeahead(ch)
+	return true
+}
+
+// typeahead 把字符追加到前缀并从"会话起点后一位"开始找首个匹配条目,
+// 找到就搬高亮并滚动到可视区(同 Base UI: 无障碍条目跳过)。
+func (s *Select) typeahead(ch byte) {
+	if s == nil || len(s.flat) == 0 {
+		return
+	}
+	now := time.Now()
+	if !s.typeAt.IsZero() && now.Sub(s.typeAt) > selectTypeaheadReset {
+		s.typeBuf = ""
+	}
+	key := string(ch)
+	if s.typeBuf == "" {
+		s.typePrev = s.active
+	}
+	// 没有"前两个字母相同"的条目时, 同字符连按视为循环而不是前缀增长
+	// (否则 "aa" 永远匹配不到, 原生 select 与 Base UI 都按循环处理)。
+	if s.rapidCycle && s.typeBuf == key {
+		s.typeBuf = ""
+		s.typePrev = s.typeMatch
+	}
+	s.typeBuf += key
+	s.typeAt = now
+	idx := selectPrefixMatch(s.flat, s.typeBuf, s.typePrev+1)
+	if idx >= 0 {
+		s.typeMatch = idx
+		s.setActive(idx, true)
+		return
+	}
+	if ch != ' ' {
+		s.typeBuf = ""
+	}
+}
+
+// selectTypeaheadChar 把虚拟键码映射成可打印字符(A-Z / 0-9 / 小键盘数字 / 空格)。
+func selectTypeaheadChar(vk uintptr) (byte, bool) {
+	switch {
+	case vk >= 'A' && vk <= 'Z':
+		return byte(vk), true
+	case vk >= '0' && vk <= '9':
+		return byte(vk), true
+	case vk >= 0x60 && vk <= 0x69: // VK_NUMPAD0..VK_NUMPAD9
+		return byte('0' + vk - 0x60), true
+	case vk == 0x20: // VK_SPACE
+		return ' ', true
+	}
+	return 0, false
+}
+
+// selectPrefixMatch 从 start 起循环查找第一个可用条目, 其标签以 prefix 开头
+// (大小写不敏感)。start 可以越界/为负, 内部按环形取模。
+func selectPrefixMatch(rows []*selectRow, prefix string, start int32) int32 {
+	n := int32(len(rows))
+	if n == 0 || prefix == "" {
+		return -1
+	}
+	p := strings.ToLower(prefix)
+	for off := int32(0); off < n; off++ {
+		i := (start + off) % n
+		if i < 0 {
+			i += n
+		}
+		r := rows[i]
+		if r == nil || r.kind != selectRowItem || r.item.Disabled {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(selectItemLabel(r.item)), p) {
+			return i
+		}
+	}
+	return -1
+}
+
+// selectAllowRapidCycle 报告条目是否允许"同字符连按循环": 只要有任一条目的
+// 前两个字符相同(如 llama / aaron), 就必须按前缀匹配, 不能再把连按当循环。
+func selectAllowRapidCycle(rows []*selectRow) bool {
+	for _, r := range rows {
+		if r == nil || r.kind != selectRowItem || r.item.Disabled {
+			continue
+		}
+		label := []rune(selectItemLabel(r.item))
+		if len(label) >= 2 && unicode.ToLower(label[0]) == unicode.ToLower(label[1]) {
+			return false
+		}
+	}
+	return true
 }
 
 // setActive 设置键盘高亮条目: 焦点落到它的按钮上(bg-accent 高亮随焦点走)。

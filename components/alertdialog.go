@@ -75,6 +75,7 @@ func NewAlertDialog(hWnd int, opts ...AlertDialogOption) *AlertDialog {
 	}
 	d.alert = true
 	d.dismissOutside = false
+	d.headerBox.SetSpace(alertDlgHeadGap)
 	a := &AlertDialog{d: d}
 	for _, o := range opts {
 		o(a)
@@ -97,6 +98,40 @@ func (a *AlertDialog) SetDescription(s string) *AlertDialog {
 		a.d.SetDescription(s)
 	}
 	return a
+}
+
+// Header 返回头部内容槽: 标题与描述在里面, 还能追加任意控件(如提示条 / 徽章)。
+// 追加控件后用 xui.ItemFill / xui.ItemWidth 声明宽度, 打开中改完调用 Refresh()。
+func (a *AlertDialog) Header() *widget.LayoutEle {
+	if a == nil {
+		return nil
+	}
+	return a.d.Header()
+}
+
+// Title 返回标题 Label(只改样式; 文本仍走 SetTitle)。
+func (a *AlertDialog) Title() *Label {
+	if a == nil {
+		return nil
+	}
+	return a.d.Title()
+}
+
+// Description 返回描述 Label(只改样式; 文本仍走 SetDescription)。
+func (a *AlertDialog) Description() *Label {
+	if a == nil {
+		return nil
+	}
+	return a.d.Description()
+}
+
+// Footer 返回页脚内容槽: default 尺寸与按钮同一行(自定义在左、按钮靠右),
+// sm 尺寸在按钮行上方。AddFooter / AddCancel / AddAction 的按钮照旧排布。
+func (a *AlertDialog) Footer() *widget.LayoutEle {
+	if a == nil {
+		return nil
+	}
+	return a.d.Footer()
 }
 
 // SetSize 切换尺寸(同时切换头部对齐与页脚排布)。

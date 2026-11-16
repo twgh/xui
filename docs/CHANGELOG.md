@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第九批: 面板内容槽 + Select 定位/typeahead**(2026-11-16, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的 Q1 / Q2 决策):
+  - **Dialog / Sheet / AlertDialog 内容槽(Q1 / D4 / AD3 / SH5)**: `Header()` / `Footer()` 返回布局容器, 标题与描述是 Header 的首批子项, 可继续追加徽章、复选框等任意控件; `Title()` / `Description()` 改为只改样式和文本(不再单独摆位)。Dialog / AlertDialog 页脚横排(自定义内容在按钮左侧, AlertDialog sm 在按钮行上方), Sheet 页脚竖排(自定义内容在按钮上方); 追加控件后用 `ItemFill` / `ItemWidth` 声明宽度, 再调 `Refresh()` 重排。实现上标题/描述改由 `headerBox` 流式容器摆放, 用负外边距保留原有行高节奏; 头/尾高度按实际子项占位测量。焦点顺序按 DOM 顺序: Header → 内容 → Footer → 按钮 → 关闭钮。页脚带是 bg-muted/50 叠在面板底色上, 会铺宿主底色的自绘控件(复选框)按页脚实际颜色 `SetBackdrop`, 默认 `t.Card` 会在灰带上露出白块; demo 的对话框构建器统一放回 `feed1page.go`(原先误留在 `iconpage.go`)。
+  - **Select 弹层定位(Q2 / S1)**: 默认仍是 `alignItemWithTrigger`(选中项对齐触发器); `WithSelectAlignItem(false)` 切到触发器锚定, 配合 `WithSelectSide` / `WithSelectAlign` / `WithSelectSideOffset` / `WithSelectAlignOffset`(默认 bottom + center + 4 + 0, 放不下翻转并夹工作区, 与 Popover 共用定位)。
+  - **Select 键盘 typeahead(Q2 / S2)**: 打开时键入字母/数字/空格按标签前缀跳转: 750ms 后重置, 从当前高亮下一项起环形搜索、跳过禁用项; 同一首字母连续快速键入时循环同名项(标签前两位相同的组不启用该循环, 避免误判)。关闭时清空缓冲。
+  - **验收**: `go test ./...`(新增 `select_test.go`: 前缀匹配/环形/跳过禁用/快速循环判据/键位映射)、`go vet ./...`、`go build ./...` 全绿; 探针确认 typeahead(V → Vue → Enter → value=vue)与关掉 alignItem 后的 anchored 定位(弹层顶边 = 触发器底边 + sideOffset, 左对齐); demo 在浅色/深色 + 150% DPI 下逐页检查 Dialog 头部徽章、页脚复选框、Sheet 头尾内容槽与 AlertDialog 页脚说明, 位置与间距正确。逐组件安装回归通过(单个 add 与 `add --all` 后 `go build ./ui`)。
+
 - ✅ **v0.14.0 发布(2026-11-15)**: 自 v0.13.0 以来组件特性核查八批落地(跨 20+ 组件)、Combobox 三种形态、Field 必填/校验基础设施, 修复装饰元素焦点框 / 改字改尺寸残影 / 头像圆边 / Tooltip 可移入 / Badge 校验态 / Select 悬停 / 过渡到位帧等一批问题; 同批修复裸 `xui update` 漏更上游新增文件的已装组件。组件与 API 变更走 minor, **无破坏性变更**(两处默认视觉行为可回退: Slider `edge` 对齐 / Sheet 进场)。
   - **顺序**: 修复与文档提交(`222bea1`)→ 版本示例 + `fallbackXuiVersion` 提交(`33615f2`)→ 轻量 tag `v0.14.0`(指向 `33615f2`)→ `registry.runtime` / `cliChange` 同时抬到 v0.14.0(`dfbe10c`, tag 之后)。最初按 patch 建的 `v0.13.1` tag(`b0866a1`)在发 Release 前已从本地与四个远端删除(未建 Release); 本周期含组件/API 变更, 按约定最终版本号定为 v0.14.0。
   - **推送**: `git push origin main v0.14.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。数据源是 main, 推送当刻新组件与设计文档即对用户生效, 不等 tag。

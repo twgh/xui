@@ -55,11 +55,17 @@ func buildSheetDemos(hWindow int, rightBtn, leftBtn, bottomBtn *ui.Button, statu
 	right := ui.NewSheet(hWindow, ui.WithSheetSide(ui.SheetRight))
 	right.SetTitle("编辑资料")
 	right.SetDescription("修改你的公开资料, 完成后点击保存。")
+	// 头部内容槽: 标题/描述之后追加徽章; 页脚内容槽在按钮上方(纵向)放复选框。
+	badge := ui.NewBadge(0, 0, 0, 0, "必填", right.Header().Handle,
+		ui.WithBadgeVariant(ui.BadgeSecondary))
+	xui.ItemWidth(badge, 46)
 	cw := right.ContentWidth()
 	ui.NewLabel(0, 0, cw, 20, "显示名称", right.Content()).SetFontSize(14).SetMedium()
 	ui.NewInput(0, 24, cw, 32, right.Content()).SetValue("twgh")
 	ui.NewLabel(0, 72, cw, 20, "个人主页", right.Content()).SetFontSize(14).SetMedium()
 	ui.NewInput(0, 96, cw, 32, right.Content()).SetValue("https://")
+	cb := ui.NewCheckbox(0, 0, 0, 0, "保存后关闭面板", right.Footer().Handle)
+	xui.ItemWidth(cb, 164)
 	right.AddFooter("保存更改", ui.ButtonPrimary, func() {
 		set("右侧面板: 已保存更改")
 		right.Close()

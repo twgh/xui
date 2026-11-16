@@ -139,6 +139,7 @@ func NewSheet(hWnd int, opts ...SheetOption) *Sheet {
 	d.durOpen = sheetOpenDuration
 	d.durClose = sheetCloseDuration
 	d.sheetW = 0
+	d.headerBox.SetSpace(sheetHeadGap)
 	s := &Sheet{d: d}
 	for _, o := range opts {
 		o(s)
@@ -180,6 +181,40 @@ func (s *Sheet) SetDescription(text string) *Sheet {
 		s.d.SetDescription(text)
 	}
 	return s
+}
+
+// Header 返回头部内容槽(纵向流容器): 标题与描述在里面, 还能追加徽章等任意控件。
+// 追加控件后用 xui.ItemFill / xui.ItemWidth 声明宽度, 打开中改完调用 Refresh()。
+func (s *Sheet) Header() *widget.LayoutEle {
+	if s == nil {
+		return nil
+	}
+	return s.d.Header()
+}
+
+// Title 返回标题 Label(只改样式; 文本仍走 SetTitle)。
+func (s *Sheet) Title() *Label {
+	if s == nil {
+		return nil
+	}
+	return s.d.Title()
+}
+
+// Description 返回描述 Label(只改样式; 文本仍走 SetDescription)。
+func (s *Sheet) Description() *Label {
+	if s == nil {
+		return nil
+	}
+	return s.d.Description()
+}
+
+// Footer 返回页脚内容槽(纵向流容器, 自定义内容在按钮上方)。
+// AddFooter 按钮仍按原语义铺满排布, 两者可同时使用。
+func (s *Sheet) Footer() *widget.LayoutEle {
+	if s == nil {
+		return nil
+	}
+	return s.d.Footer()
 }
 
 // Content 返回内容容器句柄: 子控件建在它里面(坐标相对内容区左上角)。
@@ -353,16 +388,21 @@ func (d *Dialog) layoutSheet() {
 
 	titleH := d.textHeight(d.title, d.titleText, textW, sheetTitleH)
 	descH := d.textHeight(d.desc, d.descText, textW, sheetDescH)
-	headerH := int32(0)
+	d.headerBox.SetSpace(sheetHeadGap)
+	d.title.SetText(d.titleText)
+	d.desc.SetText(d.descText)
+	d.title.Show(d.titleText != "")
+	d.desc.Show(d.descText != "")
 	if titleH > 0 {
-		headerH = titleH
+		d.title.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, titleH+2*dlgTextOver)
+		xc.XWidget_LayoutItem_SetMargin(d.title.Handle, 0, -dlgTextOver, 0, -dlgTextOver)
 	}
 	if descH > 0 {
-		if headerH > 0 {
-			headerH += sheetHeadGap
-		}
-		headerH += descH
+		d.desc.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, descH+2*dlgTextOver)
+		xc.XWidget_LayoutItem_SetMargin(d.desc.Handle, 0, -dlgTextOver, 0, -dlgTextOver)
 	}
+	headerContentH := measureFlowBlock(d.headerBox, textW)
+	headerH := headerContentH
 
 	headerTop := int32(sheetPad)
 	if d.drawer && d.sheetSide == SheetBottom {
@@ -373,10 +413,20 @@ func (d *Dialog) layoutSheet() {
 		contentTop += sheetGap
 	}
 
-	footerH := int32(0)
+	btnRowH := int32(0)
 	if len(d.footers) > 0 {
-		footerH = sheetPad*2 + int32(len(d.footers))*sheetBtnH +
-			int32(len(d.footers)-1)*sheetFooterGap
+		btnRowH = int32(len(d.footers))*sheetBtnH + int32(len(d.footers)-1)*sheetFooterGap
+	}
+	customFootH := int32(0)
+	if d.footerBox != nil {
+		customFootH = measureFlowBlock(d.footerBox, innerW)
+	}
+	footerH := int32(0)
+	if customFootH > 0 || btnRowH > 0 {
+		footerH = sheetPad*2 + customFootH + btnRowH
+		if customFootH > 0 && btnRowH > 0 {
+			footerH += sheetGap
+		}
 	}
 
 	sideH := d.sheetSide == SheetTop || d.sheetSide == SheetBottom
@@ -485,21 +535,8 @@ func (d *Dialog) layoutSheet() {
 		}
 	}
 
-	textX := panel.Left + sheetPad
-	y := panel.Top + headerTop
-	if titleH > 0 {
-		setEleRect(d.title.Handle, textX, y-dlgTextOver, textW, titleH+2*dlgTextOver)
-		d.title.SetText(d.titleText)
-		y += titleH
-	}
-	if descH > 0 {
-		if titleH > 0 {
-			y += sheetHeadGap
-		}
-		setEleRect(d.desc.Handle, textX, y-dlgTextOver, textW, descH+2*dlgTextOver)
-		d.desc.SetText(d.descText)
-		y += descH
-	}
+	// 头部槽: 标题/描述与自定义控件已按 textW 排好, 这里只挪到最终位置。
+	setEleRect(d.headerBox.Handle, panel.Left+sheetPad, panel.Top+headerTop, textW, headerContentH)
 	if d.content != nil {
 		showContent := contentH > 0
 		showEleTree(d.content.Handle, showContent && d.open)
@@ -509,6 +546,13 @@ func (d *Dialog) layoutSheet() {
 	}
 	if footerH > 0 {
 		by := panel.Bottom - footerH + sheetPad
+		if customFootH > 0 {
+			setEleRect(d.footerBox.Handle, panel.Left+sheetPad, by, innerW, customFootH)
+			by += customFootH
+			if btnRowH > 0 {
+				by += sheetGap
+			}
+		}
 		for _, b := range d.footers {
 			setEleRect(b.Handle, panel.Left+sheetPad, by, innerW, sheetBtnH)
 			by += sheetBtnH + sheetFooterGap
@@ -571,8 +615,12 @@ func (d *Dialog) applyPanelOffset(dx, dy int32) {
 	if d.closeBtn != nil {
 		shift(d.closeBtn.Handle)
 	}
-	shift(d.title.Handle)
-	shift(d.desc.Handle)
+	if d.headerBox != nil {
+		shift(d.headerBox.Handle)
+	}
+	if d.footerBox != nil {
+		shift(d.footerBox.Handle)
+	}
 	if d.content != nil {
 		shift(d.content.Handle)
 	}

@@ -150,7 +150,7 @@ func buildForm2Page(body *widget.LayoutEle) {
 	_, v5 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "独立 Select", v5.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"radix Select(item-aligned 定位): 富条目——图标 / 禁用 / 分组 / 分隔线; ↑↓ 移动高亮、Enter 选中、ESC 关闭", v5.Handle))
+		"radix Select(item-aligned 定位): 富条目——图标 / 禁用 / 分组 / 分隔线; ↑↓ 移动高亮、Enter 选中、ESC 关闭、键入字母跳转", v5.Handle))
 
 	xui.ItemFill(hint(v5.Handle, "分组 + 图标 + 禁用项"))
 	sel := ui.NewSelect(0, 0, 0, 0, v5.Handle,
@@ -195,6 +195,21 @@ func buildForm2Page(body *widget.LayoutEle) {
 		ui.WithSelectItems([]ui.SelectItem{
 			{Value: "standard", Text: "标准"},
 			{Value: "pro", Text: "专业版"},
+		})))
+
+	xui.ItemFill(hint(v5.Handle, "常规锚定(alignItemWithTrigger=false, bottom/start + 6px) + 键入字母跳转"))
+	xui.ItemFill(ui.NewSelect(0, 0, 0, 0, v5.Handle,
+		ui.WithSelectAlignItem(false),
+		ui.WithSelectSide(ui.PopoverSideBottom),
+		ui.WithSelectAlign(ui.PopoverAlignStart),
+		ui.WithSelectSideOffset(6),
+		ui.WithSelectPlaceholder("打开后键入 r / v / s"),
+		ui.WithSelectItems([]ui.SelectItem{
+			{Value: "react", Text: "React"},
+			{Value: "vue", Text: "Vue"},
+			{Value: "svelte", Text: "Svelte"},
+			{Value: "angular", Text: "Angular"},
+			{Value: "solid", Text: "Solid"},
 		})))
 
 	// ---- 右列 3: 自动补全(Combobox) ----
