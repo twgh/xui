@@ -42,8 +42,8 @@ func buildForm4Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "月历卡片", v6.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
 		"标题年月可下拉切换; 周末禁用(灰显不可点); 页脚 = 内置「今天」+ 自定义「清除」", v6.Handle))
-	// 默认尺寸 = 上游基准(格子 28 / p-2), 元素再拉宽时内部等比缩放;
-	// 需要更大的格子用 ui.WithCalendarCellSize(36) 显式放大
+	// 配了格子尺寸就是"定宽模式": 日历按格子 36 算出的自然尺寸摆着, 卡片再宽也不会
+	// 横向拉伸(多出来的宽度是卡片自己的留白); 不配则按元素宽度等比缩放(格子/字号一起长)。
 	var cal *ui.Calendar
 	cal = ui.NewCalendar(0, 0, 0, 0, v6.Handle,
 		ui.WithCalendarCellSize(36),
@@ -136,6 +136,7 @@ func buildForm4Page(body *widget.LayoutEle) {
 		booked = append(booked, now.AddDate(0, 0, 3+i))
 	}
 	calWeek := ui.NewCalendar(0, 0, 0, 0, v10.Handle,
+		ui.WithCalendarCellSize(36),
 		ui.WithCalendarWeekNumbers(),
 		ui.WithCalendarSelected(now),
 		ui.WithCalendarDisabled(ui.CalendarDisableDates(booked...)),
@@ -144,9 +145,10 @@ func buildForm4Page(body *widget.LayoutEle) {
 			ui.CalPreset("今天", 0, 0),
 			ui.CalPreset("明天", 1, 0),
 			ui.CalPreset("一周后", 7, 0)))
-	// 铺满卡片宽: 格子/字号跟着宽度等比放大(卡片里的日历用这个形态; 要"格子固定、
-	// 多出来的宽度留白"才用 WithCalendarCellSize + NaturalWidth, 那种适合弹层)。
-	xui.ItemFill(calWeek)
+	// 和「月历卡片」同一个口径: 配了格子尺寸就按自然尺寸摆着(不铺满卡片), 卡片变宽也
+	// 不会把日历横向拉伸。宽度用 NaturalWidth() 显式钉住 —— 包级的 CalWidthForWeekNumbers
+	// 不知道这张卡配了多大的格子, 会把日历压回 28。
+	xui.ItemWidth(calWeek, calWeek.NaturalWidth())
 
 	// ---- 右列 3: base-nova 形态(纯文字标题 + 隐藏越界日期) ----
 	_, v11 := autoCard(colR2.Handle, 10)
@@ -154,10 +156,11 @@ func buildForm4Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
 		"标题只显示年月(无下拉); 本月之外的日期留空、不可点、无悬停", v11.Handle))
 	calPlain := ui.NewCalendar(0, 0, 0, 0, v11.Handle,
+		ui.WithCalendarCellSize(36),
 		ui.WithCalendarCaptionLabel(),
 		ui.WithCalendarHideOutsideDays(),
 		ui.WithCalendarSelected(now))
-	xui.ItemFill(calPlain)
+	xui.ItemWidth(calPlain, calPlain.NaturalWidth())
 }
 
 // dateRangeText 是 demo 里展示范围用的短文本。
