@@ -36,6 +36,12 @@ const (
 	toastSlide    int32 = 12
 	toastSlideOut int32 = 24
 
+	// 折叠堆叠(Base UI Toast 的 --peek / --scale): 最前一条保持原尺寸贴边, 后面每层
+	// 只露出 toastPeek 高、按 toastFoldStep 递减缩放; 鼠标进入整组时全部展开成平铺。
+	toastPeek     int32   = 12
+	toastFoldStep float64 = 0.1
+	toastFoldMin  float64 = 0.5
+
 	toastDefaultWidth   int32 = 356
 	toastDefaultOffset  int32 = 24
 	toastDefaultGap     int32 = 10
@@ -199,9 +205,11 @@ type ToastPromise struct {
 // 卡片是**单个元素整体自绘**(图标/标题/描述/动作/关闭按钮都画在它里面), 没有子元素
 // —— 悬停事件不会被内部控件打断, 命中判定也就是一次矩形比较。
 //
-// 交互语义对齐 sonner:
+// 交互语义对齐 sonner / Base UI Toast:
 //   - 默认右下角堆叠, 新的在最下, 旧的被顶上去; 超出 maxVisible 的最旧一条被移除;
-//   - 悬停任意一条通知时**暂停全部倒计时**, 鼠标离开后继续(sonner 的 pauseTimers);
+//   - 两条以上时折叠堆叠: 后面的每层只露出 12px、逐层缩小 10%, 最前的保持原尺寸;
+//   - 悬停整组时**暂停全部倒计时**并把整组展开成平铺, 鼠标离开后收起并继续(sonner
+//     的 pauseTimers + Base UI 的 data-expanded);
 //   - 自动关闭默认 4s; 关闭按钮默认隐藏; 动作按钮点击后关闭;
 //   - 进场: 淡入 + 从堆叠方向滑入 12px(200ms); 退场: 淡出 + 向侧边滑出 24px(180ms)。
 type Toaster struct {
@@ -217,9 +225,10 @@ type Toaster struct {
 	richColors  bool // 整组按类型上色(sonner 的 richColors); 单条可用 ToastOptions.RichColors 覆盖开启
 	closeButton bool // 整组显示右上角关闭按钮(sonner 的 closeButton 属性)
 
-	paused bool // 鼠标停在本组任一条通知上: 全部倒计时暂停
-	items  []*Toast
-	byID   map[string]*Toast // ToastOptions.ID → 仍在显示/退场中的条目(同 ID upsert 用)
+	paused   bool // 鼠标停在本组任一条通知上: 全部倒计时暂停
+	expanded bool // 鼠标停在本组上: 折叠堆叠展开成平铺(与 paused 同步, 便于绘制/布局分开读)
+	items    []*Toast
+	byID     map[string]*Toast // ToastOptions.ID → 仍在显示/退场中的条目(同 ID upsert 用)
 
 	// animOwner 是驱动进出场过渡的窗口: 0 = 用 hWnd 自己。屏幕通知的窗口是
 	// 异型置顶小窗, 它自己的 XWnd 定时器只有约 10fps(见 DESIGN 47/57), 必须把
@@ -241,7 +250,11 @@ type Toast struct {
 	key  int32 // 本条的 presence 键(窗口级唯一, 见 xui.NextPresenceKey)
 
 	// 卡片尺寸(不含投影留白)与在窗口中的静止位置(元素左上角不含留白)。
+	// w/h 是"未折叠"的完整尺寸(内容按它排版); dw/dh 是当前**显示**尺寸
+	// (折叠时 = w/h × scale), 元素矩形与命中都用 dw/dh。
 	w, h         int32
+	dw, dh       int32
+	scale        float64
 	baseX, baseY int32
 	geom         toastGeom
 
@@ -308,7 +321,9 @@ func NewToaster(hWnd int, opts ...ToasterOption) *Toaster {
 	// 路由给滚动条, 见 DESIGN 第八节 21), 而且这里要的是"鼠标在这组通知的任意一条上"
 	// 这个整组语义, 窗口级判定一次就够。
 	win.AddEvent_MouseMove(func(hWindow int, nFlags uint, pPt *xc.POINT, pbHandled *bool) int {
-		t.syncPaused(win.GetStayEle())
+		if pPt != nil {
+			t.syncPaused(pPt.X, pPt.Y)
+		}
 		return 0
 	})
 	win.AddEvent_MouseLeave(func(hWindow int, pbHandled *bool) int {
@@ -318,29 +333,61 @@ func NewToaster(hWnd int, opts ...ToasterOption) *Toaster {
 	return t
 }
 
-// syncPaused 按窗口当前停留元素更新整组暂停态: 停在任一条通知上就暂停全部倒计时。
-func (t *Toaster) syncPaused(hStay int) {
-	on := false
-	if hStay != 0 {
-		for _, it := range t.items {
-			if it.ele != nil && it.ele.Handle == hStay {
-				on = true
-				break
-			}
-		}
-	}
-	t.setPaused(on)
+// syncPaused 按鼠标位置更新整组暂停/展开态。
+//
+// 为什么不用窗口的"停留元素"(GetStayEle)判定: 展开后的卡片之间有 gap(默认 10),
+// 鼠标落在缝里时停留元素是 0, 会立刻判定为"离开"→ 收起 → 卡片回到光标下 → 再展开,
+// 变成在两态之间抖动。这里改判**整组的并集矩形**: 缝与卡片都算组内(sonner 的
+// 整组 <ol> 覆盖整块堆叠区域, 同一语义)。
+func (t *Toaster) syncPaused(x, y int32) {
+	t.setPaused(t.overStack(x, y))
 }
 
-// setPaused 切换整组倒计时暂停。
+// overStack 判断坐标是否落在整组通知的并集矩形内。
+func (t *Toaster) overStack(x, y int32) bool {
+	minX, minY := int32(0), int32(0)
+	maxX, maxY := int32(0), int32(0)
+	first := true
+	for _, it := range t.items {
+		if it.destroyed || it.dw <= 0 || it.dh <= 0 {
+			continue
+		}
+		x0, y0 := it.baseX, it.baseY
+		x1, y1 := x0+it.dw, y0+it.dh
+		if first {
+			minX, minY, maxX, maxY = x0, y0, x1, y1
+			first = false
+			continue
+		}
+		if x0 < minX {
+			minX = x0
+		}
+		if y0 < minY {
+			minY = y0
+		}
+		if x1 > maxX {
+			maxX = x1
+		}
+		if y1 > maxY {
+			maxY = y1
+		}
+	}
+	if first {
+		return false
+	}
+	return x >= minX && x < maxX && y >= minY && y < maxY
+}
+
+// setPaused 切换整组倒计时暂停与折叠展开(两者同源: 鼠标在组上)。
 func (t *Toaster) setPaused(p bool) {
 	if t.paused == p {
 		return
 	}
-	t.paused = p
+	t.paused, t.expanded = p, p
 	for _, it := range t.items {
 		it.paused = p
 	}
+	t.layout() // 展开/收起要重排(卡片尺寸与位置都变)
 }
 
 // Show 显示一条通知并返回它的句柄(可用于 Update / Close)。
@@ -670,12 +717,13 @@ func (it *Toast) close(auto bool) {
 		dx, dy = 0, toastSlideOut // 底部居中: 向下滑出
 	}
 	key := it.key
+	dw, dh := it.dw, it.dh
 	xui.Presence(hOwner, key, false, toastExitDuration, func(v float64) {
 		if it.destroyed || !xc.XC_IsHXCGUI(hEle, xcc.XC_ELE) {
 			return
 		}
 		xui.SetElementsAlpha(v, hEle)
-		toastSetRect(hEle, baseX+int32(float64(dx)*(1-v)+0.5), baseY+int32(float64(dy)*(1-v)+0.5), it.w, it.h)
+		toastSetRect(hEle, baseX+int32(float64(dx)*(1-v)+0.5), baseY+int32(float64(dy)*(1-v)+0.5), dw, dh)
 		toastAnimRedraw(hWnd, hOwner)
 	}, func(float64) {
 		it.destroy()
@@ -751,7 +799,7 @@ func (it *Toast) enter() {
 		it.t.position == ToastBottomCenter {
 		offset = -offset // 底部堆叠(含底部居中): 从更下方滑上来
 	}
-	toastSetRect(hEle, it.baseX, it.baseY-offset, it.w, it.h)
+	toastSetRect(hEle, it.baseX, it.baseY-offset, it.dw, it.dh)
 	toastRedrawWindow(hWnd)
 
 	xui.Presence(hOwner, it.key, true, toastEnterDuration, func(v float64) {
@@ -759,7 +807,7 @@ func (it *Toast) enter() {
 			return
 		}
 		xui.SetElementsAlpha(v, hEle)
-		toastSetRect(hEle, it.baseX, it.baseY-int32(float64(offset)*(1-v)), it.w, it.h)
+		toastSetRect(hEle, it.baseX, it.baseY-int32(float64(offset)*(1-v)), it.dw, it.dh)
 		toastAnimRedraw(hWnd, hOwner)
 	}, func(float64) {
 		it.entered = true
@@ -804,7 +852,12 @@ func (t *Toaster) removeItem(it *Toast) {
 }
 
 // layout 重新量宽/量高并把所有通知摆到静止位置。正在进场/退场的条目由各自的
-// apply 回调控制位置, 这里只更新它的 baseX/baseY(下一帧自动跟上)。
+// apply 回调控制位置, 这里只更新它的 baseX/baseY/dw/dh(下一帧自动跟上)。
+//
+// 两条以上且鼠标不在组上时走**折叠堆叠**(Base UI Toast 的 stacked viewport):
+// 最前一条(最新)贴边保持原尺寸, 后面的每层中心水平对齐、上/下边缘每层各让
+// toastPeek(12), 并逐层缩小 toastFoldStep(10%)。被前一张完全盖住的区域不画内容
+// (见 onPaint), 所以缩放不需要重排文字。鼠标进入整组时展开成平铺(见 setPaused)。
 func (t *Toaster) layout() {
 	if t == nil || t.win == nil || len(t.items) == 0 {
 		return
@@ -821,35 +874,82 @@ func (t *Toaster) layout() {
 	center := t.position == ToastTopCenter || t.position == ToastBottomCenter
 	top := t.position == ToastTopRight || t.position == ToastTopLeft || t.position == ToastTopCenter
 
-	y := br.Bottom - t.offset
-	if top {
-		y = br.Top + t.offset
-	}
-	for i := len(t.items) - 1; i >= 0; i-- {
-		it := t.items[i]
+	n := len(t.items)
+	// 折叠位置依赖最前一条的高度, 所以先把全部卡片量一遍(it.w 是未折叠宽度)。
+	for _, it := range t.items {
 		it.measure(w)
+	}
+	if t.expanded || n < 2 {
+		// 平铺: 每条都是完整尺寸, 从贴边的一条往堆叠方向依次排开。
+		y := br.Bottom - t.offset
 		if top {
-			it.baseY = y
-			y += it.h + t.gap
-		} else {
-			it.baseY = y - it.h
-			y = it.baseY - t.gap
+			y = br.Top + t.offset
 		}
-		if left {
-			it.baseX = br.Left + t.offset
-		} else if center {
-			it.baseX = br.Left + (br.Right-br.Left-it.w)/2
-		} else {
-			it.baseX = br.Right - t.offset - it.w
+		for i := n - 1; i >= 0; i-- {
+			it := t.items[i]
+			it.scale, it.dw, it.dh = 1, it.w, it.h
+			if top {
+				it.baseY = y
+				y += it.h + t.gap
+			} else {
+				it.baseY = y - it.h
+				y = it.baseY - t.gap
+			}
+			it.baseX = t.alignX(br, it.dw, left, center)
 		}
+	} else {
+		front := t.items[n-1]
+		front.scale, front.dw, front.dh = 1, front.w, front.h
+		front.baseX = t.alignX(br, front.dw, left, center)
+		if top {
+			front.baseY = br.Top + t.offset
+		} else {
+			front.baseY = br.Bottom - t.offset - front.dh
+		}
+		cx := front.baseX + front.dw/2
+		for d := 1; d < n; d++ {
+			it := t.items[n-1-d]
+			s := 1 - toastFoldStep*float64(d)
+			if s < toastFoldMin {
+				s = toastFoldMin
+			}
+			it.scale = s
+			it.dw = int32(math.Round(float64(front.dw) * s))
+			it.dh = int32(math.Round(float64(it.h) * s))
+			it.baseX = cx - it.dw/2
+			// 顶部堆叠时最前一条在上, 后面的向下露头; 底部堆叠相反。
+			if top {
+				it.baseY = front.baseY + front.dh + int32(d)*toastPeek - it.dh
+			} else {
+				it.baseY = front.baseY - int32(d)*toastPeek
+			}
+		}
+	}
+	for _, it := range t.items {
 		// 动画中的条目不要直接落位(会被下一帧 apply 覆盖, 但旧位置会留残影)。
 		if it.entered {
-			toastSetRect(it.ele.Handle, it.baseX, it.baseY, it.w, it.h)
+			toastSetRect(it.ele.Handle, it.baseX, it.baseY, it.dw, it.dh)
 		}
 		it.pin(br)
-		it.ele.SetZOrderEx(0, xcc.Zorder_Top)
+	}
+	// 折叠后卡片互相重叠, 必须显式定层序: 最前一条置顶, 后面依次压在前一张下面。
+	// (平铺时也不依赖创建顺序, 同一套写法两种形态通用。)
+	t.items[n-1].ele.SetZOrderEx(0, xcc.Zorder_Top)
+	for d := 1; d < n; d++ {
+		t.items[n-1-d].ele.SetZOrderEx(t.items[n-d].ele.Handle, xcc.Zorder_Before)
 	}
 	xc.XWnd_Redraw(t.hWnd, true)
+}
+
+// alignX 按堆叠位置算卡片左边(宽度 dw 而不是完整宽度: 折叠后的卡片要跟着一起缩)。
+func (t *Toaster) alignX(br xc.RECT, dw int32, left, center bool) int32 {
+	switch {
+	case left:
+		return br.Left + t.offset
+	case center:
+		return br.Left + (br.Right-br.Left-dw)/2
+	}
+	return br.Right - t.offset - dw
 }
 
 // pin 把通知元素"钉"成相对窗口 Body 的四边 inset(布局项置位置)。
@@ -871,8 +971,8 @@ func (it *Toast) pin(br xc.RECT) {
 	}
 	x := it.baseX - toastShadow
 	y := it.baseY - toastShadow
-	cx := it.w + 2*toastShadow
-	cy := it.h + 2*toastShadow
+	cx := it.dw + 2*toastShadow
+	cy := it.dh + 2*toastShadow
 	it.ele.LayoutItem_SetPosition(x-br.Left, y-br.Top, br.Right-(x+cx), br.Bottom-(y+cy))
 }
 
@@ -1144,6 +1244,13 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p.FillRound(&card, cardBg, radius)
 	p.StrokeRound(&card, cardBorder, radius, 1)
 
+	// 折叠堆叠里的后排卡片: 只露出最上面 toastPeek(12) 高度的一条, 而卡片内边距
+	// 是 16 —— 露出的部分里没有任何内容, 直接停在卡片底/描边即可。这样"缩放"只
+	// 需要改元素矩形, 不必重排文字(元素比卡片小一圈, 内容本来就会被裁掉)。
+	if it.scale < 0.999 {
+		return 0
+	}
+
 	// 所有内部矩形都是卡片局部坐标, 绘制时整体平移 shadow
 	off := func(rc xc.RECT) xc.RECT {
 		rc.Left += toastShadow
@@ -1233,8 +1340,8 @@ func (it *Toast) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 // onLButtonUp 处理动作按钮与关闭按钮的点击(卡片其余区域不响应)。
 func (it *Toast) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if pPt == nil || it.closed || it.destroyed {
-		return 0
+	if pPt == nil || it.closed || it.destroyed || it.scale < 0.999 {
+		return 0 // 折叠中的后排卡片没有可见的按钮
 	}
 	x, y := pPt.X-toastShadow, pPt.Y-toastShadow
 	if it.opts.CloseButton && toastPointIn(it.geom.close, x, y) {
@@ -1256,7 +1363,7 @@ func (it *Toast) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *boo
 
 // onMouseMove 更新两个按钮的悬停态(整张卡片是一个元素, 需要自己判命中)。
 func (it *Toast) onMouseMove(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
-	if pPt == nil {
+	if pPt == nil || it.scale < 0.999 {
 		return 0
 	}
 	x, y := pPt.X-toastShadow, pPt.Y-toastShadow

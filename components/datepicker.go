@@ -592,7 +592,7 @@ func (d *DatePicker) ensurePopup() bool {
 		for i, p := range d.presets {
 			items[i] = CalendarFooterItem{Text: p.Label, OnClick: func() {}}
 		}
-		ch += calLayoutFooter(cw, months, false, items).totalH
+		ch += calLayoutFooter(cw, months, false, 0, items).totalH
 	}
 	panel := newPopoverPanel(cw, ch, d.Handle)
 	if panel == nil {

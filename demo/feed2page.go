@@ -78,7 +78,7 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 	_, v3 := autoCard(xui.VStack(r2.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "通知", v3.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"窗口内覆盖元素, 右下角堆叠; 4s 自动关闭, 悬停全部暂停; 关闭按钮默认隐藏; richColors 按类型上色", v3.Handle))
+		"窗口内覆盖元素, 右下角堆叠; 两条以上折叠堆叠、悬停整组展开并暂停倒计时; 4s 自动关闭; richColors 按类型上色", v3.Handle))
 	toaster := ui.NewToaster(hWindow)
 	rn1 := xui.HStack(v3.Handle, 36, 8)
 	for _, it := range []struct {
@@ -124,7 +124,20 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 		})
 		return 0
 	})
-	bRich := ui.NewButton(0, 0, 0, 0, "richColors", rn2.Handle, ui.WithVariant(ui.ButtonOutline))
+	bStack := ui.NewButton(0, 0, 0, 0, "连续三条", rn2.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(bStack, 96)
+	bStack.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		for _, s := range []string{"第一条", "第二条", "第三条"} {
+			toaster.Show(ui.ToastOptions{
+				Title:       s,
+				Description: "两条以上自动折叠堆叠, 悬停整组展开",
+				Variant:     ui.ToastInfo,
+			})
+		}
+		return 0
+	})
+	rnStack := xui.HStack(v3.Handle, 36, 8)
+	bRich := ui.NewButton(0, 0, 0, 0, "richColors", rnStack.Handle, ui.WithVariant(ui.ButtonOutline))
 	xui.ItemWidth(bRich, 96)
 	bRich.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
 		toaster.Show(ui.ToastOptions{

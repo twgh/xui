@@ -13,10 +13,13 @@ import (
 )
 
 // Command 几何常量(逻辑像素), 对齐 shadcn command.tsx(cmdb):
-// 搜索行 36 + 下边框; 条目 px-2 py-1.5 text-sm = 32; 分组标签 text-xs + py-1.5 = 24;
-// 分组 p-1 = 4; 列表 max-h-72 = 288; 空状态 py-6 + text-sm = 52。
+// 面板 p-1 = 4; 搜索行 = 行内 p-1(4) + 32 高的 InputGroup chip(没有下边框);
+// 条目 px-2 py-1.5 text-sm = 32; 分组标签 text-xs + py-1.5 = 24; 分组 p-1 = 4;
+// 列表 max-h-72 = 288; 空状态 py-6 + text-sm = 52。
 const (
-	commandInputH   int32 = 36
+	commandPad      int32 = 4                           // 面板内边距 p-1
+	commandChipH    int32 = 32                          // 搜索行 chip 的 h-8(InputGroup)
+	commandInputH   int32 = commandPad*2 + commandChipH // 40: 面板 4 + 行内 4 + chip 32
 	commandItemH    int32 = 32
 	commandHeadingH int32 = 24
 	commandGroupPad int32 = 4
@@ -62,13 +65,15 @@ func WithCommandFilter(fn CommandFilter) CommandOption {
 }
 
 // Command 命令面板/搜索选择列表, 对应 shadcn command.tsx(cmdb 的基础形态):
-//   - 顶部搜索行(搜索图标 + 原生 Edit, 下边框), 列表滚动区, 分组标签, 条目图标/快捷键;
+//   - 顶部搜索行 = InputGroup 形态的 chip(32 高圆角块 + 搜索图标 + 原生 Edit),
+//     外面是面板 p-1 与行内 p-1 的两层内边距, **没有**下边框;
+//   - 列表滚动区, 分组标签, 条目图标/快捷键;
 //   - 输入即过滤(默认不区分大小写的包含匹配, 可配 keywords; 可用 WithCommandFilter 替换),
 //     无结果时显示空状态;
 //   - ↑/↓(循环, 跳过禁用)/Home/End 移动高亮, Enter 选中, ESC 交给回调;
 //   - 鼠标悬停高亮、点击选中; 选中后不自动关闭(由外层 Dialog/Popover 决定)。
 //
-// 高度: cy 传 0 时用 36 + 288(上游 max-h-72); 传值时列表吃剩余高度。
+// 高度: cy 传 0 时用 40 + 288 + 4(搜索行 + 列表 max-h-72 + 面板下内距); 传值时列表吃剩余高度。
 //
 // CommandDialog 没有单独做: 用 ui.NewDialog + 把 Command 放进 Dialog.Content() 即可
 // (Dialog 自带遮罩/ESC/焦点陷阱), 语义与 shadcn 的 CommandDialog 一致。
@@ -104,13 +109,13 @@ type Command struct {
 	footerOn  bool
 }
 
-// NewCommand 创建命令面板。cx 传 0 = 宽度铺满父级; cy 传 0 = 36+288。
+// NewCommand 创建命令面板。cx 传 0 = 宽度铺满父级; cy 传 0 = 40+288+4。
 func NewCommand(x, y, cx, cy int32, hParent int, opts ...CommandOption) *Command {
 	if cy <= 0 {
-		cy = commandInputH + commandListMaxH
+		cy = commandInputH + commandListMaxH + commandPad
 	}
-	if cy < commandInputH {
-		cy = commandInputH
+	if cy < commandInputH+commandPad {
+		cy = commandInputH + commandPad
 	}
 	c := &Command{active: -1, placeholder: "输入命令或搜索...", emptyText: "没有找到结果。"}
 	for _, o := range opts {
@@ -135,9 +140,13 @@ func NewCommand(x, y, cx, cy int32, hParent int, opts ...CommandOption) *Command
 		root.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, cx)
 	}
 	root.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, cy)
+	// 左右用元素 padding 约束子项 Fill 宽(面板 p-1); 上下由首尾子项的外边距表达。
+	root.SetPadding(commandPad, 0, commandPad, 0)
 
-	// ---- 搜索行 ----
-	c.row = widget.NewLayoutEle(0, 0, 0, commandInputH, root.Handle)
+	// ---- 搜索行(InputGroup chip) ----
+	// 行高 32 = h-8; 上方 8 = 面板 p-1(4) + 行内 p-1(4), 左右各 4 让 chip 相对面板再缩进
+	// 一层 —— 与上游 "根 p-1 + wrapper p-1 pb-0" 的两层内边距同几何。
+	c.row = widget.NewLayoutEle(0, 0, 0, commandChipH, root.Handle)
 	c.row.EnableHorizon(true)
 	c.row.EnableLayout(true)
 	c.row.EnableAutoWrap(false)
@@ -145,9 +154,11 @@ func NewCommand(x, y, cx, cy int32, hParent int, opts ...CommandOption) *Command
 	c.row.EnableDrawBorder(false)
 	c.row.EnableFocus(false)
 	c.row.SetAlignV(xcc.Layout_Align_Center)
-	c.row.SetSpace(8)
+	c.row.SetSpace(6)            // 图标 → 输入文字 6(上游 has-[>[data-align=inline-start]]:[&>input]:pl-1.5)
+	c.row.SetPadding(8, 0, 0, 0) // addon 的 pl-2: 图标离 chip 左边缘 8(内边距口径见 DESIGN 8.129)
 	c.row.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
-	c.row.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, commandInputH)
+	c.row.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, commandChipH)
+	c.row.LayoutItem_SetMargin(commandPad, commandInputH-commandChipH, commandPad, 0)
 	c.row.AddEvent_Paint(c.onRowPaint)
 
 	icon := widget.NewElement(0, 0, 16, 16, c.row.Handle)
@@ -156,7 +167,7 @@ func NewCommand(x, y, cx, cy int32, hParent int, opts ...CommandOption) *Command
 		icon.EnableDrawBorder(false)
 		icon.EnableFocus(false)
 		icon.EnableSwitchFocus(false)
-		icon.LayoutItem_SetMargin(12, 0, 0, 0)
+		icon.LayoutItem_SetMargin(8, 0, 0, 0) // addon 的 pl-2
 		icon.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, 16)
 		icon.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 16)
 		icon.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
@@ -171,7 +182,7 @@ func NewCommand(x, y, cx, cy int32, hParent int, opts ...CommandOption) *Command
 		})
 	}
 
-	c.edit = widget.NewEdit(0, 0, 0, commandInputH, c.row.Handle)
+	c.edit = widget.NewEdit(0, 0, 0, commandChipH, c.row.Handle)
 	if c.edit != nil {
 		c.edit.EnableBkTransparent(true)
 		c.edit.EnableDrawBorder(false).EnableDrawFocus(false)
@@ -179,8 +190,8 @@ func NewCommand(x, y, cx, cy int32, hParent int, opts ...CommandOption) *Command
 		c.edit.SetBorderSize(0, 0, 0, 0)
 		c.edit.SetTextAlign(xcc.Edit_TextAlign_Flag_Left | xcc.Edit_TextAlign_Flag_Center_V)
 		c.edit.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1)
-		c.edit.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, commandInputH)
-		c.edit.LayoutItem_SetMargin(0, 0, 12, 0)
+		c.edit.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, commandChipH)
+		c.edit.LayoutItem_SetMargin(0, 0, 10, 0) // px-2.5
 		c.edit.AddEvent_Edit_Changed(func(hEle int, pbHandled *bool) int {
 			c.query = c.edit.GetText()
 			c.applyFilter()
@@ -200,6 +211,7 @@ func NewCommand(x, y, cx, cy int32, hParent int, opts ...CommandOption) *Command
 	}
 	c.list.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	c.list.LayoutItem_SetHeight(xcc.Layout_Size_Weight, 1)
+	c.list.LayoutItem_SetMargin(0, 0, 0, commandPad) // 列表到底边留面板 p-1
 	c.content = c.list.ContentStack(0)
 
 	c.empty = NewLabel(0, 0, 0, commandEmptyH, c.emptyText, c.content.Handle)
@@ -398,6 +410,24 @@ func (c *Command) AddSeparator() *Command {
 	return c
 }
 
+// commandDeviceLine 在 rect 的中心画一条对齐整设备像素的水平线。
+// 与 separator.go 同一套算法: 1 逻辑像素在 150% DPI 下是 1.5 物理像素,
+// 不自己对齐会出现同一面板里的线一粗一细。
+func commandDeviceLine(p *xui.Painter, rc xc.RECT, color uint32) {
+	sc := p.Scale
+	if sc <= 0 {
+		sc = 1
+	}
+	c := math.Floor(float64(rc.Top+rc.Bottom) / 2 * sc)
+	rf := xc.RECTF{
+		Left:   float32(rc.Left),
+		Top:    float32(c / sc),
+		Right:  float32(rc.Right),
+		Bottom: float32((c + 1) / sc),
+	}
+	p.Draw.FillRectColorF(&rf, color)
+}
+
 // Focus 把焦点放到搜索框。
 func (c *Command) Focus() *Command {
 	if c != nil && c.edit != nil {
@@ -472,27 +502,17 @@ func (c *Command) onRowPaint(hEle int, hDraw int, pbHandled *bool) int {
 		return 0
 	}
 	*pbHandled = true
-	line := xc.RECT{Left: p.Rc.Left, Top: p.Rc.Bottom - 1, Right: p.Rc.Right, Bottom: p.Rc.Bottom}
-	commandDeviceLine(p, line, uint32(xui.Current().Border))
+	t := xui.Current()
+	// 搜索行 = InputGroup chip: command.tsx 把 InputGroup 覆盖成
+	// `border-input/30 bg-input/30 shadow-none rounded-lg h-8`, 亮色下也带底色
+	// (InputGroup 默认只在暗色下 bg-input/30)。底色 = popover 上叠 30% input;
+	// 描边同比例再叠一层 —— 与直接把 30% 透明色画在同色底上等价, 又不必依赖
+	// 绘制层的 alpha 混合路径。
+	bg := t.Popover.Mix(t.Input, 0.3)
+	radius := t.RadiusLg()
+	p.FillRound(&p.Rc, bg, radius)
+	p.StrokeRound(&p.Rc, bg.Mix(t.Input, 0.3), radius, 1)
 	return 0
-}
-
-// commandDeviceLine 在 rect 的中心画一条对齐整设备像素的水平线。
-// 与 separator.go 同一套算法: 1 逻辑像素在 150% DPI 下是 1.5 物理像素,
-// 不自己对齐会出现同一面板里的线一粗一细。
-func commandDeviceLine(p *xui.Painter, rc xc.RECT, color uint32) {
-	sc := p.Scale
-	if sc <= 0 {
-		sc = 1
-	}
-	c := math.Floor(float64(rc.Top+rc.Bottom) / 2 * sc)
-	rf := xc.RECTF{
-		Left:   float32(rc.Left),
-		Top:    float32(c / sc),
-		Right:  float32(rc.Right),
-		Bottom: float32((c + 1) / sc),
-	}
-	p.Draw.FillRectColorF(&rf, color)
 }
 
 // CommandGroup 命令分组。

@@ -170,7 +170,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | RadioGroup | 单选组:`AddItem(value, text)` 或 `Attach(radio, value)` 收编放在 Field 等子容器里的条目(跨父级互斥);↑↓←→ 循环移动并选中、Home/End 首末 |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块:都有禁用与校验态;Progress 可 indeterminate 短条往返与 `ui.NewProgressField`(标题 + 百分比 + 条);Slider 支持值域/步进、范围与多滑块、垂直、反向 |
 | Rating | 星级评分(纯自绘):整星 / 半星、悬停预览、只读与禁用;点击提交(再点当前星清零)、聚焦后 ←/↓ 减一档、→/↑ 加一档、Home/End 两端;`WithRatingSize` 三档尺寸、`WithRatingLabels` 文案展现、`WithRatingIcons` 自定义图标、`OnHoverChange` 预览回调、`WithRatingKeyboard(false)` 关闭键盘;`OnFocus`/`OnBlur`/`OnKeyDown` 焦点与按键回调、`Blur()` 移除焦点 |
-| Calendar | 月历(全自绘):6×7 网格、范围选择(两次点击落区间)、多月并排、ISO 周数列、禁用与预订划线、年月可下拉或纯文字标题、可隐藏越界日期、页脚/预设;尺寸有 helper 算宽 |
+| Calendar | 月历(全自绘):6×7 网格、范围选择(两次点击落区间)、多月并排、ISO 周数列、禁用与预订划线、年月可下拉或纯文字标题、可隐藏越界日期、页脚/预设;键盘方向键移动(自动翻月)、PageUp/Down 换月、Enter 选中;格子大小 `WithCalendarCellSize`,尺寸有 helper 算宽 |
 | DatePicker | 日期框:outline 触发区 + 弹层内放 Calendar,下方放不下自动翻到上方;范围模式并排两个月、预设按钮、禁用日期、可输入形态(键入 `2026-10-22` / `今天` / `3天后`,输入即解析)、`OnOpenChange` 开合回调 |
 | TimePicker | 时间框:弹层内"时/分"两列滚动列表,选择即生效、弹层保持打开 |
 | ColorPicker | 颜色选择器:触发区(色块 + `#rrggbb` + chevron)+ 弹层(SV 方块 / 色相条 / 预设色 / Hex 输入);颜色以 `#rrggbb` 进出 |
@@ -189,7 +189,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | AspectRatio | 固定宽高比容器:高度 = 宽度 / ratio,宽度变化时自动重算并逐级重排 |
 | Tabs | 标签页(default / line 两变体):行内图标、单标签禁用、value 语义、`BindPanel` 绑面板;支持纵向堆叠与自动换行;键盘 = 整块一个 Tab 站点,←/→/↑/↓ 移动、Home/End 首末、Enter/空格切换 |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点):四方向 + 对齐/间距、显示延迟与跳过延迟、键盘焦点也触发、内容可带快捷键块 |
-| Toast | 通知(窗口内覆盖元素):默认右下角堆叠,四角与上下居中可选;4 种语义类型 + 动作按钮 + 可选关闭钮,自动关闭、悬停暂停、滑入淡入;`ToastOptions.ID` 相同即原地更新,`Toaster.Update/Close/Get` 按 ID 寻址 |
+| Toast | 通知(窗口内覆盖元素):默认右下角堆叠(两条以上折叠层叠,悬停整组展开),四角与上下居中可选;4 种语义类型 + 动作按钮 + 可选关闭钮,自动关闭、悬停暂停、滑入淡入;`ToastOptions.ID` 相同即原地更新,`Toaster.Update/Close/Get` 按 ID 寻址 |
 | ScreenToast | 屏幕通知:独立置顶小窗,固定在**屏幕**右下角,应用最小化/隐藏也能看到、不抢焦点;卡片绘制与自动关闭与 Toast 同款 |
 | ScreenPopup | 屏幕弹窗:固定在屏幕工作区右下角的**常驻**面板 —— 不是通知(默认不自动关闭、不堆叠),内容任意 xui 控件、高度自撑;默认不抢焦点,`WithScreenPopupFocusable(true)` 改为点击后键盘可用 |
 | Tray | 系统托盘:左键还原/前台化绑定窗口(可覆盖),右键弹 themed Menu,资源图标可直接用 `.syso` 里的 HICON;监听 `TaskbarCreated`,Explorer 重启后自动恢复图标。⚠️ 同一进程只应创建一个托盘图标(xcgui 的托盘 API 是全局状态) |

@@ -69,25 +69,33 @@ func TestCalWeekNumber(t *testing.T) {
 }
 
 func TestCalMetrics(t *testing.T) {
-	if got := CalWidthFor(1); got != 278 {
-		t.Errorf("CalWidthFor(1) = %d, want 278", got)
+	// 默认几何 = 上游 1:1 基准: cell 28 / p-2 / 单月 212 宽、256 高。
+	if got := CalWidthFor(1); got != 212 {
+		t.Errorf("CalWidthFor(1) = %d, want 212", got)
 	}
-	if got := CalWidthFor(2); got != 547 {
-		t.Errorf("CalWidthFor(2) = %d, want 547", got)
+	if got := CalWidthFor(2); got != 424 {
+		t.Errorf("CalWidthFor(2) = %d, want 424", got)
 	}
-	if got := CalHeightFor(CalWidth()); got != 325 {
-		t.Errorf("CalHeightFor(278) = %d, want 325", got)
+	if got := CalHeightFor(CalWidth()); got != 256 {
+		t.Errorf("CalHeightFor(212) = %d, want 256", got)
 	}
-	if got := CalHeightForMonths(CalWidthFor(2), 2); got != 319 {
-		t.Errorf("CalHeightForMonths(547, 2) = %d, want 319", got)
+	if got := CalHeightForMonths(CalWidthFor(2), 2); got != 256 {
+		t.Errorf("CalHeightForMonths(424, 2) = %d, want 256", got)
 	}
-	single := calMetricsFor(CalWidth(), 1, false)
-	if single.cell != 36 {
-		t.Errorf("single cell = %d, want 36", single.cell)
+	single := calMetricsFor(CalWidth(), 1, false, 0)
+	if single.cell != 28 {
+		t.Errorf("single cell = %d, want 28", single.cell)
 	}
-	week := calMetricsFor(calDefaultWidth(1, true), 1, true)
+	week := calMetricsFor(calDefaultWidth(1, true, 0), 1, true, 0)
 	if week.weekW != week.cell || week.monthW != 8*week.cell {
 		t.Errorf("week-number metrics = monthW %d / cell %d / weekW %d, want 8*cell / cell", week.monthW, week.cell, week.weekW)
+	}
+	// 显式格子尺寸: 缩放比固定为 px/28, 默认宽度跟着放大(36/28 ≈ 1.286 倍)。
+	if got := calDefaultWidth(1, false, 36); got != 273 {
+		t.Errorf("calDefaultWidth(cell 36) = %d, want 273", got)
+	}
+	if got := calMetricsFor(calDefaultWidth(1, true, 36), 1, true, 36); got.cell != 36 {
+		t.Errorf("cell with WithCalendarCellSize(36) = %d, want 36", got.cell)
 	}
 }
 

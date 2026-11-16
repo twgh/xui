@@ -46,12 +46,12 @@
 | 28 | Separator | `separator` | 已核查 | 结论见 3.7;SEP1 / SEP2 已落地;余 demo 对照 |
 | 29 | Skeleton | `skeleton` | 已核查 | 结论见 3.7;SK1 已落地(配色改 bg-muted);余示例卡 |
 | 30 | Scroll Area | `scroll-area` | 已核查 | 结论见 3.7;SA1 已落地(滚动条常显);余横向滚动 |
-| 31 | Toast | `toast` | 已核查 | 结论见 3.8;TS1 已落地;折叠堆叠/swipe/F6 待确认 |
+| 31 | Toast | `toast` | 已核查 | 结论见 3.8;TS1 / TS2 已落地;swipe / F6 待确认 |
 | 32 | Toggle | `toggle` | 已核查 | 结论见 3.8;TG1~TG4 已落地 |
 | 33 | Toggle Group | `toggle-group` | 已核查 | 结论见 3.8;TGR2~TGR4 已落地(间距已有) |
 | 34 | Pagination | `pagination` | 已核查 | 结论见 3.8;PG1 已落地;href/aria 为能力边界 |
-| 35 | Command | `command` | 已核查 | 结论见 3.8;CMD1~CMD3 已落地;搜索行 InputGroup 化待确认 |
-| 36 | Calendar | `calendar` | 已核查 | 结论见 3.8;CAL1 / CAL2 已落地;键盘/默认几何待确认;RTL / Jalali / timeZone 为能力边界 |
+| 35 | Command | `command` | 已核查 | 结论见 3.8;CMD1~CMD4 已落地;尾部勾选待确认 |
+| 36 | Calendar | `calendar` | 已核查 | 结论见 3.8;CAL1~CAL5 已落地;纵向折叠待确认;RTL / Jalali / timeZone 为能力边界 |
 | 37 | Date Picker | `date-picker` | 已核查 | 结论见 3.8;DP1~DP3 已落地;自然语言宽解析为能力边界 |
 | 38 | Hover Card | `hover-card` | 已核查 | 结论见 3.9;HC1 默认几何/延时/聚焦已落地;HC2 动画深度暂缓 |
 | 39 | Collapsible | `collapsible` | 已核查 | 结论见 3.9;CL1 否决已落地;CL2 任意布局待确认 |
@@ -630,7 +630,7 @@
 | # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
 |---:|---|---|---|---|---|
 | TS1 | 同 ID upsert / 按 ID 关闭与查询 | manager `toast.add({id})` / `update` / `close` 与 Base UI 的 upsert | 以前只能 Show 出新卡 | 已落地:`Show` 同 ID 复用旧条目并 `Update`(保留堆叠位置与 key);`Toaster.Update/Close/Get`;退场中的旧条不复用 | 已落地 |
-| TS2 | 折叠堆叠(peek / scale / 悬停展开) | `limit=3` + `data-limited`;`--peek:12px`、每层 `scale` 递减 0.1、`data-expanded` 时展开 | 容量已有(`WithToastMaxVisible`, 默认 3, 超出移除最旧), 但全部平铺展开、无层叠缩放 | 需确认:折叠视觉 + 悬停整组展开;容量沿用现有选项;若要对齐"超出隐藏不删"再引入 `data-limited` 等价状态 | 中 / 中 |
+| TS2 | 折叠堆叠(peek / scale / 悬停展开) | `limit=3` + `data-limited`;`--peek:12px`、每层 `scale` 递减 0.1、`data-expanded` 时展开 | 容量已有(`WithToastMaxVisible`, 默认 3, 超出移除最旧), 但全部平铺展开、无层叠缩放 | 需确认:折叠视觉 + 悬停整组展开;容量沿用现有选项;若要对齐"超出隐藏不删"再引入 `data-limited` 等价状态 | 中 / 中 | **已落地**(peek 12 / 每层 0.9 / 悬停展开) |
 | TS3 | 四向 swipe 关闭 | Root 的 `data-swipe-direction` | 无 | 需确认:自绘卡按住拖动 + 方向/距离判定 + 出屏退场;桌面鼠标收益低 | 中 / 低 |
 | TS4 | F6 进入通知区 + Tab 遍历 | Base UI 键盘文档 | 关闭钮按钮不进 Tab 链 | 需确认:窗口级 F6 钩子 + 通知列表焦点态;要先让出 xcgui 的 Tab 链,风险大于收益 | 中 / 低 |
 
@@ -698,7 +698,7 @@
 | CMD1 | 选中底色与文字 | `data-selected:bg-muted` + `text-foreground`(图标/快捷键同步) | `Accent` / `AccentForeground` | 已落地:选中 `Muted` + `Foreground`;图标与快捷键也在选中态转 `Foreground` | 已落地 |
 | CMD2 | 根圆角 / 列表上限 | `rounded-xl!`;`max-h-72` | `RadiusMd`;300 | 已落地:`RadiusXl`;288 | 已落地 |
 | CMD3 | 自定义匹配 | cmdk 的 `filter`(默认 fuzzy score) | 只有小写包含 | 已落地:`WithCommandFilter` / `SetFilter(func(text, keywords, query string) bool)`,query 已小写去空白;传 nil 回默认 | 已落地 |
-| CMD4 | 搜索行 InputGroup 化 | wrapper `p-1 pb-0` + 32 高圆角 chip(`bg-input/30` + `border-input/30` + 图标) + 根 `p-1` | 整宽 36 行 + 下边框 | 需确认:重建为"根 4 + 行内 4 + 32 chip",去掉下边框;会改 DatatableFacet 的精确高度与 demo 几何,需要整页回归 | 中 / 中 |
+| CMD4 | 搜索行 InputGroup 化 | wrapper `p-1 pb-0` + 32 高圆角 chip(`bg-input/30` + `border-input/30` + 图标) + 根 `p-1` | 整宽 36 行 + 下边框 | 需确认:重建为"根 4 + 行内 4 + 32 chip",去掉下边框;会改 DatatableFacet 的精确高度与 demo 几何,需要整页回归 | 中 / 中 | **已落地**(含 DatatableFacet 高度) |
 | CMD5 | 尾部勾选指示 | 条目自带 `ml-auto` CheckIcon(`data-checked`) | 分面筛选是前置勾选框 | 需确认:分面筛选保留前置框;另给 `WithCommandItemCheckMark()`(单选用尾部勾) | 小 / 低 |
 | CMD6 | 快捷键字距 | `tracking-widest` | 12px 常规字距 | 不做:xcgui 文本字距没有等价 API,用空格排版会破坏对齐 | 不做 |
 
@@ -716,9 +716,9 @@
 |---:|---|---|---|---|---|
 | CAL1 | 纯文字标题 | `captionLayout="label"`(默认) | 只有年月下拉 | 已落地:`WithCalendarCaptionLabel()` 画居中的"2026年10月",无热区/chevron,左右翻页保留 | 已落地 |
 | CAL2 | 隐藏越界日期 | `showOutsideDays=false` | 恒定显示 | 已落地:`WithCalendarHideOutsideDays()`;越界格留空、不可点、无悬停,6 行高度不变 | 已落地 |
-| CAL3 | 键盘网格 | react-day-picker:方向键移动、PageUp/Down 换月、Shift+PageUp/Down 换年、Home/End 到行首尾、Enter/Space 选中 | 元素不进焦点链 | 需确认:日历开 `EnableFocus` + focused day(初始 = 选中/今天),按 7 列移动并自动翻月;焦点环 3px ring/50%;要验证在 Popover 内的 Tab 顺序 | 中-高 / 中 |
-| CAL4 | 默认几何/皮肤 | cell 28 / `p-2` / `bg-background`;范围中段 `bg-muted` | cell 32×1.12、`p-3`、`bg-popover` + ring、中段 accent | 需确认:按上游改基准(28 / p-2 / 背景色透明,中段 Muted),DatePicker 弹层尺寸同步;担心 100% DPI 可读性时用 CAL5 放大,而不是默认 1.12 | 中 / 高 |
-| CAL5 | 自定义格子尺寸 | `--cell-size` 任意值/响应式 | 只按元素宽度等比缩放 | 与 CAL4 合并:`WithCalendarCellSize(px)` 映射到缩放比,0 = 跟随宽度 | 小-中 / 中 |
+| CAL3 | 键盘网格 | react-day-picker:方向键移动、PageUp/Down 换月、Shift+PageUp/Down 换年、Home/End 到行首尾、Enter/Space 选中 | 元素不进焦点链 | 需确认:日历开 `EnableFocus` + focused day(初始 = 选中/今天),按 7 列移动并自动翻月;焦点环 3px ring/50%;要验证在 Popover 内的 Tab 顺序 | 中-高 / 中 | **已落地** |
+| CAL4 | 默认几何/皮肤 | cell 28 / `p-2` / `bg-background`;范围中段 `bg-muted` | cell 32×1.12、`p-3`、`bg-popover` + ring、中段 accent | 需确认:按上游改基准(28 / p-2 / 背景色透明,中段 Muted),DatePicker 弹层尺寸同步;担心 100% DPI 可读性时用 CAL5 放大,而不是默认 1.12 | 中 / 高 | **已落地** |
+| CAL5 | 自定义格子尺寸 | `--cell-size` 任意值/响应式 | 只按元素宽度等比缩放 | 与 CAL4 合并:`WithCalendarCellSize(px)` 映射到缩放比,0 = 跟随宽度 | 小-中 / 中 | **已落地** |
 | CAL6 | 多月窄容器纵向堆叠 | `flex-col md:flex-row` | 始终横排,窄容器靠夹取 | 暂缓:容器宽 < 两月最小宽时改纵向;桌面半宽面板少见 | 中 / 低 |
 
 **明确不做**:Jalali / Hijri / Persian 日历、指定 timeZone、完整 locale 数据(周起始与中文星期已可配)、RTL、DOM aria 元数据。
@@ -740,7 +740,7 @@
 
 **明确不做**:RTL、指定 timeZone、React 受控/非受控语义;时间选择由独立 `TimePicker` 组件承担(组合式,不塞进 DatePicker)。
 
-**本批实现顺序**:TS1 → TG1~TG3 → TGR1~TGR3 → PG1 → CMD1~CMD3 → CAL1 / CAL2 → DP1~DP3(本批已全部落地);TS2、CMD4 / CMD5、CAL3~CAL5 需先拍板(见第五节 Q5);其余为能力边界或暂缓。
+**本批实现顺序**:TS1 → TG1~TG3 → TGR1~TGR3 → PG1 → CMD1~CMD3 → CAL1 / CAL2 → DP1~DP3(本批已全部落地);TS2、CMD4、CAL3~CAL5 已按第五节 Q5 拍板落地;CMD5 与 swipe / F6 仍待需求;其余为能力边界或暂缓。
 
 ### 3.9 Hover Card / Collapsible / Breadcrumb / Navigation Menu / Menubar / Sidebar / Resizable(#38 ~ #44)
 
@@ -1045,9 +1045,9 @@
 | Q2 | S5 / S7 / S1 / S2 | 先做 S1 定位开关 + S2 typeahead; S5 / S7 等真实需求 | 已落地(第九批); S5 / S7 暂缓 |
 | Q3 | SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3 | 全部不做, 有真实场景再单独立项 | 不做 |
 | Q4 | C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2 | demo 随组件改动补; C4 只做直角图片槽 + 自适应高 | C4 待排期; demo 随批次 |
-| Q5-1 | TS2 / TS3 / TS4 | 先做折叠堆叠(peek 12 / 每层 scale 0.9 / 悬停整组展开, 容量沿用 `WithToastMaxVisible`);swipe 与 F6 等触摸/无障碍需求再立项 | TS2 待拍板; TS3 / TS4 暂缓 |
-| Q5-2 | CMD4 / CMD5 / CMD6 | 搜索行 InputGroup 化(CMD4)需带 DatatableFacet 整页回归, 建议单独一批;尾部勾选(CMD5)随选择类需求;字距(CMD6)不做 | CMD4 待排期; CMD5 暂缓; CMD6 不做 |
-| Q5-3 | CAL3 / CAL4 / CAL5 / CAL6 | 先改默认几何(28 / p-2 / bg-background, CAL4)并给 `WithCalendarCellSize`(CAL5), DatePicker 弹层同步;键盘网格(CAL3)随后;纵向折叠(CAL6)不做 | CAL4 / CAL5 待拍板; CAL3 随后; CAL6 不做 |
+| Q5-1 | TS2 / TS3 / TS4 | 先做折叠堆叠(peek 12 / 每层 scale 0.9 / 悬停整组展开, 容量沿用 `WithToastMaxVisible`);swipe 与 F6 等触摸/无障碍需求再立项 | 已落地(折叠堆叠); TS3 / TS4 暂缓 |
+| Q5-2 | CMD4 / CMD5 / CMD6 | 搜索行 InputGroup 化(CMD4)需带 DatatableFacet 整页回归, 建议单独一批;尾部勾选(CMD5)随选择类需求;字距(CMD6)不做 | 已落地(CMD4, 含 DatatableFacet 高度同步); CMD5 暂缓; CMD6 不做 |
+| Q5-3 | CAL3 / CAL4 / CAL5 / CAL6 | 先改默认几何(28 / p-2 / bg-background, CAL4)并给 `WithCalendarCellSize`(CAL5), DatePicker 弹层同步;键盘网格(CAL3)随后;纵向折叠(CAL6)不做 | 已落地(CAL3 / CAL4 / CAL5); CAL6 不做 |
 | Q5-4 | DP4 | 保持中文窄口径解析(今天/N 天后/常见格式), 不引入 chrono-node 等价物 | 不做 |
 
 **待确认需求(第十一批, Q6)**:

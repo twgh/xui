@@ -297,7 +297,9 @@ const facetPanelW int32 = 232
 // 空白, 少一个像素就裁行并出滚动条。
 func (p *facetPanel) cmdHeight() int32 {
 	n := int32(len(p.d.cols[p.ci].FilterOptions))
-	h := commandInputH + n*commandItemH + commandGroupPad*2
+	// commandInputH 已含搜索行内部的两层内边距(面板 p-1 的上边与行内 p-1);
+	// 面板的下内距要单独加, 否则最短的列表会被裁掉 4px 并冒出滚动条。
+	h := commandInputH + n*commandItemH + commandGroupPad*2 + commandPad
 	if len(p.d.facet[p.ci]) > 0 {
 		// 分割线 1 + 底部组上下各 4 + 清除条目 32, 与 shadcn 的
 		// CommandSeparator + CommandGroup(p-1) + CommandItem(h-8) 同几何。

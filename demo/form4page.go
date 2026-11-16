@@ -42,9 +42,11 @@ func buildForm4Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "月历卡片", v6.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
 		"标题年月可下拉切换; 周末禁用(灰显不可点); 页脚 = 内置「今天」+ 自定义「清除」", v6.Handle))
-	// 默认尺寸已是"格子 36 / 字号 16"的比例; 元素再放大时内部等比缩放
+	// 默认尺寸 = 上游基准(格子 28 / p-2), 元素再拉宽时内部等比缩放;
+	// 需要更大的格子用 ui.WithCalendarCellSize(36) 显式放大
 	var cal *ui.Calendar
 	cal = ui.NewCalendar(0, 0, 0, 0, v6.Handle,
+		ui.WithCalendarCellSize(36),
 		ui.WithCalendarSelected(time.Now()),
 		ui.WithCalendarDisabled(ui.CalendarDisableWeekend),
 		ui.WithCalendarFooterToday(),
@@ -134,6 +136,7 @@ func buildForm4Page(body *widget.LayoutEle) {
 		booked = append(booked, now.AddDate(0, 0, 3+i))
 	}
 	calWeek := ui.NewCalendar(0, 0, 0, 0, v10.Handle,
+		ui.WithCalendarCellSize(32),
 		ui.WithCalendarWeekNumbers(),
 		ui.WithCalendarSelected(now),
 		ui.WithCalendarDisabled(ui.CalendarDisableDates(booked...)),
@@ -151,6 +154,7 @@ func buildForm4Page(body *widget.LayoutEle) {
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
 		"标题只显示年月(无下拉); 本月之外的日期留空、不可点、无悬停", v11.Handle))
 	calPlain := ui.NewCalendar(0, 0, 0, 0, v11.Handle,
+		ui.WithCalendarCellSize(32),
 		ui.WithCalendarCaptionLabel(),
 		ui.WithCalendarHideOutsideDays(),
 		ui.WithCalendarSelected(now))
