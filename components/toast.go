@@ -84,6 +84,10 @@ const (
 
 // ToastOptions 描述一条通知。
 type ToastOptions struct {
+	// ID 是通知的稳定标识(同 Base UI Toast / sonner 的 id): 同 ID 的 Show 会原地更新
+	// 已存在的那一条并重置倒计时, 不会叠出第二条; 空串 = 不去重, 每次新建。
+	ID string
+
 	Title       string
 	Description string
 	Variant     ToastVariant
@@ -215,6 +219,7 @@ type Toaster struct {
 
 	paused bool // 鼠标停在本组任一条通知上: 全部倒计时暂停
 	items  []*Toast
+	byID   map[string]*Toast // ToastOptions.ID → 仍在显示/退场中的条目(同 ID upsert 用)
 
 	// animOwner 是驱动进出场过渡的窗口: 0 = 用 hWnd 自己。屏幕通知的窗口是
 	// 异型置顶小窗, 它自己的 XWnd 定时器只有约 10fps(见 DESIGN 47/57), 必须把
@@ -283,6 +288,7 @@ func NewToaster(hWnd int, opts ...ToasterOption) *Toaster {
 		gap:        toastDefaultGap,
 		duration:   toastDefaultDuration,
 		maxVisible: toastDefaultVisible,
+		byID:       make(map[string]*Toast),
 	}
 	for _, o := range opts {
 		o(t)
@@ -351,6 +357,14 @@ func (t *Toaster) Show(o ToastOptions) *Toast {
 	if t.closeButton {
 		o.CloseButton = true
 	}
+	// 同 ID upsert: 原地更新内容并重置倒计时(正在退场的旧条目不再复用 —— 它已经在
+	// 滑出, 让新内容从旧位置突然复亮会更怪, 直接新建一条)。
+	if o.ID != "" {
+		if old := t.byID[o.ID]; old != nil && !old.closed && !old.destroyed {
+			old.Update(o)
+			return old
+		}
+	}
 	// 超出可见数量: 立即移除最旧的那条(无退场动画, 避免堆积)。
 	for t.maxVisible > 0 && len(t.items) >= t.maxVisible {
 		old := t.items[0]
@@ -368,6 +382,7 @@ func (t *Toaster) Show(o ToastOptions) *Toast {
 	ele.EnableSwitchFocus(false) // 通知不进 Tab 遍历
 	it := &Toast{t: t, ele: ele, opts: o, key: xui.NextPresenceKey(), paused: t.paused}
 	it.remain = o.Duration
+	t.bindID(it)
 	ele.AddEvent_Paint(it.onPaint)
 	ele.AddEvent_LButtonUp(it.onLButtonUp)
 	ele.AddEvent_MouseMove(it.onMouseMove)
@@ -510,6 +525,64 @@ func (t *Toaster) Count() int {
 	return len(t.items)
 }
 
+// Update 按 ID 原地更新一条通知(内容/类型/动作/时长); 找不到或已关闭时返回 nil。
+// 与 Show 的同 ID upsert 共用一套语义, 只是这里是显式按 ID 寻址。
+func (t *Toaster) Update(id string, o ToastOptions) *Toast {
+	if t == nil || id == "" {
+		return nil
+	}
+	it := t.byID[id]
+	if it == nil || it.closed || it.destroyed {
+		return nil
+	}
+	o.ID = id
+	return it.Update(o)
+}
+
+// Close 按 ID 关闭一条通知(走退场动画, 触发 OnDismiss)。
+func (t *Toaster) Close(id string) {
+	if t == nil || id == "" {
+		return
+	}
+	if it := t.byID[id]; it != nil {
+		it.Close()
+	}
+}
+
+// Get 按 ID 返回仍在显示中的通知(已关闭/已销毁时返回 nil)。
+func (t *Toaster) Get(id string) *Toast {
+	if t == nil || id == "" {
+		return nil
+	}
+	it := t.byID[id]
+	if it == nil || it.closed || it.destroyed {
+		return nil
+	}
+	return it
+}
+
+// bindID 把条目登记到 ID 表(空 ID 不登记)。
+func (t *Toaster) bindID(it *Toast) {
+	if t == nil || it == nil || it.opts.ID == "" {
+		return
+	}
+	if t.byID == nil {
+		t.byID = make(map[string]*Toast)
+	}
+	t.byID[it.opts.ID] = it
+}
+
+// unbindIDBy 只在表里仍指向该条目时删除 —— 同 ID 的新通知可能已经覆盖了旧条目,
+// 旧条目退场完成时不能把新条目从表里摘掉。
+func (t *Toaster) unbindIDBy(id string, it *Toast) {
+	if t == nil || id == "" || t.byID == nil {
+		return
+	}
+	if t.byID[id] == it {
+		delete(t.byID, id)
+	}
+}
+
 // Clear 立即移除全部通知(不播放退场动画)。
 func (t *Toaster) Clear() {
 	if t == nil {
@@ -528,13 +601,22 @@ func (it *Toast) Update(o ToastOptions) *Toast {
 	if it == nil || it.closed || it.destroyed {
 		return it
 	}
+	// 未显式传 ID 时沿用原标识: Update 是"改内容", 不应该顺手把 ID 抹掉。
+	if o.ID == "" {
+		o.ID = it.opts.ID
+	}
 	if o.Duration == 0 {
 		o.Duration = it.t.duration
 	}
 	if o.Duration < 0 {
 		o.Duration = -1
 	}
+	oldID := it.opts.ID
 	it.opts = o
+	if oldID != o.ID {
+		it.t.unbindIDBy(oldID, it)
+		it.t.bindID(it)
+	}
 	it.remain = o.Duration
 	if o.Duration > 0 {
 		it.startTick()
@@ -616,6 +698,9 @@ func (it *Toast) destroy() {
 	}
 	it.destroyed = true
 	it.stopTick()
+	if it.t != nil {
+		it.t.unbindIDBy(it.opts.ID, it)
+	}
 	// 直接销毁(超量挤出 / Clear / 宿主销毁)不会播退场, 那条 presence 条目会一直
 	// 挂在宿主窗口上(闭包捕获本条通知): 屏幕通知的宿主是长命的主窗口, 每漏一次
 	// 就多一份。正常关闭走退场, 条目由 tick 回收, 这里删是幂等的。

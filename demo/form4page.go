@@ -89,7 +89,7 @@ func buildForm4Page(body *widget.LayoutEle) {
 	_, v8 := autoCard(colL2.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可输入日期框", v8.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"InputGroup 形态: 键入 2026-10-22 / 2026年10月22日 / 明天 / 3天后, Enter 或失焦回写; 右侧日历图标打开弹层", v8.Handle))
+		"InputGroup 形态: 键入 2026-10-22 / 2026年10月22日 / 明天 / 3天后, 构成合法日期即回写; 右侧日历图标打开弹层", v8.Handle))
 	xui.ItemFill(hint(v8.Handle, "出生日期(年份范围 1900 - 今天, 弹层带年月下拉)"))
 	dp2 := ui.NewDatePicker(0, 0, 0, 0, v8.Handle,
 		ui.WithDatePickerEditable(),
@@ -144,6 +144,17 @@ func buildForm4Page(body *widget.LayoutEle) {
 			ui.CalPreset("一周后", 7, 0)))
 	// 周数日历保持默认宽度: 被卡片拉满会把格子/字号一起放大。
 	xui.ItemWidth(calWeek, ui.CalWidthForWeekNumbers(1))
+
+	// ---- 右列 3: base-nova 形态(纯文字标题 + 隐藏越界日期) ----
+	_, v11 := autoCard(colR2.Handle, 10)
+	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "纯文字标题月历", v11.Handle))
+	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
+		"标题只显示年月(无下拉); 本月之外的日期留空、不可点、无悬停", v11.Handle))
+	calPlain := ui.NewCalendar(0, 0, 0, 0, v11.Handle,
+		ui.WithCalendarCaptionLabel(),
+		ui.WithCalendarHideOutsideDays(),
+		ui.WithCalendarSelected(now))
+	xui.ItemWidth(calPlain, ui.CalWidth())
 }
 
 // dateRangeText 是 demo 里展示范围用的短文本。

@@ -15,13 +15,18 @@ import (
 const (
 	pagLinkH int32 = 32 // size-8: 页码链接 32×32(上一页/下一页也是 h-8)
 	pagGap   int32 = 2  // PaginationContent 的 gap-0.5
-	pagPadX  int32 = 6  // 上一页/下一页的水平内边距(pl-1.5 / pr-1.5)
+	// 上一页/下一页是按钮 size="default"(px-2.5) + pl-1.5!/pr-1.5! 的单侧覆盖:
+	// 上一页 = 左 6 + 图标 + 文字 + 右 10; 下一页 = 左 10 + 文字 + 图标 + 右 6。
+	pagPadOuter int32 = 6
+	pagPadInner int32 = 10
 	// pagPadIn: 页码数字到方角标边缘的呼吸量(按钮是 h-8 px-2.5, 但页码是 size-8 方形,
 	// 文字居中即可, 只给一点内缩避免两位数贴边)
 	pagPadIn int32 = 4
 	pagIcon  int32 = 16 // size-4
-	// pagIconGap 是图标与文字之间的间距(gap-1)。
-	pagIconGap int32 = 4
+	// pagIconGap 是图标与文字之间的间距(button 的 gap-1.5)。
+	pagIconGap int32 = 6
+	// pagIconOnlyW 是隐藏文字后的链接宽: 文字不占位也没有 gap, 只剩两侧内边距 + 图标 = 32。
+	pagIconOnlyW int32 = pagPadOuter + pagIcon + pagPadInner
 	// pagPressShift 是按下位移量, 对应 shadcn 的 active:translate-y-px, 语义同 button.go。
 	// 元素高度比视觉高度多这么多, 多出的部分留作位移空间(元素绘制被裁在自身客户区内)。
 	pagPressShift int32 = 1
@@ -36,7 +41,8 @@ const (
 //     (nav 的 mx-auto flex w-full justify-center), 条目间距 gap-0.5;
 //   - 页码链接是 Button size="icon"(32×32): 未选中为 ghost(悬停 bg-muted),
 //     当前页为 outline(bg-background + border + hover:bg-muted);
-//   - 上一页/下一页 = 图标(chevron-left/right, size-4) + 文字, 水平内边距 pl-1.5/pr-1.5;
+//   - 上一页/下一页 = 图标(chevron-left/right, size-4) + 文字, 靠图标一侧 6px、
+//     靠文字一侧 10px(pl-1.5 pr-2.5 / 反过来), 图标与文字间距 6px(gap-1.5);
 //   - 省略号是 size-8 的 more-horizontal 图标(muted-foreground), 不可点击;
 //   - 页数超过 pagMaxLinks(7) 时折叠成 7 个固定槽位(首段 / 中段 / 末段三种排布),
 //     槽位数恒定 → 整行宽度不随页码变化, 条目的屏幕位置也不会跳(见 links);
@@ -526,20 +532,20 @@ func (g *Pagination) build(origin xc.RECT) {
 		w := pagLinkH
 		switch g.items[i].kind {
 		case pagPrev:
-			w = pagPadX + pagIcon + prevW + pagPadX
+			w = pagPadOuter + pagIcon + prevW + pagPadInner
 			if prevW > 0 {
 				w += pagIconGap
 			}
 			if g.hideText {
-				w = pagLinkH // 文字隐藏时 = 32 方块(上游 pl-1.5/pr-2.5 + size-4 图标)
+				w = pagIconOnlyW
 			}
 		case pagNext:
-			w = pagPadX + nextW + pagIcon + pagPadX
+			w = pagPadInner + nextW + pagIcon + pagPadOuter
 			if nextW > 0 {
 				w += pagIconGap
 			}
 			if g.hideText {
-				w = pagLinkH
+				w = pagIconOnlyW
 			}
 		}
 		widths[i] = w
@@ -694,9 +700,9 @@ func (g *Pagination) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 			midX := (baseShell.Left + baseShell.Right) / 2
 			if it.kind == pagPrev {
 				iconRc := xc.RECT{
-					Left:   baseShell.Left + pagPadX,
+					Left:   baseShell.Left + pagPadOuter,
 					Top:    midY - pagIcon/2,
-					Right:  baseShell.Left + pagPadX + pagIcon,
+					Right:  baseShell.Left + pagPadOuter + pagIcon,
 					Bottom: midY + pagIcon/2,
 				}
 				if g.hideText {
@@ -722,9 +728,9 @@ func (g *Pagination) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 				}
 			} else {
 				iconRc := xc.RECT{
-					Left:   baseShell.Right - pagPadX - pagIcon,
+					Left:   baseShell.Right - pagPadOuter - pagIcon,
 					Top:    midY - pagIcon/2,
-					Right:  baseShell.Right - pagPadX,
+					Right:  baseShell.Right - pagPadOuter,
 					Bottom: midY + pagIcon/2,
 				}
 				if g.hideText {

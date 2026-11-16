@@ -13,14 +13,14 @@ import (
 )
 
 // Command 几何常量(逻辑像素), 对齐 shadcn command.tsx(cmdb):
-// 搜索行 h-9(36) + border-b; 条目 px-2 py-1.5 text-sm = 32; 分组标签 text-xs + py-1.5 = 24;
-// 分组 p-1 = 4; 列表 max-h-[300px]; 空状态 py-6 + text-sm = 52。
+// 搜索行 36 + 下边框; 条目 px-2 py-1.5 text-sm = 32; 分组标签 text-xs + py-1.5 = 24;
+// 分组 p-1 = 4; 列表 max-h-72 = 288; 空状态 py-6 + text-sm = 52。
 const (
 	commandInputH   int32 = 36
 	commandItemH    int32 = 32
 	commandHeadingH int32 = 24
 	commandGroupPad int32 = 4
-	commandListMaxH int32 = 300
+	commandListMaxH int32 = 288
 	commandEmptyH   int32 = 52
 )
 
@@ -52,13 +52,23 @@ func WithCommandOnEscape(fn func()) CommandOption {
 	return func(c *Command) { c.escapes = append(c.escapes, fn) }
 }
 
+// CommandFilter 自定义条目匹配。text/keywords 是条目声明的文字, query 已转小写并去空白;
+// 返回 true 表示该条目在本次搜索中可见。
+type CommandFilter func(text, keywords, query string) bool
+
+// WithCommandFilter 替换默认的"不区分大小写包含"匹配(比如拼音首字母、模糊打分)。
+func WithCommandFilter(fn CommandFilter) CommandOption {
+	return func(c *Command) { c.filter = fn }
+}
+
 // Command 命令面板/搜索选择列表, 对应 shadcn command.tsx(cmdb 的基础形态):
 //   - 顶部搜索行(搜索图标 + 原生 Edit, 下边框), 列表滚动区, 分组标签, 条目图标/快捷键;
-//   - 输入即过滤(不区分大小写的包含匹配, 可配 keywords), 无结果时显示空状态;
+//   - 输入即过滤(默认不区分大小写的包含匹配, 可配 keywords; 可用 WithCommandFilter 替换),
+//     无结果时显示空状态;
 //   - ↑/↓(循环, 跳过禁用)/Home/End 移动高亮, Enter 选中, ESC 交给回调;
 //   - 鼠标悬停高亮、点击选中; 选中后不自动关闭(由外层 Dialog/Popover 决定)。
 //
-// 高度: cy 传 0 时用 36 + 300(上游 max-h-[300px]); 传值时列表吃剩余高度。
+// 高度: cy 传 0 时用 36 + 288(上游 max-h-72); 传值时列表吃剩余高度。
 //
 // CommandDialog 没有单独做: 用 ui.NewDialog + 把 Command 放进 Dialog.Content() 即可
 // (Dialog 自带遮罩/ESC/焦点陷阱), 语义与 shadcn 的 CommandDialog 一致。
@@ -85,6 +95,7 @@ type Command struct {
 	changes   []func(query string)
 	selects   []func(value string)
 	escapes   []func()
+	filter    CommandFilter
 	textColor uint32
 
 	// 列表底部的"分割线 + 单条居中条目"(分面筛选的清除行)。见 addFooter。
@@ -93,7 +104,7 @@ type Command struct {
 	footerOn  bool
 }
 
-// NewCommand 创建命令面板。cx 传 0 = 宽度铺满父级; cy 传 0 = 36+300。
+// NewCommand 创建命令面板。cx 传 0 = 宽度铺满父级; cy 传 0 = 36+288。
 func NewCommand(x, y, cx, cy int32, hParent int, opts ...CommandOption) *Command {
 	if cy <= 0 {
 		cy = commandInputH + commandListMaxH
@@ -451,7 +462,7 @@ func (c *Command) onRootPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	*pbHandled = true
 	t := xui.Current()
-	p.FillRound(&p.Rc, t.Popover, t.RadiusMd())
+	p.FillRound(&p.Rc, t.Popover, t.RadiusXl())
 	return 0
 }
 
@@ -604,7 +615,7 @@ type CommandItem struct {
 }
 
 // ClearActive 清掉当前高亮项。焦点移到弹层外的控件(比如底部按钮)时调用,
-// 否则列表里那一行还留着 accent 底色, 看起来像"两处同时有焦点"。
+// 否则列表里那一行还留着选中底色, 看起来像"两处同时有焦点"。
 func (c *Command) ClearActive() *Command {
 	if c == nil {
 		return c
@@ -703,8 +714,9 @@ func (i *CommandItem) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	fg := t.PopoverForeground
 	muted := t.MutedForeground
 	if i.active && !i.disabled {
-		p.FillRound(&p.Rc, t.Accent, t.RadiusSm())
-		fg = t.AccentForeground
+		// data-selected:bg-muted data-selected:text-foreground
+		p.FillRound(&p.Rc, t.Muted, t.RadiusSm())
+		fg = t.Foreground
 	}
 	alpha := byte(255)
 	if i.disabled {
@@ -738,7 +750,7 @@ func (i *CommandItem) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		ir := xc.RECT{Left: x, Top: p.Rc.Top + 8, Right: x + 16, Bottom: p.Rc.Top + 24}
 		ic := muted
 		if i.active && !i.disabled {
-			ic = t.AccentForeground
+			ic = t.Foreground
 		}
 		p.Icon(i.icon, &ir, ic.WithAlpha(alpha), 2)
 		x += 24 // 16 图标 + 8 gap-2
@@ -760,8 +772,12 @@ func (i *CommandItem) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		if sf != 0 {
 			p.Draw.SetFont(sf)
 		}
+		sc := muted
+		if i.active && !i.disabled {
+			sc = t.Foreground
+		}
 		sr := xc.RECT{Left: right - 80, Top: p.Rc.Top, Right: right, Bottom: p.Rc.Bottom}
-		p.Text(i.shortcut, &sr, muted.WithAlpha(alpha),
+		p.Text(i.shortcut, &sr, sc.WithAlpha(alpha),
 			xcc.TextAlignFlag_Right|xcc.TextAlignFlag_Vcenter|xcc.TextFormatFlag_NoWrap)
 		right -= 88
 	}
@@ -924,6 +940,16 @@ func (c *Command) scrollTo(it *CommandItem) {
 }
 
 // applyFilter 按当前搜索词显示/隐藏条目与分组, 并重建 visible 列表。
+// SetFilter 运行时替换匹配规则并立即重新过滤; 传 nil 恢复默认匹配。
+func (c *Command) SetFilter(fn CommandFilter) *Command {
+	if c == nil {
+		return c
+	}
+	c.filter = fn
+	c.applyFilter()
+	return c
+}
+
 func (c *Command) applyFilter() {
 	if c == nil || !c.built || c.dying {
 		return
@@ -941,8 +967,7 @@ func (c *Command) applyFilter() {
 		}
 		any := false
 		for _, it := range g.items {
-			match := q == "" || strings.Contains(strings.ToLower(it.text), q) ||
-				strings.Contains(strings.ToLower(it.keywords), q)
+			match := q == "" || c.matchItem(it, q)
 			it.match = match
 			if it.match {
 				any = true
@@ -979,6 +1004,14 @@ func (c *Command) applyFilter() {
 		c.setActive(first, false)
 	}
 	c.LayoutEle.Redraw(false)
+}
+
+func (c *Command) matchItem(it *CommandItem, q string) bool {
+	if c.filter != nil {
+		return c.filter(it.text, it.keywords, q)
+	}
+	return strings.Contains(strings.ToLower(it.text), q) ||
+		strings.Contains(strings.ToLower(it.keywords), q)
 }
 
 func (c *Command) syncEmpty() {

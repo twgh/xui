@@ -203,7 +203,7 @@ func buildBase1Page(body *widget.LayoutEle) {
 	_, vt := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "切换按钮", vt.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Toggle: 双状态按钮, 点击/空格/回车切换; 选中 bg-accent、悬停 bg-muted, outline 带 border-input", vt.Handle))
+		"Toggle: 双状态按钮, 点击/空格/回车切换; 悬停与选中都是 bg-muted, outline 带 border-input", vt.Handle))
 
 	xui.ItemFill(hint(vt.Handle, "变体与选中态(点击切换)"))
 	rt := xui.HStack(vt.Handle, 40, 12)
@@ -228,14 +228,14 @@ func buildBase1Page(body *widget.LayoutEle) {
 		ui.WithToggleIcon(icons.IconHeart), ui.WithToggleVariant(ui.ToggleVariantOutline))
 	ui.NewToggle(0, 0, 0, 0, "", ric.Handle,
 		ui.WithToggleIcon(icons.IconBold), ui.WithTogglePressed(true))
-	disToggle := ui.NewToggle(0, 0, 0, 0, "Disabled", ric.Handle, ui.WithTogglePressed(true))
-	disToggle.Enable(false)
+	ui.NewToggle(0, 0, 0, 0, "Disabled", ric.Handle,
+		ui.WithTogglePressed(true), ui.WithToggleDisabled())
 	ui.NewToggle(0, 0, 0, 0, "Invalid", ric.Handle, ui.WithToggleInvalid())
 
 	_, vtg := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "切换按钮组", vtg.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"ToggleGroup: 单选/多选、spacing=0 首尾外角; 组级 variant/size 统一作用于条目", vtg.Handle))
+		"ToggleGroup: 默认间距 8、connected 无缝外角; 支持纵向、多选与整组禁用; 组级 variant/size 统一作用于条目", vtg.Handle))
 
 	valueText := func(values []string) string {
 		if len(values) == 0 {
@@ -244,8 +244,8 @@ func buildBase1Page(body *widget.LayoutEle) {
 		return strings.Join(values, ", ")
 	}
 
-	xui.ItemFill(hint(vtg.Handle, "单选 · 无缝(spacing 0)"))
-	gs := ui.NewToggleGroup(vtg.Handle)
+	xui.ItemFill(hint(vtg.Handle, "单选 · 无缝(connected)"))
+	gs := ui.NewToggleGroup(vtg.Handle, ui.WithToggleGroupConnected())
 	gs.AddItem("bold", "Bold")
 	gs.AddItem("italic", "Italic")
 	gs.AddItem("underline", "Underline")
@@ -271,15 +271,24 @@ func buildBase1Page(body *widget.LayoutEle) {
 		multiLabel.Redraw(false)
 	})
 
-	xui.ItemFill(hint(vtg.Handle, "有间距(spacing 8)· 组级尺寸 Sm"))
+	xui.ItemFill(hint(vtg.Handle, "纵向 · 组级尺寸 Sm"))
 	gg := ui.NewToggleGroup(vtg.Handle,
-		ui.WithToggleGroupSpacing(8),
+		ui.WithToggleGroupVertical(),
 		ui.WithToggleGroupVariant(ui.ToggleVariantOutline),
 		ui.WithToggleGroupSize(ui.ToggleSizeSm))
 	gg.AddItem("left", "左", ui.WithToggleIcon(icons.IconAlignLeft))
 	gg.AddItem("center", "中", ui.WithToggleIcon(icons.IconAlignCenter))
 	gg.AddItem("right", "右", ui.WithToggleIcon(icons.IconAlignRight))
 	gg.SetValue("center")
+
+	xui.ItemFill(hint(vtg.Handle, "整组禁用(程序化 SetValue 仍生效)"))
+	gd := ui.NewToggleGroup(vtg.Handle,
+		ui.WithToggleGroupConnected(),
+		ui.WithToggleGroupDisabled(),
+		ui.WithToggleGroupVariant(ui.ToggleVariantOutline))
+	gd.AddItem("on", "开")
+	gd.AddItem("off", "关")
+	gd.SetValue("on")
 
 	// ---- 主题色: 克隆当前主题替换主色组(Primary/Ring/SidebarPrimary) ----
 	_, vtc := autoCard(colR.Handle, 10)

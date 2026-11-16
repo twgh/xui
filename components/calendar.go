@@ -38,6 +38,10 @@ import (
 //   - **年月可选**: 标题行拆成 "2026年 ⌄" / "10月 ⌄" 两个热区, 点开是贴着标题的自绘
 //     下拉列表(月 12 项, 年 = 视图年 ±50 可配), 滚轮滚动 + 2px 滚动条, 当前值右侧打勾;
 //     改动只切显示月份, 不动选中日期(react-day-picker 的 captionLayout="dropdown" 语义);
+//   - **纯文字标题**: WithCalendarCaptionLabel 把标题行改成单个"2026年10月"
+//     (captionLayout="label", 上游默认), 无年月热区与 chevron; 不设置时仍是年月下拉。
+//   - **隐藏越界日期**: WithCalendarHideOutsideDays 对应 showOutsideDays=false,
+//     本月之外的格子留空、不可点、无悬停(6 行网格高度不变)。
 //   - **禁用日期**: WithCalendarDisabled 传判定函数(内置禁用过去 / 未来 / 周末 / 日期数组 /
 //     组合 helper), 禁用格 text-muted-foreground opacity-50, 不可点、无悬停、不参与选中;
 //     预订日期这类"仍显示但划线"用 WithCalendarStrike(不参与命中判定)。
@@ -52,6 +56,9 @@ type Calendar struct {
 	onSelect  func(time.Time)
 	flat      bool                 // 不画卡片底/边框(由所在弹层负责), 供 popover 内嵌
 	disabled  func(time.Time) bool // 禁用日期判定, nil = 全部可选
+
+	hideOutside  bool // showOutsideDays=false: 不画/不响应本月之外的日期格
+	captionLabel bool // captionLayout="label": 标题只显示年月文字, 无下拉热区
 
 	mode      int // calModeSingle / calModeRange
 	months    int // 并排显示几个月(1~4)
@@ -386,6 +393,18 @@ func WithCalendarSelectedRange(from, to time.Time) CalendarOption {
 // WithCalendarMonths 设置并排显示的月数(numberOfMonths, 1~4)。
 func WithCalendarMonths(n int) CalendarOption {
 	return func(c *Calendar) { c.months = calClampMonths(n) }
+}
+
+// WithCalendarHideOutsideDays 不显示本月之外的日期格(showOutsideDays=false):
+// 格子位置仍然保留(6 行网格高度不变), 但不画数字、不可点、无悬停。
+func WithCalendarHideOutsideDays() CalendarOption {
+	return func(c *Calendar) { c.hideOutside = true }
+}
+
+// WithCalendarCaptionLabel 标题行只显示年月文字(captionLayout="label", 上游默认):
+// 不拆日期热区、没有下拉 chevron, 换月仍用左右箭头。
+func WithCalendarCaptionLabel() CalendarOption {
+	return func(c *Calendar) { c.captionLabel = true }
 }
 
 // WithCalendarWeekNumbers 在每月左侧显示 ISO 周数(showWeekNumber)。
@@ -1146,6 +1165,11 @@ func (c *Calendar) onLButtonUp(hEle int, nFlags int, pPt *xc.POINT, pbHandled *b
 	block := int(idx / int32(calRows*7))
 	cell := idx % int32(calRows*7)
 	d := c.dateAtMonth(block, cell)
+	if c.hideOutside {
+		if m := c.monthAt(block); d.Month() != m.Month() || d.Year() != m.Year() {
+			return 0 // 本月之外的格子已隐藏, 不参与点击
+		}
+	}
 	if c.dateDisabled(d) {
 		return 0
 	}
@@ -1196,8 +1220,10 @@ func (c *Calendar) onMouseMove(hEle int, nFlags int, pPt *xc.POINT, pbHandled *b
 	idx := c.indexAt(x, y)
 	if idx >= 0 {
 		block := int(idx / int32(calRows*7))
-		if c.dateDisabled(c.dateAtMonth(block, idx%int32(calRows*7))) {
-			idx = -1 // 禁用格不高亮
+		d := c.dateAtMonth(block, idx%int32(calRows*7))
+		m := c.monthAt(block)
+		if c.dateDisabled(d) || (c.hideOutside && (d.Month() != m.Month() || d.Year() != m.Year())) {
+			idx = -1 // 禁用格 / 已隐藏的 outside 格不高亮
 		}
 	}
 	btn := c.hitButton(x, y, c.GetWidth())
@@ -1624,6 +1650,12 @@ func (c *Calendar) paintMonthHeader(p *xui.Painter, t *xui.Theme, g calGeom, blo
 	}
 	yearText := fmt.Sprintf("%d年", month.Year())
 	monthText := fmt.Sprintf("%d月", int(month.Month()))
+	if c.captionLabel {
+		label := fmt.Sprintf("%d年%d月", month.Year(), int(month.Month()))
+		rc := xc.RECT{Left: left, Top: titleTop, Right: right, Bottom: titleTop + g.titleH}
+		p.Text(label, &rc, t.Foreground, xcc.TextAlignFlag_Center|xcc.TextAlignFlag_Vcenter)
+		return
+	}
 	padX := int32(math.Round(24 * g.s)) // 左右各 12(含 chevron)
 	gap := int32(math.Round(2 * g.s))
 	h := int32(math.Round(24 * g.s))
@@ -1670,6 +1702,9 @@ func (c *Calendar) paintHeadLabel(p *xui.Painter, t *xui.Theme, g calGeom, rc xc
 // month 是格子所属的月份块(多个月时 outside 判定必须按各自的块来)。
 func (c *Calendar) paintDay(p *xui.Painter, t *xui.Theme, g calGeom, month time.Time, d time.Time, rc xc.RECT, key int32, now time.Time) {
 	inMonth := d.Month() == month.Month() && d.Year() == month.Year()
+	if c.hideOutside && !inMonth {
+		return
+	}
 	dis := c.dateDisabled(d)
 	struck := c.strike != nil && c.strike(d)
 	isToday := calSameDay(d, now)

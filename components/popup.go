@@ -622,6 +622,17 @@ func (p *popoverPanel) Show(hAnchor int, gap int32) {
 	p.showAt(hAnchor, x, y)
 }
 
+// ShowAligned 按交叉轴对齐方式与偏移定位后再显示(对应 PopoverContent 的
+// align / alignOffset, 主轴间距仍用 gap)。放不下时翻到上方, 最后夹进工作区。
+// 用于 DatePicker 可输入形态(上游示例是 align="end" alignOffset={-8} sideOffset={10})。
+func (p *popoverPanel) ShowAligned(hAnchor int, gap int32, align PopoverAlign, alignOffset int32) {
+	if p == nil || p.open || !p.alive() {
+		return
+	}
+	x, y := popupPositionOffset(hAnchor, p.cw, p.ch, PopoverSideBottom, align, gap, alignOffset)
+	p.ShowAt(hAnchor, x, y)
+}
+
 // ShowAt 在调用方算好的位置弹出弹层(x/y 为**屏幕逻辑像素**, 与 Show 内部
 // wr.Left+rc.Left 同口径), 同样夹在显示器工作区内。Select 的 item-aligned 定位用:
 // 弹层盖住触发区、选中项正对触发区, 位置不是"贴着触发区下方"能表达的。

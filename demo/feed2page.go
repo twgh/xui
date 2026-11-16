@@ -175,8 +175,23 @@ func buildFeed2Page(body *widget.LayoutEle, hWindow int) {
 		})
 		return 0
 	})
+	bUpdate := ui.NewButton(0, 0, 0, 0, "同 ID 更新", rn3.Handle, ui.WithVariant(ui.ButtonOutline))
+	xui.ItemWidth(bUpdate, 96)
+	bUpdate.AddEvent_BnClick(func(hEle int, pbHandled *bool) int {
+		toaster.Show(ui.ToastOptions{
+			ID: "demo-sync", Title: "正在同步…", Description: "1.5 秒后同 ID 原地更新",
+			Variant: ui.ToastLoading, Duration: -1, CloseButton: true,
+		})
+		app.AfterFunc(1500*time.Millisecond, func() {
+			toaster.Show(ui.ToastOptions{
+				ID: "demo-sync", Title: "同步完成", Description: "同 ID 复用同一条, 不叠加新卡片",
+				Variant: ui.ToastSuccess,
+			})
+		})
+		return 0
+	})
 	xui.ItemFill(desc(v3.Handle,
-		"ToastOptions.Duration 传负数即常驻; Action 点击后默认关闭; OnAutoClose / OnDismiss 区分超时与主动关闭; WithToastCloseButton() 让整组都带关闭钮。"))
+		"ToastOptions.ID 相同即原地更新(Toaster.Update / Close / Get 按 ID 寻址); Duration 传负数即常驻; Action 点击后默认关闭; OnAutoClose / OnDismiss 区分超时与主动关闭; WithToastCloseButton() 让整组都带关闭钮。"))
 
 	_, v4 := autoCard(xui.VStack(r2.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "进度", v4.Handle))

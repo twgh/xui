@@ -5,6 +5,17 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第十批: Toast 同 ID 更新 + Toggle / Toggle Group / Pagination / Command / Calendar / Date Picker 对齐 base-nova**(2026-11-16, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的 3.8 与 Q5):
+  - **Toast(TS1)**: `ToastOptions.ID` 让 `Show` 按 ID 原地更新(同 ID 复用旧条目并 `Update`, 保留堆叠位置与 presence key; 正在退场的旧条不复用); 新增 `Toaster.Update(id, opts)` / `Close(id)` / `Get(id)` 与内部 ID 表, 条目销毁时自动摘表。demo 反馈2 新增「同 ID 更新」: loading 卡 1.5s 后原地变成功态, 不叠加新卡。
+  - **Toggle(TG1~TG3)**: 尺寸与配色按 base-nova 重做 —— 高 32/28/36、水平内距 10、图标-文字间距 4、字号 14/13/14、图标画布 18/16/18(视觉等价 16/14); 悬停与按下都取 `Muted`(原来悬停是 Accent), outline 描边 `Input`; 补 `WithToggleDisabled` / `SetDisabled` / `Disabled`(自身、组级、Field 级联三层互不覆盖)与运行时 `SetSize` / `SetVariant`(连量宽一起重算)。
+  - **Toggle Group(TGR1~TGR3)**: 补纵向组(`WithToggleGroupVertical` / `SetVertical`, 组内等宽、首尾外角、connected 描边合并)、整组禁用(程序化 `SetValue` 仍生效)、`OnValueChangeVeto`(参数是切换后的完整集合, 否决时回滚按下态且用户回调不触发); 默认间距 8(上游 spacing=2)、connected = 0 与上游一致。
+  - **Pagination(PG1)**: 上一页/下一页内距改为靠图标侧 6、靠文字侧 10, 图标-文字间距 6(上游 `pl-1.5!` + `px-2.5` + `gap-1.5`); 隐藏文字时仍是 32 方块。
+  - **Command(CMD1~CMD3)**: 选中态改 `data-selected:bg-muted` 等价(`Muted` + `Foreground`, 图标与快捷键同步转前景色); 根圆角 `RadiusXl`、列表上限 288(`max-h-72`); 新增 `WithCommandFilter` / `SetFilter(func(text, keywords, query string) bool)` 替换默认的包含匹配。
+  - **Calendar(CAL1 / CAL2)**: `WithCalendarCaptionLabel()` 画居中"2026年10月"纯文本标题(无年月热区/chevron, 翻页保留); `WithCalendarHideOutsideDays()` 让越界格留空、不可点、无悬停, 6 行网格高度不变。demo 表单4 新增"纯文字标题月历"卡。
+  - **Date Picker(DP1~DP3)**: `WithDatePickerOnOpenChange` / `OnOpenChange`(打开含编程 `Open` 为 true, 选中 / ESC / 失焦 / `Close` 经弹层 `OnHide` 为 false); 可输入形态在文字构成合法日期时即时同步选中值并回调(解析失败不回写、不打断键入), Enter/失焦仍做收尾; 可输入形态弹层改用上游示例的右对齐 / sideOffset 10 / alignOffset -8(`popoverPanel.ShowAligned`)。
+  - **分流**: 无破坏性变更; TS2(折叠堆叠 + 悬停展开)、CMD4(搜索行 InputGroup 化)、CAL3~CAL5(键盘网格 / 默认 28 几何 / 格子尺寸选项)列为 Q5 待拍板; TS3 / TS4、CMD5、CAL6 暂缓; aria / RTL / chrono-node 级自然语言等为能力边界。下一轮核查从 #38 Hover Card 起。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 逐组件安装回归 toast / toggle / toggle-group / pagination / command / calendar / date-picker 单个 add 后 `go build ./ui` 通过, `add --all` 后 `go build ./ui` 通过; demo 150% DPI 实机核对——切换按钮按下/悬停为 Muted 且尺寸档正确、connected 组首尾外角正确、分页上一页/下一页内距与图标间距正确、命令面板选中行为浅灰且快捷键转前景色、纯文字标题月历无下拉且越界格留空、可输入日期框弹层右对齐且间距 10、Toast 同 ID 由 loading 原地变成功态(仅一张卡)。
+
 - ✅ **组件特性核查第九批: 面板内容槽 + Select 定位/typeahead**(2026-11-16, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的 Q1 / Q2 决策):
   - **Dialog / Sheet / AlertDialog 内容槽(Q1 / D4 / AD3 / SH5)**: `Header()` / `Footer()` 返回布局容器, 标题与描述是 Header 的首批子项, 可继续追加徽章、复选框等任意控件; `Title()` / `Description()` 改为只改样式和文本(不再单独摆位)。Dialog / AlertDialog 页脚横排(自定义内容在按钮左侧, AlertDialog sm 在按钮行上方), Sheet 页脚竖排(自定义内容在按钮上方); 追加控件后用 `ItemFill` / `ItemWidth` 声明宽度, 再调 `Refresh()` 重排。实现上标题/描述改由 `headerBox` 流式容器摆放, 用负外边距保留原有行高节奏; 头/尾高度按实际子项占位测量。焦点顺序按 DOM 顺序: Header → 内容 → Footer → 按钮 → 关闭钮。页脚带是 bg-muted/50 叠在面板底色上, 会铺宿主底色的自绘控件(复选框)按页脚实际颜色 `SetBackdrop`, 默认 `t.Card` 会在灰带上露出白块; demo 的对话框构建器统一放回 `feed1page.go`(原先误留在 `iconpage.go`)。
   - **Select 弹层定位(Q2 / S1)**: 默认仍是 `alignItemWithTrigger`(选中项对齐触发器); `WithSelectAlignItem(false)` 切到触发器锚定, 配合 `WithSelectSide` / `WithSelectAlign` / `WithSelectSideOffset` / `WithSelectAlignOffset`(默认 bottom + center + 4 + 0, 放不下翻转并夹工作区, 与 Popover 共用定位)。

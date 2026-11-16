@@ -134,7 +134,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Kbd | 键帽:宽度按文字自适应;`NewKbdGroup` 排组合键 |
 | Skeleton | 骨架屏:主题圆角 + 2s 脉冲;`WithSkeletonCircle` 做头像占位 |
 | Spinner | 加载指示器:图标 1s/圈旋转,尺寸/配色可调 |
-| Toggle / ToggleGroup | 双状态按钮与按钮组:default / outline 两变体、三档尺寸;鼠标/空格/回车切换;单选组默认互斥且可全部取消,`spacing=0` 做成分段控件 |
+| Toggle / ToggleGroup | 双状态按钮与按钮组:default / outline 两变体、三档尺寸;鼠标/空格/回车切换;悬停与按下同为浅底;自身 / 组级禁用互不覆盖;单选组默认互斥且可全部取消,可纵向、可否决,`spacing=0` 做成分段控件 |
 | NativeSelect | 原生下拉框:`<option value>` 字符串语义,最省事的选择框;富条目(图标/禁用/分组)用 Select |
 | Select | 自绘下拉(radix item-aligned 弹层):条目可带图标/禁用/分组;弹层盖住触发区、选中项正对触发区,键盘 ↑↓/Home/End/Enter/ESC |
 | InputOTP | 验证码输入:逐格输入、打进已填格替换并前进,Ctrl+V 分发粘贴;可限字符模式与分隔位,全满触发 `OnComplete` |
@@ -159,7 +159,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | Menubar | 菜单栏:条目 API 与 Menu 共用;打开任一菜单后鼠标移到其它触发区即切换,全套键盘导航,子菜单悬停展开 |
 | NavigationMenu | 导航菜单:所有菜单共用一个视口,悬停开、切换时视口随内容收放、新页面从切换方向滑入;内容里可 `LinkIn` 进 `xui.HStack` 做多列网格 |
 | Sidebar | 侧边栏:返回"面板 + 主内容区",分组/子菜单/徽章/动作钮/折叠(offcanvas/icon/none, Ctrl+B)/左右贴边;三种外观 sidebar/floating/inset |
-| Command | 命令面板:输入即过滤、↑↓ 循环跳过禁用、Enter/ESC;可放进 `ui.NewDialog` 组合成 ⌘K 弹窗 |
+| Command | 命令面板:输入即过滤(可用 `WithCommandFilter` 换匹配规则)、↑↓ 循环跳过禁用、Enter/ESC;可放进 `ui.NewDialog` 组合成 ⌘K 弹窗 |
 | Combobox | "输入即过滤"的建议列表(= Popover + Command):默认按钮触发 + 弹层搜索框(`WithComboboxMultiple` 多选保持打开、`WithComboboxChips` 换成 chips 展示、`WithComboboxClear` 有值时显示清除钮、`WithComboboxAutoHighlight` 控制过滤后是否自动高亮首条),`WithComboboxInput` 改成输入框即触发层(上游 Basic,打字即过滤);`WithComboboxEditable` 换成可编辑组合框:输入任意文字(不搜索、不过滤),点箭头或 ↓ 展开固定选项,文字在 Enter / 失焦时提交(命中条目取条目值,否则整段文字就是值);条目模型与 Select 共用;`xui add combobox` |
 | NativeComboBox | **注意**: 这是原生 ComboBox 载体(对应 shadcn 的 `select`),不是上面那个 Combobox;要"输入即过滤"用 Combobox;`xui add native-combobox` |
 | Input | 输入框:原生 Edit(光标/输入法/选择)+ 自绘壳体与焦点环;校验态、占位符、前缀/后缀/清除/密码切换/计数,以及步进器 `WithStepper`(−/+ 与 ↑/↓,失焦自动夹取吸附) |
@@ -170,8 +170,8 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | RadioGroup | 单选组:`AddItem(value, text)` 或 `Attach(radio, value)` 收编放在 Field 等子容器里的条目(跨父级互斥);↑↓←→ 循环移动并选中、Home/End 首末 |
 | Switch / Progress / Slider | 开关 / 进度条 / 滑块:都有禁用与校验态;Progress 可 indeterminate 短条往返与 `ui.NewProgressField`(标题 + 百分比 + 条);Slider 支持值域/步进、范围与多滑块、垂直、反向 |
 | Rating | 星级评分(纯自绘):整星 / 半星、悬停预览、只读与禁用;点击提交(再点当前星清零)、聚焦后 ←/↓ 减一档、→/↑ 加一档、Home/End 两端;`WithRatingSize` 三档尺寸、`WithRatingLabels` 文案展现、`WithRatingIcons` 自定义图标、`OnHoverChange` 预览回调、`WithRatingKeyboard(false)` 关闭键盘;`OnFocus`/`OnBlur`/`OnKeyDown` 焦点与按键回调、`Blur()` 移除焦点 |
-| Calendar | 月历(全自绘):6×7 网格、范围选择(两次点击落区间)、多月并排、ISO 周数列、禁用与预订划线、年月可下拉、页脚/预设;尺寸有 helper 算宽 |
-| DatePicker | 日期框:outline 触发区 + 弹层内放 Calendar,下方放不下自动翻到上方;范围模式并排两个月、预设按钮、禁用日期、可输入形态(键入 `2026-10-22` / `今天` / `3天后`) |
+| Calendar | 月历(全自绘):6×7 网格、范围选择(两次点击落区间)、多月并排、ISO 周数列、禁用与预订划线、年月可下拉或纯文字标题、可隐藏越界日期、页脚/预设;尺寸有 helper 算宽 |
+| DatePicker | 日期框:outline 触发区 + 弹层内放 Calendar,下方放不下自动翻到上方;范围模式并排两个月、预设按钮、禁用日期、可输入形态(键入 `2026-10-22` / `今天` / `3天后`,输入即解析)、`OnOpenChange` 开合回调 |
 | TimePicker | 时间框:弹层内"时/分"两列滚动列表,选择即生效、弹层保持打开 |
 | ColorPicker | 颜色选择器:触发区(色块 + `#rrggbb` + chevron)+ 弹层(SV 方块 / 色相条 / 预设色 / Hex 输入);颜色以 `#rrggbb` 进出 |
 | FileDialog | 系统原生文件对话框:打开 / 多选 / 保存 / 选择文件夹;过滤器 = 名称 + 通配符,取消返回空串 / nil;不套 xui 主题 |
@@ -189,7 +189,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | AspectRatio | 固定宽高比容器:高度 = 宽度 / ratio,宽度变化时自动重算并逐级重排 |
 | Tabs | 标签页(default / line 两变体):行内图标、单标签禁用、value 语义、`BindPanel` 绑面板;支持纵向堆叠与自动换行;键盘 = 整块一个 Tab 站点,←/→/↑/↓ 移动、Home/End 首末、Enter/空格切换 |
 | Tooltip | 提示气泡(独立透明弹出窗口,不抢焦点):四方向 + 对齐/间距、显示延迟与跳过延迟、键盘焦点也触发、内容可带快捷键块 |
-| Toast | 通知(窗口内覆盖元素):默认右下角堆叠,四角与上下居中可选;4 种语义类型 + 动作按钮 + 可选关闭钮,自动关闭、悬停暂停、滑入淡入 |
+| Toast | 通知(窗口内覆盖元素):默认右下角堆叠,四角与上下居中可选;4 种语义类型 + 动作按钮 + 可选关闭钮,自动关闭、悬停暂停、滑入淡入;`ToastOptions.ID` 相同即原地更新,`Toaster.Update/Close/Get` 按 ID 寻址 |
 | ScreenToast | 屏幕通知:独立置顶小窗,固定在**屏幕**右下角,应用最小化/隐藏也能看到、不抢焦点;卡片绘制与自动关闭与 Toast 同款 |
 | ScreenPopup | 屏幕弹窗:固定在屏幕工作区右下角的**常驻**面板 —— 不是通知(默认不自动关闭、不堆叠),内容任意 xui 控件、高度自撑;默认不抢焦点,`WithScreenPopupFocusable(true)` 改为点击后键盘可用 |
 | Tray | 系统托盘:左键还原/前台化绑定窗口(可覆盖),右键弹 themed Menu,资源图标可直接用 `.syso` 里的 HICON;监听 `TaskbarCreated`,Explorer 重启后自动恢复图标。⚠️ 同一进程只应创建一个托盘图标(xcgui 的托盘 API 是全局状态) |

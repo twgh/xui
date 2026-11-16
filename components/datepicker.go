@@ -20,7 +20,8 @@ import (
 //     size-4 日历图标 + 文字, 悬停 bg-accent / 文字 accent-foreground;
 //   - 未选择时显示占位符(muted-foreground);
 //   - 点击弹出月历卡片, 弹层与触发区水平左对齐、垂直相距 4px(sideOffset=4),
-//     下方放不下时翻到上方, 并夹在显示器工作区内;
+//     下方放不下时翻到上方, 并夹在显示器工作区内(可输入形态按上游示例改为右对齐、
+//     间距 10、alignOffset -8);
 //   - 选中日期即回写 + 关闭 + 回调; 点击外部(弹层失焦)或 ESC 关闭。
 //   - **范围模式**(WithDatePickerRange): 弹层 = 两个并排月份 + 范围选择;
 //     第一次点击落起点(弹层保持打开), 第二次补终点后关闭;
@@ -29,7 +30,10 @@ import (
 //     点击即选中并关闭, 与 shadcn 的 Calendar presets 一致。
 //   - **可输入形态**(WithDatePickerEditable): 触发区变成 InputGroup —— 文字区是原生
 //     Edit(可键入 2026-10-22 / 2026年10月22日 / 今天/明天/后天/N天后…), 右侧日历
-//     图标按钮打开弹层; ↑↓ 等编辑行为保持原生, Enter/失焦时解析回写。
+//     图标按钮打开弹层; ↑↓ 等编辑行为保持原生, 输入过程中一旦构成合法日期就立即回写
+//     (OnChange 随之触发), Enter/失焦时再按解析结果收尾。
+//   - **开合回调**(WithDatePickerOnOpenChange / OnOpenChange): 对应 shadcn Popover 的
+//     onOpenChange, 打开为 true, 选中 / ESC / 点击外部关闭为 false。
 //
 // 为什么不用原生 DateTime 元素: 它的日期文本是 DLL 内绘制(格式固定为 yyyy/MM/dd、
 // 右侧带两个无法移除的上下调节按钮), 也拿不到"选择日期"占位符与图标布局;
@@ -42,6 +46,7 @@ type DatePicker struct {
 	value       time.Time
 	placeholder string
 	onChange    func(time.Time)
+	onOpen      func(bool)
 	invalid     bool
 
 	rangeMode bool
@@ -65,6 +70,13 @@ type DatePicker struct {
 
 // datePickerGap 是弹层与触发区的垂直间距(shadcn Popover sideOffset=4)。
 const datePickerGap int32 = 4
+
+// 可输入形态(InputGroup)的上游示例用 align="end" / alignOffset={-8} / sideOffset={10}:
+// 弹层右缘与触发区右缘对齐, 再向左 8; 垂直间距 10。
+const (
+	datePickerInputGap         int32 = 10
+	datePickerInputAlignOffset int32 = -8
+)
 
 // datePickerIconArea 是可输入形态右侧日历按钮的命中宽度(逻辑像素)。
 const datePickerIconArea int32 = 32
@@ -107,6 +119,12 @@ func WithDatePickerRangeValue(from, to time.Time) DatePickerOption {
 // WithDatePickerOnRangeChange 注册范围变化回调(第一次点击起点也会回调, to 为零)。
 func WithDatePickerOnRangeChange(fn func(from, to time.Time)) DatePickerOption {
 	return func(d *DatePicker) { d.onRange = fn }
+}
+
+// WithDatePickerOnOpenChange 注册弹层开/关回调(shadcn Popover 的 onOpenChange):
+// 打开(含代码调用 Open)为 true, 选中日期 / ESC / 点击外部关闭为 false。
+func WithDatePickerOnOpenChange(fn func(open bool)) DatePickerOption {
+	return func(d *DatePicker) { d.onOpen = fn }
 }
 
 // WithDatePickerYearRange 限定年月下拉里的年份范围(出生日期这类场景),
@@ -250,6 +268,7 @@ func (d *DatePicker) createEdit(cx, cy int32) {
 		return 0
 	})
 	e.AddEvent_Edit_Changed(func(hEle int, pbHandled *bool) int {
+		d.liveParse()
 		d.Redraw(false)
 		return 0
 	})
@@ -309,6 +328,26 @@ func (d *DatePicker) syncEditText() {
 		return
 	}
 	d.edit.SetText(d.Text())
+}
+
+// liveParse 在输入过程中同步已能解析的日期(对齐上游 DatePickerInput /
+// NaturalLanguage 示例的 onChange: 文字一构成合法日期就更新选中值)。
+// 解析失败保持原值; 只改选中值与月历, 不回写输入框, 否则会打断正在输入的文字。
+func (d *DatePicker) liveParse() {
+	if d.edit == nil {
+		return
+	}
+	t, ok := ParseDateText(strings.TrimSpace(d.edit.GetText()))
+	if !ok || calSameDay(t, d.value) {
+		return
+	}
+	d.value = t
+	if d.cal != nil {
+		d.cal.SetSelected(t)
+	}
+	if d.onChange != nil {
+		d.onChange(t)
+	}
 }
 
 // commitEdit 解析输入框文字并回写; 解析失败时恢复成当前值。
@@ -471,6 +510,12 @@ func (d *DatePicker) OnRangeChange(fn func(from, to time.Time)) *DatePicker {
 	return d
 }
 
+// OnOpenChange 注册弹层开/关回调。
+func (d *DatePicker) OnOpenChange(fn func(open bool)) *DatePicker {
+	d.onOpen = fn
+	return d
+}
+
 // SetInvalid 设置/清除校验失败态。
 func (d *DatePicker) SetInvalid(v bool) *DatePicker {
 	if d.invalid == v {
@@ -508,7 +553,14 @@ func (d *DatePicker) Open() *DatePicker {
 			d.cal.SetSelected(d.value) // 顺带把显示月份切到已选日期
 		}
 	}
-	d.panel.Show(d.Handle, datePickerGap)
+	if d.editable {
+		d.panel.ShowAligned(d.Handle, datePickerInputGap, PopoverAlignEnd, datePickerInputAlignOffset)
+	} else {
+		d.panel.Show(d.Handle, datePickerGap)
+	}
+	if d.onOpen != nil {
+		d.onOpen(true)
+	}
 	return d
 }
 
@@ -545,6 +597,11 @@ func (d *DatePicker) ensurePopup() bool {
 	panel := newPopoverPanel(cw, ch, d.Handle)
 	if panel == nil {
 		return false
+	}
+	panel.OnHide = func() {
+		if d.onOpen != nil {
+			d.onOpen(false)
+		}
 	}
 	opts := []CalendarOption{WithCalendarFlat(), WithCalendarMonths(months)}
 	if d.rangeMode {

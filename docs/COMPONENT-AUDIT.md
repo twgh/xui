@@ -46,13 +46,13 @@
 | 28 | Separator | `separator` | 已核查 | 结论见 3.7;SEP1 / SEP2 已落地;余 demo 对照 |
 | 29 | Skeleton | `skeleton` | 已核查 | 结论见 3.7;SK1 已落地(配色改 bg-muted);余示例卡 |
 | 30 | Scroll Area | `scroll-area` | 已核查 | 结论见 3.7;SA1 已落地(滚动条常显);余横向滚动 |
-| 31 | Toast | `toast` | 待核查 | sonner 形态;下一轮起点 |
-| 32 | Toggle | `toggle` | 待核查 | |
-| 33 | Toggle Group | `toggle-group` | 待核查 | |
-| 34 | Pagination | `pagination` | 待核查 | |
-| 35 | Command | `command` | 待核查 | |
-| 36 | Calendar | `calendar` | 待核查 | RTL / Jalali / timeZone 已列能力边界 |
-| 37 | Date Picker | `date-picker` | 待核查 | |
+| 31 | Toast | `toast` | 已核查 | 结论见 3.8;TS1 已落地;折叠堆叠/swipe/F6 待确认 |
+| 32 | Toggle | `toggle` | 已核查 | 结论见 3.8;TG1~TG4 已落地 |
+| 33 | Toggle Group | `toggle-group` | 已核查 | 结论见 3.8;TGR2~TGR4 已落地(间距已有) |
+| 34 | Pagination | `pagination` | 已核查 | 结论见 3.8;PG1 已落地;href/aria 为能力边界 |
+| 35 | Command | `command` | 已核查 | 结论见 3.8;CMD1~CMD3 已落地;搜索行 InputGroup 化待确认 |
+| 36 | Calendar | `calendar` | 已核查 | 结论见 3.8;CAL1 / CAL2 已落地;键盘/默认几何待确认;RTL / Jalali / timeZone 为能力边界 |
+| 37 | Date Picker | `date-picker` | 已核查 | 结论见 3.8;DP1~DP3 已落地;自然语言宽解析为能力边界 |
 | 38 | Hover Card | `hover-card` | 待核查 | |
 | 39 | Collapsible | `collapsible` | 待核查 | |
 | 40 | Breadcrumb | `breadcrumb` | 待核查 | |
@@ -615,6 +615,133 @@
 
 **本批实现顺序建议**:ACC1 → ACC2 → ACC3 → SL1 → SL2 → SL3 → SK1 → SEP1 → SEP2 → SA1 → SH1~SH4 → AD1(本批已全部落地,见第五节);ACC4 / AD3 / SH5 是同一形态(内容槽)建议一起设计;SL4 / SL5 / SA2 / SH7 需先确认需求或成本较高。
 
+### 3.8 Toast / Toggle / Toggle Group / Pagination / Command / Calendar / Date Picker(#31 ~ #37)
+
+上游取自 base-nova:`toast.tsx`(Base UI Toast)+ `sonner.tsx`(旧皮肤仍下发)、`toggle.tsx`、`toggle-group.tsx`、`pagination.tsx`、`command.tsx`(cmdk)、`calendar.tsx`(react-day-picker v9)、`date-picker` 文档与 6 个示例。xui 的 Toaster 一直是 **sonner 形态**(窗口内覆盖层),不是 Base UI 的视口卡片形态;这条形态差异单列为需确认。
+
+#### Toast(#31)
+
+**官方页**:默认 / Types / Action / Promise / API(Base UI)。Base UI 语义:`limit` 默认 3(超出的旧条以 `data-limited` 隐藏而不是删除)、`timeout` 默认 5000、折叠堆叠(`--peek:12px`、每层 `scale` 递减 0.1)、悬停展开、四向 swipe 关闭、F6 进入通知区、`add/update/close/promise` 与同 ID upsert。
+
+**已具备**:窗口内右下角堆叠(Toaster)与屏幕级堆叠(ScreenToaster);4 种状态 + loading;richColors;动作按钮;关闭钮;负 Duration 常驻;整组悬停暂停倒计时;Promise(loading → success/error);`OnAutoClose` / `OnDismiss` 区分超时与主动关闭;`ToastOptions.ID` 同 ID 原地更新;`Toaster.Update / Close / Get` 按 ID 寻址。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| TS1 | 同 ID upsert / 按 ID 关闭与查询 | manager `toast.add({id})` / `update` / `close` 与 Base UI 的 upsert | 以前只能 Show 出新卡 | 已落地:`Show` 同 ID 复用旧条目并 `Update`(保留堆叠位置与 key);`Toaster.Update/Close/Get`;退场中的旧条不复用 | 已落地 |
+| TS2 | 折叠堆叠(peek / scale / 悬停展开) | `limit=3` + `data-limited`;`--peek:12px`、每层 `scale` 递减 0.1、`data-expanded` 时展开 | 容量已有(`WithToastMaxVisible`, 默认 3, 超出移除最旧), 但全部平铺展开、无层叠缩放 | 需确认:折叠视觉 + 悬停整组展开;容量沿用现有选项;若要对齐"超出隐藏不删"再引入 `data-limited` 等价状态 | 中 / 中 |
+| TS3 | 四向 swipe 关闭 | Root 的 `data-swipe-direction` | 无 | 需确认:自绘卡按住拖动 + 方向/距离判定 + 出屏退场;桌面鼠标收益低 | 中 / 低 |
+| TS4 | F6 进入通知区 + Tab 遍历 | Base UI 键盘文档 | 关闭钮按钮不进 Tab 链 | 需确认:窗口级 F6 钩子 + 通知列表焦点态;要先让出 xcgui 的 Tab 链,风险大于收益 | 中 / 低 |
+
+**明确不做**:ARIA(`role=status` / `aria-live` / `aria-label`)、RTL、Portal/DOM render、`data-swipe-ignore` 这类 DOM 属性;`priority` 与 TS2 一起考虑,不单列。
+
+#### Toggle(#32)
+
+**官方页**:默认 / Outline / With Text / Size / Disabled / RTL。tsx:default `h-8 min-w-8 px-2.5 gap-1`,sm `h-7 min-w-7 px-2.5 text-[0.8rem]`,lg `h-9 min-w-9 px-2.5`;悬停与按下**同为** `bg-muted`,文字 `text-foreground`;outline 描边 `border-input`;图标 16(默认)/14(sm)。
+
+**已具备**:双状态、点击/空格/回车切换、受控初始值、图标、禁用、aria-invalid 等价的校验失败态、悬停过渡、尺寸/变体选项。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| TG1 | 尺寸/内距/配色严格对齐 | 见上;`hover:bg-muted` + `data-[state=on]:bg-muted` | 旧 radix 值(悬停 accent、内距/字号不符) | 已落地:32/28/36 高,px 10,`gap 4`,字号 14/13/14,图标画布 18/16/18(视觉等价 16/14),圆角 lg/sm;悬停与按下都取 `Muted` | 已落地 |
+| TG2 | 禁用态选项 | `disabled` 原生属性 | 只能 `Enable(false)` 手工调用 | 已落地:`WithToggleDisabled` / `SetDisabled` / `Disabled`;自身 / 组级 / Field 级联三层互不覆盖 | 已落地 |
+| TG3 | 运行时换尺寸/变体 | className 可换 | 只能构造时定 | 已落地:`SetSize` / `SetVariant`,连量宽与布局项一起重算 | 已落地 |
+| TG4 | 图标按钮宽度 | `min-w` = 高度,图标档方形 | 图标 + 文字的量宽公式 | 已具备:纯图标时宽 = 高度档(32/28/36),有文字时按内容量宽 | 已具备 |
+
+**明确不做**:`aria-pressed` / `data-state`(DOM 元数据)、RTL。
+
+#### Toggle Group(#33)
+
+**官方页**:默认 / Outline / Size / Spacing / Vertical / Disabled / Custom / RTL。上游默认 `spacing=2`(=8px),**spacing=0 才是无缝**;`orientation="vertical"` 时 `items-stretch`;整组 `disabled`;条目切换可由 `eventDetails.cancel()` 否决。
+
+**已具备**:单选/多选、组值读写、组级 variant/size、`WithToggleGroupSpacing(px)`、`WithToggleGroupConnected()`(spacing=0,首尾外角 + 相邻直角)、纵向条目排版、整组禁用、组级否决、光标/键盘切换。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| TGR1 | 纵向组 | `orientation="vertical"` + `items-stretch` | 旧版只能横向 | 已落地:`WithToggleGroupVertical` / `SetVertical`;组与条目统一成组内最宽,纵向首尾外角、相邻边直角,connected 时描边合并 | 已落地 |
+| TGR2 | 整组禁用 | 组级 `disabled` | 只能逐条禁用 | 已落地:`WithToggleGroupDisabled` / `SetDisabled`;只忽略用户交互,程序化 `SetValue` 仍生效;条目自身禁用状态独立保留 | 已落地 |
+| TGR3 | 可否决切换 | `eventDetails.cancel()` | 无 | 已落地:`OnValueChangeVeto(func(values []string) bool)`,参数是切换后的完整集合;否决时回滚按下态,用户回调不触发 | 已落地 |
+| TGR4 | 任意间距 | `spacing` 数值 | 已有 | 已具备:默认 8(上游 spacing=2),0 = 无缝 | 已具备 |
+
+**明确不做**:`data-spacing` / `data-orientation` 等 DOM 属性、RTL 镜像。
+
+#### Pagination(#34)
+
+**官方页**:默认 / Simple / Icons Only / Next.js / RTL。tsx:上一页/下一页是 Button `size="default"`(`h-8 px-2.5 gap-1.5`)再单侧覆盖 `pl-1.5!` / `pr-1.5!`;页码链接默认 `size="icon"`(32×32);省略号 `size-8`。
+
+**已具备**:完整 / 简洁 / 仅导航 / 仅图标四种形态;折叠槽位固定 7 个;上一页/下一页文案可配;当前页 outline、其余 ghost;方向键 / Home / End 移动焦点 + Enter 激活;禁用边界 50% 透明。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| PG1 | 上一页/下一页内距与图标间距 | 靠图标侧 6(`pl-1.5!`)、靠文字侧 10(`px-2.5`)、图标-文字 `gap-1.5`=6 | 两侧都是 6,图标-文字 4 | 已落地:宽度 = 6 + 16 + 6 + 文字 + 10(Next 对称);隐藏文字仍是 32 方块(无 gap) | 已落地 |
+| PG2 | 链接尺寸档 | `PaginationLink size` 可换 | 固定 32 方形 | 暂缓:桌面分页没有换档场景,确有需求再加 `WithPaginationLinkSize` | 小 / 低 |
+
+**明确不做**:`href` / Next.js `<Link>`(桌面用 `OnPageChange`,不渲染 DOM 链接)、`aria-current` / `aria-label`、`hidden sm:block` 的响应式断点(桌面对应显式 `WithPaginationHideText`)、RTL。
+
+#### Command(#35)
+
+**官方页**:默认 / Shortcuts / Groups / Scrollable / RTL。tsx(cmdb):根 `rounded-xl! bg-popover p-1 text-popover-foreground`;搜索行是 `p-1 pb-0` 包着的 InputGroup(`h-8 rounded-lg border-input/30 bg-input/30`,搜索图标 `pl-2`);列表 `max-h-72`(288);条目 `rounded-sm px-2 py-1.5 text-sm`,`data-selected:bg-muted` 且文字/图标/快捷键转 `foreground`;自带尾部 CheckIcon(`data-checked`);快捷键 `text-xs tracking-widest`。
+
+**已具备**:搜索行 + 滚动列表 + 分组标题 + 条目图标/快捷键/禁用;自定义过滤;↑/↓ 循环跳过禁用、Home/End、PageUp/PageDown、Enter 选中、ESC;可选前置勾选框与右侧计数(分面筛选);底部"分割线 + 清除行";`CommandDialog` 可由 Dialog + Command 组合。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| CMD1 | 选中底色与文字 | `data-selected:bg-muted` + `text-foreground`(图标/快捷键同步) | `Accent` / `AccentForeground` | 已落地:选中 `Muted` + `Foreground`;图标与快捷键也在选中态转 `Foreground` | 已落地 |
+| CMD2 | 根圆角 / 列表上限 | `rounded-xl!`;`max-h-72` | `RadiusMd`;300 | 已落地:`RadiusXl`;288 | 已落地 |
+| CMD3 | 自定义匹配 | cmdk 的 `filter`(默认 fuzzy score) | 只有小写包含 | 已落地:`WithCommandFilter` / `SetFilter(func(text, keywords, query string) bool)`,query 已小写去空白;传 nil 回默认 | 已落地 |
+| CMD4 | 搜索行 InputGroup 化 | wrapper `p-1 pb-0` + 32 高圆角 chip(`bg-input/30` + `border-input/30` + 图标) + 根 `p-1` | 整宽 36 行 + 下边框 | 需确认:重建为"根 4 + 行内 4 + 32 chip",去掉下边框;会改 DatatableFacet 的精确高度与 demo 几何,需要整页回归 | 中 / 中 |
+| CMD5 | 尾部勾选指示 | 条目自带 `ml-auto` CheckIcon(`data-checked`) | 分面筛选是前置勾选框 | 需确认:分面筛选保留前置框;另给 `WithCommandItemCheckMark()`(单选用尾部勾) | 小 / 低 |
+| CMD6 | 快捷键字距 | `tracking-widest` | 12px 常规字距 | 不做:xcgui 文本字距没有等价 API,用空格排版会破坏对齐 | 不做 |
+
+**明确不做**:cmdk 的 vim 绑定 / fuzzy 高亮 / `aria-activedescendant` 等 DOM 语义、RTL、任意 React children。
+
+#### Calendar(#36)
+
+**官方页**:Basic / Range / Month-Year Selector / Presets / Date and Time / Booked dates / Custom Cell Size / Week Numbers / RTL / API。tsx(react-day-picker v9):根 `bg-background p-2`,`--cell-size:--spacing(7)`(28),`--cell-radius:radius-md`;`captionLayout` 默认 `"label"`,`showOutsideDays` 默认 true;范围中段 `bg-muted`;键盘网格由 react-day-picker 提供。
+
+**已具备**:单选/范围、多月并排(1~4)、年月下拉、周数列、页脚与预设、禁用/划线日期、固定 6 行不跳高、宽度驱动等比缩放、`WithCalendarCaptionLabel`、`WithCalendarHideOutsideDays`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| CAL1 | 纯文字标题 | `captionLayout="label"`(默认) | 只有年月下拉 | 已落地:`WithCalendarCaptionLabel()` 画居中的"2026年10月",无热区/chevron,左右翻页保留 | 已落地 |
+| CAL2 | 隐藏越界日期 | `showOutsideDays=false` | 恒定显示 | 已落地:`WithCalendarHideOutsideDays()`;越界格留空、不可点、无悬停,6 行高度不变 | 已落地 |
+| CAL3 | 键盘网格 | react-day-picker:方向键移动、PageUp/Down 换月、Shift+PageUp/Down 换年、Home/End 到行首尾、Enter/Space 选中 | 元素不进焦点链 | 需确认:日历开 `EnableFocus` + focused day(初始 = 选中/今天),按 7 列移动并自动翻月;焦点环 3px ring/50%;要验证在 Popover 内的 Tab 顺序 | 中-高 / 中 |
+| CAL4 | 默认几何/皮肤 | cell 28 / `p-2` / `bg-background`;范围中段 `bg-muted` | cell 32×1.12、`p-3`、`bg-popover` + ring、中段 accent | 需确认:按上游改基准(28 / p-2 / 背景色透明,中段 Muted),DatePicker 弹层尺寸同步;担心 100% DPI 可读性时用 CAL5 放大,而不是默认 1.12 | 中 / 高 |
+| CAL5 | 自定义格子尺寸 | `--cell-size` 任意值/响应式 | 只按元素宽度等比缩放 | 与 CAL4 合并:`WithCalendarCellSize(px)` 映射到缩放比,0 = 跟随宽度 | 小-中 / 中 |
+| CAL6 | 多月窄容器纵向堆叠 | `flex-col md:flex-row` | 始终横排,窄容器靠夹取 | 暂缓:容器宽 < 两月最小宽时改纵向;桌面半宽面板少见 | 中 / 低 |
+
+**明确不做**:Jalali / Hijri / Persian 日历、指定 timeZone、完整 locale 数据(周起始与中文星期已可配)、RTL、DOM aria 元数据。
+
+#### Date Picker(#37)
+
+**官方页**:Basic / Range / Date of Birth / Input / Time Picker / Natural Language / RTL。基础示例 `align="start" sideOffset={4}`;Input 与 Natural Language 用 InputGroup + `align="end" alignOffset={-8} sideOffset={10}`,输入过程中一旦解析成功就同步选中日期。
+
+**已具备**:自绘触发区(outline 按钮) + 自绘月历弹层;单选/范围/预设/年份范围/禁用日期;可输入形态(InputGroup,支持中文日期与相对日期,Enter/失焦回写);编程 `Open/Close/SetValue/SetRange`;`OnChange` / `OnRangeChange`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| DP1 | 弹层开合回调 | Popover 的 `onOpenChange` | 无 | 已落地:`WithDatePickerOnOpenChange` / `OnOpenChange`;打开(含编程 `Open`)true,选中 / ESC / 失焦 / `Close` 走弹层 `OnHide` 回 false | 已落地 |
+| DP2 | 输入即解析 | Input / NaturalLanguage 示例在 onChange 里解析并更新 date | 只在 Enter/失焦 | 已落地:文字一构成合法日期就更新选中值并回调 `OnChange`;解析失败保持原值、不回写输入框(不打断键入) | 已落地 |
+| DP3 | 可输入形态的弹层定位 | `align="end" alignOffset={-8} sideOffset={10}` | 一律左对齐、间距 4 | 已落地:`popoverPanel.ShowAligned`;可输入形态自动右对齐 / 10 / -8,普通形态仍左对齐 / 4 | 已落地 |
+| DP4 | 自然语言宽解析 | chrono-node(英文短语、复杂相对日期) | 今天/明天/后天/大后天、N 天后、N 周后与常见日期格式 | 能力边界:Go 侧不引入 chrono-node 等价物;需要更宽语法时用 `OnChange` + `SetValue` 自定义 | 不做 |
+
+**明确不做**:RTL、指定 timeZone、React 受控/非受控语义;时间选择由独立 `TimePicker` 组件承担(组合式,不塞进 DatePicker)。
+
+**本批实现顺序**:TS1 → TG1~TG3 → TGR1~TGR3 → PG1 → CMD1~CMD3 → CAL1 / CAL2 → DP1~DP3(本批已全部落地);TS2、CMD4 / CMD5、CAL3~CAL5 需先拍板(见第五节 Q5);其余为能力边界或暂缓。
+
 ## 四、实现顺序建议(Input / Select 批次,已执行完)
 
 1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化 —— **已全部落地**(见第五节)。
@@ -625,7 +752,7 @@
 
 ## 五、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~七批已落地。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十批已落地。
 
 **第一批**:
 
@@ -750,7 +877,19 @@
 | Q2 / S1 | Select | `WithSelectAlignItem(false)` 关闭 item-aligned, 改常规锚定; `WithSelectSide` / `WithSelectAlign` / `WithSelectSideOffset` / `WithSelectAlignOffset` 对应 Base UI Positioner 的 side/align/sideOffset/alignOffset(默认 bottom/center/4/0), 翻转与夹工作区复用 `popupPositionOffset` |
 | Q2 / S2 | Select | 可打印字符 typeahead: A-Z / 0-9 / 小键盘 / 空格续接, 750ms 会话窗口, 标签前缀匹配(大小写不敏感、跳过禁用), 从当前高亮后一位环形查找; 同字符连按在匹配项间循环(含 llama 这类同首双字母时退回前缀增长); 打开/关闭清空会话 |
 
-**下一批建议**: 实现侧的可直接排期清单已清空, 待确认项已按上表拍板并落地。剩余均为**已明确暂缓**的项, 有真实需求再单独立项:
+**第十批**(#31~#37 首轮核查的可直接排期项, 跨 7 个组件; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| TS1 | Toast | `ToastOptions.ID` 同 ID 原地更新(Show upsert, 保留堆叠位置与 presence key);`Toaster.Update(id, opts)` / `Close(id)` / `Get(id)` 按 ID 寻址;退场中的旧条不复用,销毁时摘 ID 表 |
+| TG1~TG3 | Toggle | base-nova 尺寸(32/28/36 高、px 10、gap 4、字号 14/13/14、图标画布 18/16/18)与配色(悬停/按下同为 `Muted`, outline `border-input`);`WithToggleDisabled` / `SetDisabled` 三层禁用;`SetSize` / `SetVariant` 运行时换档并重量宽 |
+| TGR1~TGR3 | Toggle Group | `WithToggleGroupVertical` / `SetVertical`(组内等宽、首尾外角、connected 描边合并);`WithToggleGroupDisabled` / `SetDisabled`(程序化值仍生效);`OnValueChangeVeto`(切换后完整集合, 否决回滚按下态) |
+| PG1 | Pagination | 上一页/下一页内距改为"图标侧 6、文字侧 10", 图标-文字间距 6;隐藏文字保持 32 方块 |
+| CMD1~CMD3 | Command | 选中态改 `Muted`/`Foreground`(图标与快捷键同步);根圆角 `RadiusXl`、列表上限 288;`WithCommandFilter` / `SetFilter` 自定义匹配 |
+| CAL1 / CAL2 | Calendar | `WithCalendarCaptionLabel()` 纯文字标题(无下拉热区);`WithCalendarHideOutsideDays()` 越界格留空且不参与命中 |
+| DP1~DP3 | Date Picker | `WithDatePickerOnOpenChange` / `OnOpenChange`;输入过程中解析成功即同步选中值;可输入形态弹层改右对齐 / sideOffset 10 / alignOffset -8(`popoverPanel.ShowAligned`) |
+
+**下一批建议**: 实现侧的可直接排期清单已清空, 待确认项见 Q5。剩余均为**已明确暂缓**的项, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -759,7 +898,7 @@
 | Q3(SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3) | 不做 | 推挤碰撞、单滑块禁用、横向 ScrollArea、非模态对话框、Popover 模态与定位策略、表格列宽拖拽: 桌面收益存疑, 有场景再立项 |
 | Q4(C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2) | 部分排期 | C4 只做"直角图片槽 + 自适应高"(不做圆角), 排在本批之后; 五组纯 demo 示例不单独立项, 随对应组件下次改动补 |
 
-下一轮**核查**(不是实现)从 #31 Toast 起。
+下一轮**核查**(不是实现)从 #38 Hover Card 起。
 
 **待确认需求(本轮已拍板)**:
 
@@ -769,5 +908,9 @@
 | Q2 | S5 / S7 / S1 / S2 | 先做 S1 定位开关 + S2 typeahead; S5 / S7 等真实需求 | 已落地(第九批); S5 / S7 暂缓 |
 | Q3 | SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3 | 全部不做, 有真实场景再单独立项 | 不做 |
 | Q4 | C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2 | demo 随组件改动补; C4 只做直角图片槽 + 自适应高 | C4 待排期; demo 随批次 |
+| Q5-1 | TS2 / TS3 / TS4 | 先做折叠堆叠(peek 12 / 每层 scale 0.9 / 悬停整组展开, 容量沿用 `WithToastMaxVisible`);swipe 与 F6 等触摸/无障碍需求再立项 | TS2 待拍板; TS3 / TS4 暂缓 |
+| Q5-2 | CMD4 / CMD5 / CMD6 | 搜索行 InputGroup 化(CMD4)需带 DatatableFacet 整页回归, 建议单独一批;尾部勾选(CMD5)随选择类需求;字距(CMD6)不做 | CMD4 待排期; CMD5 暂缓; CMD6 不做 |
+| Q5-3 | CAL3 / CAL4 / CAL5 / CAL6 | 先改默认几何(28 / p-2 / bg-background, CAL4)并给 `WithCalendarCellSize`(CAL5), DatePicker 弹层同步;键盘网格(CAL3)随后;纵向折叠(CAL6)不做 | CAL4 / CAL5 待拍板; CAL3 随后; CAL6 不做 |
+| Q5-4 | DP4 | 保持中文窄口径解析(今天/N 天后/常见格式), 不引入 chrono-node 等价物 | 不做 |
 
-**可直接排期(无需确认)**: 已全部落地(第八批, 见第五节)。其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
+**可直接排期(无需确认)**: 已全部落地(第八批 / 第十批, 见第五节)。其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
