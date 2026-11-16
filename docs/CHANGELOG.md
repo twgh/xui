@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复: 命令面板清空搜索词后两项同时高亮**(2026-11-16, 用户反馈: 悬停「日历」→ 搜索「设置」→ 删除关键字):
+  - **现象**: 清空搜索词后, 「日历」和「设置」两行同时带选中底色, 键盘上下键的高亮起点与视觉不一致。
+  - **根因**: `applyFilter` 在重建可见列表前没有清掉旧高亮: 旧 `active` 下标只对旧列表有效, 却直接被置为 -1; 若那条仍匹配新列表, 它的 `active` 标记会留着, 随后「自动高亮第一项」再点亮另一条, 于是两项同时亮。
+  - **修法**: 重建 `visible` **之前**按旧下标清掉旧高亮, 再置 `active = -1`; 重建后照常自动高亮第一条。
+  - **验收**: demo 导航1 复现路径(首项高亮 → 搜 `hotkey` 只剩「键盘快捷键」高亮 → 删光关键字), 清空后只有「日历」高亮; `go build ./...` / `go vet ./...` / `go test ./...` 全绿。
+
 - ✅ **组件特性核查第十批: Toast 同 ID 更新 + Toggle / Toggle Group / Pagination / Command / Calendar / Date Picker 对齐 base-nova**(2026-11-16, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的 3.8 与 Q5):
   - **Toast(TS1)**: `ToastOptions.ID` 让 `Show` 按 ID 原地更新(同 ID 复用旧条目并 `Update`, 保留堆叠位置与 presence key; 正在退场的旧条不复用); 新增 `Toaster.Update(id, opts)` / `Close(id)` / `Get(id)` 与内部 ID 表, 条目销毁时自动摘表。demo 反馈2 新增「同 ID 更新」: loading 卡 1.5s 后原地变成功态, 不叠加新卡。
   - **Toggle(TG1~TG3)**: 尺寸与配色按 base-nova 重做 —— 高 32/28/36、水平内距 10、图标-文字间距 4、字号 14/13/14、图标画布 18/16/18(视觉等价 16/14); 悬停与按下都取 `Muted`(原来悬停是 Accent), outline 描边 `Input`; 补 `WithToggleDisabled` / `SetDisabled` / `Disabled`(自身、组级、Field 级联三层互不覆盖)与运行时 `SetSize` / `SetVariant`(连量宽一起重算)。

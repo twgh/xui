@@ -955,6 +955,13 @@ func (c *Command) applyFilter() {
 		return
 	}
 	q := strings.ToLower(strings.TrimSpace(c.query))
+	// 旧高亮下标只对旧 visible 有效, 必须重建前清掉: 漏清时若那条仍匹配,
+	// 它会和重建后自动高亮的第一项同时亮(实测: 悬停"日历"→搜"设置"→清空关键字,
+	// "日历"与"设置"两项同时高亮)。
+	if c.active >= 0 && int(c.active) < len(c.visible) {
+		c.visible[c.active].setActive(false)
+	}
+	c.active = -1
 	c.visible = c.visible[:0]
 	for _, g := range c.groups {
 		// 底部清除行由 footerOn 控制, 不参与搜索过滤(见 addFooter); 显隐与布局项
@@ -992,7 +999,6 @@ func (c *Command) applyFilter() {
 	c.content.AdjustLayout()
 	c.list.AdjustLayout()
 
-	c.active = -1
 	first := int32(-1)
 	for idx, it := range c.visible {
 		if !it.disabled {
