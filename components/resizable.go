@@ -82,12 +82,41 @@ func WithResizableMax(percent float64) ResizablePanelOption {
 	}
 }
 
+// WithResizableCollapsible 允许该面板折叠: 分隔条获得焦点后按 Enter 折叠/展开;
+// 折叠尺寸默认等于 min(没有 min 时为 0)。
+func WithResizableCollapsible() ResizablePanelOption {
+	return func(p *ResizablePanel) { p.collapsible = true }
+}
+
+// WithResizableCollapsedSize 折叠后的尺寸(百分比), 同时开启折叠。
+// 折叠态优先于 min(可以比 min 更小); 展开时回到折叠前的尺寸, 但不低于 min。
+func WithResizableCollapsedSize(percent float64) ResizablePanelOption {
+	return func(p *ResizablePanel) {
+		if percent >= 0 && percent <= 100 {
+			p.collapsible = true
+			p.collapsedSize = percent
+			p.collapsedSizeSet = true
+		}
+	}
+}
+
+// WithResizablePanelDisabled 初始禁用该面板的尺寸调整: 它的相邻分隔条不可拖/不可键盘调整。
+// 面板内容本身不受影响。
+func WithResizablePanelDisabled() ResizablePanelOption {
+	return func(p *ResizablePanel) { p.disabled = true }
+}
+
 // ResizableHandleOption 分隔条配置项。
 type ResizableHandleOption func(*ResizableHandle)
 
 // WithResizableGrip 在分隔条中间画一根抓手(上游的 withHandle): 4×24 的圆角短条。
 func WithResizableGrip() ResizableHandleOption {
 	return func(h *ResizableHandle) { h.grip = true }
+}
+
+// WithResizableHandleDisabled 初始禁用该分隔条: 不响应拖动/键盘/双击, 不画抓手与焦点环。
+func WithResizableHandleDisabled() ResizableHandleOption {
+	return func(h *ResizableHandle) { h.disabled = true }
 }
 
 // ===== 组件 =====
@@ -109,8 +138,8 @@ func WithResizableGrip() ResizableHandleOption {
 //	right := g.AddPanel(ui.WithResizableSize(70))
 //	...
 //
-// 与上游的差异: 未实现 collapsible / collapsedSize(Enter 折叠)、preserve-pixel-size
-// 与 F6 在分隔条之间跳焦点; 面板/分隔条也没有单独的 disabled 开关(只有分组级)。
+// 与上游的差异: 未实现 preserve-pixel-size 与 F6 在分隔条之间跳焦点;
+// 面板折叠只由 Enter / API 触发, 拖动不会跨过 min 自动吸附折叠(见 ResizablePanel.SetCollapsed)。
 type ResizableGroup struct {
 	*widget.LayoutEle
 
@@ -251,11 +280,6 @@ func (g *ResizableGroup) AddHandle(opts ...ResizableHandleOption) *ResizableHand
 		ele.LayoutItem_SetHeight(xcc.Layout_Size_Fill, 0)
 	}
 	ele.SetCursor(resizableCursor(g.vertical))
-	if g.disabled {
-		ele.SetCursor(resizableCursorArrow())
-		ele.EnableFocus(false)
-		ele.EnableSwitchFocus(false)
-	}
 	h.Element = ele
 
 	ele.AddEvent_Paint(h.onPaint)
@@ -272,6 +296,7 @@ func (g *ResizableGroup) AddHandle(opts ...ResizableHandleOption) *ResizableHand
 	xui.AttachWindow(ele.Handle, true)
 
 	g.handles = append(g.handles, h)
+	g.syncHandleState(h)
 	g.scheduleSync()
 	return h
 }
@@ -292,6 +317,10 @@ func (g *ResizableGroup) SetSizes(sizes ...float64) *ResizableGroup {
 	}
 	g.normalized = true
 	g.sizes = normalizeResizableSizes(sizes, g.mins(), g.maxes())
+	for _, p := range g.panels {
+		p.collapsed = false
+		p.restore = 0
+	}
 	g.syncLayout()
 	g.notify()
 	return g
@@ -306,24 +335,50 @@ func (g *ResizableGroup) OnResize(fn func(sizes []float64)) *ResizableGroup {
 }
 
 // SetDisabled 开/关调整能力(拖拽、键盘、双击一起关)。禁用时分隔条改回普通箭头光标。
+// 面板/分隔条自己的禁用状态不受影响, 两者是叠加关系。
 func (g *ResizableGroup) SetDisabled(v bool) *ResizableGroup {
 	if g == nil || g.disabled == v {
 		return g
 	}
 	g.disabled = v
 	for _, h := range g.handles {
-		if v {
-			h.SetCursor(resizableCursorArrow())
-			h.EnableFocus(false)
-			h.EnableSwitchFocus(false)
-		} else {
-			h.SetCursor(resizableCursor(g.vertical))
-			h.EnableFocus(true)
-			h.EnableSwitchFocus(true)
-		}
-		h.Redraw(false)
+		g.syncHandleState(h)
 	}
 	return g
+}
+
+// effectiveDisabled 报告分隔条此刻是否禁用: 分组级、自身、或两侧任一面板禁用都算禁用。
+func (g *ResizableGroup) effectiveDisabled(h *ResizableHandle) bool {
+	if g == nil || h == nil {
+		return true
+	}
+	if g.disabled || h.disabled {
+		return true
+	}
+	if h.index >= 0 && h.index < len(g.panels) && g.panels[h.index].disabled {
+		return true
+	}
+	if h.index+1 >= 0 && h.index+1 < len(g.panels) && g.panels[h.index+1].disabled {
+		return true
+	}
+	return false
+}
+
+// syncHandleState 按当前禁用状态刷新分隔条的光标与可聚焦性(禁用后不画抓手/焦点环)。
+func (g *ResizableGroup) syncHandleState(h *ResizableHandle) {
+	if g == nil || h == nil || h.Element == nil || !xc.XC_IsHXCGUI(h.Handle, xcc.XC_ELE) {
+		return
+	}
+	if g.effectiveDisabled(h) {
+		h.SetCursor(resizableCursorArrow())
+		h.EnableFocus(false)
+		h.EnableSwitchFocus(false)
+	} else {
+		h.SetCursor(resizableCursor(g.vertical))
+		h.EnableFocus(true)
+		h.EnableSwitchFocus(true)
+	}
+	h.Redraw(false)
 }
 
 // Disabled 报告是否禁用调整。
@@ -339,6 +394,13 @@ type ResizablePanel struct {
 	min   float64
 	max   float64
 	px    int32 // 当前像素尺寸(驱动布局变化检测)
+
+	collapsible      bool
+	collapsedSize    float64 // 折叠后的百分比(collapsedSizeSet 为 false 时跟随 min)
+	collapsedSizeSet bool
+	collapsed        bool
+	restore          float64 // 折叠前的百分比, 展开时恢复
+	disabled         bool
 }
 
 // ContentStack 设置面板内子项间距并返回面板自身(与 Card.ContentStack 同名同义)。
@@ -350,15 +412,136 @@ func (p *ResizablePanel) ContentStack(space int32) *widget.LayoutEle {
 	return p.LayoutEle
 }
 
+// SetCollapsible 开/关该面板的折叠能力(必须开启后 SetCollapsed / Enter 才有效)。
+func (p *ResizablePanel) SetCollapsible(on bool) *ResizablePanel {
+	if p == nil {
+		return p
+	}
+	p.collapsible = on
+	return p
+}
+
+// SetCollapsedSize 设置折叠后的百分比(显式 0 = 折叠到零宽; 不调用时跟随 min);
+// 已折叠时立即按新尺寸重排, 并保留原来的展开尺寸。
+func (p *ResizablePanel) SetCollapsedSize(percent float64) *ResizablePanel {
+	if p == nil || percent < 0 || percent > 100 {
+		return p
+	}
+	p.collapsedSize = percent
+	p.collapsedSizeSet = true
+	p.collapsible = true
+	if p.collapsed && p.group != nil {
+		restore := p.restore
+		p.collapsed = false
+		p.group.collapsePanel(p)
+		if restore > 0 {
+			p.restore = restore
+		}
+	}
+	return p
+}
+
+// Collapsed 报告面板当前是否处于折叠态。
+func (p *ResizablePanel) Collapsed() bool { return p != nil && p.collapsed }
+
+// SetCollapsed 折叠/展开面板(等价于分隔条聚焦后按 Enter)。只有开启 collapsible 才有效。
+// 折叠时保留 collapsedSize, 释放的份额按比例分给其它面板; 展开时回到折叠前的尺寸。
+func (p *ResizablePanel) SetCollapsed(v bool) *ResizablePanel {
+	if p == nil || p.group == nil || !p.collapsible {
+		return p
+	}
+	if v {
+		p.group.collapsePanel(p)
+	} else {
+		p.group.expandPanel(p)
+	}
+	return p
+}
+
+// Collapse 折叠面板。
+func (p *ResizablePanel) Collapse() *ResizablePanel { return p.SetCollapsed(true) }
+
+// Expand 展开面板。
+func (p *ResizablePanel) Expand() *ResizablePanel { return p.SetCollapsed(false) }
+
+// SetDisabled 禁用/恢复该面板的尺寸调整(相邻分隔条不可拖、不可键盘调整)。
+func (p *ResizablePanel) SetDisabled(v bool) *ResizablePanel {
+	if p == nil || p.disabled == v {
+		return p
+	}
+	p.disabled = v
+	if g := p.group; g != nil {
+		i := p.index()
+		for _, h := range g.handles {
+			if h.index == i || h.index == i-1 {
+				g.syncHandleState(h)
+			}
+		}
+	}
+	return p
+}
+
+// Disabled 报告面板是否禁用了尺寸调整。
+func (p *ResizablePanel) Disabled() bool { return p != nil && p.disabled }
+
+// index 返回面板在分组里的位置, 找不到返回 -1。
+func (p *ResizablePanel) index() int {
+	if p == nil || p.group == nil {
+		return -1
+	}
+	for i, v := range p.group.panels {
+		if v == p {
+			return i
+		}
+	}
+	return -1
+}
+
+// collapseSize 返回折叠后实际使用的百分比: 未显式配置时跟随 min;
+// 折叠尺寸不能超过 min(超过时按 min 算, 否则折叠反而会变大)。
+func (p *ResizablePanel) collapseSize() float64 {
+	cs := p.collapsedSize
+	if !p.collapsedSizeSet {
+		cs = p.min
+	}
+	if cs < 0 {
+		cs = 0
+	}
+	if cs > 100 {
+		cs = 100
+	}
+	if p.min > 0 && cs > p.min {
+		cs = p.min
+	}
+	return cs
+}
+
 // ResizableHandle 是分隔条。默认画 1px 主题色线; WithResizableGrip 在中间加一根
-// 4×24 的抓手段。可聚焦, 键盘 ←/→(纵向 ↑/↓) 每次 5%, Home/End 到相邻边界。
+// 4×24 的抓手段。可聚焦, 键盘 ←/→(纵向 ↑/↓) 每次 5%, Home/End 到相邻边界,
+// Enter 折叠/展开相邻的可折叠面板。
 type ResizableHandle struct {
 	*widget.Element
-	group   *ResizableGroup
-	grip    bool
-	index   int // 调整 panels[index] 与 panels[index+1]
-	lastSig int // 上一次绘制的状态(聚焦/收起/抓手), 变化时整块擦底
+	group    *ResizableGroup
+	grip     bool
+	index    int // 调整 panels[index] 与 panels[index+1]
+	lastSig  int // 上一次绘制的状态(聚焦/收起/抓手), 变化时整块擦底
+	disabled bool
 }
+
+// SetDisabled 禁用/恢复该分隔条(不响应拖动、键盘与双击, 不画抓手与焦点环)。
+func (h *ResizableHandle) SetDisabled(v bool) *ResizableHandle {
+	if h == nil || h.disabled == v {
+		return h
+	}
+	h.disabled = v
+	if h.group != nil {
+		h.group.syncHandleState(h)
+	}
+	return h
+}
+
+// Disabled 报告分隔条是否被禁用(只看自身开关; 分组/相邻面板的禁用见分组行为)。
+func (h *ResizableHandle) Disabled() bool { return h != nil && h.disabled }
 
 // ===== 尺寸计算 =====
 
@@ -414,7 +597,11 @@ func resizableInitialSizes(sizes []float64) []float64 {
 func (g *ResizableGroup) mins() []float64 {
 	out := make([]float64, len(g.panels))
 	for i, p := range g.panels {
-		out[i] = p.min
+		if p.collapsed {
+			out[i] = p.collapseSize()
+		} else {
+			out[i] = p.min
+		}
 	}
 	return out
 }
@@ -532,6 +719,203 @@ func normalizeResizableSizes(sizes, mins, maxes []float64) []float64 {
 		}
 	}
 	return out
+}
+
+// pinResizableSize 把 index 面板钉在 value(0~100), 其余面板按原比例吃掉差额并夹进
+// 各自的 min/max。折叠用它: 折叠尺寸可以低于 min, 而普通归一化会把低于 min 的值夹回去。
+func pinResizableSize(sizes []float64, index int, value float64, mins, maxes []float64) []float64 {
+	n := len(sizes)
+	out := append([]float64(nil), sizes...)
+	if n < 2 || index < 0 || index >= n {
+		return out
+	}
+	if value < 0 {
+		value = 0
+	}
+	if value > 100 {
+		value = 100
+	}
+	lo := func(i int) float64 {
+		if mins != nil && mins[i] > 0 {
+			return math.Min(mins[i], 100)
+		}
+		return 0
+	}
+	hi := func(i int) float64 {
+		h := 100.0
+		if maxes != nil && maxes[i] > 0 && maxes[i] < 100 {
+			h = maxes[i]
+		}
+		if h < lo(i) {
+			h = lo(i)
+		}
+		return h
+	}
+	rest := 100 - value
+	sum := 0.0
+	for i := range out {
+		if i == index {
+			continue
+		}
+		if out[i] < 0 || math.IsNaN(out[i]) {
+			out[i] = 0
+		}
+		sum += out[i]
+	}
+	for i := range out {
+		if i == index {
+			continue
+		}
+		if sum > 1e-9 {
+			out[i] = out[i] / sum * rest
+		} else {
+			out[i] = rest / float64(n-1)
+		}
+		if out[i] < lo(i) {
+			out[i] = lo(i)
+		}
+		if out[i] > hi(i) {
+			out[i] = hi(i)
+		}
+	}
+	out[index] = value
+	for pass := 0; pass < 8; pass++ {
+		sum = 0
+		for _, v := range out {
+			sum += v
+		}
+		diff := 100 - sum
+		if math.Abs(diff) < 1e-6 {
+			break
+		}
+		var free []int
+		for i := range out {
+			if i == index {
+				continue
+			}
+			if diff > 0 && out[i] < hi(i)-1e-9 {
+				free = append(free, i)
+			}
+			if diff < 0 && out[i] > lo(i)+1e-9 {
+				free = append(free, i)
+			}
+		}
+		if len(free) == 0 {
+			break
+		}
+		share := diff / float64(len(free))
+		for _, i := range free {
+			out[i] += share
+			if out[i] < lo(i) {
+				out[i] = lo(i)
+			}
+			if out[i] > hi(i) {
+				out[i] = hi(i)
+			}
+		}
+	}
+	return out
+}
+
+// collapsePanel 把可折叠面板收到 collapsedSize, 释放的份额按比例分给其它面板。
+func (g *ResizableGroup) collapsePanel(p *ResizablePanel) {
+	if g == nil || p == nil || !p.collapsible || p.collapsed {
+		return
+	}
+	i := p.index()
+	sizes := g.ensureSizes()
+	if i < 0 || i >= len(sizes) || len(sizes) < 2 {
+		return
+	}
+	cs := p.collapseSize()
+	if sizes[i] <= cs+1e-9 {
+		return
+	}
+	p.restore = sizes[i]
+	g.sizes = pinResizableSize(sizes, i, cs, g.mins(), g.maxes())
+	p.collapsed = true
+	g.syncLayout()
+	g.notify()
+}
+
+// expandPanel 把折叠面板恢复到折叠前的百分比(不低于 min、不高于 max)。
+func (g *ResizableGroup) expandPanel(p *ResizablePanel) {
+	if g == nil || p == nil || !p.collapsed {
+		return
+	}
+	i := p.index()
+	sizes := g.ensureSizes()
+	if i < 0 || i >= len(sizes) {
+		return
+	}
+	target := p.restore
+	if target < p.min {
+		target = p.min
+	}
+	if p.max > 0 && target > p.max {
+		target = p.max
+	}
+	p.collapsed = false
+	p.restore = 0
+	// 钉住恢复值, 差额由其它面板按比例让出: 直接归一化会把"折叠期间被抬大的"
+	// 其它面板一起缩放, 恢复不到折叠前的百分比。
+	g.sizes = pinResizableSize(sizes, i, target, g.mins(), g.maxes())
+	g.syncLayout()
+	g.notify()
+}
+
+// toggleAdjacentCollapse 处理分隔条上的 Enter: 优先折叠/展开前一个面板, 它不可折叠时
+// 再看后一个; 两侧都不可折叠返回 false(按键不消费)。
+func (g *ResizableGroup) toggleAdjacentCollapse(index int) bool {
+	if g == nil || index < 0 || index+1 >= len(g.panels) {
+		return false
+	}
+	p := g.panels[index]
+	if !p.collapsible {
+		p = g.panels[index+1]
+	}
+	if !p.collapsible {
+		return false
+	}
+	if p.collapsed {
+		g.expandPanel(p)
+	} else {
+		g.collapsePanel(p)
+	}
+	return true
+}
+
+// panelGrownBy 返回 index 处分隔条移动 delta 时"变大"的面板: 正数向左/上长(前一个),
+// 负数向后一个长。
+func (g *ResizableGroup) panelGrownBy(index int, delta float64) *ResizablePanel {
+	if g == nil || delta == 0 {
+		return nil
+	}
+	if delta > 0 {
+		if index >= 0 && index < len(g.panels) {
+			return g.panels[index]
+		}
+		return nil
+	}
+	if index+1 >= 0 && index+1 < len(g.panels) {
+		return g.panels[index+1]
+	}
+	return nil
+}
+
+// expandCollapsedAround 展开与 index 相邻的折叠面板(双击复位时先恢复)。
+func (g *ResizableGroup) expandCollapsedAround(index int) bool {
+	if g == nil {
+		return false
+	}
+	acted := false
+	for _, i := range []int{index, index + 1} {
+		if i >= 0 && i < len(g.panels) && g.panels[i].collapsed {
+			g.expandPanel(g.panels[i])
+			acted = true
+		}
+	}
+	return acted
 }
 
 // applyResizableDelta 把 index 处的分隔条移动 delta 个百分点: 正数让左侧面板变大、
@@ -729,7 +1113,7 @@ func (g *ResizableGroup) notify() {
 
 func (h *ResizableHandle) onDown(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 	g := h.group
-	if g == nil || g.disabled {
+	if g == nil || g.effectiveDisabled(h) {
 		return 0
 	}
 	xui.NotePointerPress()
@@ -782,6 +1166,14 @@ func (g *ResizableGroup) onMouseMove(hEle int, nFlags int, pPt *xc.POINT, pbHand
 		pos = pPt.X
 	}
 	delta := float64(pos-g.dragStart) / float64(avail) * 100
+	// 折叠态: 往"变大"方向拖先把面板展开, 并以当前光标为新基准继续拖(否则手柄
+	// 从折叠位置跳到展开位置, 第一帧会产生一次跳变)。
+	if p := g.panelGrownBy(g.dragIndex, delta); p != nil && p.collapsed {
+		g.expandPanel(p)
+		g.dragBase = append([]float64(nil), g.ensureSizes()...)
+		g.dragStart = pos
+		delta = 0
+	}
 	g.sizes = applyResizableDelta(g.dragBase, g.dragIndex, delta, g.mins(), g.maxes())
 	if g.applyPixels(main) {
 		g.LayoutEle.AdjustLayout()
@@ -808,9 +1200,10 @@ func (g *ResizableGroup) endDrag() {
 
 func (h *ResizableHandle) onDoubleClick(hEle int, nFlags int, pPt *xc.POINT, pbHandled *bool) int {
 	g := h.group
-	if g == nil || g.disabled {
+	if g == nil || g.effectiveDisabled(h) {
 		return 0
 	}
+	g.expandCollapsedAround(h.index)
 	g.resetPair(h.index)
 	return 0
 }
@@ -884,10 +1277,14 @@ func (g *ResizableGroup) bindKeys() {
 }
 
 // handleKey 返回是否消费了按键。步骤对齐 react-resizable-panels v4: 方向键 5 个百分点、
-// Home/End ±100 直接到边界; 只有分组轴向上的方向键生效。
+// Home/End ±100 直接到边界; Enter 折叠/展开相邻的可折叠面板(优先前一个);
+// 只有分组轴向上的方向键生效。
 func (g *ResizableGroup) handleKey(h *ResizableHandle, wParam uintptr) bool {
-	if g == nil || g.disabled {
+	if g == nil || h == nil || g.effectiveDisabled(h) {
 		return false
+	}
+	if wParam == 0x0D { // VK_RETURN
+		return g.toggleAdjacentCollapse(h.index)
 	}
 	var delta float64
 	switch wParam {
@@ -922,6 +1319,11 @@ func (g *ResizableGroup) handleKey(h *ResizableHandle, wParam uintptr) bool {
 	if h.index+1 >= len(sizes) {
 		return false
 	}
+	// 折叠态: 方向键先把将要变大的面板恢复(本次按键只负责展开)。
+	if p := g.panelGrownBy(h.index, delta); p != nil && p.collapsed {
+		g.expandPanel(p)
+		return true
+	}
 	g.sizes = applyResizableDelta(sizes, h.index, delta, g.mins(), g.maxes())
 	g.syncLayout()
 	g.notify()
@@ -947,7 +1349,8 @@ func (h *ResizableHandle) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	*pbHandled = true
 	t := xui.Current()
-	focus := xui.StateOf(hEle).Focused && xui.FocusedByKeyboard() && (h.group == nil || !h.group.disabled)
+	disabled := h.group != nil && h.group.effectiveDisabled(h)
+	focus := xui.StateOf(hEle).Focused && xui.FocusedByKeyboard() && !disabled
 	vertical := h.group != nil && h.group.vertical
 	leadCollapsed, tailCollapsed := false, false
 	if h.group != nil {
@@ -965,6 +1368,9 @@ func (h *ResizableHandle) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	if tailCollapsed {
 		sig |= 4
+	}
+	if disabled {
+		sig |= 8
 	}
 	if h.lastSig >= 0 && sig != h.lastSig {
 		p.FillRound(&p.Rc, t.Card, 0)
@@ -1035,8 +1441,8 @@ func (h *ResizableHandle) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	}
 	p.Draw.FillRectColorF(&line, color)
 
-	// 收起时抓手会有一半在分组外(被裁掉), 直接不画。
-	if h.grip && !leadCollapsed && !tailCollapsed {
+	// 收起时抓手会有一半在分组外(被裁掉), 直接不画; 禁用时也不画抓手与焦点态。
+	if h.grip && !disabled && !leadCollapsed && !tailCollapsed {
 		// 厚度轴的设备宽度取奇数, 与线共用 centerDev; 长轴按设备像素取整后居中。
 		shortDev := int32(math.Round(float64(resizableGripShort) * sc))
 		if shortDev < 1 {

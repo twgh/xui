@@ -202,14 +202,14 @@ func buildResizableCard(parent int) {
 	_, vr := autoCard(parent, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "可调整分栏", vr.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Resizable: 拖动分隔条伸缩相邻面板 · 点击分隔条后 ←/→ 每次 5% · Home/End 到边界 · 双击复位", vr.Handle))
+		"Resizable: 拖动分隔条伸缩相邻面板 · 点击分隔条后 ←/→ 每次 5% · Home/End 到边界 · 双击复位 · 分隔条聚焦后 Enter 折叠/展开左侧面板(折叠到 0)", vr.Handle))
 
 	box := borderedBox(vr.Handle, 240, false)
 	g := ui.NewResizableGroup(0, 0, 0, 0, box.Handle)
 	xui.ItemFill(g)
 	xui.ItemHeight(g, 240)
-	left := g.AddPanel(ui.WithResizableSize(35), ui.WithResizableMin(20))
-	leftPane := newResizablePreview(left.Handle, "左 35%", "最小 20% · 拖一拖分隔条")
+	left := g.AddPanel(ui.WithResizableSize(35), ui.WithResizableMin(20), ui.WithResizableCollapsedSize(0))
+	leftPane := newResizablePreview(left.Handle, "左 35%", "最小 20% · Enter 折叠")
 	g.AddHandle(ui.WithResizableGrip())
 	right := g.AddPanel(ui.WithResizableSize(65))
 
@@ -218,17 +218,22 @@ func buildResizableCard(parent int) {
 	xui.ItemFillHeight(vg)
 	top := vg.AddPanel(ui.WithResizableSize(40))
 	topPane := newResizablePreview(top.Handle, "上 40%", "嵌套纵向分组")
-	vg.AddHandle()
-	bottom := vg.AddPanel(ui.WithResizableSize(60))
-	bottomPane := newResizablePreview(bottom.Handle, "下 60%", "↑ / ↓ 调整")
+	vg.AddHandle(ui.WithResizableGrip())
+	// 面板级禁用: 相邻分隔条跟着不可拖/不可聚焦, 抓手也隐藏。
+	bottom := vg.AddPanel(ui.WithResizableSize(60), ui.WithResizablePanelDisabled())
+	bottomPane := newResizablePreview(bottom.Handle, "下 60%", "已锁定(面板级禁用)")
 
 	// 百分比文案跟着调整实时更新(自绘文字不重绘就只是静态数字)。
 	g.OnResize(func(s []float64) {
-		leftPane.SetText(fmt.Sprintf("左 %.0f%%", s[0]), "最小 20% · 拖一拖分隔条")
+		if left.Collapsed() {
+			leftPane.SetText("已折叠", "Enter 或拖动分隔条恢复")
+			return
+		}
+		leftPane.SetText(fmt.Sprintf("左 %.0f%%", s[0]), "最小 20% · Enter 折叠")
 	})
 	vg.OnResize(func(s []float64) {
 		topPane.SetText(fmt.Sprintf("上 %.0f%%", s[0]), "嵌套纵向分组")
-		bottomPane.SetText(fmt.Sprintf("下 %.0f%%", s[1]), "↑ / ↓ 调整")
+		bottomPane.SetText(fmt.Sprintf("下 %.0f%%", s[1]), "已锁定(面板级禁用)")
 	})
 }
 

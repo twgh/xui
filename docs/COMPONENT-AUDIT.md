@@ -58,8 +58,8 @@
 | 40 | Breadcrumb | `breadcrumb` | 已核查 | 结论见 3.9;BC1 文字分隔符 / BC2 可点击省略号已落地;BC3 链接焦点待确认 |
 | 41 | Navigation Menu | `navigation-menu` | 已核查 | 结论见 3.9;NM1 base-nova 几何/配色/active/图标已落地;NM2 嵌套子菜单待确认 |
 | 42 | Menubar | `menubar` | 已核查 | 结论见 3.9;MB1 整条禁用/开合通知、MB4 单选组值已落地;MB2/MB3 几何与指示器待确认 |
-| 43 | Sidebar | `sidebar` | 已核查 | 结论见 3.9;SB1 骨架行已落地;SB2 自定义按钮内容待确认 |
-| 44 | Resizable | `resizable` | 已核查 | 结论见 3.9;文档示例已覆盖;RS1/RS2/RS4 待确认 |
+| 43 | Sidebar | `sidebar` | 已核查 | 结论见 3.9;SB1 骨架行已落地;SB2 菜单按钮内容槽已落地(第十五批) |
+| 44 | Resizable | `resizable` | 已核查 | 结论见 3.9;文档示例已覆盖;RS1 / RS4 已落地(第十五批), RS2 不做 |
 | 45 | Carousel | `carousel` | 已核查 | 结论见 3.10;循环 / 自动播放 / 拖拽已具备;CR2 页码指示已落地(第十三批)、CR1 多页同屏待确认 |
 | 46 | Aspect Ratio | `aspect-ratio` | 已核查 | 结论见 3.10;唯一 prop `ratio` 已覆盖,圆角裁剪是能力边界 |
 | 47 | Kbd | `kbd` | 已核查 | 结论见 3.10;键帽 / 组 / 量宽已具备;KB1~KB3 暂缓 |
@@ -841,7 +841,7 @@
 | # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
 |---:|---|---|---|---|---|
 | SB1 | 菜单骨架行 | `SidebarMenuSkeleton`(h-8、图标块 + 50~90% 文字条、animate-pulse) | 无 | 已落地:`NewSidebarMenuSkeleton` / `SidebarGroup.AddSkeleton`;`WithSidebarSkeletonIcon` / `WithSidebarSkeletonWidth`(10~100);2s 不透明脉冲;图标栏只留图标块 | 已落地 |
-| SB2 | 菜单按钮自定义内容 | `SidebarMenuButton` 接受任意 children(团队切换器 / 用户卡:头像 + 两行文字 + 尾部 chevron) | 只有 text + icon 的固定形态 | 待确认:需要内容槽(`Content()` 返回布局容器)与折叠态下的显隐约定;现有 Header / Footer 可自己拼容器绕过 | 中 / 中 |
+| SB2 | 菜单按钮自定义内容 | `SidebarMenuButton` 接受任意 children(团队切换器 / 用户卡:头像 + 两行文字 + 尾部 chevron) | 只有 text + icon 的固定形态 | 已落地(第十五批):`Content()` 内容槽 + 图标栏折叠态隐藏约定 | 中 / 中 |
 | SB3 | 分组可折叠 | 文档用 Collapsible 包 SidebarGroup,组标签作 Trigger | 分组标签不是触发区;可用外部 Collapsible 包组,但标签无法绑定 | 暂缓:需要标签支持触发器绑定或开放自定义标签元素;真实需求再加 | 小-中 / 低 |
 | SB4 | 移动端 Sheet / Provider 上下文 | `isMobile` 断点 + Sheet;`useSidebar` | 无移动分支,状态在 Sidebar 实例上 | 不做:桌面窗口没有移动断点;Go 侧显式持有 `Sidebar` 指针即可;`SidebarInput` 用 Input 组合 | 不做 |
 
@@ -857,10 +857,10 @@
 
 | # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
 |---:|---|---|---|---|---|
-| RS1 | collapsible / collapsedSize + Enter 折叠 | 上游 Panel 的 `collapsible` / `collapsedSize`,Enter 折叠 / 展开 | 无折叠,只能靠 min 限制 | 待确认:折叠态要保留 collapsedSize、双击 / 方向键恢复,与 min 语义叠加;需要面板级状态与拖动阈值 | 中 / 中 |
+| RS1 | collapsible / collapsedSize + Enter 折叠 | 上游 Panel 的 `collapsible` / `collapsedSize`,Enter 折叠 / 展开 | 无折叠,只能靠 min 限制 | 已落地(第十五批):面板级折叠 + Enter 切换, 折叠尺寸可低于 min, 拖出/方向键恢复 | 中 / 中 |
 | RS2 | preserve-pixel-size | 上游 PanelGroup 的 `preserve-pixel-size` | 始终保持相对比例 | 待确认:做成开关后窗口缩放时保住像素宽、压缩其它面板;需要重算归一化口径 | 中-高 / 低 |
 | RS3 | F6 在分隔条间跳焦点 | 上游键盘文档 | 分隔条可 Tab 聚焦,无 F6 循环 | 暂缓:窗口级 F6 钩子与其它组件的 F6 预留冲突 | 中 / 低 |
-| RS4 | 面板 / 分隔条级禁用 | 上游没有对应 prop(只能整组);本库扩展 | 只有组级 disabled | 暂缓:有单栏锁定场景再扩展 | 小 / 低 |
+| RS4 | 面板 / 分隔条级禁用 | 上游没有对应 prop(只能整组);本库扩展 | 只有组级 disabled | 已落地(第十五批):面板/分隔条独立禁用, 与组级叠加 | 小 / 低 |
 | RS5 | 布局持久化(`autoSaveId`) | 上游 PanelGroup 的 autoSaveId(localStorage) | 无 | 不做:Go 侧由调用方保存 `Sizes()` 并在下次构造时 `SetSizes`,更可控 | 不做 |
 
 **明确不做**:RTL、任意尺寸单位(px / rem)、DOM `data-panel`。
@@ -1157,7 +1157,15 @@
 | EM2 | Empty | Header 最大宽 384(`emptyHeaderMaxW`): 容器可用宽(减左右 p-6)超过 384 时把 Header 锁成 384 并由 Body 水平居中, 更窄时保持整宽; 量宽挂在 Body 尺寸事件上并排到下一轮消息(避免布局趟内重入) |
 | OTP1 | Input OTP | `WithInputOTPReadOnly()` / `SetReadOnly(bool)` / `ReadOnly()`: 用户键入 / 退格 / Delete / Ctrl+V 都不改值(原生 ReadOnly + 事件拦截双保险), 格子仍可聚焦、可选中复制、在 Tab 链里; 程序化 `SetValue` / `Clear` 仍生效; 与 `SetDisabled` 独立组合 |
 
-**下一批建议**: Q6-2 的 SB2(Sidebar 菜单按钮内容槽)与 Q6-4 的 RS1 / RS4(Resizable collapsible / 单栏锁定)已拍板排期; Q6 / Q7 其余项按上表暂缓或不做。剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
+**第十五批**(Q6-2 / Q6-4 拍板后落地, 跨 2 个组件):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| SB2 | Sidebar | `SidebarMenuButton.Content()` 返回自定义内容槽(横向布局、子项垂直居中、间距 8): 替代默认图标 + 文字, 放团队切换器 / 用户卡(头像 + 两行文字 + 尾部图标); 内容占按钮内边距盒(四周 8, SizeLg 可用高 32), 整行仍是一个原生按钮(点内容任意位置等同点整行); 右侧徽章/动作/子菜单 chevron 仍画在内容之上; 图标栏形态内容整体隐藏、回落居中图标(仍用构造函数的 icon + 折叠 tooltip) |
+| RS1 | Resizable | 面板级 `WithResizableCollapsible()` / `WithResizableCollapsedSize(percent)` / `SetCollapsible` / `SetCollapsedSize` / `SetCollapsed` / `Collapse` / `Expand` / `Collapsed()`: 折叠尺寸默认跟随 min、显式 0 合法(可低于 min); 折叠释放的份额按比例给其它面板, 展开恢复折叠前百分比(不低于 min); 分隔条聚焦后 Enter 折叠/展开相邻面板(优先前一个, 不可折叠时看后一个); 折叠态下拖出/方向键先恢复再调整; 双击复位前先展开相邻折叠面板 |
+| RS4 | Resizable | 面板级 `WithResizablePanelDisabled()` / `SetDisabled` / `Disabled()` 与分隔条级 `WithResizableHandleDisabled()` / `SetDisabled` / `Disabled()`: 相邻任一面板禁用 → 该分隔条不可拖/不可聚焦/不画抓手与焦点环, 双击与 Enter 一起失效; 与组级 `SetDisabled` 叠加; 面板内容本身不受影响 |
+
+**下一批建议**: 当前无待排期项, Q6 / Q7 已收口; 剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -1186,9 +1194,9 @@
 | # | 涉及条目 | 建议 | 状态 |
 |---|---|---|---|
 | Q6-1 | MB2 / MB3 | Menubar 完整对齐 base-nova: 根 h-8 p-[3px] gap-0.5、条目 28、弹层 min-w-36、子菜单 min-w-24, 勾选/单选指示器移到右侧; 需先给 Button 补高度/内距覆盖或改自绘触发区, 再整页回归 | 暂缓(现有几何可用, 完整对齐的回归面大于观感收益, 有真实需求再立项) |
-| Q6-2 | CL2 / SB2 / SB3 | 布局自由度: SB2(菜单按钮内容槽, 团队切换器/用户卡)优先; CL2(触发区/内容任意挂载)要改根管线, 成本最高; SB3(分组折叠)看侧栏需求 | SB2 排期下一批; CL2 不做; SB3 暂缓 |
+| Q6-2 | CL2 / SB2 / SB3 | 布局自由度: SB2(菜单按钮内容槽, 团队切换器/用户卡)优先; CL2(触发区/内容任意挂载)要改根管线, 成本最高; SB3(分组折叠)看侧栏需求 | SB2 已落地(第十五批); CL2 不做; SB3 暂缓 |
 | Q6-3 | BC3 / NM2 | 键盘与子导航: BC3(链接进入 Tab 链)会改整页 Tab 顺序; NM2(嵌套子菜单)成本高, 建议不排 | 不做(BC3 用子按钮做链接语义; NM2 有真实需求再立项) |
-| Q6-4 | RS1 / RS2 / RS4 | Resizable 扩展: RS1(collapsible)优先, RS4(单栏锁定)顺手; RS2(preserve-pixel-size)低优先 | RS1 + RS4 排期下一批; RS2 不做 |
+| Q6-4 | RS1 / RS2 / RS4 | Resizable 扩展: RS1(collapsible)优先, RS4(单栏锁定)顺手; RS2(preserve-pixel-size)低优先 | RS1 + RS4 已落地(第十五批); RS2 不做 |
 | Q6-5 | HC2 / NM3 / NM4 / NM5 / CL3 / RS3 | 暂缓: 弹层 zoom/slide 动画深度、纵向导航、视口尺寸过渡、两行说明、展开态根底色、F6 跳分隔条 | 暂缓 |
 | Q6-6 | CL4 / BC4 / SB4 / RS5 / Menubar Alt | 不做或组合式: keepMounted 卸载语义、富内容面包屑、移动端 Sheet / Provider 上下文、布局持久化、Menubar Alt/typeahead | 不做 |
 
@@ -1203,4 +1211,4 @@
 | Q7-5 | OTP1 | InputOTP readOnly 只读态(本地参照实现有示例):拦改写但保留焦点与选中复制,与 disabled 语义分开 | 已落地(第十四批) |
 | Q7-6 | CR4 / KB1~KB3 / EM1 / IT4 / IT5 / OTP2 / OTP3 | 按钮几何 / Tooltip 键帽反色 / 键帽图标与几何覆盖 / Empty 边框背景 / 头尾行 space-between / 动作行 gap / InputOTP 文本对齐与粘贴转换:都是小改动,等真实场景随组件下次改动补 | 暂缓 |
 
-**可直接排期(无需确认)**: 当前无待排期项, Q6 / Q7 已收口;下一批 = Q6-2 的 SB2(Sidebar 菜单按钮内容槽)与 Q6-4 的 RS1 / RS4(Resizable collapsible / 单栏锁定)。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
+**可直接排期(无需确认)**: 当前无待排期项, Q6 / Q7 已收口;第十五批(SB2 / RS1 / RS4)已落地。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。

@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第十五批: Sidebar 菜单按钮内容槽 / Resizable 折叠与面板级禁用**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q6-2 / Q6-4):
+  - **Sidebar(SB2)**: `SidebarMenuButton.Content()` 返回自定义内容槽(横向布局、子项垂直居中、间距 8), 替代默认图标 + 文字, 用于团队切换器 / 用户卡(头像 + 两行文字 + 尾部图标); 内容槽占按钮内边距盒(四周 8, SizeLg 可用高 32), 点内容任意位置等同点整行(原生按钮截获子元素事件); 徽章 / 动作 / 子菜单 chevron 仍画在内容之上; 图标栏形态内容整体隐藏、回落居中图标。有内容槽的行, 悬停改由宿主窗口坐标命中 —— 内容子元素会挡住原生按钮的 hover, 不兜底时只有鼠标落在行内空白处才亮。
+  - **Resizable(RS1)**: 面板级 `WithResizableCollapsible()` / `WithResizableCollapsedSize(percent)` 与 `SetCollapsible` / `SetCollapsedSize` / `SetCollapsed` / `Collapse` / `Expand` / `Collapsed()`; 分隔条聚焦后 Enter 折叠/展开相邻面板(优先前一个, 不可折叠时看后一个), 折叠尺寸默认跟随 min、显式 0 合法; 折叠释放的份额按比例分给其它面板, 展开恢复折叠前百分比(不低于 min); 折叠态拖出/方向键先恢复再调整, 双击复位前先展开相邻折叠面板。
+  - **Resizable(RS4)**: 面板级 `WithResizablePanelDisabled()` / `SetDisabled` / `Disabled()` 与分隔条级 `WithResizableHandleDisabled()` / `SetDisabled` / `Disabled()`; 相邻任一面板禁用 → 该分隔条不可拖/不可聚焦/不画抓手与焦点环, 双击与 Enter 一起失效; 与组级 `SetDisabled` 叠加。
+  - **修法要点**: 折叠/展开用 `pinResizableSize` 把折叠面板钉在目标百分比、差额按比例分摊(直接归一化会把折叠期间被抬大的其它面板一起缩放, 恢复不到原值); 显式 `collapsedSize=0` 与"未配置"用独立标记区分, 否则 0 会被当成未配置回落到 min; 内容槽在按钮尺寸事件里按内边距盒重排并触发自身布局, 自定义 Label 需 `xui.ItemFill` 声明宽度(否则宽 0 不显示)。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿, 新增 Resizable 纯计算单测(pin / 折叠展开 / 折叠尺寸默认值 / Enter 切换 / 叠加禁用); demo 视觉核对 —— 侧栏头部团队切换器展开态显示头像 + 两行文字 + 尾部 chevron、图标栏折叠态只剩居中图标; Resizable 左面板折叠后宽度归零、分隔线贴分组边缘且抓手隐藏, 面板级禁用的分隔条无抓手、启用分隔条有抓手; `registry.json` 的 `runtime` / `cliChange` 未动。
+
 - ✅ **组件特性核查收口: Q6 / Q7 拍板 + 第十四批落地(Empty Header 最大宽 / InputOTP readOnly)**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q6 / Q7):
   - **Q6 拍板**: SB2(Sidebar 菜单按钮内容槽)与 RS1 / RS4(Resizable collapsible / 单栏锁定)排期下一批; CL2(任意挂载)、BC3(链接进 Tab 链)、NM2(嵌套子菜单)、RS2(preserve-pixel-size)不做; MB2 / MB3(Menubar 完整几何)、SB3(分组折叠)暂缓; HC2 等与 CL4 等维持原决定。
   - **Q7 拍板**: CR1 / CR3(Carousel 多页同屏与页对齐)不做默认变更(单页铺满是默认口径); NS2 / NS3(NativeSelect 分组 / 值文本分离)不做, 保持原生弹层 + 字符串语义, 富条目继续由 Select 承担; IT2 / IT3(Item 内建 image/avatar 媒体态、整行链接焦点)不做(媒体用 `Media()` 挂 Avatar/图片; 整行链接会改 Tab 顺序, 用子按钮); EM2 / OTP1 本批落地。

@@ -117,3 +117,115 @@ func TestResizablePixelWidths(t *testing.T) {
 		t.Fatalf("60/40 @250 = %v, 期望 [150 100]", got)
 	}
 }
+
+func TestPinResizableSize(t *testing.T) {
+	// 折叠到 0: 另一侧拿走全部
+	assertSizes(t,
+		pinResizableSize([]float64{35, 65}, 0, 0, []float64{20, 0}, nil),
+		[]float64{0, 100})
+
+	// 折叠尺寸低于 min: 钉住值不能被 min 抬回去
+	assertSizes(t,
+		pinResizableSize([]float64{35, 65}, 0, 5, []float64{20, 0}, nil),
+		[]float64{5, 95})
+
+	// 其它面板的 max 会限制分摊, 剩下的差额给还能长的面板
+	assertSizes(t,
+		pinResizableSize([]float64{30, 70, 30}, 0, 0, nil, []float64{0, 50, 100}),
+		[]float64{0, 50, 50})
+}
+
+func TestResizableCollapseExpand(t *testing.T) {
+	g := &ResizableGroup{sizes: []float64{35, 65}, normalized: true}
+	a := &ResizablePanel{group: g, min: 20, collapsible: true, collapsedSizeSet: true, collapsedSize: 0}
+	b := &ResizablePanel{group: g}
+	g.panels = []*ResizablePanel{a, b}
+
+	g.collapsePanel(a)
+	if !a.collapsed || !nearEqual(a.restore, 35) {
+		t.Fatalf("折叠后 collapsed=%v restore=%v, 期望 true / 35", a.collapsed, a.restore)
+	}
+	assertSizes(t, g.sizes, []float64{0, 100})
+
+	// 已折叠时重复折叠不覆盖恢复尺寸
+	g.collapsePanel(a)
+	if !nearEqual(a.restore, 35) {
+		t.Fatalf("重复折叠把 restore 改成 %v, 期望仍是 35", a.restore)
+	}
+
+	g.expandPanel(a)
+	if a.collapsed || a.restore != 0 {
+		t.Fatalf("展开后 collapsed=%v restore=%v, 期望 false / 0", a.collapsed, a.restore)
+	}
+	assertSizes(t, g.sizes, []float64{35, 65})
+
+	// 展开目标低于 min 时按 min 恢复
+	a.restore = 5
+	a.collapsed = true
+	g.expandPanel(a)
+	assertSizes(t, g.sizes, []float64{20, 80})
+}
+
+func TestResizableCollapsedSizeDefaultsToMin(t *testing.T) {
+	p := &ResizablePanel{min: 25, collapsible: true}
+	if !nearEqual(p.collapseSize(), 25) {
+		t.Fatalf("未配置 collapsedSize 时 = %v, 期望跟随 min 25", p.collapseSize())
+	}
+
+	// 显式 0 是合法的折叠尺寸, 不能当成"未配置"回落到 min
+	p = &ResizablePanel{min: 25, collapsible: true, collapsedSizeSet: true, collapsedSize: 0}
+	if p.collapseSize() != 0 {
+		t.Fatalf("显式 collapsedSize=0 时 = %v, 期望 0", p.collapseSize())
+	}
+}
+
+func TestResizableToggleAdjacentCollapse(t *testing.T) {
+	g := &ResizableGroup{sizes: []float64{40, 60}, normalized: true}
+	a := &ResizablePanel{group: g, collapsible: false}
+	b := &ResizablePanel{group: g, collapsible: true, collapsedSizeSet: true, collapsedSize: 0}
+	g.panels = []*ResizablePanel{a, b}
+
+	// 前一个不可折叠 → 展开/折叠后一个
+	if !g.toggleAdjacentCollapse(0) {
+		t.Fatal("后一个可折叠时应消费 Enter")
+	}
+	if !b.collapsed {
+		t.Fatal("Enter 未折叠后一个面板")
+	}
+	if !g.toggleAdjacentCollapse(0) || b.collapsed {
+		t.Fatal("再次 Enter 应展开后一个面板")
+	}
+
+	// 两侧都不可折叠 → 不消费
+	a.collapsible, b.collapsible = false, false
+	if g.toggleAdjacentCollapse(0) {
+		t.Fatal("两侧都不可折叠时不应消费 Enter")
+	}
+}
+
+func TestResizableEffectiveDisabled(t *testing.T) {
+	g := &ResizableGroup{}
+	a := &ResizablePanel{group: g}
+	b := &ResizablePanel{group: g}
+	g.panels = []*ResizablePanel{a, b}
+	h := &ResizableHandle{group: g, index: 0}
+	g.handles = []*ResizableHandle{h}
+
+	if g.effectiveDisabled(h) {
+		t.Fatal("默认不应禁用")
+	}
+	a.disabled = true
+	if !g.effectiveDisabled(h) {
+		t.Fatal("左侧面板禁用后分隔条应禁用")
+	}
+	a.disabled = false
+	h.disabled = true
+	if !g.effectiveDisabled(h) {
+		t.Fatal("分隔条自身禁用应生效")
+	}
+	h.disabled = false
+	g.disabled = true
+	if !g.effectiveDisabled(h) {
+		t.Fatal("分组禁用应叠加生效")
+	}
+}

@@ -50,9 +50,29 @@ func buildNav6Page(body *widget.LayoutEle) {
 	xui.ItemFill(sep)
 	xui.ItemFill(ui.NewLabel(0, 0, 0, 24, "推理用量 12.4K · 本月调用 86.2% · 平均延迟 142ms", vm.Handle))
 
-	// ---- 侧栏内容: 头部品牌 + 两组菜单 + 脚部用户 ----
-	sb.AddHeaderItem("Acme Inc.", icons.IconGalleryVerticalEnd,
-		ui.WithSidebarItemSize(ui.SidebarSizeLg), ui.WithSidebarItemTooltip("Acme Inc."))
+	// ---- 侧栏内容: 头部团队切换器(自定义内容槽) + 两组菜单 + 脚部用户 ----
+	brand := sb.AddHeaderItem("", icons.IconGalleryVerticalEnd,
+		ui.WithSidebarItemSize(ui.SidebarSizeLg), ui.WithSidebarItemTooltip("Acme Inc."),
+		ui.WithSidebarItemOnClick(func() { status.SetText("最近操作: 切换团队") }))
+	row := brand.Content()
+	ui.NewAvatar(0, 0, 32, 32, row.Handle, "AC")
+	tcol := xui.VStack(row.Handle, 1, 0)
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 17, "Acme Inc.", tcol.Handle).SetFontSize(14).SetMedium())
+	xui.ItemFill(ui.NewLabel(0, 0, 0, 15, "企业版 · 12 个成员", tcol.Handle).SetFontSize(12).SetMuted())
+	chev := widget.NewElement(0, 0, 16, 16, row.Handle)
+	chev.EnableBkTransparent(true)
+	chev.EnableDrawBorder(false)
+	chev.EnableFocus(false)
+	chev.EnableMouseThrough(true)
+	chev.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
+		p := xui.BeginPaint(hEle, hDraw)
+		if p == nil {
+			return 0
+		}
+		*pbHandled = true
+		p.Icon(icons.IconChevronsUpDown, &p.Rc, xui.Current().SidebarForeground.ScaleAlpha(0.7), 2)
+		return 0
+	})
 
 	var active *ui.SidebarMenuButton
 	setActive := func(it *ui.SidebarMenuButton, name string) {
@@ -90,7 +110,7 @@ func buildNav6Page(body *widget.LayoutEle) {
 		ui.WithSidebarItemOnClick(func() { setActive(design, "设计系统") }))
 	sub := design.AddSub()
 	var subLib, subTokens *ui.SidebarMenuButton
-	subLib = sub.AddItem("组件库", "", ui.WithSidebarItemActive(true),
+	subLib = sub.AddItem("组件库", "",
 		ui.WithSidebarItemOnClick(func() { setActive(subLib, "组件库") }))
 	subTokens = sub.AddItem("设计令牌", "",
 		ui.WithSidebarItemOnClick(func() { setActive(subTokens, "设计令牌") }))
@@ -132,5 +152,5 @@ func buildNav6Page(body *widget.LayoutEle) {
 		ui.WithSidebarItemSize(ui.SidebarSizeLg), ui.WithSidebarItemTooltip("twgh"))
 
 	xui.ItemFill(hint(v.Handle,
-		"点触发钮或 Ctrl+B 收起; 收起后菜单项只留图标, 悬停出提示; 子菜单父项可展开/收起; 分组「加载中」右侧的刷新图标可重播骨架加载。"))
+		"头部品牌是菜单按钮的自定义内容槽(头像 + 两行文字 + 尾部图标); 收起后内容隐藏、只留居中图标。点触发钮或 Ctrl+B 收起; 收起后菜单项悬停出提示; 子菜单父项可展开/收起; 分组「加载中」右侧的刷新图标可重播骨架加载。"))
 }

@@ -298,7 +298,8 @@ func NewSidebar(x, y, cx, cy int32, hParent int, opts ...SidebarOption) *Sidebar
 	return s
 }
 
-// hookRailMouse 用宿主窗口的鼠标移动给 rail 做悬停命中(元素级 MouseStay 不可靠):
+// hookRailMouse 用宿主窗口的鼠标移动给 rail / 动作钮 / 菜单行做悬停命中
+// (元素级 MouseStay 不可靠, 且自定义内容槽的子元素会挡住原生按钮的 hover):
 // 光标进入 16px 细条范围就重绘, 细线由 hover 过渡淡入。
 func (s *Sidebar) hookRailMouse() {
 	if s == nil {
@@ -340,6 +341,21 @@ func (s *Sidebar) hookRailMouse() {
 				a.Redraw(true)
 			}
 		}
+		// 菜单行: 有自定义内容槽时子元素会挡住原生按钮的 hover, 统一按窗口坐标命中;
+		// 没有内容槽的行走原生状态就够, 这里只兜底 record, 避免多余重绘。
+		for _, it := range s.items {
+			if it == nil || it.content == nil || !xc.XC_IsHXCGUI(it.Handle, xcc.XC_ELE) {
+				continue
+			}
+			var ir xc.RECT
+			xc.XEle_GetWndClientRect(it.Handle, &ir)
+			h := xc.XWidget_IsShow(it.Handle) &&
+				pPt.X >= ir.Left && pPt.X < ir.Right && pPt.Y >= ir.Top && pPt.Y < ir.Bottom
+			if h != it.hoverHit {
+				it.hoverHit = h
+				it.Redraw(false)
+			}
+		}
 		return 0
 	})
 	leave := func(hWin int, pbHandled *bool) int {
@@ -352,6 +368,14 @@ func (s *Sidebar) hookRailMouse() {
 				a.hover = false
 				if xc.XC_IsHXCGUI(a.Handle, xcc.XC_ELE) {
 					a.Redraw(true)
+				}
+			}
+		}
+		for _, it := range s.items {
+			if it != nil && it.hoverHit {
+				it.hoverHit = false
+				if xc.XC_IsHXCGUI(it.Handle, xcc.XC_ELE) {
+					it.Redraw(false)
 				}
 			}
 		}
@@ -1347,12 +1371,15 @@ func WithSidebarItemActionOnHover() SidebarItemOption {
 
 // SidebarMenuButton 侧栏菜单按钮: 原生 Button 载体(点击/键盘焦点直接用原生语义),
 // 外观全部自绘: 16px 图标 + 文字(超宽省略号) + 右侧徽章 / 动作钮。
+// 需要头像 + 两行文字这类上游 children 形态时用 Content() 换掉默认的图标 + 文字。
 type SidebarMenuButton struct {
 	*widget.Button
-	sidebar *Sidebar
-	cfg     sidebarItemCfg
-	icon    string
-	sub     bool
+	sidebar  *Sidebar
+	cfg      sidebarItemCfg
+	icon     string
+	sub      bool
+	content  *widget.LayoutEle // 自定义内容槽(非 nil 时替代默认图标 + 文字)
+	hoverHit bool              // 窗口级命中的行悬停(内容槽子元素挡住原生 hover 时兜底)
 	// 有子菜单时, 条目右侧画 chevron(展开转 90°), 点击整行开合子菜单。
 	subMenu *SidebarMenuSub
 	subOpen bool
@@ -1470,6 +1497,74 @@ func (m *SidebarMenuButton) SetIcon(icon string) *SidebarMenuButton {
 	return m
 }
 
+// Content 返回自定义内容槽(横向流、子项垂直居中、间距 8), 用来放团队切换器 / 用户卡
+// 这类"头像 + 两行文字 + 尾部图标"的组合 —— 返回后默认的图标 + 文字不再绘制,
+// 右侧的徽章 / 动作钮 / 子菜单 chevron 仍照常画在内容之上。
+//
+// 内容槽占菜单按钮的内边距盒(四周 8, 与上游 p-2 一致): SizeLg(48) 里可用高度 32,
+// 正好放 32 的头像。整行仍是一个原生按钮 —— 点内容里的任意位置都等同点整行,
+// 别往内容里塞需要自己接收点击的按钮。
+//
+// 折叠成图标栏(icon 模式)时内容槽整体隐藏, 按钮回落到居中图标, 所以这类条目
+// 仍要给构造函数的 icon 传一个品牌 / 用户图标, 并用 WithSidebarItemTooltip 给提示。
+func (m *SidebarMenuButton) Content() *widget.LayoutEle {
+	if m == nil {
+		return nil
+	}
+	if m.content != nil {
+		return m.content
+	}
+	c := widget.NewLayoutEle(0, 0, 0, 0, m.Handle)
+	if c == nil {
+		return nil
+	}
+	m.content = c
+	c.EnableHorizon(true)
+	c.EnableLayout(true)
+	c.EnableAutoWrap(false)
+	c.EnableBkTransparent(true)
+	c.EnableDrawBorder(false)
+	c.EnableFocus(false)
+	c.EnableSwitchFocus(false)
+	c.EnableMouseThrough(true)
+	c.SetAlignV(xcc.Layout_Align_Center)
+	c.SetSpace(sidebarIconGap)
+	m.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		m.layoutContent()
+		return 0
+	})
+	m.layoutContent()
+	if m.sidebar != nil && m.sidebar.iconMode() {
+		c.Show(false)
+	}
+	m.Redraw(false)
+	return c
+}
+
+// layoutContent 把内容槽摆进按钮的内边距盒; 右侧有动作钮 / chevron 时让出它们的宽度。
+func (m *SidebarMenuButton) layoutContent() {
+	c := m.content
+	if c == nil || !xc.XC_IsHXCGUI(c.Handle, xcc.XC_ELE) {
+		return
+	}
+	padR := sidebarPad
+	if m.cfg.action != "" {
+		padR = m.actionRightInset() + sidebarRate + 4
+	} else if m.subMenu != nil {
+		padR = sidebarChevronX + sidebarChevron + 4
+	}
+	cw := m.GetWidth() - sidebarPad - padR
+	ch := m.GetHeight() - sidebarPad*2
+	if cw < 0 {
+		cw = 0
+	}
+	if ch < 0 {
+		ch = 0
+	}
+	c.SetRectEx(sidebarPad, sidebarPad, cw, ch, false, xcc.AdjustLayout_No)
+	c.AdjustLayout()
+}
+
 // SetBadge 设置/清空徽章文字。
 func (m *SidebarMenuButton) SetBadge(text string) *SidebarMenuButton {
 	if m == nil {
@@ -1498,6 +1593,7 @@ func (m *SidebarMenuButton) SetAction(icon string, fn func()) *SidebarMenuButton
 		return m
 	}
 	m.cfg.action, m.cfg.actionFn = icon, fn
+	m.layoutContent()
 	m.Redraw(false)
 	return m
 }
@@ -1528,6 +1624,7 @@ func (m *SidebarMenuButton) AddSub() *SidebarMenuSub {
 	sub.open = true
 	m.subMenu = sub
 	m.subOpen = true
+	m.layoutContent()
 	m.subKey = xui.NextPresenceKey()
 	// 预热过渡值(同侧栏宽度): 展开态起始时键必须是 1, 第一次收起才会动画。
 	owner := m.Handle
@@ -1736,6 +1833,14 @@ func (m *SidebarMenuButton) applyIconMode(icon bool) {
 		m.SetHeight(h)
 		m.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
 	}
+	// 自定义内容只在展开态显示; 图标栏形态回落到居中图标。
+	if m.content != nil {
+		m.content.Show(!icon)
+		if !icon {
+			m.layoutContent()
+			m.content.AdjustLayout()
+		}
+	}
 	m.Redraw(false)
 }
 
@@ -1880,50 +1985,55 @@ func (m *SidebarMenuButton) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		return 0
 	}
 
-	fontPx := m.itemFontSize()
-	if m.sub {
-		fontPx = 14
-		if m.cfg.size == SidebarSizeSm {
-			fontPx = 12
-		}
-	}
-	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: fontPx, Bold: m.cfg.active})
-	if f != 0 {
-		p.Draw.SetFont(f)
-	}
 	cy := (p.Rc.Top + p.Rc.Bottom) / 2
 
-	iconColor := fore
-	if m.sub {
-		// SidebarMenuSubButton: [&>svg]:text-sidebar-accent-foreground —— 子项图标恒 accent 前景。
-		iconColor = t.SidebarAccentForeground
-	}
-
-	// 图标 + 文字(上游 p-2 gap-2)。
-	textLeft := p.Rc.Left + sidebarPad
-	if ip := m.iconPath(); ip != "" {
-		rc := xc.RECT{Left: textLeft, Top: cy - sidebarItemIcon/2,
-			Right: textLeft + sidebarItemIcon, Bottom: cy - sidebarItemIcon/2 + sidebarItemIcon}
-		p.Icon(ip, &rc, iconColor, 2)
-		textLeft += sidebarItemIcon + sidebarIconGap
-	}
 	badgeFont := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: 12, Bold: true})
-	// 右侧预留: 动作钮 / 子菜单 chevron / 徽章(绝对定位, 这里也给它让位, 长文本不压它们)。
-	textRight := p.Rc.Right - sidebarPad
 	badgeRight := int32(4)
 	if m.subMenu != nil {
 		badgeRight = sidebarChevronX + sidebarChevron + 4
 	}
-	if m.cfg.action != "" {
-		textRight = p.Rc.Right - m.actionRightInset() - sidebarRate - 4
-	} else if badge := m.cfg.badge; badge != "" {
-		textRight = p.Rc.Right - badgeRight - sidebarBadgeWidth(badge, badgeFont) - 4
-	} else if m.subMenu != nil {
-		textRight = p.Rc.Right - sidebarChevronX - sidebarChevron - 4
-	}
-	if textRight > textLeft {
-		rc := xc.RECT{Left: textLeft, Top: p.Rc.Top, Right: textRight, Bottom: p.Rc.Bottom}
-		sidebarText(p, m.GetText(), rc, fore, f)
+
+	// 有自定义内容槽时, 默认的图标 + 文字整块让位(内容槽自己画头像 / 两行文字)。
+	if m.content == nil {
+		fontPx := m.itemFontSize()
+		if m.sub {
+			fontPx = 14
+			if m.cfg.size == SidebarSizeSm {
+				fontPx = 12
+			}
+		}
+		f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: fontPx, Bold: m.cfg.active})
+		if f != 0 {
+			p.Draw.SetFont(f)
+		}
+
+		iconColor := fore
+		if m.sub {
+			// SidebarMenuSubButton: [&>svg]:text-sidebar-accent-foreground —— 子项图标恒 accent 前景。
+			iconColor = t.SidebarAccentForeground
+		}
+
+		// 图标 + 文字(上游 p-2 gap-2)。
+		textLeft := p.Rc.Left + sidebarPad
+		if ip := m.iconPath(); ip != "" {
+			rc := xc.RECT{Left: textLeft, Top: cy - sidebarItemIcon/2,
+				Right: textLeft + sidebarItemIcon, Bottom: cy - sidebarItemIcon/2 + sidebarItemIcon}
+			p.Icon(ip, &rc, iconColor, 2)
+			textLeft += sidebarItemIcon + sidebarIconGap
+		}
+		// 右侧预留: 动作钮 / 子菜单 chevron / 徽章(绝对定位, 这里也给它让位, 长文本不压它们)。
+		textRight := p.Rc.Right - sidebarPad
+		if m.cfg.action != "" {
+			textRight = p.Rc.Right - m.actionRightInset() - sidebarRate - 4
+		} else if badge := m.cfg.badge; badge != "" {
+			textRight = p.Rc.Right - badgeRight - sidebarBadgeWidth(badge, badgeFont) - 4
+		} else if m.subMenu != nil {
+			textRight = p.Rc.Right - sidebarChevronX - sidebarChevron - 4
+		}
+		if textRight > textLeft {
+			rc := xc.RECT{Left: textLeft, Top: p.Rc.Top, Right: textRight, Bottom: p.Rc.Bottom}
+			sidebarText(p, m.GetText(), rc, fore, f)
+		}
 	}
 
 	if badge := m.cfg.badge; badge != "" && m.cfg.action == "" {
@@ -1984,7 +2094,7 @@ func (m *SidebarMenuButton) resolveColors(t *xui.Theme, st xui.State) (bg, fore,
 		bg, bgHV = t.SidebarAccent, t.SidebarAccent
 		fore, foreHV = t.SidebarAccentForeground, t.SidebarAccentForeground
 	}
-	hovered := (st.Hover || st.Pressed) && !st.Disabled
+	hovered := (st.Hover || st.Pressed || m.hoverHit) && !st.Disabled
 	hv := xui.Hover(m.Handle, hovered)
 	bg = xui.Fade(bg, bgHV, hv)
 	fore = xui.Fade(fore, foreHV, hv)
