@@ -5,6 +5,10 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第二十一批: Card 图片槽(直角 + 自适应高)**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q4 / 3.3 C4):
+  - **Card(C4)**: 新增 `Card.Image(path)` / `Card.ImageData(img)`: 卡片直接子项的通栏图片槽, 宽铺满卡片、直角(按 Q4 决定不做圆角裁剪), 高度 = 当前卡宽 × 图片高/宽; 宽度变化时排队一轮消息回写固定高度(与 AspectRatio 同款去重/防重入), 卡片 Auto 高度随之自撑; 加载失败返回 nil。放在 `ContentStack` 之前即在内容上方。
+  - **验收**: 探针实测(2:1 图片, 卡宽 400→560): 槽尺寸 400×200 → 560×280, `ImageData` 槽高 150, 失败路径返回 nil; `PrintWindow` 截图确认图片铺满卡宽、四角为直角、标题在图片下方。`go build ./...` / `go vet ./...` / `go test ./...` 全绿; 新增 API 不改现有卡片行为; 圆角裁剪仍记在 DESIGN 第七节能力边界(与 Avatar 的 CPU 蒙版方案差异已写明)。`registry.json` 的 `runtime` / `cliChange` 未动。
+
 - ✅ **组件特性核查第二十批: Menu 打开否决/条目高亮与 MessageScroller 交互信号停跟随**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q8-2 / Q8-5):
   - **Menu(CM3)**: `Menu.OnOpenChangeVeto(func(open bool) bool)` 与 `ContextMenu.OnOpenChangeVeto` —— 弹层出现前询问, 返回 false 取消本次弹出(否决在 build 之前, 不留游离原生菜单); 原生菜单的关闭由系统完成、无法拦截, 所以只询问 open=true。
   - **Menu(CM3)**: `OnItemHighlighted(func(text string))` —— 从原生菜单绘制回调的 Stay 状态观测热条目, 鼠标悬停与键盘导航都触发; 离开全部条目时延迟一轮消息确认没有下一条接棒, 再回调空串。

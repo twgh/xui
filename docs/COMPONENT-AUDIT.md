@@ -22,7 +22,7 @@
 | 4 | Select | `select` | 已核查 | 结论见 3.2;9 项可实现,S3 / S9 / S4 / S8 已落地(见第五节;S9 走 Field 必填);S1 定位开关 / S2 typeahead 已落地(第九批) |
 | 5 | Combobox | `combobox` | 已核查 | 三批补齐,见 `23bdfc5` / `725d329` / `7441a77` |
 | 6 | Dialog | `dialog` | 已核查 | 结论见 3.3;6 项可实现,D1 / D2 / D3 已落地(见第五节);D4 内容槽已落地(第九批) |
-| 7 | Card | `card` | 已核查 | 结论见 3.3;5 项可实现(含 1 项能力边界重评估),C1 / C2 已落地(见第五节) |
+| 7 | Card | `card` | 已核查 | 结论见 3.3;5 项可实现(含 1 项能力边界重评估),C1 / C2 已落地,C4 直角图片槽已落地(第二十一批) |
 | 8 | Label | `label` | 已核查 | 结论见 3.3;4 项可实现,L1 / L2 / L3 / L4 已落地(见第五节;L3 由 Field 统一出星号) |
 | 9 | Textarea | `textarea` | 已核查 | 结论见 3.4;与 Input 同源 + 3 项特有,TA1(随 Input 的 I2 / I7 与 Field 必填)已落地 |
 | 10 | Tabs | `tabs` | 已核查 | 结论见 3.4;4 项可实现,TB1 / TB2 已落地(见第五节) |
@@ -193,7 +193,7 @@
 | C1 | `--card-spacing` 任意值 | 官方 Spacing 示例(16/20/24/32)+ Changelog 明说「用 `--card-spacing` 控制段间距与内缩」 | 只有 `WithCardSize` 两档;`Card.Padding` 是导出字段,但**直接改不会同步** `ContentStack` 的 margin/padding 与 `Footer` 内边距 | `WithCardSpacing(px)` / `SetSpacing(px)`:同步刷新内容区与页脚并重排;保留 `WithCardSize` 作为预设 | 小-中 / **高** |
 | C2 | 有页脚时去掉卡片底部内距 | `card.tsx` 的 `has-data-[slot=card-footer]:pb-0` | `ContentStack` 上下外边距恒为 `Padding`,`Footer()` 创建页脚后未改 → 内容区与页脚之间多出一整段内距 | `Footer()` 里把内容区下外边距置 0 后重排(上下内距用布局项外边距表达,符合硬规则) | 极小 / **高** |
 | C3 | edge-to-edge 通栏内容 | 官方 Spacing 第二例用 `-mx-(--card-spacing)` / `-mb-(--card-spacing)` 让分隔线/内容贴到卡片边 | 无对应物;内容区一律受左右 padding 约束 | `ContentFullBleed()` 或 `AddFullBleed(child)`:**不要照搬负外边距**(DESIGN 8.129),改为单独一层不受元素 padding 约束的通栏容器 | 中 / 中 |
-| C4 | 首图 / 末图自动圆角 + 卡片图片槽 | 官方 Image 示例 + `*: [img:first-child]:rounded-t-xl` | 无图片槽;DESIGN 第七节记为「xcgui 没有圆角裁剪语义」的能力边界 | **需重新评估**:`Avatar` 的 `SetImageData` 已在 CPU 侧用 RGBA 蒙版做过圆角裁剪,组件级「图片按卡片上/下两角裁剪」同理可实现(或提供 `CardImage` 助手)。若仍判不做,需在 DESIGN 第七节写明与 Avatar 的差异理由 | 中 / 中 |
+| C4 | 首图 / 末图自动圆角 + 卡片图片槽 | 官方 Image 示例 + `*: [img:first-child]:rounded-t-xl` | 已落地(第二十一批):`Card.Image(path)` / `Card.ImageData(img)` 提供直角通栏槽 + 按图片比例自适应高;圆角裁剪按 Q4 决定不做(与 Avatar 的 CPU 蒙版方案差异见 DESIGN 第七节) | 中 / 中 |
 | C5 | header 的容器查询响应式 | `card.tsx` 的 `@container/card-header`(窄卡时动作区栅格自适应) | 头部栅格固定一行两列 | 在尺寸事件里按卡片宽度切 `ActionStack` 排布;桌面窗口宽度稳定,收益有限 | 中 / 低 |
 
 **明确不做 / 能力边界**:RTL;CSS 变量与 `className` / `data-slot` / `group-data-[size]` 选择器(Go 无 DOM,以选项 API 表达);背景 `overflow-hidden` 语义(DESIGN 第七节,但 C4 的图片裁剪不受此限)。
@@ -1195,7 +1195,7 @@
 
 ## 五、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三~二十批已落地(第十二批只出核查结论)。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三~二十一批已落地(第十二批只出核查结论)。
 
 **第一批**:
 
@@ -1406,7 +1406,13 @@
 | CM3 | Menu / ContextMenu | `OnOpenChangeVeto(func(open bool) bool)`: 弹层出现前询问, 返回 false 取消本次弹出(否决在 build 之前, 不留游离原生菜单); `OnItemHighlighted(func(text string))`: 从原生菜单绘制的 Stay 状态观测热条目, 鼠标悬停与键盘导航都触发, 离开全部条目(延迟一轮消息确认无接棒)回调空串; **`WithMenuLoopFocus` 不做**: 原生菜单不暴露键盘循环开关(能力边界, 记入 DESIGN 差异表) |
 | MSC1 | MessageScroller | 非滚动交互信号算"用户接管": 窗口级 `LButtonUp` 命中容器子树(选择文本 / 链接 / 按钮)与容器内焦点按 ↑↓ / Home / End / PageUp / PageDown / 空格时调 `noteUserScroll(false)`, 立即退出跟随; 对应上游可聚焦 viewport 的 click/keydown, 事件在组件销毁时摘除 |
 
-**下一批建议**: Q8 可直接排期项已全部收口; CM3 的两项已落地(键盘循环为 xcgui 能力边界), MSC1 已落地。剩余为已明确暂缓/不做的项与 CM1(长按触发)等低优先缺口, 有真实需求再单独立项:
+**第二十一批**(C4; 已落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| C4 | Card | `Card.Image(path)` / `Card.ImageData(img)`: 卡片直接子项的通栏图片槽, 宽铺满卡片、直角(按 Q4 决定不做圆角裁剪), 高度 = 当前卡宽 × 图片高/宽; 宽度变化时排队一轮消息回写高度(与 AspectRatio 同款去重/防重入), 卡片 Auto 高度随之自撑; 加载失败返回 nil; 通栏块的竖排位置仍由创建顺序决定(放 ContentStack 之前即在内容上方) |
+
+**下一批建议**: Q8 可直接排期项已全部收口; CM3 的两项已落地(键盘循环为 xcgui 能力边界), MSC1 与 C4 已落地。剩余为已明确暂缓/不做的项与 CM1(长按触发)等低优先缺口, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -1424,7 +1430,7 @@
 | Q1 | D4 / AD3 / SH5 / ACC4 / TT3 / TBL3 | 统一成 `Header()/Footer()` 返回 `LayoutEle`(Content 已有); 第一批只做 Dialog / Sheet / AlertDialog | 已落地(第九批); 余项暂缓 |
 | Q2 | S5 / S7 / S1 / S2 | 先做 S1 定位开关 + S2 typeahead; S5 / S7 等真实需求 | 已落地(第九批); S5 / S7 暂缓 |
 | Q3 | SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3 | 全部不做, 有真实场景再单独立项 | 不做 |
-| Q4 | C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2 | demo 随组件改动补; C4 只做直角图片槽 + 自适应高 | C4 待排期; demo 随批次 |
+| Q4 | C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2 | demo 随组件改动补; C4 只做直角图片槽 + 自适应高 | C4 已落地(第二十一批, `Card.Image` / `Card.ImageData`); demo 随批次 |
 | Q5-1 | TS2 / TS3 / TS4 | 先做折叠堆叠(peek 12 / 每层 scale 0.9 / 悬停整组展开, 容量沿用 `WithToastMaxVisible`);swipe 与 F6 等触摸/无障碍需求再立项 | 已落地(折叠堆叠); TS3 / TS4 暂缓 |
 | Q5-2 | CMD4 / CMD5 / CMD6 | 搜索行 InputGroup 化(CMD4)需带 DatatableFacet 整页回归, 建议单独一批;尾部勾选(CMD5)随选择类需求;字距(CMD6)不做 | 已落地(CMD4, 含 DatatableFacet 高度同步); CMD5 暂缓; CMD6 不做 |
 | Q5-3 | CAL3 / CAL4 / CAL5 / CAL6 | 先改默认几何(28 / p-2 / bg-background, CAL4)并给 `WithCalendarCellSize`(CAL5), DatePicker 弹层同步;键盘网格(CAL3)随后;纵向折叠(CAL6)不做 | 已落地(CAL3 / CAL4 / CAL5); CAL6 不做 |

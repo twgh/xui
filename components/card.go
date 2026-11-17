@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"image"
+	"image/draw"
+	"math"
+
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
@@ -240,6 +244,139 @@ func (c *Card) FullBleed(cy int32) *widget.LayoutEle {
 	return l
 }
 
+// CardImage 卡片图片槽: 宽铺满卡片、直角, 高度按图片宽高比随卡片宽度自适应。
+type CardImage struct {
+	*widget.LayoutEle
+	card   *Card
+	handle int
+	iw, ih int32 // 图片原始宽高(只用于算比例)
+	lastW  int32 // 最近一次用于同步的宽度, 高度回写引发的尺寸事件靠它去重
+	queued bool
+}
+
+// Image 在卡片里放一个通栏图片槽(卡片的直接子项, 与 FullBleed 同一条竖排):
+// 宽铺满卡片、**直角**(不做圆角), 高度 = 当前卡宽 × 图片高/宽 —— 卡片变宽变窄时自动跟随。
+// 想要它在内容上方, 就在 ContentStack 之前创建。加载失败返回 nil(不占布局)。
+func (c *Card) Image(path string) *CardImage {
+	if c == nil || path == "" {
+		return nil
+	}
+	h := xc.XImage_LoadFile(path)
+	if h == 0 {
+		return nil
+	}
+	return c.imageSlot(h, xc.XImage_GetWidth(h), xc.XImage_GetHeight(h))
+}
+
+// ImageData 用已解码的图片创建通栏图片槽(口径同 Image: 直角、宽度铺满、高度按比例)。
+func (c *Card) ImageData(img image.Image) *CardImage {
+	if c == nil || img == nil {
+		return nil
+	}
+	b := img.Bounds()
+	if b.Dx() <= 0 || b.Dy() <= 0 {
+		return nil
+	}
+	rgba, ok := img.(*image.RGBA)
+	if !ok {
+		rgba = image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+		draw.Draw(rgba, rgba.Bounds(), img, b.Min, draw.Src)
+	}
+	h := xc.XImage_LoadFromGoImage(rgba)
+	if h == 0 {
+		return nil
+	}
+	return c.imageSlot(h, int32(b.Dx()), int32(b.Dy()))
+}
+
+func (c *Card) imageSlot(handle int, iw, ih int32) *CardImage {
+	el := widget.NewLayoutEle(0, 0, 0, 0, c.Handle)
+	if el == nil {
+		xc.XImage_Destroy(handle)
+		return nil
+	}
+	el.EnableHorizon(false)
+	el.EnableLayout(true)
+	el.EnableBkTransparent(true)
+	el.EnableAutoWrap(false)
+	el.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	el.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 0)
+
+	ci := &CardImage{LayoutEle: el, card: c, handle: handle, iw: iw, ih: ih}
+	el.AddEvent_Paint(ci.onPaint)
+	el.AddEvent_Size(func(hEle int, _ xcc.AdjustLayout_, _ uint32, _ *bool) int {
+		ci.onSize()
+		return 0
+	})
+	el.AddEvent_Destroy(func(hEle int, _ *bool) int {
+		if ci.handle != 0 {
+			xc.XImage_Destroy(ci.handle)
+			ci.handle = 0
+		}
+		return 0
+	})
+	xui.AttachWindow(el.Handle)
+	return ci
+}
+
+func (ci *CardImage) onPaint(hEle int, hDraw int, pbHandled *bool) int {
+	p := xui.BeginPaint(hEle, hDraw)
+	if p == nil {
+		return 0
+	}
+	*pbHandled = true
+	if ci.handle != 0 {
+		rc := p.Rc
+		p.Draw.XDraw_ImageEx(ci.handle, rc.Left, rc.Top, rc.Right-rc.Left, rc.Bottom-rc.Top)
+	}
+	return 0
+}
+
+// onSize 宽度变化时排队回写高度。高度回写会再触发一次尺寸事件, 用 lastW 去重;
+// 真正的写高放到下一轮消息, 避免在布局趟里改尺寸造成重入/震荡(同 AspectRatio)。
+func (ci *CardImage) onSize() {
+	if ci == nil {
+		return
+	}
+	w := ci.GetWidth()
+	if w <= 0 || w == ci.lastW {
+		return
+	}
+	ci.lastW = w
+	if ci.queued {
+		return
+	}
+	ci.queued = true
+	app.AfterFunc(0, func() {
+		ci.queued = false
+		ci.applyHeight()
+	})
+}
+
+// applyHeight 按当前宽度写回固定高度(直角槽只缩放宽, 不裁切)。
+func (ci *CardImage) applyHeight() {
+	if ci == nil || ci.handle == 0 || ci.iw <= 0 || ci.ih <= 0 {
+		return
+	}
+	if !xc.XC_IsHXCGUI(ci.Handle, xcc.XC_ELE) {
+		return
+	}
+	w := ci.GetWidth()
+	if w <= 0 {
+		return
+	}
+	h := int32(math.Round(float64(w) * float64(ci.ih) / float64(ci.iw)))
+	if h <= 0 || h == ci.GetHeight() {
+		return
+	}
+	ci.SetHeight(h)
+	ci.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
+	if ci.card != nil {
+		ci.card.AdjustLayout()
+	}
+	ci.Redraw(false)
+}
+
 func (c *Card) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	p := xui.BeginPaint(hEle, hDraw)
 	if p == nil {
@@ -284,12 +421,12 @@ func NewCardDescription(x, y, cx int32, text string, hParent int) *Label {
 //		ui.WithIcon(icons.IconEllipsis), ui.WithSize(ui.ButtonSizeIconSm)))
 type CardHeader struct {
 	*widget.LayoutEle
-	title       *widget.LayoutEle
-	action      *widget.LayoutEle
-	space       int32
-	titleW      int32        // 上次写回标题/描述子项的 Fixed 宽(见 syncTitleWidth)
-	synced      map[int]bool // 由 syncTitleWidth 锁过宽的标题列子项(后续尺寸变化要跟着更新)
-	syncPending bool
+	title        *widget.LayoutEle
+	action       *widget.LayoutEle
+	space        int32
+	titleW       int32        // 上次写回标题/描述子项的 Fixed 宽(见 syncTitleWidth)
+	synced       map[int]bool // 由 syncTitleWidth 锁过宽的标题列子项(后续尺寸变化要跟着更新)
+	syncPending  bool
 	narrow       bool // 当前是否处于"窄卡"排布(动作列换到第二行)
 	narrowQueued bool
 }
