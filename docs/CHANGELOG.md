@@ -5,6 +5,18 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复 AutoWrap 标签改文案长高后不重绘, 下方内容留下重影**(2026-11-17):
+  - **现象**: 表单6 问卷在自由输入框填文字后走到最后一步点 "Save plan", 提交状态文案变长折成多行; 鼠标移入下方说明区时出现两段说明文字交错、重置按钮与说明重叠。
+  - **根因**: `Label.reflowAutoWrap` 折行高度变化后只调 `reflowAfterTextHeight` 逐级重排, 没有重绘 —— 状态标签长高把重置按钮与说明文字整体下移, 旧位置的文字像素不会被自动擦除; 鼠标移入触发局部重绘时新旧两行叠在一起(与 DESIGN 第八节 204 的"兄弟平移必须整窗重绘"同一类)。
+  - **修法**: `reflowAutoWrap` 写回新高度并逐级 `AdjustLayout` 之后, 对宿主窗口整窗重绘一次(同 Alert / Field 错误区的量高口径); DESIGN-PITFALLS 204 补记 AutoWrap 这一情形。
+  - **验收**: 临时把提交状态文案加长到 3 行, 提交后重置按钮/说明文字正常下移, 鼠标移入说明区无残影; 临时改动已还原。`go build ./...` / `go vet ./...` / `go test ./...` 全绿。
+
+- ✅ **组件特性核查第十七批: Message 页眉固定 start / Questionnaire 自定义校验与输入框可见 label**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q8-3 / Q8-4):
+  - **Message(MSG2)**: 页眉从"随 align 右对齐"改为**恒 start 对齐**(上游 header "stays aligned to start regardless of align"): `newMessageMetaRow` 的 `alignEnd` 对 header 恒传 false, 与页脚解耦; 头像槽缩进不变, end 消息的页眉文字从内容列左缘起排, 页脚仍随消息侧。
+  - **Questionnaire(QN1)**: 新增 `WithQuestionnaireValidate(func(item QuestionnaireItem, answers map[string][]string) string)`: 内置必填检查通过后执行(被显式跳过的题与禁用题不跑), 返回非空文案即视为该题未通过并显示这段错误; 文案随答案变化时同步更新错误标签并重排。
+  - **Questionnaire(QN2)**: `QuestionnaireInput.Label` 在自由输入框上方渲染可见标签(medium 字重, 空串不占布局), 对应官方"placeholder is not a label"。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; message / questionnaire 逐组件安装 + `go build ./ui` 通过(workspace replace)。demo 表单6 的问卷补 "Another answer" 可见 label 与 "signals 至少选两项" 自定义校验; PrintWindow 抓图核对 —— 对话页 end 消息页眉在左侧、气泡与页脚仍在右侧; 表单6 自由输入上方标签正常; 第 2 题只选 Progress 时按 Enter 被拦下, 四个选项行红边、红色文案 "Pick at least two signals, or skip this question." 显示且动作行未被遮挡。`registry.json` 的 `runtime` / `cliChange` 未动。
+
 - ✅ **修复: Chart 平滑折线的峰值附近有"膝点"、放大后能看出直线段拼接**(2026-11-17, 用户反馈, DESIGN 第八节 159):
   - **现象**: `WithChartCurve` 的折线在峰谷附近先陡后折, 像被掰了一下; 图表拉宽后整条曲线由可见的短直线段拼成。
   - **根因**: ① Catmull-Rom 的极值点切线取相邻两点割线平均, 峰顶切线不归零, 曲线进峰/出峰斜率突变; ② 每段固定采样 12 点, 段宽 100+ 逻辑像素时弦长约 9px, 放大或高 DPI 下棱角明显。加密采样后又暴露出第三处: 2px 宽、1.5px 一采样的短线段用 `DrawLineF` 逐段描边, 相邻段的端帽在斜线上互相覆盖, 边缘呈贝壳状起伏(放大看"凹凸不平")。

@@ -285,6 +285,14 @@ func (l *Label) reflowAutoWrap() {
 	l.SetHeight(h)
 	l.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, h)
 	reflowAfterTextHeight(l.Handle)
+	// 长高/缩短会把下面的兄弟一起搬走, 旧位置不会自动擦除: 只重绘标签自身会在下方
+	// 留下旧文字与控件重影, 鼠标移入触发局部重绘时新旧两行交错(实测, 提交后状态文案
+	// 变长最明显)。与 Field 错误区 / Alert 的重排同口径, 整窗重绘一次(见第八节 102/204)。
+	if hwnd := xc.XWidget_GetHWND(l.Handle); hwnd != 0 {
+		if hw := xc.XC_hWindowFromHWnd(hwnd); hw != 0 {
+			xc.XWnd_Redraw(hw, false)
+		}
+	}
 }
 
 // labelWrapHeight 量出 Label 在 width 下折行后的高度(逻辑像素):

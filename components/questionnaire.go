@@ -83,6 +83,9 @@ type QuestionnaireChoice struct {
 // QuestionnaireInput 是"另一个答案"自由输入框; 传 nil 表示该题没有自由输入。
 type QuestionnaireInput struct {
 	Placeholder string
+	// Label 是输入框上方的可见标签(对应官方"placeholder is not a label"的无障碍做法);
+	// 空串不占布局。
+	Label string
 }
 
 // QuestionnaireItem 是一道题。Name 在同一个问卷内唯一, 也是 Answers() 的键。
@@ -132,10 +135,20 @@ func WithQuestionnaireBackdrop(fn func(*xui.Theme) xui.Color) QuestionnaireOptio
 	}
 }
 
+// WithQuestionnaireValidate 设置自定义校验(对应官方 Custom Validation / 外部 schema):
+// 内置必填检查通过后调用, 返回非空文案即视为该题未通过并显示这段错误; 返回空串通过。
+// 被显式跳过的题与禁用题不跑回调。answers 与 Answers() 同口径。
+func WithQuestionnaireValidate(fn func(item QuestionnaireItem, answers map[string][]string) string) QuestionnaireOption {
+	return func(q *Questionnaire) {
+		q.validateFn = fn
+	}
+}
+
 // Questionnaire 多步问卷: 一次显示一道题, 管理答案、进度、校验与前进/后退/跳过/提交。
 //
 // 对齐 shadcn questionnaire.tsx 的语义:
 //   - 必答题要有答案; 可选题要有答案或显式跳过(Skip 只对可选题出现);
+//   - 可选的自定义校验(WithQuestionnaireValidate)在内置必填通过后执行, 返回文案即报错;
 //   - Next 先校验当前题, 失败显示错误并聚焦答案; Submit 校验所有可用题,
 //     定位到第一道未通过并聚焦; 全部通过才回调 OnSubmit;
 //   - 禁用的题不参与进度、导航、校验与提交(条件题用 SetItemDisabled 动态切换);
@@ -175,6 +188,7 @@ type Questionnaire struct {
 	onChange      func(item string)
 	onSubmit      func(answers map[string][]string)
 	onStatus      func(item string, status QuestionnaireItemStatus)
+	validateFn    func(item QuestionnaireItem, answers map[string][]string) string
 	hWindow       int
 	keyID         int
 	resetting     bool
@@ -195,6 +209,7 @@ type questionnaireItem struct {
 	attempted  bool
 	invalid    bool
 	errorShown bool
+	errMsg     string
 	lastStatus QuestionnaireItemStatus
 }
 
@@ -310,6 +325,11 @@ func (q *Questionnaire) newItem(def QuestionnaireItem) *questionnaireItem {
 		}
 	}
 	if def.Input != nil {
+		if def.Input.Label != "" {
+			// 可见标签: 对应官方"placeholder is not a label"。样式与 Field 主标签一致(medium)。
+			label := NewLabel(0, 0, 0, questionnaireTextH, def.Input.Label, it.choices.Handle).SetMedium()
+			xui.ItemFill(label)
+		}
 		it.input = NewInput(0, 0, 0, 0, it.choices.Handle, WithPlaceholder(def.Input.Placeholder))
 		xui.ItemFill(it.input)
 		it.input.OnChange(func(string) {
@@ -1124,7 +1144,16 @@ func (it *questionnaireItem) errorText() string {
 }
 
 func (it *questionnaireItem) syncInvalid() {
-	invalid := it.attempted && !it.valid()
+	invalid, msg := false, ""
+	if it.attempted {
+		if !it.valid() {
+			invalid, msg = true, it.errorText()
+		} else if it.q.validateFn != nil && !it.def.Disabled && !it.skipped {
+			// 内置必填通过后才跑自定义校验(官方 Custom Validation): 返回非空文案即报错。
+			msg = strings.TrimSpace(it.q.validateFn(it.def, it.q.Answers()))
+			invalid = msg != ""
+		}
+	}
 	it.invalid = invalid
 	for _, row := range it.rows {
 		row.Redraw(false)
@@ -1132,6 +1161,7 @@ func (it *questionnaireItem) syncInvalid() {
 	if it.input != nil {
 		it.input.SetInvalid(invalid)
 	}
+	laidOut := false
 	if it.errorShown != invalid {
 		it.errorShown = invalid
 		it.errorLabel.Show(invalid)
@@ -1140,13 +1170,23 @@ func (it *questionnaireItem) syncInvalid() {
 			// 否则它不占高度、动作行会被顶回旧位置(实测 Next 整块消失, 见第八节 197)。
 			it.errorLabel.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 			it.errorLabel.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-			it.errorLabel.SetText(it.errorText())
 		}
-		it.root.AdjustLayout()
-		it.q.reflow()
+		laidOut = true
 	}
 	if invalid {
+		// 自定义校验的文案可能随答案变化, 显示中也要同步(文案长度会改高)。
+		if msg != it.errMsg {
+			it.errMsg = msg
+			it.errorLabel.SetText(msg)
+			laidOut = true
+		}
 		it.errorLabel.Redraw(false)
+	} else {
+		it.errMsg = ""
+	}
+	if laidOut {
+		it.root.AdjustLayout()
+		it.q.reflow()
 	}
 }
 

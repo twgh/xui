@@ -1375,7 +1375,15 @@
 | CH2 | Chart | 标题格式化 `WithChartTooltipLabelFormat` / `SetTooltipLabelFormat`(对应 `labelFormatter`)与 `WithChartTooltipHideLabel` / `SetTooltipHideLabel`(对应 `hideLabel`); 隐藏标题时提示卡高度同步收缩 |
 | CH3 | Chart | `WithChartLegendTop()` / `SetLegendTop(bool)`(对应 `ChartLegendContent.verticalAlign="top"`): 图例画在内容区顶部, 绘图区上沿扣除图例高度; 底部模式仍是底边扣减, 默认不变 |
 
-**下一批建议**: 当前无待排期项, Q6 / Q7 已收口; Q8 的 CH1~CH3 已在第十六批落地, 剩余可直接排期项(CM3 / QN1 / QN2 / MSG2 / MSC2 / MSC3 / MK1 / MK2 / DR4 / SP1)按「高优先、小改动」另起一批; MSC1 单列待拍板。其余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
+**第十七批**(Q8 可直接排期项的第二组, Message / Questionnaire; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| MSG2 | Message | 页眉改为恒 start 对齐(上游 "stays aligned to start regardless of align"): `newMessageMetaRow` 的 `alignEnd` 对 header 恒传 false, 与页脚解耦; 缩进仍按头像槽让位, end 消息的页眉文字从内容列左缘起排 |
+| QN1 | Questionnaire | `WithQuestionnaireValidate(func(item QuestionnaireItem, answers map[string][]string) string)`: 内置必填通过后执行自定义校验(被跳过/禁用的题不跑), 返回非空文案即显示该错误; 文案随答案变化时同步更新并重排 |
+| QN2 | Questionnaire | `QuestionnaireInput.Label`: 自由输入框上方的可见标签(medium, 对应官方 "placeholder is not a label"), 空串不占布局 |
+
+**下一批建议**: 当前无待排期项, Q6 / Q7 已收口; Q8 的 CH1~CH3 已在第十六批、QN1 / QN2 / MSG2 已在第十七批落地, 剩余可直接排期项(CM3 / MSC2 / MSC3 / MK1 / MK2 / DR4 / SP1)按「高优先、小改动」另起一批; MSC1 单列待拍板。其余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -1429,9 +1437,9 @@
 |---|---|---|---|
 | Q8-1 | CH1 / CH2 / CH3 | Chart Tooltip 指示条样式与隐藏开关、标题 formatter、图例 top/bottom:都是官方 Props 表里的现成项,改动局限在 `paintTooltip` / `layoutLegend` | 已落地(第十六批) |
 | Q8-2 | CM3 | 菜单根级 `OnOpenChangeVeto` / `OnItemHighlighted` / `WithMenuLoopFocus`:与 Dropdown Menu 共用 `menu.go`,一次改动两处生效 | 可直接排期 |
-| Q8-3 | QN1 / QN2 | Questionnaire 自定义校验回调 + 输入框可见 label:对齐官方 Custom Validation / Accessibility | 可直接排期 |
-| Q8-4 | MSG2 | Message Header 固定 start 对齐(与上游一致,修正本库随 align 右对齐的差异) | 可直接排期(行为微调) |
+| Q8-3 | QN1 / QN2 | Questionnaire 自定义校验回调 + 输入框可见 label:对齐官方 Custom Validation / Accessibility | 已落地(第十七批) |
+| Q8-4 | MSG2 | Message Header 固定 start 对齐(与上游一致,修正本库随 align 右对齐的差异) | 已落地(第十七批) |
 | Q8-5 | MSC1 | Message Scroller 非滚动交互信号(选择/键盘/链接)停止跟随:是官方"跟随意图"核心卖点,但要挂多处事件 | 待拍板(收益高、回归面较大) |
 | Q8-6 | CH4~CH11 / DR1~DR5 / BUB1~BUB2 / ATT1 / TR1 / MSG1 / MK1 / MK2 / MSC2~MSC4 / QN3~QN5 / BG1~BG2 / SP1 | 其余均为中-大改或"低"优先小改 | 暂缓:按真实需求随组件下次改动补 |
 
-**可直接排期(无需确认, Q8 批)**: CH1 / CH2 / CH3 已落地(第十六批); 剩余 CM3、QN1 / QN2、MSG2、MSC2 / MSC3、MK1 / MK2、DR4、SP1 为小改,可按"高优先、小改动"另起一批落地;MSC1 单列待拍板。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
+**可直接排期(无需确认, Q8 批)**: CH1 / CH2 / CH3 已落地(第十六批); QN1 / QN2 / MSG2 已落地(第十七批); 剩余 CM3、MSC2 / MSC3、MK1 / MK2、DR4、SP1 为小改,可按"高优先、小改动"另起一批落地;MSC1 单列待拍板。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。

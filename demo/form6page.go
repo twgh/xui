@@ -67,7 +67,7 @@ func buildQuestionnaireMain(parent int) {
 				{Value: "approvals", Label: "Approval checkpoints", Description: "Ask before sensitive or destructive actions."},
 				{Value: "handoffs", Label: "Sub-agent handoffs", Description: "Make delegated work and results easier to follow."},
 			},
-			Input: &ui.QuestionnaireInput{Placeholder: "Describe another feature…"},
+			Input: &ui.QuestionnaireInput{Label: "Another answer", Placeholder: "Describe another feature…"},
 		},
 		{
 			Name:        "signals",
@@ -97,7 +97,13 @@ func buildQuestionnaireMain(parent int) {
 	q := ui.NewQuestionnaire(0, 0, 0, 0, v.Handle, items,
 		ui.WithQuestionnaireShortcuts(ui.QuestionnaireShortcutsLetters),
 		ui.WithQuestionnaireDefaultItem("direction"),
-		ui.WithQuestionnaireActionLabels("", "", "Next", "Save plan"))
+		ui.WithQuestionnaireActionLabels("", "", "Next", "Save plan"),
+		ui.WithQuestionnaireValidate(func(item ui.QuestionnaireItem, answers map[string][]string) string {
+			if item.Name == "signals" && len(answers["signals"]) == 1 {
+				return "Pick at least two signals, or skip this question."
+			}
+			return ""
+		}))
 	xui.ItemFill(q)
 	status := questionnaireStatus(v.Handle)
 	q.OnSubmit(func(answers map[string][]string) {
@@ -117,7 +123,7 @@ func buildQuestionnaireMain(parent int) {
 		return 0
 	})
 	xui.ItemFill(questionnaireNote(v.Handle,
-		"快捷键 A/B/C 选中但不前进; ↑/↓ 在答案间移动(单选顺带选中), ←/→ 切题; Enter 在已选/已填写时继续, Ctrl+Enter 随时校验并继续/提交。"))
+		"快捷键 A/B/C 选中但不前进; ↑/↓ 在答案间移动(单选顺带选中), ←/→ 切题; Enter 在已选/已填写时继续, Ctrl+Enter 随时校验并继续/提交。自由输入框有可见 label; signals 只选一项时自定义校验会拦下(再选一项或 Skip)。"))
 }
 
 // buildQuestionnaireSkip 可选题跳过 + 条件题(开关启用第二题) + 数字快捷键。

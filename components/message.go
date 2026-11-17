@@ -58,8 +58,9 @@ func NewMessageGroup(x, y, cx, cy int32, hParent int) *widget.LayoutEle {
 //   - 根容器竖向排列, 页眉/正文/页脚间距 10(MessageContent 的 gap-2.5);
 //   - 正文行 = 头像槽 + 内容列; align=end 时头像在右、内容列子项右对齐;
 //   - 头像底对齐(bottom), 页脚在正文行**下方** —— 等价于上游
-//     "头像 self-end + 有 footer 时上移 32px" 的观感; 页眉/页脚按头像槽缩进,
-//     文字与内容列对齐(上游它们就在 MessageContent 里面), 缩放时随行宽更新。
+//     "头像 self-end + 有 footer 时上移 32px" 的观感; 页眉固定 start 对齐(上游
+//     "stays aligned to start regardless of align"), 页脚随消息侧; 两者都按头像槽
+//     缩进、与内容列对齐(上游它们就在 MessageContent 里面), 缩放时随行宽更新。
 //
 // 槽位按需创建/显示: 没用的页眉/页脚/头像不占布局。内容列里放 Bubble:
 //
@@ -103,7 +104,8 @@ func NewMessage(x, y, cx, cy int32, hParent int, opts ...MessageOption) *Message
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
 
 	// 三个行预先建好(创建顺序 = 布局顺序), 未使用的不显示。
-	m.header = newMessageMetaRow(ele.Handle, messageMetaPadX, m.align == MessageAlignEnd)
+	// 页眉恒 start 对齐: 上游规定 header 不随 align 镜像, 只有页脚跟随消息侧。
+	m.header = newMessageMetaRow(ele.Handle, messageMetaPadX, false)
 	m.header.Show(false)
 
 	m.body = widget.NewLayoutEle(0, 0, 0, 0, ele.Handle)
@@ -298,7 +300,7 @@ func newMessageMetaRow(hParent int, padX int32, alignEnd bool) *widget.LayoutEle
 }
 
 // Header 返回页眉行(首次访问时显示)。往里放 NewMessageMeta 或自定义控件。
-// 页眉随消息对齐(start 左 / end 右), 并按头像槽自动缩进到内容列。
+// 页眉恒为 start 对齐(换行消息也一样), 并按头像槽自动缩进到内容列。
 func (m *Message) Header() *widget.LayoutEle {
 	if m == nil {
 		return nil
