@@ -5,6 +5,14 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **v0.15.0 发布(2026-11-17)**: 自 v0.14.0 以来组件特性核查收官(63 个可核查组件全部核查, Q5~Q8 拍板项与第二十一批 C4 全部落地),跨 20+ 个组件补齐 base-nova 语义与 API; 组件/API 变更走 minor,**无破坏性变更**(默认视觉 / 交互口径有若干调整,逐条见 Release notes)。本周期 CLI 未改,`cliChange` 保持 v0.14.0,`runtime` 抬到 v0.15.0。
+  - **顺序**: 组件与文档提交(`e2b867b`)→ 版本示例 + `fallbackXuiVersion` 提交(`e734775`)→ 轻量 tag `v0.15.0`(指向 `e734775`)→ `runtime` 抬到 v0.15.0(`1e9cc4f`,tag 之后);`cliChange` 未动。
+  - **推送**: `git push origin main v0.15.0` 四个远端全部成功(GitHub / Gitee / GitCode / cnb.cool)。数据源是 main,推送当刻新组件与设计文档即对用户生效,不等 tag。
+  - **Release**: https://github.com/twgh/xui/releases/tag/v0.15.0 , 名称 `v0.15.0 — 组件核查收官 / 交互与图表语义补齐 / Card 图片槽`;name/body 从 `.verify/v0.15.0.name.txt` / `.verify/v0.15.0.md` 以 UTF-8 读入后 POST,线上逐字校验一致(3423 字符),`draft=false / prerelease=false`。
+  - **下限回归**: 临时项目 `go mod edit -require=github.com/twgh/xui@v0.15.0` → 本地 registry `add --all --no-install` → `go mod tidy && go build -mod=mod ./ui` 通过(goproxy.cn 拉新 tag 报 stream INTERNAL_ERROR,改用 `GOPROXY=direct GOSUMDB=off GOWORK=off`)。
+  - **CI**: push 后 `1e9cc4f` 的 CI run success。
+  - **线上校验**: GitHub `main` = `1e9cc4f`,`registry.json` 为 `runtime=v0.15.0 / cliChange=v0.14.0`;README 两处版本示例与 `fallbackXuiVersion` 已指向 v0.15.0;tag `refs/tags/v0.15.0` = `e734775`。
+
 - ✅ **组件特性核查第二十一批: Card 图片槽(直角 + 自适应高)**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q4 / 3.3 C4):
   - **Card(C4)**: 新增 `Card.Image(path)` / `Card.ImageData(img)`: 卡片直接子项的通栏图片槽, 宽铺满卡片、直角(按 Q4 决定不做圆角裁剪), 高度 = 当前卡宽 × 图片高/宽; 宽度变化时排队一轮消息回写固定高度(与 AspectRatio 同款去重/防重入), 卡片 Auto 高度随之自撑; 加载失败返回 nil。放在 `ContentStack` 之前即在内容上方。
   - **验收**: 探针实测(2:1 图片, 卡宽 400→560): 槽尺寸 400×200 → 560×280, `ImageData` 槽高 150, 失败路径返回 nil; `PrintWindow` 截图确认图片铺满卡宽、四角为直角、标题在图片下方。`go build ./...` / `go vet ./...` / `go test ./...` 全绿; 新增 API 不改现有卡片行为; 圆角裁剪仍记在 DESIGN 第七节能力边界(与 Avatar 的 CPU 蒙版方案差异已写明)。`registry.json` 的 `runtime` / `cliChange` 未动。
