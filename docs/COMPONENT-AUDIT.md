@@ -1148,7 +1148,7 @@
 |---|---|---|
 | CR2 | Carousel | `Carousel.Dots(hParent, opts...)` 返回自绘页码指示点行(`CarouselDots`): 每页一个圆点, 当前页 `Foreground`、其余 `Border`, 6px 点 + 6 间距 + 10 行高(`WithCarouselDotsSize/Gap/Height` 可改); 页过渡落定、页数变化自动重绘; 纯展示(鼠标穿透、不进 Tab 焦点链) |
 | IT1 | Item | 新增 `ItemSizeXs`(gap 8 / px 10 / py 8)与 `Content` 内间距 0; 尺寸几何改为按档查表(`itemMetrics`); `Item.MediaSize()` 返回档位媒体块边长(xs 24, 其余 32), `NewItemMedia` 配 `WithItemMediaSize(px)` 同步缩小媒体块 |
-| NS1 | Native Select | `WithNativeSelectDisabled()` 与 `NativeSelect.SetDisabled(bool)` / `Disabled()`: 触发区 `bg-input/50` 置灰、不聚焦 / 不进 Tab、原生弹层打不开(与 `SetFieldState` 的禁用分支同口径) |
+| NS1 | Native Select | `WithNativeSelectDisabled()` 与 `NativeSelect.SetDisabled(bool)` / `Disabled()`: 整组 50% 半透明置灰(底色保持卡片色, 边框/文字/箭头各乘 50%)、不聚焦 / 不进 Tab、原生弹层打不开(与 `SetFieldState` 的禁用分支同口径) |
 
 **下一批建议**: 第十二批的可直接排期清单(CR2 / IT1 / NS1)已落地(第十三批), 当前无待排期的直接项; 待确认项见 Q6 / Q7。剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
 

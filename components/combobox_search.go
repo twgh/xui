@@ -1729,8 +1729,9 @@ func (c *Combobox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	bg, border := t.Card, t.Input
 	if st.Disabled {
-		bg = t.Input.WithAlpha(128) // disabled:bg-input/50
-		border = xui.None
+		// 同 NativeComboBox: disabled:opacity-50 是整组半透明, 底色保持 Card,
+		// 边框乘 50%; 用 WithAlpha 覆盖会把暗色的"白 15%"拉成亮灰(见 DESIGN 第八节 61)。
+		border = t.Input.ScaleAlpha(0.5)
 	}
 	radius := t.RadiusLg()
 	if c.size == SelectSizeSm {

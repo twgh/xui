@@ -211,8 +211,10 @@ func (c *NativeComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	// 透明底等价于 Card 色(用 Background 会在暗色下与卡片出现色差)。
 	bg, border := t.Card, t.Input
 	if st.Disabled {
-		bg = t.Input.WithAlpha(128) // disabled:bg-input/50
-		border = xui.None
+		// disabled:opacity-50 是"整组半透明": 铺在卡片上的不透明底色乘 50% 仍等于卡片色,
+		// 所以底色保持 Card, 边框/文字/图标各乘 50%。**不要用 WithAlpha 覆盖透明度** ——
+		// 暗色 input 令牌本身是"白 15% 半透明", 覆盖成 50% 会画出一块发亮的灰饼(见 DESIGN 第八节 61)。
+		border = t.Input.ScaleAlpha(0.5)
 	}
 	// 圆角: default = rounded-lg(RadiusLg); sm = rounded-[min(--radius-md,10px)]
 	radius := t.RadiusLg()
@@ -253,22 +255,33 @@ func (c *NativeComboBox) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 
 	// 文字交给原生绘制(自己再画一遍会与原生文字重叠成重影), 这里只按状态同步颜色。
 	// 未选中时原生显示 defaultText(占位符), 用 MutedForeground 色。
-	// 禁用是组级透明(disabled:opacity-50): 文字核心保持原色, 只有壳体变淡。
+	// 禁用是组级透明(disabled:opacity-50): 文字/占位符按卡片底色对半混, 不用 alpha
+	// (原生文字下面还有自绘壳体, 直接加 alpha 会二次透出)。
 	fore := t.Foreground
 	if c.GetSelItem() < 0 {
 		fore = t.MutedForeground
 	}
+	placeholder := t.MutedForeground
+	if st.Disabled {
+		fore = fore.Mix(t.Card, 0.5)
+		placeholder = placeholder.Mix(t.Card, 0.5)
+	}
 	c.SetTextColor(uint32(fore))
-	c.SetDefaultTextColor(uint32(t.MutedForeground))
+	c.SetDefaultTextColor(uint32(placeholder))
 
-	// 右侧 chevron-down: select.tsx 用 text-muted-foreground(全色, 不随状态加透明)
+	// 右侧 chevron-down: select.tsx 用 text-muted-foreground(全色, 不随状态加透明);
+	// 禁用态跟随整组再乘 50%。
+	iconCol := t.MutedForeground
+	if st.Disabled {
+		iconCol = iconCol.Mix(t.Card, 0.5)
+	}
 	icon := xc.RECT{
 		Left:   p.Rc.Right - 26,
 		Top:    p.Rc.Top + (p.H()-16)/2,
 		Right:  p.Rc.Right - 10,
 		Bottom: p.Rc.Top + (p.H()-16)/2 + 16,
 	}
-	p.Icon(icons.IconChevronDown, &icon, t.MutedForeground, 2)
+	p.Icon(icons.IconChevronDown, &icon, iconCol, 2)
 	return 0
 }
 

@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复: 暗色主题下禁用的下拉框 / 取色器触发区是一块发亮的灰饼**(2026-11-17, 用户反馈):
+  - **现象**: 暗色下 NativeSelect 禁用态触发区是整块亮灰色、文字仍是全亮白, 看起来像"高亮"而不是禁用; ComboSearch 与 ColorPicker 的禁用触发区同样偏亮。
+  - **根因**: 三处禁用分支都用 `t.Input.WithAlpha(128)` 近似 `bg-input/50`。暗色 `Input` 令牌本身是"白 15% 半透明", 用 WithAlpha **覆盖**成 50% 等于把白色拉到 50%, 叠在卡片上就是亮灰饼; 且文字/箭头没跟随组级 50% 淡出, 对比更强(同 DESIGN 第八节 61 记录过的禁用合成坑)。
+  - **修法**: 按"整组半透明"口径统一三处 —— 底色保持 `Card`(不透明底乘 50% 仍等于卡片色), 边框用 `t.Input.ScaleAlpha(0.5)`; 文字/占位符/箭头用 `Mix(t.Card, 0.5)` 预混(原生文字不再叠 alpha)。亮色禁用底色由 `#f2f2f2` 回到卡片白, 与上游 `bg-transparent + opacity-50` 一致。
+  - **验收**: 暗色 demo(表单2)禁用行底色 = 卡片 `#171717`、文字约 `#8a8a8a`、边框/箭头同档淡化; 亮色为卡片白 + 淡字/淡边; 禁用行点箭头仍不弹层; `go build ./...` / `go vet ./...` / `go test ./...` 全绿。
+
 - ✅ **组件特性核查第十三批: Carousel 页码指示 / Item xs 尺寸档 / NativeSelect 整体禁用**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 3.10 的可直接排期清单):
   - **Carousel(CR2)**: 新增 `Carousel.Dots(hParent, opts...)`, 返回自绘 `CarouselDots` 页码指示行 —— 每页一个 6px 圆点(间距 6、行默认 10 高, `WithCarouselDotsSize/Gap/Height` 可改), 当前页取 `Foreground`、其余取 `Border`; 页过渡落定与页数变化自动重绘; 纯展示(鼠标穿透、不聚焦、不进 Tab)。demo 基础3 原来内联拼的 dots 改为调这个方法。
   - **Item(IT1)**: 新增 `ItemSizeXs`(gap 8 / px 10 / py 8, Content 内间距 0); default / sm / xs 的 gap、padX、padY、contentGap、媒体块边长统一抽成 `itemMetrics` 按档查表。新增 `Item.MediaSize()`(xs 24, 其余 32)与 `WithItemMediaSize(px)`, 让 icon 媒体底板随档位缩小; 媒体内图标按元素实际尺寸居中。

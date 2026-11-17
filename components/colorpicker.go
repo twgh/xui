@@ -609,7 +609,9 @@ func (c *ColorPicker) onPaintTrigger(hEle int, hDraw int, pbHandled *bool) int {
 
 	bg, border := t.Card, t.Input
 	if st.Disabled {
-		bg, border = t.Input.WithAlpha(128), xui.None
+		// disabled:opacity-50 是整组半透明: 底色保持 Card, 边框乘 50%;
+		// 用 WithAlpha 覆盖会把暗色的"白 15%"拉成亮灰(见 DESIGN 第八节 61)。
+		border = t.Input.ScaleAlpha(0.5)
 	}
 	corners := xui.UniformCorners(t.RadiusLg())
 	switch {
@@ -645,6 +647,9 @@ func (c *ColorPicker) onPaintTrigger(hEle int, hDraw int, pbHandled *bool) int {
 	if c.value == "" {
 		fore, text = t.MutedForeground, c.placeholder
 	}
+	if st.Disabled {
+		fore = fore.Mix(t.Card, 0.5) // disabled:opacity-50 的文字预混
+	}
 	f := xui.FontHandle(t.FontDefault)
 	if f != 0 {
 		p.Draw.SetFont(f)
@@ -664,7 +669,11 @@ func (c *ColorPicker) onPaintTrigger(hEle int, hDraw int, pbHandled *bool) int {
 		Right:  p.Rc.Right - 10,
 		Bottom: p.Rc.Top + (p.H()-16)/2 + 16,
 	}
-	p.Icon(icons.IconChevronDown, &icon, t.MutedForeground, 2)
+	iconCol := t.MutedForeground
+	if st.Disabled {
+		iconCol = iconCol.Mix(t.Card, 0.5)
+	}
+	p.Icon(icons.IconChevronDown, &icon, iconCol, 2)
 	return 0
 }
 
