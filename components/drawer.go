@@ -12,7 +12,8 @@ import (
 //   - 头部/页脚与 Sheet 相同(p-4、标题 + 描述、页脚按钮纵向铺满);
 //   - 遮罩 bg-black/50, 点遮罩 / ESC 关闭(vaul 默认行为)。
 //
-// 方向可经 WithDrawerDirection 改成 top/left/right(左右与 Sheet 一致; 抓手只在底部出现)。
+// 方向可经 WithDrawerDirection 改成 top/left/right(左右与 Sheet 一致; 抓手只在底部出现,
+// 可用 WithDrawerSwipeHandle(false) 关掉)。
 // 与上游的差异: vaul 允许从内容任意位置起拖, 桌面上会与文本选择/按钮点击冲突,
 // 这里只允许从抓手起拖; 拖拽不跟手做橡皮筋阻尼(offset 直接跟手, 松手后回弹)。
 type Drawer struct {
@@ -41,6 +42,16 @@ func WithDrawerDescription(text string) DrawerOption {
 	return func(dr *Drawer) { dr.SetDescription(text) }
 }
 
+// WithDrawerSwipeHandle 控制底部抽屉顶部抓手是否显示(默认 true)。
+// 关掉后仍可点遮罩 / ESC 关闭, 只是没有拖拽关闭的入口。
+func WithDrawerSwipeHandle(show bool) DrawerOption {
+	return func(dr *Drawer) {
+		if dr != nil && dr.s != nil {
+			dr.s.d.swipeHandle = show
+		}
+	}
+}
+
 // NewDrawer 创建抽屉(默认隐藏)。hWnd 为宿主窗口句柄。
 func NewDrawer(hWnd int, opts ...DrawerOption) *Drawer {
 	s := NewSheet(hWnd, WithSheetSide(SheetBottom), WithSheetCloseButton(false))
@@ -49,6 +60,7 @@ func NewDrawer(hWnd int, opts ...DrawerOption) *Drawer {
 	}
 	d := s.d
 	d.drawer = true
+	d.swipeHandle = true
 	d.addSheetGrabber()
 	if d.dragger != nil {
 		d.dragger.AddEvent_LButtonDown(d.onGrabberDown)

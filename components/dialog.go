@@ -107,10 +107,10 @@ type Dialog struct {
 	hWnd int
 	win  *window.Window
 
-	overlay     *widget.Element // 遮罩(窗口子元素, 顶层 z 序)
-	backdrop    *widget.Element // 背景模糊层(shadcn 的 backdrop-blur-xs, 见 backdrop.go)
-	backdropImg int             // 模糊快照的图片句柄(每次 Show 刷新, 旧的释放)
-	content     *widget.Element // 内容容器(用户往这里放输入框等)
+	overlay     *widget.Element   // 遮罩(窗口子元素, 顶层 z 序)
+	backdrop    *widget.Element   // 背景模糊层(shadcn 的 backdrop-blur-xs, 见 backdrop.go)
+	backdropImg int               // 模糊快照的图片句柄(每次 Show 刷新, 旧的释放)
+	content     *widget.Element   // 内容容器(用户往这里放输入框等)
 	headerBox   *widget.LayoutEle // 头部内容槽: 标题/描述也是它的子项
 	footerBox   *widget.LayoutEle // 页脚内容槽: AddFooter 按钮之外的任意控件
 	title       *Label
@@ -134,9 +134,9 @@ type Dialog struct {
 	mediaIcon string
 	// mediaImg 是媒体块里的图片句柄(SetMediaImage), 非 0 时优先于图标绘制;
 	// 由遮罩的 Destroy 事件统一释放(对话框与媒体块同生命周期)。
-	mediaImg     int
-	mediaImgPath string
-	mediaTone    AlertDialogMediaTone
+	mediaImg       int
+	mediaImgPath   string
+	mediaTone      AlertDialogMediaTone
 	dismissOutside bool
 	initialFocus   int
 	finalFocus     int  // 关闭后聚焦的元素(0 = 挨个还焦点给下层模态)
@@ -172,6 +172,7 @@ type Dialog struct {
 	appliedDX   int32
 	appliedDY   int32
 	dragger     *widget.Element // Drawer 顶部抓手(仅底部形态)
+	swipeHandle bool            // Drawer 是否显示抓手(默认 true, 可用 WithDrawerSwipeHandle 关掉)
 	dragging    bool
 	dragStartY  int32
 	dragBaseY   int32

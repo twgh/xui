@@ -69,13 +69,13 @@
 | 51 | Input OTP | `input-otp` | 已核查 | 结论见 3.10;文档示例全部覆盖;OTP1 readOnly 待确认,OTP2 / OTP3 暂缓,跨格选择为能力边界 |
 | 52 | Spinner | `spinner` | 已核查 | 结论见 3.11;SP1 换图标已落地(第十八批) |
 | 53 | Chart | `chart` | 已核查 | 结论见 3.11;七形态+交互齐全,缺口在 Tooltip/Legend props 与参考线等 |
-| 54 | Drawer | `drawer` | 已核查 | 结论见 3.11;四向+拖拽关闭就绪,缺 snapPoints/非模态/嵌套 |
+| 54 | Drawer | `drawer` | 已核查 | 结论见 3.11;四向+拖拽关闭就绪;DR4 抓手开关已落地(第十九批);缺 snapPoints/非模态/嵌套 |
 | 55 | Button Group | `button-group` | 已核查 | 结论见 3.11;横纵/嵌套/文本/分隔条齐,组合拼接边界待确认 |
 | 56 | Context Menu | `menu` | 已核查 | 结论见 3.11;与 Dropdown Menu 同一实现;特有缺口=长按触发(CM1) |
 | 57 | Trace | `trace` | 已核查 | 结论见 3.11;索引页 New;状态/折叠/嵌套齐,仅 AI SDK 便捷工厂(TR1) |
 | 58 | Message | `message` | 已核查 | 结论见 3.11;三段布局齐;Header 对齐与上游有差异(MSG2) |
 | 59 | Bubble | `bubble` | 已核查 | 结论见 3.11;七变体+反应齐;ghost 富内容(BUB1)待确认 |
-| 60 | Marker | `marker` | 已核查 | 结论见 3.11;三变体齐;MK2 shimmer 已落地(第十八批),MK1 纵向布局待确认 |
+| 60 | Marker | `marker` | 已核查 | 结论见 3.11;三变体齐;MK2 shimmer 已落地(第十八批),MK1 纵向布局已落地(第十九批) |
 | 61 | Attachment | `attachment` | 已核查 | 结论见 3.11;五态三档齐;缺 image 媒体变体(ATT1) |
 | 62 | Message Scroller | `message-scroller` | 已核查 | 结论见 3.11;锚定/跟随/前置保位齐;MSC2 / MSC3 已落地(第十八批),交互信号停跟随(MSC1)为核心缺口 |
 | 63 | Questionnaire | `questionnaire` | 已核查 | 结论见 3.11;单多选/快捷键/校验齐;自定义校验(QN1)与输入框 label(QN2) |
@@ -1195,7 +1195,7 @@
 
 ## 五、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三~十八批已落地(第十二批只出核查结论)。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三~十九批已落地(第十二批只出核查结论)。
 
 **第一批**:
 
@@ -1392,7 +1392,14 @@
 | MSC2 | MessageScroller | `WithMessageScrollerPreserveOnPrepend(bool)`(默认 true): 关闭后前置历史不再保位, 走追加口径(新锚点顶到视口顶部 / 贴底跟随滚到末尾) |
 | MSC3 | MessageScroller | `WithMessageScrollerButtonStyle(variant, size)`(默认 `ButtonOutline` + `ButtonSizeIconSm`): 浮动按钮变体与尺寸档可配, 按钮边长按尺寸档方形宽取(非方形档按高兜底), 滑入位置随之调整 |
 
-**下一批建议**: 当前无待排期项, Q6 / Q7 已收口; Q8 的 CH1~CH3 已在第十六批、QN1 / QN2 / MSG2 已在第十七批、SP1 / MK2 / MSC2 / MSC3 已在第十八批落地, 剩余可直接排期项(CM3 / MK1 / DR4)按「高优先、小改动」另起一批; MSC1 单列待拍板。其余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
+**第十九批**(Q8 剩余两个小改; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| MK1 | Marker | `WithMarkerVertical(bool)`: 图标放到文字上方(根改竖排, 图标与文字水平居中, 间距仍 8), 对应上游 flex-col 的 With Icon 形态; 文字改按量宽居中, 不再铺满截断 |
+| DR4 | Drawer | `WithDrawerSwipeHandle(bool)`(默认 true): 控制底部抽屉顶部抓手是否显示; 关掉后仍可点遮罩 / ESC 关闭, 只是没有拖拽关闭入口 |
+
+**下一批建议**: 当前无待排期项, Q6 / Q7 已收口; Q8 的 CH1~CH3 已在第十六批、QN1 / QN2 / MSG2 已在第十七批、SP1 / MK2 / MSC2 / MSC3 已在第十八批、MK1 / DR4 已在第十九批落地, 剩余可直接排期项仅 CM3; MSC1 单列待拍板。其余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -1451,4 +1458,4 @@
 | Q8-5 | MSC1 | Message Scroller 非滚动交互信号(选择/键盘/链接)停止跟随:是官方"跟随意图"核心卖点,但要挂多处事件 | 待拍板(收益高、回归面较大) |
 | Q8-6 | CH4~CH11 / DR1~DR5 / BUB1~BUB2 / ATT1 / TR1 / MSG1 / MK1 / MK2 / MSC2~MSC4 / QN3~QN5 / BG1~BG2 / SP1 | 其余均为中-大改或"低"优先小改 | 暂缓:按真实需求随组件下次改动补 |
 
-**可直接排期(无需确认, Q8 批)**: CH1 / CH2 / CH3 已落地(第十六批); QN1 / QN2 / MSG2 已落地(第十七批); SP1、MSC2 / MSC3、MK2 已落地(第十八批); 剩余 CM3、MK1、DR4 为小改,可按"高优先、小改动"另起一批落地;MSC1 单列待拍板。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
+**可直接排期(无需确认, Q8 批)**: CH1 / CH2 / CH3 已落地(第十六批); QN1 / QN2 / MSG2 已落地(第十七批); SP1、MSC2 / MSC3、MK2 已落地(第十八批); MK1 / DR4 已落地(第十九批); 剩余 CM3 为小改,可另起一批落地;MSC1 单列待拍板。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。

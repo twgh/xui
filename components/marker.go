@@ -45,6 +45,11 @@ func WithMarkerShimmer(shimmer bool) MarkerOption {
 	return func(m *Marker) { m.shimmer = shimmer }
 }
 
+// WithMarkerVertical 把图标放到文字上方(纵向堆叠、两者水平居中), 对应上游 flex-col 的 With Icon 形态。
+func WithMarkerVertical(vertical bool) MarkerOption {
+	return func(m *Marker) { m.vertical = vertical }
+}
+
 // Marker 会话里的标记行: 状态提示、系统备注、带边框的行、居中分隔标签。
 //
 // 与 shadcn marker.tsx 对齐:
@@ -60,9 +65,10 @@ func WithMarkerShimmer(shimmer bool) MarkerOption {
 //     m.Content("Explored 4 files")
 type Marker struct {
 	*widget.LayoutEle
-	variant MarkerVariant
-	icon    string
-	shimmer bool
+	variant  MarkerVariant
+	icon     string
+	shimmer  bool
+	vertical bool
 }
 
 // NewMarker 创建标记行。宽铺满、高自撑。
@@ -75,7 +81,7 @@ func NewMarker(x, y, cx, cy int32, hParent int, opts ...MarkerOption) *Marker {
 	for _, o := range opts {
 		o(m)
 	}
-	ele.EnableHorizon(true)
+	ele.EnableHorizon(!m.vertical)
 	ele.EnableLayout(true)
 	ele.EnableBkTransparent(true)
 	ele.EnableAutoWrap(false)
@@ -83,7 +89,7 @@ func NewMarker(x, y, cx, cy int32, hParent int, opts ...MarkerOption) *Marker {
 	ele.SetAlignV(xcc.Layout_Align_Center)
 	ele.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
 	ele.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
-	if m.variant == MarkerSeparator {
+	if m.vertical || m.variant == MarkerSeparator {
 		ele.SetAlignH(xcc.Layout_Align_Center)
 	}
 	if m.variant == MarkerBorder {
@@ -97,13 +103,14 @@ func NewMarker(x, y, cx, cy int32, hParent int, opts ...MarkerOption) *Marker {
 	return m
 }
 
-// Content 添加内容文字: separator 变体按文字量宽(两侧留出横线), 其余变体铺满并截断。
+// Content 添加内容文字: separator 变体按文字量宽(两侧留出横线), 纵向形态按文字量宽居中;
+// 其余变体铺满并截断。
 func (m *Marker) Content(text string) *chatText {
 	if m == nil {
 		return nil
 	}
 	var c *chatText
-	if m.variant == MarkerSeparator {
+	if m.variant == MarkerSeparator || m.vertical {
 		c = newChatFitText(m.Handle, text, chatTextSize)
 	} else {
 		c = newChatFillText(m.Handle, text, chatTextSize)

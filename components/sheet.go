@@ -527,7 +527,7 @@ func (d *Dialog) layoutSheet() {
 	}
 	// 抓手: 只有底部 Drawer 显示(对齐 vaul 的 group-data-[direction=bottom] 规则)。
 	if d.dragger != nil {
-		show := d.drawer && d.sheetSide == SheetBottom
+		show := d.drawer && d.swipeHandle && d.sheetSide == SheetBottom
 		showEleTree(d.dragger.Handle, show && d.open)
 		if show {
 			setEleRect(d.dragger.Handle, panel.Left+(pw-sheetGrabberW)/2,

@@ -5,6 +5,11 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第十九批: Marker 纵向布局 / Drawer 抓手开关**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q8 剩余可直接排期项):
+  - **Marker(MK1)**: 新增 `WithMarkerVertical(bool)`: 根改竖排、图标在上, 图标与文字水平居中(间距仍 8); 文字改按量宽居中, 不再铺满截断, 对应上游 flex-col 的 With Icon 形态。
+  - **Drawer(DR4)**: 新增 `WithDrawerSwipeHandle(bool)`(默认 true): 控制底部抽屉顶部抓手是否显示; 关掉后仍可点遮罩 / ESC 关闭, 只是没有拖拽关闭入口。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; 两项默认行为不变(抓手默认显示、Marker 默认横排), demo 无需改动。`registry.json` 的 `runtime` / `cliChange` 未动。
+
 - ✅ **组件特性核查第十八批: Spinner 换图标 / Marker 流式微光 / MessageScroller 前置保位开关与浮动按钮样式**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q8 剩余可直接排期项):
   - **Spinner(SP1)**: 新增 `WithSpinnerIcon(path)`, 换掉默认的 Loader2(16px lucide path); 旋转仍由 `xui.Spin` 驱动, 颜色/尺寸选项不变。
   - **Marker(MK2)**: 新增 `WithMarkerShimmer(bool)`, `Content(text)` 返回的文本走流式"微光扫过"(`chatText.SetShimmer`), 用于进行中状态。
