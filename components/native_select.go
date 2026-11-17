@@ -20,6 +20,7 @@ type nativeSelectOpts struct {
 	size        NativeComboBoxSize
 	sizeSet     bool
 	invalid     bool
+	disabled    bool
 	value       string
 }
 
@@ -41,6 +42,12 @@ func WithNativeSelectInvalid() NativeSelectOption {
 // WithNativeSelectValue 设置初始选中值(按文本匹配 option, 同 defaultValue)。
 func WithNativeSelectValue(v string) NativeSelectOption {
 	return func(o *nativeSelectOpts) { o.value = v }
+}
+
+// WithNativeSelectDisabled 设置禁用态(对应 `<select disabled>` + 外壳 `opacity-50`):
+// 触发区底色变 bg-input/50, 不聚焦、不进 Tab, 原生弹层打不开。
+func WithNativeSelectDisabled() NativeSelectOption {
+	return func(o *nativeSelectOpts) { o.disabled = true }
 }
 
 // NativeSelect 原生下拉框(NativeComboBox 的 value 语义封装)。
@@ -75,6 +82,9 @@ func NewNativeSelect(x, y, cx, cy int32, hParent int, values []string, opts ...N
 	n := &NativeSelect{NativeComboBox: c}
 	if o.value != "" {
 		n.SetValue(o.value)
+	}
+	if o.disabled {
+		n.SetDisabled(true)
 	}
 	return n
 }
@@ -119,4 +129,19 @@ func (n *NativeSelect) OnValueChange(fn func(value string)) *NativeSelect {
 		fn(v)
 	})
 	return n
+}
+
+// SetDisabled 设置/解除禁用态(同 `<select disabled>`): 置灰、不聚焦、不进 Tab,
+// 原生弹层打不开。与 SetFieldState 的禁用分支同一套口径。
+func (n *NativeSelect) SetDisabled(v bool) *NativeSelect {
+	if n == nil || n.NativeComboBox == nil {
+		return n
+	}
+	n.SetFieldState(n.Invalid(), v)
+	return n
+}
+
+// Disabled 返回是否处于禁用态。
+func (n *NativeSelect) Disabled() bool {
+	return n == nil || n.NativeComboBox == nil || !n.IsEnable()
 }

@@ -60,12 +60,12 @@
 | 42 | Menubar | `menubar` | 已核查 | 结论见 3.9;MB1 整条禁用/开合通知、MB4 单选组值已落地;MB2/MB3 几何与指示器待确认 |
 | 43 | Sidebar | `sidebar` | 已核查 | 结论见 3.9;SB1 骨架行已落地;SB2 自定义按钮内容待确认 |
 | 44 | Resizable | `resizable` | 已核查 | 结论见 3.9;文档示例已覆盖;RS1/RS2/RS4 待确认 |
-| 45 | Carousel | `carousel` | 已核查 | 结论见 3.10;循环 / 自动播放 / 拖拽已具备;CR1 多页同屏待确认、CR2 页码指示可直接排期 |
+| 45 | Carousel | `carousel` | 已核查 | 结论见 3.10;循环 / 自动播放 / 拖拽已具备;CR2 页码指示已落地(第十三批)、CR1 多页同屏待确认 |
 | 46 | Aspect Ratio | `aspect-ratio` | 已核查 | 结论见 3.10;唯一 prop `ratio` 已覆盖,圆角裁剪是能力边界 |
 | 47 | Kbd | `kbd` | 已核查 | 结论见 3.10;键帽 / 组 / 量宽已具备;KB1~KB3 暂缓 |
 | 48 | Empty | `empty` | 已核查 | 结论见 3.10;三槽 + 两种媒体已具备;EM2 最大宽待确认 |
-| 49 | Item | `item` | 已核查 | 结论见 3.10;三变体 / 两档 / 五槽已具备;IT1 xs 可直接排期,IT2 / IT3 待确认 |
-| 50 | Native Select | `native-select` | 已核查 | 结论见 3.10;value 语义已具备;NS1 禁用可直接排期,NS2 / NS3 分组与 value 分离待确认 |
+| 49 | Item | `item` | 已核查 | 结论见 3.10;三变体 / 两档 / 五槽已具备;IT1 xs 已落地(第十三批),IT2 / IT3 待确认 |
+| 50 | Native Select | `native-select` | 已核查 | 结论见 3.10;value 语义已具备;NS1 禁用已落地(第十三批),NS2 / NS3 分组与 value 分离待确认 |
 | 51 | Input OTP | `input-otp` | 已核查 | 结论见 3.10;文档示例全部覆盖;OTP1 readOnly 待确认,OTP2 / OTP3 暂缓,跨格选择为能力边界 |
 | 52 | Spinner | `spinner` | 待核查 | |
 | 53 | Chart | `chart` | 待核查 | |
@@ -993,7 +993,7 @@
 
 ## 五、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批已落地。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三批已落地(第十二批只出核查结论)。
 
 **第一批**:
 
@@ -1142,7 +1142,15 @@
 | MB4 | Menubar | `RadioGroupValue` / `SetRadioGroupValue` / `OnRadioGroupChange`(条目文本即组值, 与 Menu 同一口径; 组内互斥沿用现有模型) |
 | SB1 | Sidebar | `NewSidebarMenuSkeleton` / `SidebarGroup.AddSkeleton`(`WithSidebarSkeletonIcon` / `WithSidebarSkeletonWidth`): 32 高行 + 16 图标块 + 16 高文字条(宽度 10~100%), 2s 不透明脉冲, 图标栏只留图标块 |
 
-**下一批建议**: 第十一批的可直接排期清单已清空, 待确认项见 Q6。剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
+**第十三批**(第十二批核查的可直接排期项, 跨 3 个组件; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| CR2 | Carousel | `Carousel.Dots(hParent, opts...)` 返回自绘页码指示点行(`CarouselDots`): 每页一个圆点, 当前页 `Foreground`、其余 `Border`, 6px 点 + 6 间距 + 10 行高(`WithCarouselDotsSize/Gap/Height` 可改); 页过渡落定、页数变化自动重绘; 纯展示(鼠标穿透、不进 Tab 焦点链) |
+| IT1 | Item | 新增 `ItemSizeXs`(gap 8 / px 10 / py 8)与 `Content` 内间距 0; 尺寸几何改为按档查表(`itemMetrics`); `Item.MediaSize()` 返回档位媒体块边长(xs 24, 其余 32), `NewItemMedia` 配 `WithItemMediaSize(px)` 同步缩小媒体块 |
+| NS1 | Native Select | `WithNativeSelectDisabled()` 与 `NativeSelect.SetDisabled(bool)` / `Disabled()`: 触发区 `bg-input/50` 置灰、不聚焦 / 不进 Tab、原生弹层打不开(与 `SetFieldState` 的禁用分支同口径) |
+
+**下一批建议**: 第十二批的可直接排期清单(CR2 / IT1 / NS1)已落地(第十三批), 当前无待排期的直接项; 待确认项见 Q6 / Q7。剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -1188,4 +1196,4 @@
 | Q7-5 | OTP1 | InputOTP readOnly 只读态(本地参照实现有示例):拦改写但保留焦点与选中复制,与 disabled 语义分开 | 待拍板 |
 | Q7-6 | CR4 / KB1~KB3 / EM1 / IT4 / IT5 / OTP2 / OTP3 | 按钮几何 / Tooltip 键帽反色 / 键帽图标与几何覆盖 / Empty 边框背景 / 头尾行 space-between / 动作行 gap / InputOTP 文本对齐与粘贴转换:都是小改动,等真实场景随组件下次改动补 | 暂缓 |
 
-**可直接排期(无需确认)**: 第十二批的 CR2(Carousel 页码指示)、IT1(Item xs 尺寸档)、NS1(NativeSelect 整体禁用)。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
+**可直接排期(无需确认)**: 第十二批的 CR2(Carousel 页码指示)、IT1(Item xs 尺寸档)、NS1(NativeSelect 整体禁用)已全部落地(见第十三批);当前无待排期项,待拍板项见 Q6 / Q7。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。

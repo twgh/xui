@@ -154,7 +154,7 @@ func buildCarouselCard(parent int) {
 	_, vc := autoCard(parent, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "轮播", vc.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Carousel: 整页滑动(300ms) · 循环 · ←/→ 键盘翻页 · 拖拽松手吸附; 上/下张按钮在内容外侧 48px", vc.Handle))
+		"Carousel: 整页滑动(300ms) · 循环 · ←/→ 键盘翻页 · 拖拽松手吸附; 上/下张按钮在内容外侧 48px; 页码指示点随页切换", vc.Handle))
 
 	car := ui.NewCarousel(0, 0, 0, 200, vc.Handle, ui.WithCarouselLoop(true))
 	xui.ItemFill(car)
@@ -193,33 +193,8 @@ func buildCarouselCard(parent int) {
 		})
 	}
 
-	// 指示点: 当前页实心, 其余用 Border 色; 页变化时重绘。
-	dots := widget.NewElement(0, 0, 0, 10, vc.Handle)
-	xui.ItemFill(dots)
-	dots.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 10)
-	dots.AddEvent_Paint(func(hEle int, hDraw int, pbHandled *bool) int {
-		p := xui.BeginPaint(hEle, hDraw)
-		if p == nil {
-			return 0
-		}
-		*pbHandled = true
-		t := xui.Current()
-		const d, gap int32 = 6, 6
-		total := int32(n)*d + int32(n-1)*gap
-		x0 := (p.Rc.Left + p.Rc.Right - total) / 2
-		y := (p.Rc.Top + p.Rc.Bottom - d) / 2
-		for i := 0; i < n; i++ {
-			col := t.Border
-			if i == car.Index() {
-				col = t.Foreground
-			}
-			l := x0 + int32(i)*(d+gap)
-			rc := xc.RECT{Left: l, Top: y, Right: l + d, Bottom: y + d}
-			p.FillRound(&rc, col, d/2)
-		}
-		return 0
-	})
-	car.OnChange(func(i int) { dots.Redraw(true) })
+	// 页码指示点(组件内建): 跟随页变化自动换当前页, 纯展示、不接鼠标。
+	car.Dots(vc.Handle)
 }
 
 // buildResizableCard 建一张分栏演示卡: 横向拖动 + 右侧嵌套纵向分组。

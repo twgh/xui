@@ -41,7 +41,7 @@ func buildBase4Page(body *widget.LayoutEle) {
 	_, vi := autoCard(body.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "列表项", vi.Handle))
 	xui.ItemFill(ui.NewCardDescription(0, 0, 0,
-		"Item: default / outline / muted 三个变体, default / sm 两档尺寸; Media + Content(吃剩余宽度) + Actions, 可选 Header/Footer", vi.Handle))
+		"Item: default / outline / muted 三个变体, default / sm / xs 三档尺寸; Media + Content(吃剩余宽度) + Actions, 可选 Header/Footer", vi.Handle))
 
 	ri := row(vi.Handle, 0, 16)
 	itL := xui.VStack(ri.Handle, 1, 10)
@@ -127,6 +127,17 @@ func buildBase4Page(body *widget.LayoutEle) {
 	c5 := it5.Content()
 	ui.NewItemTitle(c5.Handle, "twgh")
 	ui.NewItemDescription(c5.Handle, "工作区管理员")
+
+	ui.NewItemSeparator(group2.Handle)
+
+	// xs: gap 8 / 内边距 10·8 / 内容区无间距, 媒体块随档位缩到 24。
+	it7 := ui.NewItem(0, 0, 0, 0, group2.Handle, ui.WithItemSize(ui.ItemSizeXs))
+	xui.ItemFill(it7)
+	ui.NewItemMedia(it7.Media().Handle, icons.IconBell,
+		ui.WithItemMediaVariant(ui.ItemMediaIcon), ui.WithItemMediaSize(it7.MediaSize()))
+	c7 := it7.Content()
+	ui.NewItemTitle(c7.Handle, "xs 尺寸档")
+	ui.NewItemDescription(c7.Handle, "gap 8 · 内边距 10/8 · 媒体块 24").SetFontSize(12)
 
 	ui.NewItemSeparator(group2.Handle)
 

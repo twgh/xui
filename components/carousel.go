@@ -24,6 +24,9 @@ const (
 	carouselGap             int32 = 16 // 幻灯片之间的间隙(pl-4 / -ml-4)
 	carouselButtonSize      int32 = 28 // icon-sm
 	carouselDragSlop        int32 = 6  // 超过这个位移才算拖拽, 否则当普通点击
+	carouselDotSize         int32 = 6  // 页码指示点直径
+	carouselDotGap          int32 = 6  // 页码指示点间距
+	carouselDotsHeight      int32 = 10 // 页码指示行高
 	carouselAutoTimerID           = uint32(0x7873)
 	carouselDurationDefault       = 300 * time.Millisecond
 )
@@ -129,6 +132,7 @@ type Carousel struct {
 	slides   []*CarouselSlide
 	prev     *Button
 	next     *Button
+	dots     []*CarouselDots
 
 	loop     bool
 	vertical bool
@@ -258,6 +262,7 @@ func (c *Carousel) AddSlide(build func(s *CarouselSlide)) *CarouselSlide {
 	c.applyInitial(false)
 	c.layoutGeometry()
 	c.syncButtons()
+	c.syncDots()
 	c.startAutoplay()
 	return s
 }
@@ -344,6 +349,127 @@ func (c *Carousel) PrevButton() *Button { return c.prev }
 // NextButton 返回下一张按钮(WithCarouselControls(false) 时为 nil)。
 func (c *Carousel) NextButton() *Button { return c.next }
 
+// CarouselDotsOption 页码指示点配置项。
+type CarouselDotsOption func(*CarouselDots)
+
+// WithCarouselDotsSize 圆点直径(默认 6)。
+func WithCarouselDotsSize(px int32) CarouselDotsOption {
+	return func(d *CarouselDots) {
+		if px > 0 {
+			d.size = px
+		}
+	}
+}
+
+// WithCarouselDotsGap 圆点间距(默认 6)。
+func WithCarouselDotsGap(px int32) CarouselDotsOption {
+	return func(d *CarouselDots) {
+		if px >= 0 {
+			d.gap = px
+		}
+	}
+}
+
+// WithCarouselDotsHeight 指示行高度(默认 10); 圆点在行内垂直居中。
+func WithCarouselDotsHeight(px int32) CarouselDotsOption {
+	return func(d *CarouselDots) {
+		if px > 0 {
+			d.height = px
+		}
+	}
+}
+
+// CarouselDots 页码指示点行: 每页一个圆点, 当前页取前景色、其余取边框色。
+//
+// 纯展示元素: 不聚焦、不进 Tab、鼠标穿透; 页变化(过渡落定)与页数变化时自动重绘。
+type CarouselDots struct {
+	*widget.Element
+	car    *Carousel
+	size   int32
+	gap    int32
+	height int32
+}
+
+// Dots 创建页码指示点行(对应 shadcn Carousel API 示例里由调用方自拼的 dots)。
+// 返回的元素宽铺满、高默认 10, 由调用方放进布局(通常紧挨轮播下方):
+//
+//	car := ui.NewCarousel(0, 0, 0, 200, card.Handle)
+//	xui.ItemFill(car)
+//	car.Dots(card.Handle)
+func (c *Carousel) Dots(hParent int, opts ...CarouselDotsOption) *CarouselDots {
+	if c == nil || c.Element == nil {
+		return nil
+	}
+	d := &CarouselDots{car: c, size: carouselDotSize, gap: carouselDotGap, height: carouselDotsHeight}
+	for _, o := range opts {
+		o(d)
+	}
+	ele := widget.NewElement(0, 0, 0, d.height, hParent)
+	if ele == nil {
+		return nil
+	}
+	d.Element = ele
+	ele.EnableBkTransparent(true)
+	ele.EnableDrawBorder(false)
+	ele.EnableFocus(false)
+	ele.EnableSwitchFocus(false)
+	ele.EnableDrawFocus(false)
+	ele.EnableMouseThrough(true)
+	xui.ItemFill(ele)
+	ele.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, d.height)
+	ele.AddEvent_Paint(d.onPaint)
+	c.dots = append(c.dots, d)
+	return d
+}
+
+// syncDots 让所有指示点行重绘(页数或当前页变化后调用)。
+func (c *Carousel) syncDots() {
+	for _, d := range c.dots {
+		if d != nil && d.Element != nil {
+			d.Redraw(true)
+		}
+	}
+}
+
+func (d *CarouselDots) onPaint(hEle int, hDraw int, pbHandled *bool) int {
+	p := xui.BeginPaint(hEle, hDraw)
+	if p == nil {
+		return 0
+	}
+	*pbHandled = true
+	n := 0
+	cur := 0
+	if d.car != nil {
+		n = d.car.SlideCount()
+		cur = d.car.Index()
+	}
+	if n <= 0 {
+		return 0
+	}
+	t := xui.Current()
+	x := carouselDotsOrigin(p.Rc, n, d.size, d.gap)
+	y := (p.Rc.Top + p.Rc.Bottom - d.size) / 2
+	for i := 0; i < n; i++ {
+		col := t.Border
+		if i == cur {
+			col = t.Foreground
+		}
+		l := x + int32(i)*(d.size+d.gap)
+		rc := xc.RECT{Left: l, Top: y, Right: l + d.size, Bottom: y + d.size}
+		p.FillRound(&rc, col, d.size/2)
+	}
+	return 0
+}
+
+// carouselDotsOrigin 返回指示点行第一个点的左缘(整行在矩形里水平居中)。
+func carouselDotsOrigin(rc xc.RECT, n int, size, gap int32) int32 {
+	if n <= 0 {
+		return (rc.Left + rc.Right) / 2
+	}
+	total := int32(n)*size + int32(n-1)*gap
+	return (rc.Left + rc.Right - total) / 2
+}
+
 // goTo 从当前视觉位置过渡到 target; from 用 curPx 而不是 index*step —— 过渡被中途打断时
 // index 还是起始页, 直接按 index 算目标会多走/少走半页。
 func (c *Carousel) goTo(target int, user bool) {
@@ -415,6 +541,7 @@ func (c *Carousel) settle(target int) {
 	c.positionSlides()
 	c.syncButtons()
 	if old != c.index {
+		c.syncDots()
 		c.emit(c.index)
 	}
 }

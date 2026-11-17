@@ -5,6 +5,12 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第十三批: Carousel 页码指示 / Item xs 尺寸档 / NativeSelect 整体禁用**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 3.10 的可直接排期清单):
+  - **Carousel(CR2)**: 新增 `Carousel.Dots(hParent, opts...)`, 返回自绘 `CarouselDots` 页码指示行 —— 每页一个 6px 圆点(间距 6、行默认 10 高, `WithCarouselDotsSize/Gap/Height` 可改), 当前页取 `Foreground`、其余取 `Border`; 页过渡落定与页数变化自动重绘; 纯展示(鼠标穿透、不聚焦、不进 Tab)。demo 基础3 原来内联拼的 dots 改为调这个方法。
+  - **Item(IT1)**: 新增 `ItemSizeXs`(gap 8 / px 10 / py 8, Content 内间距 0); default / sm / xs 的 gap、padX、padY、contentGap、媒体块边长统一抽成 `itemMetrics` 按档查表。新增 `Item.MediaSize()`(xs 24, 其余 32)与 `WithItemMediaSize(px)`, 让 icon 媒体底板随档位缩小; 媒体内图标按元素实际尺寸居中。
+  - **NativeSelect(NS1)**: 新增 `WithNativeSelectDisabled()` 与 `NativeSelect.SetDisabled(bool)` / `Disabled()`; 走 `SetFieldState` 同一条禁用路径(置灰 + 不聚焦 + 不进 Tab), 原生弹层打不开。demo 表单2 增加一行禁用示例。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; carousel / item / native-select 逐组件单独安装后 `go build ./ui` 通过; demo 视觉核对 —— 基础3 轮播下方 4 个圆点水平居中、当前页深色, 点两次"下一张"后第三个圆点变深色; 基础4 xs 行媒体底板 24、标题 14 / 说明 12、左右内边距 10; 表单2 禁用行底色 `bg-input/50`、文字保持原色, 点箭头不弹层(同位置点启用行会弹出作对照)。
+
 - ✅ **组件特性核查第十二批: Carousel / Aspect Ratio / Kbd / Empty / Item / Native Select / Input OTP(只核查, 未改源码)**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的 3.10 与 Q7):
   - **核查范围**: #45~#51 按台账顺序逐条比对 base-nova 文档 / 本地 `carousel.tsx` `kbd.tsx` `native-select.tsx` `input-otp.tsx` 与 xui 对应源码;逐组件结论(官方页 / 已具备 / 未实现但可实现 / 明确不做)写进台账 3.10, 顶部总表与 HANDOFF 待办指针同步到 #52 Spinner。
   - **可直接排期**: CR2(Carousel 页码指示, `Index()` / `SlideCount()` / `OnChange` 已具备, 加自绘圆点行)、IT1(Item xs 尺寸档, 几何按档查表)、NS1(NativeSelect 整体禁用, 加 `WithNativeSelectDisabled()` / `SetDisabled()` 与置灰)。三项本批未落地, 按固定流程排期。

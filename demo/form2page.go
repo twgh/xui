@@ -146,6 +146,11 @@ func buildForm2Page(body *widget.LayoutEle) {
 	xui.ItemFill(ns)
 	ns.OnValueChange(func(v string) { println("NativeSelect:", v) })
 
+	xui.ItemFill(hint(v4.Handle, "NativeSelect 整体禁用(触发区置灰, 弹层打不开)"))
+	xui.ItemFill(ui.NewNativeSelect(0, 0, 0, 0, v4.Handle,
+		[]string{"开发环境", "测试环境", "生产环境"},
+		ui.WithNativeSelectValue("生产环境"), ui.WithNativeSelectDisabled()))
+
 	// ---- 右列 2: 独立 Select(自绘弹层) ----
 	_, v5 := autoCard(colR.Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "独立 Select", v5.Handle))

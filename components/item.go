@@ -10,22 +10,34 @@ import (
 // Item 几何常量(逻辑像素), 对齐 shadcn item.tsx:
 //   - 容器 rounded-md + border-transparent, text-sm;
 //   - size default: gap-4(16) + p-4(16); sm: gap-2.5(10) + px-4(16) / py-3(12);
+//     xs: gap-2(8) + px-2.5(10) / py-2(8), 内容区 gap 0、媒体块 24(上游 size-6);
 //   - Content: 竖向 flex-1, gap-1(4);
 //   - Header/Footer: basis-full, gap-2(8);
 //   - Media icon: size-8(32) + rounded-sm + border + bg-muted, 图标 16。
 const (
-	itemGapDefault    int32 = 16
-	itemGapSm         int32 = 10
-	itemPadDefault    int32 = 16
-	itemPadSmX        int32 = 16
-	itemPadSmY        int32 = 12
 	itemContentGap    int32 = 4
 	itemHeaderGap     int32 = 8
 	itemMediaGlyph    int32 = 16
 	itemMediaIconSize int32 = 32
+	itemMediaXsSize   int32 = 24
 	itemTextH         int32 = 20
 	itemTextSize      int32 = 14
 )
+
+// itemMetrics 是尺寸档的几何表, 由 ItemSize 查询。
+type itemMetrics struct {
+	gap        int32 // 行内间距(Media / Content / Actions)
+	padX       int32
+	padY       int32
+	contentGap int32 // Content 列内间距
+	mediaSize  int32 // 媒体块边长
+}
+
+var itemMetricsBySize = [...]itemMetrics{
+	ItemSizeDefault: {gap: 16, padX: 16, padY: 16, contentGap: itemContentGap, mediaSize: itemMediaIconSize},
+	ItemSizeSm:      {gap: 10, padX: 16, padY: 12, contentGap: itemContentGap, mediaSize: itemMediaIconSize},
+	ItemSizeXs:      {gap: 8, padX: 10, padY: 8, contentGap: 0, mediaSize: itemMediaXsSize},
+}
 
 // ItemVariant 列表项变体, 对应 shadcn item.tsx 的 variant。
 type ItemVariant int
@@ -42,6 +54,7 @@ type ItemSize int
 const (
 	ItemSizeDefault ItemSize = iota // gap-4 p-4
 	ItemSizeSm                      // gap-2.5 px-4 py-3
+	ItemSizeXs                      // gap-2 px-2.5 py-2
 )
 
 // ItemOption 列表项配置项。
@@ -124,26 +137,26 @@ func NewItem(x, y, cx, cy int32, hParent int, opts ...ItemOption) *Item {
 	return it
 }
 
-func (i *Item) gap() int32 {
-	if i.size == ItemSizeSm {
-		return itemGapSm
+// metrics 返回当前尺寸档的几何。
+func (i *Item) metrics() itemMetrics {
+	if i == nil {
+		return itemMetricsBySize[ItemSizeDefault]
 	}
-	return itemGapDefault
+	if i.size < 0 || int(i.size) >= len(itemMetricsBySize) {
+		return itemMetricsBySize[ItemSizeDefault]
+	}
+	return itemMetricsBySize[i.size]
 }
 
-func (i *Item) padX() int32 {
-	if i.size == ItemSizeSm {
-		return itemPadSmX
-	}
-	return itemPadDefault
-}
+func (i *Item) gap() int32 { return i.metrics().gap }
 
-func (i *Item) padY() int32 {
-	if i.size == ItemSizeSm {
-		return itemPadSmY
-	}
-	return itemPadDefault
-}
+func (i *Item) padX() int32 { return i.metrics().padX }
+
+func (i *Item) padY() int32 { return i.metrics().padY }
+
+// MediaSize 返回当前尺寸档的媒体块边长(xs = 24, 其余 32), 供 NewItemMedia 的
+// WithItemMediaSize 使用, 让媒体随条目档位同步缩放。
+func (i *Item) MediaSize() int32 { return i.metrics().mediaSize }
 
 // newItemRow 建一条横向行(整宽、高自撑、垂直居中)。
 func newItemRow(hParent int, gap int32) *widget.LayoutEle {
@@ -181,7 +194,7 @@ func (i *Item) showBody() {
 		i.content.EnableLayout(true)
 		i.content.EnableBkTransparent(true)
 		i.content.EnableAutoWrap(false)
-		i.content.SetSpace(itemContentGap)
+		i.content.SetSpace(i.metrics().contentGap)
 		i.content.LayoutItem_SetWidth(xcc.Layout_Size_Weight, 1)
 		i.content.LayoutItem_SetHeight(xcc.Layout_Size_Auto, 0)
 		i.contentW = -1
@@ -362,6 +375,16 @@ func WithItemMediaVariant(v ItemMediaVariant) ItemMediaOption {
 	return func(m *ItemMedia) { m.variant = v }
 }
 
+// WithItemMediaSize 覆盖媒体块边长(默认 default 变体 16 / icon 变体 32)。
+// 条目用 xs 档时传 `item.MediaSize()`(24), 媒体块随档位缩小。
+func WithItemMediaSize(px int32) ItemMediaOption {
+	return func(m *ItemMedia) {
+		if px > 0 {
+			m.size = px
+		}
+	}
+}
+
 // ItemMedia 列表项媒体块: 一个固定尺寸的自绘图标。
 //
 // 上游 default 变体本身不设尺寸(内容随子元素); Go 侧以 16 图标为默认形态,
@@ -370,6 +393,7 @@ type ItemMedia struct {
 	*widget.Element
 	variant ItemMediaVariant
 	icon    string
+	size    int32
 }
 
 // NewItemMedia 创建媒体块。icon 是 lucide path 或整段 SVG(见 xui.Painter.Icon); 传空串 = 只画底板。
@@ -381,6 +405,9 @@ func NewItemMedia(hParent int, icon string, opts ...ItemMediaOption) *ItemMedia 
 	size := itemMediaGlyph
 	if m.variant == ItemMediaIcon {
 		size = itemMediaIconSize
+	}
+	if m.size > 0 {
+		size = m.size
 	}
 	ele := widget.NewElement(0, 0, size, size, hParent)
 	if ele == nil {
@@ -409,7 +436,10 @@ func (m *ItemMedia) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 	if m.variant == ItemMediaIcon {
 		p.FillRound(&rc, t.Muted, t.RadiusSm())
 		p.StrokeRound(&rc, t.Border, t.RadiusSm(), 1)
-		inset := (itemMediaIconSize - itemMediaGlyph) / 2
+		inset := (p.W() - itemMediaGlyph) / 2
+		if inset < 0 {
+			inset = 0
+		}
 		rc.Left += inset
 		rc.Top += inset
 		rc.Right -= inset

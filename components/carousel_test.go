@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/twgh/xcgui/xc"
+)
 
 func TestCarouselSlideOffset(t *testing.T) {
 	const step = 840.0
@@ -55,5 +59,25 @@ func TestCarouselSlideOffset(t *testing.T) {
 	v = carouselSlideOffset(0, 3.25*step, step, 3, true)
 	if v < -step || v > step {
 		t.Fatalf("loop past end = %v, want within [-step, step]", v)
+	}
+}
+
+func TestCarouselDotsOrigin(t *testing.T) {
+	rc := xc.RECT{Left: 0, Right: 200}
+	// 5 点 6px + 4 间隙 6px = 54, 居中后左缘 = 73。
+	if got := carouselDotsOrigin(rc, 5, 6, 6); got != 73 {
+		t.Fatalf("origin(5 dots) = %d, want 73", got)
+	}
+	// 单点: 只居中一个点。
+	if got := carouselDotsOrigin(rc, 1, 6, 6); got != 97 {
+		t.Fatalf("origin(1 dot) = %d, want 97", got)
+	}
+	// 非零左边距同样按整行居中。
+	rc = xc.RECT{Left: 10, Right: 210}
+	if got := carouselDotsOrigin(rc, 5, 6, 6); got != 83 {
+		t.Fatalf("origin(offset rc) = %d, want 83", got)
+	}
+	if got := carouselDotsOrigin(rc, 0, 6, 6); got != 110 {
+		t.Fatalf("origin(no dots) = %d, want center 110", got)
 	}
 }
