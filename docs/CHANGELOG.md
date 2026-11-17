@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第十八批: Spinner 换图标 / Marker 流式微光 / MessageScroller 前置保位开关与浮动按钮样式**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q8 剩余可直接排期项):
+  - **Spinner(SP1)**: 新增 `WithSpinnerIcon(path)`, 换掉默认的 Loader2(16px lucide path); 旋转仍由 `xui.Spin` 驱动, 颜色/尺寸选项不变。
+  - **Marker(MK2)**: 新增 `WithMarkerShimmer(bool)`, `Content(text)` 返回的文本走流式"微光扫过"(`chatText.SetShimmer`), 用于进行中状态。
+  - **MessageScroller(MSC2)**: 新增 `WithMessageScrollerPreserveOnPrepend(bool)`(默认 true = 现有行为); 关闭后前置历史不再保位, 走追加口径(新锚点顶到视口顶部 / 贴底跟随滚到末尾)。
+  - **MessageScroller(MSC3)**: 新增 `WithMessageScrollerButtonStyle(variant, size)`(默认 `ButtonOutline` + `ButtonSizeIconSm`); 浮动按钮边长按尺寸档的方形宽取(非方形档按高兜底), 滑入/滑出位置同步, 图标仍居中。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿。四项默认值都保持原行为, demo 无需改动; 新增选项沿用现有运行时路径(Spin / SetShimmer / Presence), 不新增定时器。`registry.json` 的 `runtime` / `cliChange` 未动。
+
 - ✅ **修复 AutoWrap 标签改文案长高后不重绘, 下方内容留下重影**(2026-11-17):
   - **现象**: 表单6 问卷在自由输入框填文字后走到最后一步点 "Save plan", 提交状态文案变长折成多行; 鼠标移入下方说明区时出现两段说明文字交错、重置按钮与说明重叠。
   - **根因**: `Label.reflowAutoWrap` 折行高度变化后只调 `reflowAfterTextHeight` 逐级重排, 没有重绘 —— 状态标签长高把重置按钮与说明文字整体下移, 旧位置的文字像素不会被自动擦除; 鼠标移入触发局部重绘时新旧两行叠在一起(与 DESIGN 第八节 204 的"兄弟平移必须整窗重绘"同一类)。

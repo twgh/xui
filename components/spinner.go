@@ -29,6 +29,15 @@ func WithSpinnerMuted() SpinnerOption {
 	return func(s *Spinner) { s.muted = true }
 }
 
+// WithSpinnerIcon 换掉默认的 Loader2 图标(16px lucide path), 位图同样是整圈旋转。
+func WithSpinnerIcon(icon string) SpinnerOption {
+	return func(s *Spinner) {
+		if icon != "" {
+			s.icon = icon
+		}
+	}
+}
+
 // WithSpinnerColorFunc 指定语义色解析器(每次绘制实时取主题令牌)。
 // 用于在 primary 按钮、tooltip 这类不同底色上跟随前景色。
 func WithSpinnerColorFunc(fn func(*xui.Theme) xui.Color) SpinnerOption {
@@ -51,6 +60,7 @@ func WithSpinnerColorFunc(fn func(*xui.Theme) xui.Color) SpinnerOption {
 type Spinner struct {
 	*widget.Element
 	size     int32
+	icon     string
 	muted    bool
 	colorFn  func(*xui.Theme) xui.Color
 	spinning bool
@@ -58,7 +68,7 @@ type Spinner struct {
 
 // NewSpinner 创建加载指示器并挂到 hParent。默认 16×16, 可用 WithSpinnerSize 调整。
 func NewSpinner(hParent int, opts ...SpinnerOption) *Spinner {
-	s := &Spinner{size: spinnerDefaultSize, spinning: true}
+	s := &Spinner{size: spinnerDefaultSize, icon: icons.IconLoader2, spinning: true}
 	for _, o := range opts {
 		o(s)
 	}
@@ -107,6 +117,6 @@ func (s *Spinner) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 		color = t.MutedForeground
 	}
 	phase := xui.Spin(hEle, s.spinning)
-	p.IconRotated(icons.IconLoader2, &p.Rc, color, 2, phase*2*math.Pi)
+	p.IconRotated(s.icon, &p.Rc, color, 2, phase*2*math.Pi)
 	return 0
 }

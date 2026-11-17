@@ -107,6 +107,21 @@ func WithMessageScrollerButtonDirection(d MessageScrollerButtonDirection) Messag
 	return func(s *MessageScroller) { s.buttonDirection = d }
 }
 
+// WithMessageScrollerButtonStyle 换浮动按钮的变体与尺寸档(默认 ButtonOutline + ButtonSizeIconSm)。
+// 方形图标档按档位宽决定按钮边长; 传非方形档时按该档高度取方形。
+func WithMessageScrollerButtonStyle(v ButtonVariant, size ButtonSize) MessageScrollerOption {
+	return func(s *MessageScroller) {
+		s.buttonVariant = v
+		s.buttonSize = size
+	}
+}
+
+// WithMessageScrollerPreserveOnPrepend 前置历史时是否保持视口内容不动(默认 true)。
+// 关闭后走追加内容的口径(新锚点顶到视口顶部; 贴底跟随中则滚到末尾)。
+func WithMessageScrollerPreserveOnPrepend(preserve bool) MessageScrollerOption {
+	return func(s *MessageScroller) { s.preserveOnPrepend = preserve }
+}
+
 // MessageScroller 会话滚动容器: 轮次锚定 + 只在贴底时跟随 + 前置历史不跳动 + 跳到任意消息。
 //
 // 用法:
@@ -121,7 +136,7 @@ func WithMessageScrollerButtonDirection(d MessageScrollerButtonDirection) Messag
 // 行为(对齐 shadcn message-scroller):
 //   - 追加新内容时, 若读者贴在底部且 autoScroll 打开 → 跟到末尾; 否则把新轮次的
 //     第一个锚点项顶到视口顶部, 并保留上一条的 peek 像素;
-//   - 前置历史(prepend)默认保持视口里的内容不动;
+//   - 前置历史(prepend)默认保持视口里的内容不动, 可用 WithMessageScrollerPreserveOnPrepend(false) 关掉;
 //   - 用户在任意滚动之后离开底部 → 取消跟随; 滚回底部 → 重新跟随;
 //   - 轮次锚点正在被流式追加内容时, 锚点保持在视口顶部;
 //   - 浮动按钮只在对应方向还能滚时出现, 点击平滑滚动到端点; 不占用布局。
@@ -142,6 +157,11 @@ type MessageScroller struct {
 	peek            int32
 	scrollMargin    int32
 	buttonDirection MessageScrollerButtonDirection
+
+	preserveOnPrepend bool
+	buttonVariant     ButtonVariant
+	buttonSize        ButtonSize
+	buttonBox         int32
 
 	items []*MessageScrollerItem
 	byID  map[string]*MessageScrollerItem
@@ -204,6 +224,17 @@ func messageScrollerButtonIcon(d MessageScrollerButtonDirection) string {
 	return icons.IconArrowDown
 }
 
+// messageScrollerButtonBox 返回浮动按钮的方形边长: 方形尺寸档取宽, 非方形档按高兜底。
+func messageScrollerButtonBox(size ButtonSize) int32 {
+	if sp, ok := buttonSpecs[size]; ok {
+		if sp.width > 0 {
+			return sp.width
+		}
+		return sp.height
+	}
+	return messageScrollerButtonSize
+}
+
 // NewMessageScroller 创建消息滚动容器。尺寸/布局项语义同普通容器(默认宽 Fill、高 Weight 1)。
 func NewMessageScroller(x, y, cx, cy int32, hParent int, opts ...MessageScrollerOption) *MessageScroller {
 	ele := widget.NewElement(x, y, cx, cy, hParent)
@@ -211,15 +242,19 @@ func NewMessageScroller(x, y, cx, cy int32, hParent int, opts ...MessageScroller
 		return nil
 	}
 	s := &MessageScroller{
-		Element:       ele,
-		edgeThreshold: MessageScrollerEdgeThresholdDefault,
-		peek:          MessageScrollerPreviousItemPeek,
-		byID:          make(map[string]*MessageScrollerItem),
-		lastEnd:       -1,
+		Element:           ele,
+		edgeThreshold:     MessageScrollerEdgeThresholdDefault,
+		peek:              MessageScrollerPreviousItemPeek,
+		preserveOnPrepend: true,
+		buttonVariant:     ButtonOutline,
+		buttonSize:        ButtonSizeIconSm,
+		byID:              make(map[string]*MessageScrollerItem),
+		lastEnd:           -1,
 	}
 	for _, o := range opts {
 		o(s)
 	}
+	s.buttonBox = messageScrollerButtonBox(s.buttonSize)
 
 	ele.EnableBkTransparent(true)
 	ele.EnableDrawBorder(false)
@@ -261,8 +296,8 @@ func NewMessageScroller(x, y, cx, cy int32, hParent int, opts ...MessageScroller
 	s.spacer.LayoutItem_SetHeight(xcc.Layout_Size_Fixed, 0)
 	s.spacer.Show(false)
 
-	s.button = NewButton(0, 0, messageScrollerButtonSize, messageScrollerButtonSize, "", ele.Handle,
-		WithVariant(ButtonOutline), WithSize(ButtonSizeIconSm),
+	s.button = NewButton(0, 0, s.buttonBox, s.buttonBox, "", ele.Handle,
+		WithVariant(s.buttonVariant), WithSize(s.buttonSize),
 		WithButtonRounded(), WithIconSize(messageScrollerButtonIconSize),
 		WithIcon(messageScrollerButtonIcon(s.buttonDirection)))
 	if s.button != nil {
@@ -356,7 +391,7 @@ func (s *MessageScroller) PrependItem(messageID string, scrollAnchor bool) *Mess
 	if it == nil {
 		return nil
 	}
-	if s.mutFirstH == 0 && len(s.items) > 0 {
+	if s.preserveOnPrepend && s.mutFirstH == 0 && len(s.items) > 0 {
 		s.mutFirstH = s.items[0].Handle
 		s.mutFirstTop = s.items[0].rect().Top
 		s.mutScrollPos = s.scroll.GetViewPosV()
@@ -368,7 +403,7 @@ func (s *MessageScroller) PrependItem(messageID string, scrollAnchor bool) *Mess
 	xui.AttachWindow(it.Handle)
 	s.items = append([]*MessageScrollerItem{it}, s.items...)
 	s.byID[messageID] = it
-	s.recordMutation(true)
+	s.recordMutation(s.preserveOnPrepend)
 	return it
 }
 
@@ -619,7 +654,7 @@ func (s *MessageScroller) positionButton(v float64) {
 		return
 	}
 	w, h := s.GetWidth(), s.GetHeight()
-	bw, bh := int32(messageScrollerButtonSize), int32(messageScrollerButtonSize)
+	bw, bh := s.buttonBox, s.buttonBox
 	x := (w - bw) / 2
 	off := int32((1 - v) * float64(bh))
 	var y int32

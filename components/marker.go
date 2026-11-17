@@ -40,6 +40,11 @@ func WithMarkerIcon(icon string) MarkerOption {
 	return func(m *Marker) { m.icon = icon }
 }
 
+// WithMarkerShimmer 让内容文字走流式"微光扫过"(进行中状态), 相位由运行时 Spin 驱动。
+func WithMarkerShimmer(shimmer bool) MarkerOption {
+	return func(m *Marker) { m.shimmer = shimmer }
+}
+
 // Marker 会话里的标记行: 状态提示、系统备注、带边框的行、居中分隔标签。
 //
 // 与 shadcn marker.tsx 对齐:
@@ -57,6 +62,7 @@ type Marker struct {
 	*widget.LayoutEle
 	variant MarkerVariant
 	icon    string
+	shimmer bool
 }
 
 // NewMarker 创建标记行。宽铺满、高自撑。
@@ -106,6 +112,7 @@ func (m *Marker) Content(text string) *chatText {
 		return nil
 	}
 	c.SetMuted()
+	c.SetShimmer(m.shimmer)
 	return c
 }
 
