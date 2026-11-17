@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查收口: Q6 / Q7 拍板 + 第十四批落地(Empty Header 最大宽 / InputOTP readOnly)**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q6 / Q7):
+  - **Q6 拍板**: SB2(Sidebar 菜单按钮内容槽)与 RS1 / RS4(Resizable collapsible / 单栏锁定)排期下一批; CL2(任意挂载)、BC3(链接进 Tab 链)、NM2(嵌套子菜单)、RS2(preserve-pixel-size)不做; MB2 / MB3(Menubar 完整几何)、SB3(分组折叠)暂缓; HC2 等与 CL4 等维持原决定。
+  - **Q7 拍板**: CR1 / CR3(Carousel 多页同屏与页对齐)不做默认变更(单页铺满是默认口径); NS2 / NS3(NativeSelect 分组 / 值文本分离)不做, 保持原生弹层 + 字符串语义, 富条目继续由 Select 承担; IT2 / IT3(Item 内建 image/avatar 媒体态、整行链接焦点)不做(媒体用 `Media()` 挂 Avatar/图片; 整行链接会改 Tab 顺序, 用子按钮); EM2 / OTP1 本批落地。
+  - **Empty(EM2)**: Header 增加 `max-w-[384px]` 等价钳制 —— 容器可用宽(减左右 p-6)超过 384 时锁成 384 并由 Body 水平居中, 更窄时保持整宽; 量宽挂在 Body 尺寸事件上并排到下一轮消息(`app.AfterFunc`), 避免在布局趟内改子项宽度重入。
+  - **Input OTP(OTP1)**: 新增 `WithInputOTPReadOnly()` / `SetReadOnly(bool)` / `ReadOnly()`; 原生 `EnableReadOnly` + `onChar` / Backspace / Delete / Ctrl+V 拦截双保险, 只读时格子仍可聚焦、可选中复制、在 Tab 链里, 程序化 `SetValue` / `Clear` 仍生效; 与 `SetDisabled` 独立组合。demo 表单1 增加一行预填 `240815` 的只读示例。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; demo 视觉核对 —— 表单1 只读验证码显示预填 `240815`、6 格分两组、样式与正常态一致(未置灰), 旁边禁用 / 校验示例不受影响; Empty 用 900 宽探针核对 —— 长描述折行收在 384 居中, 不再铺满整卡(探针已删除)。`registry.json` 的 `runtime` / `cliChange` 未动。
+
 - ✅ **修复: 暗色主题下禁用的下拉框 / 取色器触发区是一块发亮的灰饼**(2026-11-17, 用户反馈):
   - **现象**: 暗色下 NativeSelect 禁用态触发区是整块亮灰色、文字仍是全亮白, 看起来像"高亮"而不是禁用; ComboSearch 与 ColorPicker 的禁用触发区同样偏亮。
   - **根因**: 三处禁用分支都用 `t.Input.WithAlpha(128)` 近似 `bg-input/50`。暗色 `Input` 令牌本身是"白 15% 半透明", 用 WithAlpha **覆盖**成 50% 等于把白色拉到 50%, 叠在卡片上就是亮灰饼; 且文字/箭头没跟随组级 50% 淡出, 对比更强(同 DESIGN 第八节 61 记录过的禁用合成坑)。

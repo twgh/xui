@@ -1150,7 +1150,14 @@
 | IT1 | Item | 新增 `ItemSizeXs`(gap 8 / px 10 / py 8)与 `Content` 内间距 0; 尺寸几何改为按档查表(`itemMetrics`); `Item.MediaSize()` 返回档位媒体块边长(xs 24, 其余 32), `NewItemMedia` 配 `WithItemMediaSize(px)` 同步缩小媒体块 |
 | NS1 | Native Select | `WithNativeSelectDisabled()` 与 `NativeSelect.SetDisabled(bool)` / `Disabled()`: 整组 50% 半透明置灰(底色保持卡片色, 边框/文字/箭头各乘 50%)、不聚焦 / 不进 Tab、原生弹层打不开(与 `SetFieldState` 的禁用分支同口径) |
 
-**下一批建议**: 第十二批的可直接排期清单(CR2 / IT1 / NS1)已落地(第十三批), 当前无待排期的直接项; 待确认项见 Q6 / Q7。剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
+**第十四批**(Q7 拍板后落地, 跨 2 个组件):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| EM2 | Empty | Header 最大宽 384(`emptyHeaderMaxW`): 容器可用宽(减左右 p-6)超过 384 时把 Header 锁成 384 并由 Body 水平居中, 更窄时保持整宽; 量宽挂在 Body 尺寸事件上并排到下一轮消息(避免布局趟内重入) |
+| OTP1 | Input OTP | `WithInputOTPReadOnly()` / `SetReadOnly(bool)` / `ReadOnly()`: 用户键入 / 退格 / Delete / Ctrl+V 都不改值(原生 ReadOnly + 事件拦截双保险), 格子仍可聚焦、可选中复制、在 Tab 链里; 程序化 `SetValue` / `Clear` 仍生效; 与 `SetDisabled` 独立组合 |
+
+**下一批建议**: Q6-2 的 SB2(Sidebar 菜单按钮内容槽)与 Q6-4 的 RS1 / RS4(Resizable collapsible / 单栏锁定)已拍板排期; Q6 / Q7 其余项按上表暂缓或不做。剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -1174,26 +1181,26 @@
 | Q5-3 | CAL3 / CAL4 / CAL5 / CAL6 | 先改默认几何(28 / p-2 / bg-background, CAL4)并给 `WithCalendarCellSize`(CAL5), DatePicker 弹层同步;键盘网格(CAL3)随后;纵向折叠(CAL6)不做 | 已落地(CAL3 / CAL4 / CAL5); CAL6 不做 |
 | Q5-4 | DP4 | 保持中文窄口径解析(今天/N 天后/常见格式), 不引入 chrono-node 等价物 | 不做 |
 
-**待确认需求(第十一批, Q6)**:
+**已拍板需求(第十一批, Q6)**:
 
 | # | 涉及条目 | 建议 | 状态 |
 |---|---|---|---|
-| Q6-1 | MB2 / MB3 | Menubar 完整对齐 base-nova: 根 h-8 p-[3px] gap-0.5、条目 28、弹层 min-w-36、子菜单 min-w-24, 勾选/单选指示器移到右侧; 需先给 Button 补高度/内距覆盖或改自绘触发区, 再整页回归 | 待拍板 |
-| Q6-2 | CL2 / SB2 / SB3 | 布局自由度: SB2(菜单按钮内容槽, 团队切换器/用户卡)优先; CL2(触发区/内容任意挂载)要改根管线, 成本最高; SB3(分组折叠)看侧栏需求 | 待拍板 |
-| Q6-3 | BC3 / NM2 | 键盘与子导航: BC3(链接进入 Tab 链)会改整页 Tab 顺序; NM2(嵌套子菜单)成本高, 建议不排 | 待拍板 |
-| Q6-4 | RS1 / RS2 / RS4 | Resizable 扩展: RS1(collapsible)优先, RS4(单栏锁定)顺手; RS2(preserve-pixel-size)低优先 | 待拍板 |
+| Q6-1 | MB2 / MB3 | Menubar 完整对齐 base-nova: 根 h-8 p-[3px] gap-0.5、条目 28、弹层 min-w-36、子菜单 min-w-24, 勾选/单选指示器移到右侧; 需先给 Button 补高度/内距覆盖或改自绘触发区, 再整页回归 | 暂缓(现有几何可用, 完整对齐的回归面大于观感收益, 有真实需求再立项) |
+| Q6-2 | CL2 / SB2 / SB3 | 布局自由度: SB2(菜单按钮内容槽, 团队切换器/用户卡)优先; CL2(触发区/内容任意挂载)要改根管线, 成本最高; SB3(分组折叠)看侧栏需求 | SB2 排期下一批; CL2 不做; SB3 暂缓 |
+| Q6-3 | BC3 / NM2 | 键盘与子导航: BC3(链接进入 Tab 链)会改整页 Tab 顺序; NM2(嵌套子菜单)成本高, 建议不排 | 不做(BC3 用子按钮做链接语义; NM2 有真实需求再立项) |
+| Q6-4 | RS1 / RS2 / RS4 | Resizable 扩展: RS1(collapsible)优先, RS4(单栏锁定)顺手; RS2(preserve-pixel-size)低优先 | RS1 + RS4 排期下一批; RS2 不做 |
 | Q6-5 | HC2 / NM3 / NM4 / NM5 / CL3 / RS3 | 暂缓: 弹层 zoom/slide 动画深度、纵向导航、视口尺寸过渡、两行说明、展开态根底色、F6 跳分隔条 | 暂缓 |
 | Q6-6 | CL4 / BC4 / SB4 / RS5 / Menubar Alt | 不做或组合式: keepMounted 卸载语义、富内容面包屑、移动端 Sheet / Provider 上下文、布局持久化、Menubar Alt/typeahead | 不做 |
 
-**待确认需求(第十二批, Q7)**:
+**已拍板需求(第十二批, Q7)**:
 
 | # | 涉及条目 | 建议 | 状态 |
 |---|---|---|---|
-| Q7-1 | CR1 / CR3 | Carousel 多页同屏(`basis-1/3`)与页对齐:会改页宽 / 步进 / 循环位移公式,不做默认变更;常见单页铺满已对齐 | 待拍板 |
-| Q7-2 | NS2 / NS3 | NativeSelect 分组标题 / 选项禁用 / `value` 与显示文本分离:需要换数据结构(`[]NativeSelectItem`),同时保住现有 `[]string` 调用方 | 待拍板 |
-| Q7-3 | IT2 / IT3 | Item 的 image / avatar 内建媒体态(圆角裁剪受限)与整行链接焦点 / Enter(会改 Tab 顺序) | 待拍板 |
-| Q7-4 | EM2 | Empty Header 最大宽 384:需按父宽钳制,窄容器口径先确认 | 待拍板 |
-| Q7-5 | OTP1 | InputOTP readOnly 只读态(本地参照实现有示例):拦改写但保留焦点与选中复制,与 disabled 语义分开 | 待拍板 |
+| Q7-1 | CR1 / CR3 | Carousel 多页同屏(`basis-1/3`)与页对齐:会改页宽 / 步进 / 循环位移公式,不做默认变更;常见单页铺满已对齐 | 不做(单页铺满是默认口径; 多页/对齐有真实需求再立项) |
+| Q7-2 | NS2 / NS3 | NativeSelect 分组标题 / 选项禁用 / `value` 与显示文本分离:需要换数据结构(`[]NativeSelectItem`),同时保住现有 `[]string` 调用方 | 不做(保持原生弹层 + 字符串语义; 富条目/分组/禁用由 Select 承担) |
+| Q7-3 | IT2 / IT3 | Item 的 image / avatar 内建媒体态(圆角裁剪受限)与整行链接焦点 / Enter(会改 Tab 顺序) | 不做(媒体用 `Media()` 挂 Avatar/图片; 整行链接会改 Tab 顺序, 用子按钮) |
+| Q7-4 | EM2 | Empty Header 最大宽 384:需按父宽钳制,窄容器口径先确认 | 已落地(第十四批) |
+| Q7-5 | OTP1 | InputOTP readOnly 只读态(本地参照实现有示例):拦改写但保留焦点与选中复制,与 disabled 语义分开 | 已落地(第十四批) |
 | Q7-6 | CR4 / KB1~KB3 / EM1 / IT4 / IT5 / OTP2 / OTP3 | 按钮几何 / Tooltip 键帽反色 / 键帽图标与几何覆盖 / Empty 边框背景 / 头尾行 space-between / 动作行 gap / InputOTP 文本对齐与粘贴转换:都是小改动,等真实场景随组件下次改动补 | 暂缓 |
 
-**可直接排期(无需确认)**: 第十二批的 CR2(Carousel 页码指示)、IT1(Item xs 尺寸档)、NS1(NativeSelect 整体禁用)已全部落地(见第十三批);当前无待排期项,待拍板项见 Q6 / Q7。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
+**可直接排期(无需确认)**: 当前无待排期项, Q6 / Q7 已收口;下一批 = Q6-2 的 SB2(Sidebar 菜单按钮内容槽)与 Q6-4 的 RS1 / RS4(Resizable collapsible / 单栏锁定)。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。

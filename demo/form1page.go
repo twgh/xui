@@ -176,11 +176,14 @@ func buildForm1Page(body *widget.LayoutEle) {
 	otp.OnChange(func(v string) { otpVal.SetText("值: " + v).Redraw() })
 	otp.OnComplete(func(v string) { otpVal.SetText("已完成: " + v).Redraw() })
 
-	xui.ItemFill(hint(v6.Handle, "禁用 / 校验失败(aria-invalid)"))
+	xui.ItemFill(hint(v6.Handle, "禁用 / 校验失败(aria-invalid) / 只读(可聚焦、可复制, 不可改写)"))
 	xui.ItemFill(ui.NewInputOTP(0, 0, 0, 0, v6.Handle,
 		ui.WithInputOTPLength(4), ui.WithInputOTPDisabled()))
 	xui.ItemFill(ui.NewInputOTP(0, 0, 0, 0, v6.Handle,
 		ui.WithInputOTPLength(4), ui.WithInputOTPInvalid()))
+	xui.ItemFill(ui.NewInputOTP(0, 0, 0, 0, v6.Handle,
+		ui.WithInputOTPLength(6), ui.WithInputOTPSeparatorAfter(3),
+		ui.WithInputOTPValue("240815"), ui.WithInputOTPReadOnly()))
 
 	// ---- 右列 2: 滑动条 ----
 	_, v3 := autoCard(colR.Handle, 10)

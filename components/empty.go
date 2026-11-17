@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
@@ -10,7 +11,7 @@ import (
 // Empty 几何常量(对齐 shadcn empty.tsx 的 radix-nova 样式, 单位逻辑像素):
 //   - 容器: p-6(24) + gap-6(24), 内容水平/垂直居中; 上游 md:p-12(48) 是响应式断点,
 //     Go 侧没有容器查询, 统一用基础档 24;
-//   - EmptyHeader: gap-2(8), 最大宽 384(见下方说明);
+//   - EmptyHeader: gap-2(8), 最大宽 384(父内容区更窄时取整宽);
 //   - EmptyMedia icon 变体: size-10(40) + rounded-lg + bg-muted, 图标 24;
 //   - EmptyTitle: text-lg(18) / 行高 28, font-medium;
 //   - EmptyDescription: text-sm(14) / 行高 20, muted;
@@ -19,6 +20,7 @@ const (
 	emptyPad        int32 = 24
 	emptyGap        int32 = 24
 	emptyHeaderGap  int32 = 8
+	emptyHeaderMaxW int32 = 384 // 上游 EmptyHeader 的 max-w-[384px]
 	emptyMediaSize  int32 = 40
 	emptyIconSize   int32 = 24
 	emptyTitleH     int32 = 28
@@ -129,9 +131,11 @@ func (m *EmptyMedia) onPaint(hEle int, hDraw int, pbHandled *bool) int {
 //	ui.NewButton(0, 0, 0, 0, "Create Project", row.Handle)
 type Empty struct {
 	*widget.LayoutEle
-	body    *widget.LayoutEle
-	header  *widget.LayoutEle
-	content *widget.LayoutEle
+	body          *widget.LayoutEle
+	header        *widget.LayoutEle
+	content       *widget.LayoutEle
+	headerClamped bool // Header 当前是否锁在 384(仅用于避免重复改布局)
+	clampQueued   bool // 尺寸事件里排队, 避免布局趟内重入
 }
 
 // NewEmpty 创建空状态容器。cy 仅作初始高度, 实际高度按内容自撑(布局项声明可覆盖)。
@@ -172,7 +176,53 @@ func NewEmpty(x, y, cx, cy int32, hParent int) *Empty {
 	e.header.Show(false)
 	e.content = e.newSlot(emptyContentGap)
 	e.content.Show(false)
+	// Header 的 max-w-[384px]: 可用宽(容器宽减左右内边距)超过 384 时锁成 384,
+	// 由 Body 的水平居中摆到中间; 更窄时保持整宽。量宽必须等布局完成, 所以挂在
+	// Body 的尺寸事件上, 并排到下一轮消息(尺寸事件里改子项宽度会重入布局趟)。
+	e.body.AddEvent_Size(func(hEle int, nFlags xcc.AdjustLayout_, nAdjustNo uint32, pbHandled *bool) int {
+		e.scheduleHeaderClamp()
+		return 0
+	})
+	e.scheduleHeaderClamp()
 	return e
+}
+
+// scheduleHeaderClamp 把 Header 宽度钳制排到下一轮消息(去重: 一次布局可能连发多个尺寸事件)。
+func (e *Empty) scheduleHeaderClamp() {
+	if e == nil || e.clampQueued {
+		return
+	}
+	e.clampQueued = true
+	app.AfterFunc(0, func() {
+		e.clampQueued = false
+		e.clampHeader()
+	})
+}
+
+// clampHeader 按 Body 可用宽设置 Header 宽度: 超过 384 锁 Fixed(384), 否则回 Fill。
+// 元素在 resize 后可能被回收, 改布局前先校验句柄。
+func (e *Empty) clampHeader() {
+	if e == nil || e.header == nil || !xc.XC_IsHXCGUI(e.header.Handle, xcc.XC_ELE) {
+		return
+	}
+	var rc xc.RECT
+	xc.XEle_GetClientRect(e.body.Handle, &rc)
+	avail := rc.Right - rc.Left - 2*emptyPad
+	if avail <= 0 {
+		return
+	}
+	clamp := avail > emptyHeaderMaxW
+	if clamp == e.headerClamped {
+		return
+	}
+	e.headerClamped = clamp
+	if clamp {
+		e.header.LayoutItem_SetWidth(xcc.Layout_Size_Fixed, emptyHeaderMaxW)
+	} else {
+		e.header.LayoutItem_SetWidth(xcc.Layout_Size_Fill, 0)
+	}
+	e.body.AdjustLayout()
+	e.body.Redraw(false)
 }
 
 func (e *Empty) newSlot(gap int32) *widget.LayoutEle {

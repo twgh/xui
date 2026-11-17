@@ -52,6 +52,7 @@ type InputOTP struct {
 	slots     []*widget.Edit
 	invalid   bool
 	disabled  bool
+	readOnly  bool
 	changes   []func(value string)
 	completes []func(value string)
 }
@@ -93,6 +94,13 @@ func WithInputOTPInvalid() InputOTPOption {
 // WithInputOTPDisabled 禁用(整组 opacity-50, 同上游 has-disabled)。
 func WithInputOTPDisabled() InputOTPOption {
 	return func(o *InputOTP) { o.disabled = true }
+}
+
+// WithInputOTPReadOnly 只读: 用户不能键入 / 退格 / 粘贴, 但格子仍可聚焦、
+// 可选中复制、在 Tab 链里; 程序化 SetValue 仍生效(同原生 <input readonly>,
+// 与 WithInputOTPDisabled 的"完全不可交互"区分)。
+func WithInputOTPReadOnly() InputOTPOption {
+	return func(o *InputOTP) { o.readOnly = true }
 }
 
 // NewInputOTP 创建验证码输入框。宽高传 0 按内容自撑(格数×32 + 分隔符×16)。
@@ -153,6 +161,7 @@ func NewInputOTP(x, y, cx, cy int32, hParent int, opts ...InputOTPOption) *Input
 		e.EnableBkTransparent(true)
 		e.EnableDrawBorder(false).EnableDrawFocus(false)
 		e.EnableAutoSelAll(false)
+		e.EnableReadOnly(o.readOnly)
 		e.SetBorderSize(0, 0, 0, 0)
 		// 对齐是位掩码: 只给水平位会把垂直位清成"顶部", 水平垂直一起置
 		e.SetTextAlign(xcc.Edit_TextAlign_Flag_Center | xcc.Edit_TextAlign_Flag_Center_V)
@@ -298,6 +307,23 @@ func (o *InputOTP) SetDisabled(v bool) *InputOTP {
 // Disabled 返回是否禁用。
 func (o *InputOTP) Disabled() bool { return o.disabled }
 
+// SetReadOnly 设置/解除只读: 用户键入 / 退格 / 粘贴都不改值, 焦点、选中与复制保留;
+// 程序化 SetValue 仍生效(同原生 <input readonly>)。与 SetDisabled 可独立组合。
+func (o *InputOTP) SetReadOnly(v bool) *InputOTP {
+	if o == nil {
+		return o
+	}
+	o.readOnly = v
+	for _, e := range o.slots {
+		e.EnableReadOnly(v)
+		e.Redraw(false)
+	}
+	return o
+}
+
+// ReadOnly 返回是否只读。
+func (o *InputOTP) ReadOnly() bool { return o != nil && o.readOnly }
+
 // SetFieldState 实现 FieldControl: 由 Field 级联校验失败/禁用态。
 func (o *InputOTP) SetFieldState(invalid, disabled bool) {
 	o.SetInvalid(invalid)
@@ -390,7 +416,7 @@ func (o *InputOTP) onChar(i int32, wParam uintptr, pbHandled *bool) {
 		return
 	}
 	*pbHandled = true
-	if o.disabled || i < 0 || i >= int32(len(o.slots)) {
+	if o.disabled || o.readOnly || i < 0 || i >= int32(len(o.slots)) {
 		return
 	}
 	if o.pattern != nil && !o.pattern(ch) {
@@ -432,7 +458,7 @@ func (o *InputOTP) onKeyDown(i int32, wParam uintptr, pbHandled *bool) {
 		*pbHandled = true
 	case vkBack:
 		*pbHandled = true
-		if o.disabled || i < 0 {
+		if o.disabled || o.readOnly || i < 0 {
 			return
 		}
 		if o.slots[i].GetText() != "" {
@@ -445,15 +471,19 @@ func (o *InputOTP) onKeyDown(i int32, wParam uintptr, pbHandled *bool) {
 		}
 	case vkDel:
 		*pbHandled = true
-		if o.disabled || i < 0 {
+		if o.disabled || o.readOnly || i < 0 {
 			return
 		}
 		o.setSlotText(i, "")
 		o.notify()
 	case vkV:
-		// 原生粘贴只落一格(没有 maxlength 也会整段塞进来), 自己分发
+		// 原生粘贴只落一格(没有 maxlength 也会整段塞进来), 自己分发。
+		// 只读/禁用时同样吞掉, 避免原生把整段文字塞进一个格子。
 		if uint16(wapi.GetAsyncKeyState(vkControl))&0x8000 != 0 {
 			*pbHandled = true
+			if o.disabled || o.readOnly {
+				return
+			}
 			o.paste(i)
 		}
 	}
@@ -461,7 +491,7 @@ func (o *InputOTP) onKeyDown(i int32, wParam uintptr, pbHandled *bool) {
 
 // paste 从 from 号格起粘贴剪贴板内容(非法字符跳过), 焦点停在最后写入的格。
 func (o *InputOTP) paste(from int32) {
-	if o.disabled || from < 0 {
+	if o.disabled || o.readOnly || from < 0 {
 		return
 	}
 	chars := o.filterRunes([]rune(otpClipboardText()))
