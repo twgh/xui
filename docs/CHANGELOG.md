@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第二十批: Menu 打开否决/条目高亮与 MessageScroller 交互信号停跟随**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q8-2 / Q8-5):
+  - **Menu(CM3)**: `Menu.OnOpenChangeVeto(func(open bool) bool)` 与 `ContextMenu.OnOpenChangeVeto` —— 弹层出现前询问, 返回 false 取消本次弹出(否决在 build 之前, 不留游离原生菜单); 原生菜单的关闭由系统完成、无法拦截, 所以只询问 open=true。
+  - **Menu(CM3)**: `OnItemHighlighted(func(text string))` —— 从原生菜单绘制回调的 Stay 状态观测热条目, 鼠标悬停与键盘导航都触发; 离开全部条目时延迟一轮消息确认没有下一条接棒, 再回调空串。
+  - **Menu(CM3)**: `WithMenuLoopFocus` 不做 —— 原生菜单不暴露键盘循环开关, 记入 DESIGN 差异表(能力边界)。
+  - **MessageScroller(MSC1)**: 非滚动交互算用户接管 —— 窗口级 `LButtonUp` 命中容器子树(选择文本 / 链接 / 按钮)或容器内焦点按 ↑↓ / Home / End / PageUp / PageDown / 空格时调 `noteUserScroll(false)`, 立即取消跟随; 事件在组件销毁时摘除。
+  - **验收**: `go build ./...` / `go vet ./...` / `go test ./...` 全绿; MSC1 只改交互后的跟随状态, 默认滚动落点不变; demo 无需改动。`registry.json` 的 `runtime` / `cliChange` 未动。
+
 - ✅ **组件特性核查第十九批: Marker 纵向布局 / Drawer 抓手开关**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q8 剩余可直接排期项):
   - **Marker(MK1)**: 新增 `WithMarkerVertical(bool)`: 根改竖排、图标在上, 图标与文字水平居中(间距仍 8); 文字改按量宽居中, 不再铺满截断, 对应上游 flex-col 的 With Icon 形态。
   - **Drawer(DR4)**: 新增 `WithDrawerSwipeHandle(bool)`(默认 true): 控制底部抽屉顶部抓手是否显示; 关掉后仍可点遮罩 / ESC 关闭, 只是没有拖拽关闭入口。

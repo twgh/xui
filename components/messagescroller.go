@@ -5,6 +5,7 @@ import (
 
 	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/widget"
+	"github.com/twgh/xcgui/window"
 	"github.com/twgh/xcgui/xc"
 	"github.com/twgh/xcgui/xcc"
 	"github.com/twgh/xui"
@@ -138,6 +139,8 @@ func WithMessageScrollerPreserveOnPrepend(preserve bool) MessageScrollerOption {
 //     第一个锚点项顶到视口顶部, 并保留上一条的 peek 像素;
 //   - 前置历史(prepend)默认保持视口里的内容不动, 可用 WithMessageScrollerPreserveOnPrepend(false) 关掉;
 //   - 用户在任意滚动之后离开底部 → 取消跟随; 滚回底部 → 重新跟随;
+//   - 点击容器内任意位置(选择文本 / 链接 / 按钮)或在容器内按滚动类按键(↑↓ / Home / End /
+//     PageUp / PageDown / 空格)也视为"用户接管", 立即取消跟随(上游 viewport 的 click/keydown);
 //   - 轮次锚点正在被流式追加内容时, 锚点保持在视口顶部;
 //   - 浮动按钮只在对应方向还能滚时出现, 点击平滑滚动到端点; 不占用布局。
 //
@@ -162,6 +165,12 @@ type MessageScroller struct {
 	buttonVariant     ButtonVariant
 	buttonSize        ButtonSize
 	buttonBox         int32
+
+	// 非滚动交互信号(点击/键盘)的窗口级事件登记: 视口是原生 LayoutFrame,
+	// 没有 DOM viewport 的 click/keydown, 只能挂宿主窗口事件并按命中/焦点过滤。
+	hWindow int
+	clickID int
+	keyID   int
 
 	items []*MessageScrollerItem
 	byID  map[string]*MessageScrollerItem
@@ -331,9 +340,67 @@ func NewMessageScroller(x, y, cx, cy int32, hParent int, opts ...MessageScroller
 		xui.DropPresence(ele.Handle, s.buttonKey)
 		return 0
 	})
+	s.installInteraction()
 	xui.AttachWindow(ele.Handle)
 	s.layoutViewport()
 	return s
+}
+
+// installInteraction 把"非滚动交互"也算成用户接管(上游 viewport 是可聚焦 region,
+// click / keydown 都调 userScrollIntent): 点击落在容器内(选择文本、链接、按钮)或
+// 焦点在容器内时按下滚动类按键, 立即退出跟随。
+// 视口是原生 LayoutFrame, 拿不到 DOM 的 click/keydown, 只能挂窗口级事件并按
+// "点击命中 stay 元素 / 焦点元素在子树内"过滤; 组件销毁时摘掉登记。
+func (s *MessageScroller) installInteraction() {
+	s.hWindow = xui.HostWindowOf(s.Handle)
+	if s.hWindow == 0 {
+		return
+	}
+	w := window.NewByHandle(s.hWindow)
+	if w == nil {
+		return
+	}
+	s.clickID = w.AddEvent_LButtonUp(func(hWindow int, _ uint, _ *xc.POINT, _ *bool) int {
+		stay := xc.XWnd_GetStayEle(hWindow)
+		if stay != 0 && (stay == s.Handle || xc.XEle_IsChildEle(s.Handle, stay)) {
+			s.noteUserScroll(false)
+			s.syncState()
+		}
+		return 0
+	}, true)
+	s.keyID = w.AddEvent_KeyDown(func(hWindow int, wParam, _ uintptr, _ *bool) int {
+		if !messageScrollerIntentKey(wParam) {
+			return 0
+		}
+		fe := xc.XWnd_GetFocusEle(hWindow)
+		if fe == 0 || (fe != s.Handle && !xc.XEle_IsChildEle(s.Handle, fe)) {
+			return 0
+		}
+		s.noteUserScroll(false)
+		s.syncState()
+		return 0
+	}, true)
+	s.Element.AddEvent_Destroy(func(hEle int, pbHandled *bool) int {
+		if s.hWindow != 0 && xc.XC_IsHXCGUI(s.hWindow, xcc.XC_WINDOW) {
+			if s.clickID > 0 {
+				w.RemoveEvent(xcc.WM_LBUTTONUP, s.clickID)
+			}
+			if s.keyID > 0 {
+				w.RemoveEvent(xcc.WM_KEYDOWN, s.keyID)
+			}
+		}
+		s.clickID, s.keyID = 0, 0
+		return 0
+	})
+}
+
+// messageScrollerIntentKey 对应上游 viewport onKeyDown 的按键集合(滚动类按键)。
+func messageScrollerIntentKey(key uintptr) bool {
+	switch key {
+	case 0x26, 0x28, 0x21, 0x22, 0x23, 0x24, 0x20: // ↑ ↓ PageUp PageDown End Home Space
+		return true
+	}
+	return false
 }
 
 // Content 返回内容区(竖向流容器): 宽铺满视口、高按内容自撑。一般用 AddItem 加条目,

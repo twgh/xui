@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/twgh/xcgui/app"
 	"github.com/twgh/xcgui/common"
 	"github.com/twgh/xcgui/drawx"
 	"github.com/twgh/xcgui/wapi"
@@ -90,8 +91,16 @@ type Menu struct {
 	// disabledAll 整菜单禁用: 全部条目按禁用态构建(灰显、不可点)。
 	disabledAll bool
 
-	opens   []func(bool)                   // OnOpenChange 注册的开合回调
+	opens   []func(bool)                    // OnOpenChange 注册的开合回调
 	radioCB func(group int32, value string) // 单选组变化回调
+
+	// openVeto 在每次弹出前询问(返回 false 取消本次弹出)。原生菜单是阻塞的,
+	// 关闭动作由 native 自己完成, 无法拦截, 所以只有 open=true 会被询问。
+	openVeto func(open bool) bool
+	// highlight 是热条目变化回调(鼠标悬停 / 键盘导航); 空串表示离开全部条目。
+	highlight   func(text string)
+	lastHotID   int32
+	clearQueued bool
 }
 
 // MenuSide 是弹层相对触发区的一侧, 对应 Base UI MenuContent 的 side(默认 bottom)。
@@ -373,6 +382,7 @@ type ContextMenu struct {
 	hWindow      int
 	build        func(*Menu)
 	onOpenChange func(open bool)
+	openVeto     func(open bool) bool
 	enabled      bool
 }
 
@@ -411,6 +421,16 @@ func (c *ContextMenu) OnOpenChange(fn func(open bool)) *ContextMenu {
 	return c
 }
 
+// OnOpenChangeVeto 注册可否决的打开回调: 返回 false 取消这次弹出(原生菜单的关闭无法拦截,
+// 口径同 Menu.OnOpenChangeVeto)。
+func (c *ContextMenu) OnOpenChangeVeto(fn func(open bool) bool) *ContextMenu {
+	if c == nil || fn == nil {
+		return c
+	}
+	c.openVeto = fn
+	return c
+}
+
 // handleRightUp 在窗口右键事件里做触发区命中测试。
 // 多个触发区重叠时由后创建者先处理(窗口事件按注册逆序执行), 处理后置 pbHandled
 // 阻止其它触发区继续弹菜单。
@@ -430,6 +450,9 @@ func (c *ContextMenu) handleRightUp(hWindow int, pPt *xc.POINT, pbHandled *bool)
 		*pbHandled = true
 	}
 	HideTooltip(c.hEle)
+	if c.openVeto != nil && !c.openVeto(true) {
+		return
+	}
 	if c.onOpenChange != nil {
 		c.onOpenChange(true)
 	}
@@ -442,6 +465,10 @@ func (c *ContextMenu) handleRightUp(hWindow int, pPt *xc.POINT, pbHandled *bool)
 }
 
 func (m *Menu) popup(hWindow int) {
+	// 否决放在 build 之前: 原生菜单对象创建后不弹出就不会被自动销毁, 会留一个游离菜单。
+	if m.openVeto != nil && !m.openVeto(true) {
+		return
+	}
 	m.m = m.build(hWindow)
 	// 传给原生的锚点只决定它的初始落位; 最终位置在 Menu_PopupWnd 回调里统一校正
 	// (原生在副屏上会错位, 见 menuPopupBody)。这里不要做任何事后校正: XMenu_Popup
@@ -473,6 +500,45 @@ func (m *Menu) notifyOpenChange(open bool) {
 	for _, fn := range m.opens {
 		fn(open)
 	}
+}
+
+// OnOpenChangeVeto 注册"可否决"的打开回调: 弹层出现前询问, 返回 false 取消这次弹出。
+// 原生菜单的关闭由系统自己完成(阻塞弹出返回即已销毁), 无法拦截关闭, 因此只有 open=true
+// 会被询问; 需要在关闭时做事仍用 OnOpenChange(false)。
+func (m *Menu) OnOpenChangeVeto(fn func(open bool) bool) *Menu {
+	if m == nil || fn == nil {
+		return m
+	}
+	m.openVeto = fn
+	return m
+}
+
+// OnItemHighlighted 注册热条目变化回调(对应 Base UI Menu 的条目高亮通知):
+// 鼠标悬停或键盘导航切换条目时触发, text 是该条目的显示文本; 离开全部条目时回调空串。
+// 禁用条目、分组标签与分隔栏不会触发。
+func (m *Menu) OnItemHighlighted(fn func(text string)) *Menu {
+	if m == nil || fn == nil {
+		return m
+	}
+	m.highlight = fn
+	return m
+}
+
+// scheduleHighlightClear 条目失去热态时延迟一轮消息再确认: 同一次重绘里可能已经有下一条
+// 接棒(原生只重绘变化的两项), 立即回调空串会把"移到下一项"误报成"离开菜单"。
+func (m *Menu) scheduleHighlightClear(id int32) {
+	if m == nil || m.highlight == nil || m.clearQueued {
+		return
+	}
+	m.clearQueued = true
+	app.AfterFunc(0, func() {
+		m.clearQueued = false
+		if menuSkin.active != m || m.lastHotID != id {
+			return
+		}
+		m.lastHotID = 0
+		m.highlight("")
+	})
 }
 
 // build 创建原生菜单并同步条目。
@@ -515,6 +581,7 @@ func (m *Menu) build(hWindow int) *widget.Menu {
 	m.applyItemWidths(menu)
 	ensureMenuSkin(hWindow)
 	menuSkin.active = m
+	m.lastHotID, m.clearQueued = 0, false
 	menu.AddEvent_Menu_Select(hWindow, func(_ int, nID int32, _ *bool) int {
 		m.dispatch(nID)
 		return 0
@@ -522,6 +589,12 @@ func (m *Menu) build(hWindow int) *widget.Menu {
 	menu.AddEvent_Menu_Exit(hWindow, func(_ int, _ *bool) int {
 		if menuSkin.active == m {
 			menuSkin.active = nil
+		}
+		if m.lastHotID != 0 {
+			m.lastHotID = 0
+			if m.highlight != nil {
+				m.highlight("") // 关闭时把"离开条目"补发给调用方
+			}
 		}
 		return 0
 	}, false)
@@ -978,6 +1051,21 @@ func menuDrawItem(_ int, hDraw int, pInfo *xc.Menu_DrawItem_, pbHandled *bool) i
 		hot = false
 	}
 	isLabel := it != nil && it.kind == menuKindLabel
+	// 高亮回调: 原生菜单的 Stay 状态就是当前热条目(鼠标悬停与键盘导航都会置位)。
+	// 只在条目切换时回调; 离开时延迟一轮消息确认没有别的条目接棒(见 scheduleHighlightClear)。
+	if am := menuSkin.active; am != nil && it != nil {
+		switch {
+		case hot && !disabled && !isLabel:
+			if am.lastHotID != pInfo.NID {
+				am.lastHotID = pInfo.NID
+				if am.highlight != nil {
+					am.highlight(it.text)
+				}
+			}
+		case !hot && am.lastHotID == pInfo.NID:
+			am.scheduleHighlightClear(pInfo.NID)
+		}
+	}
 	// 悬停底与字色按过渡值淡入淡出。载体是原生菜单弹窗(pInfo.HWindow): 鼠标在条目
 	// 间移动时原生自己会重绘, 过渡值由 xui 按"窗口 + 条目 ID"保管并驱动补帧。
 	hv := xui.HoverItem(pInfo.HWindow, pInfo.NID, hot && !isLabel)

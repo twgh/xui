@@ -71,13 +71,13 @@
 | 53 | Chart | `chart` | 已核查 | 结论见 3.11;七形态+交互齐全,缺口在 Tooltip/Legend props 与参考线等 |
 | 54 | Drawer | `drawer` | 已核查 | 结论见 3.11;四向+拖拽关闭就绪;DR4 抓手开关已落地(第十九批);缺 snapPoints/非模态/嵌套 |
 | 55 | Button Group | `button-group` | 已核查 | 结论见 3.11;横纵/嵌套/文本/分隔条齐,组合拼接边界待确认 |
-| 56 | Context Menu | `menu` | 已核查 | 结论见 3.11;与 Dropdown Menu 同一实现;特有缺口=长按触发(CM1) |
+| 56 | Context Menu | `menu` | 已核查 | 结论见 3.11;与 Dropdown Menu 同一实现;CM3 否决/高亮已落地(第二十批),键盘循环为能力边界;特有缺口=长按触发(CM1) |
 | 57 | Trace | `trace` | 已核查 | 结论见 3.11;索引页 New;状态/折叠/嵌套齐,仅 AI SDK 便捷工厂(TR1) |
 | 58 | Message | `message` | 已核查 | 结论见 3.11;三段布局齐;Header 对齐与上游有差异(MSG2) |
 | 59 | Bubble | `bubble` | 已核查 | 结论见 3.11;七变体+反应齐;ghost 富内容(BUB1)待确认 |
 | 60 | Marker | `marker` | 已核查 | 结论见 3.11;三变体齐;MK2 shimmer 已落地(第十八批),MK1 纵向布局已落地(第十九批) |
 | 61 | Attachment | `attachment` | 已核查 | 结论见 3.11;五态三档齐;缺 image 媒体变体(ATT1) |
-| 62 | Message Scroller | `message-scroller` | 已核查 | 结论见 3.11;锚定/跟随/前置保位齐;MSC2 / MSC3 已落地(第十八批),交互信号停跟随(MSC1)为核心缺口 |
+| 62 | Message Scroller | `message-scroller` | 已核查 | 结论见 3.11;锚定/跟随/前置保位齐;MSC2 / MSC3 已落地(第十八批),MSC1 交互信号停跟随已落地(第二十批) |
 | 63 | Questionnaire | `questionnaire` | 已核查 | 结论见 3.11;单多选/快捷键/校验齐;自定义校验(QN1)与输入框 label(QN2) |
 
 **范围外(官方侧栏 66 个中的另 3 个 + 侧栏分组)**:
@@ -1195,7 +1195,7 @@
 
 ## 五、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三~十九批已落地(第十二批只出核查结论)。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三~二十批已落地(第十二批只出核查结论)。
 
 **第一批**:
 
@@ -1399,7 +1399,14 @@
 | MK1 | Marker | `WithMarkerVertical(bool)`: 图标放到文字上方(根改竖排, 图标与文字水平居中, 间距仍 8), 对应上游 flex-col 的 With Icon 形态; 文字改按量宽居中, 不再铺满截断 |
 | DR4 | Drawer | `WithDrawerSwipeHandle(bool)`(默认 true): 控制底部抽屉顶部抓手是否显示; 关掉后仍可点遮罩 / ESC 关闭, 只是没有拖拽关闭入口 |
 
-**下一批建议**: 当前无待排期项, Q6 / Q7 已收口; Q8 的 CH1~CH3 已在第十六批、QN1 / QN2 / MSG2 已在第十七批、SP1 / MK2 / MSC2 / MSC3 已在第十八批、MK1 / DR4 已在第十九批落地, 剩余可直接排期项仅 CM3; MSC1 单列待拍板。其余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
+**第二十批**(CM3 / MSC1; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| CM3 | Menu / ContextMenu | `OnOpenChangeVeto(func(open bool) bool)`: 弹层出现前询问, 返回 false 取消本次弹出(否决在 build 之前, 不留游离原生菜单); `OnItemHighlighted(func(text string))`: 从原生菜单绘制的 Stay 状态观测热条目, 鼠标悬停与键盘导航都触发, 离开全部条目(延迟一轮消息确认无接棒)回调空串; **`WithMenuLoopFocus` 不做**: 原生菜单不暴露键盘循环开关(能力边界, 记入 DESIGN 差异表) |
+| MSC1 | MessageScroller | 非滚动交互信号算"用户接管": 窗口级 `LButtonUp` 命中容器子树(选择文本 / 链接 / 按钮)与容器内焦点按 ↑↓ / Home / End / PageUp / PageDown / 空格时调 `noteUserScroll(false)`, 立即退出跟随; 对应上游可聚焦 viewport 的 click/keydown, 事件在组件销毁时摘除 |
+
+**下一批建议**: Q8 可直接排期项已全部收口; CM3 的两项已落地(键盘循环为 xcgui 能力边界), MSC1 已落地。剩余为已明确暂缓/不做的项与 CM1(长按触发)等低优先缺口, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -1452,10 +1459,10 @@
 | # | 涉及条目 | 建议 | 状态 |
 |---|---|---|---|
 | Q8-1 | CH1 / CH2 / CH3 | Chart Tooltip 指示条样式与隐藏开关、标题 formatter、图例 top/bottom:都是官方 Props 表里的现成项,改动局限在 `paintTooltip` / `layoutLegend` | 已落地(第十六批) |
-| Q8-2 | CM3 | 菜单根级 `OnOpenChangeVeto` / `OnItemHighlighted` / `WithMenuLoopFocus`:与 Dropdown Menu 共用 `menu.go`,一次改动两处生效 | 可直接排期 |
+| Q8-2 | CM3 | 菜单根级 `OnOpenChangeVeto` / `OnItemHighlighted` / `WithMenuLoopFocus`:与 Dropdown Menu 共用 `menu.go`,一次改动两处生效 | 已落地否决 + 高亮(第二十批);`WithMenuLoopFocus` 为 xcgui 能力边界(原生菜单无循环开关) |
 | Q8-3 | QN1 / QN2 | Questionnaire 自定义校验回调 + 输入框可见 label:对齐官方 Custom Validation / Accessibility | 已落地(第十七批) |
 | Q8-4 | MSG2 | Message Header 固定 start 对齐(与上游一致,修正本库随 align 右对齐的差异) | 已落地(第十七批) |
-| Q8-5 | MSC1 | Message Scroller 非滚动交互信号(选择/键盘/链接)停止跟随:是官方"跟随意图"核心卖点,但要挂多处事件 | 待拍板(收益高、回归面较大) |
+| Q8-5 | MSC1 | Message Scroller 非滚动交互信号(选择/键盘/链接)停止跟随:是官方"跟随意图"核心卖点,但要挂多处事件 | 已落地(第二十批):窗口级点击命中 + 容器内键盘滚动键 |
 | Q8-6 | CH4~CH11 / DR1~DR5 / BUB1~BUB2 / ATT1 / TR1 / MSG1 / MK1 / MK2 / MSC2~MSC4 / QN3~QN5 / BG1~BG2 / SP1 | 其余均为中-大改或"低"优先小改 | 暂缓:按真实需求随组件下次改动补 |
 
-**可直接排期(无需确认, Q8 批)**: CH1 / CH2 / CH3 已落地(第十六批); QN1 / QN2 / MSG2 已落地(第十七批); SP1、MSC2 / MSC3、MK2 已落地(第十八批); MK1 / DR4 已落地(第十九批); 剩余 CM3 为小改,可另起一批落地;MSC1 单列待拍板。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
+**可直接排期(无需确认, Q8 批)**: 全部收口 —— CH1 / CH2 / CH3(第十六批), QN1 / QN2 / MSG2(第十七批), SP1 / MK2 / MSC2 / MSC3(第十八批), MK1 / DR4(第十九批), CM3 否决/高亮与 MSC1(第二十批);`WithMenuLoopFocus` 记入 DESIGN 差异表(原生菜单能力边界)。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
