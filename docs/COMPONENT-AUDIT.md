@@ -10,7 +10,7 @@
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
-> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#51(逐组件结论见第三节,实现进度见第五节),**下一轮核查从 #52 Spinner 起**。
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#63(逐组件结论见第三节,实现进度见第五节),**63 个可核查组件已全部核查完毕,无待核查项**(余下工作为实现:见第五节 Q8 与可直接排期项)。
 
 ## 一、按常用性排序的总表
 
@@ -67,18 +67,18 @@
 | 49 | Item | `item` | 已核查 | 结论见 3.10;三变体 / 两档 / 五槽已具备;IT1 xs 已落地(第十三批),IT2 / IT3 待确认 |
 | 50 | Native Select | `native-select` | 已核查 | 结论见 3.10;value 语义已具备;NS1 禁用已落地(第十三批),NS2 / NS3 分组与 value 分离待确认 |
 | 51 | Input OTP | `input-otp` | 已核查 | 结论见 3.10;文档示例全部覆盖;OTP1 readOnly 待确认,OTP2 / OTP3 暂缓,跨格选择为能力边界 |
-| 52 | Spinner | `spinner` | 待核查 | |
-| 53 | Chart | `chart` | 待核查 | |
-| 54 | Drawer | `drawer` | 待核查 | |
-| 55 | Button Group | `button-group` | 待核查 | |
-| 56 | Context Menu | `menu` | 待核查 | 与 Dropdown Menu 同一实现 |
-| 57 | Trace | `trace` | 待核查 | 官方索引页 New Components 之一 |
-| 58 | Message | `message` | 待核查 | |
-| 59 | Bubble | `bubble` | 待核查 | |
-| 60 | Marker | `marker` | 待核查 | |
-| 61 | Attachment | `attachment` | 待核查 | |
-| 62 | Message Scroller | `message-scroller` | 待核查 | |
-| 63 | Questionnaire | `questionnaire` | 待核查 | |
+| 52 | Spinner | `spinner` | 已核查 | 结论见 3.11;仅换图标(SP1)一项,低优先 |
+| 53 | Chart | `chart` | 已核查 | 结论见 3.11;七形态+交互齐全,缺口在 Tooltip/Legend props 与参考线等 |
+| 54 | Drawer | `drawer` | 已核查 | 结论见 3.11;四向+拖拽关闭就绪,缺 snapPoints/非模态/嵌套 |
+| 55 | Button Group | `button-group` | 已核查 | 结论见 3.11;横纵/嵌套/文本/分隔条齐,组合拼接边界待确认 |
+| 56 | Context Menu | `menu` | 已核查 | 结论见 3.11;与 Dropdown Menu 同一实现;特有缺口=长按触发(CM1) |
+| 57 | Trace | `trace` | 已核查 | 结论见 3.11;索引页 New;状态/折叠/嵌套齐,仅 AI SDK 便捷工厂(TR1) |
+| 58 | Message | `message` | 已核查 | 结论见 3.11;三段布局齐;Header 对齐与上游有差异(MSG2) |
+| 59 | Bubble | `bubble` | 已核查 | 结论见 3.11;七变体+反应齐;ghost 富内容(BUB1)待确认 |
+| 60 | Marker | `marker` | 已核查 | 结论见 3.11;三变体齐;纵向布局(MK1)与 shimmer 开关(MK2)小改 |
+| 61 | Attachment | `attachment` | 已核查 | 结论见 3.11;五态三档齐;缺 image 媒体变体(ATT1) |
+| 62 | Message Scroller | `message-scroller` | 已核查 | 结论见 3.11;锚定/跟随/前置保位齐;交互信号停跟随(MSC1)为核心缺口 |
+| 63 | Questionnaire | `questionnaire` | 已核查 | 结论见 3.11;单多选/快捷键/校验齐;自定义校验(QN1)与输入框 label(QN2) |
 
 **范围外(官方侧栏 66 个中的另 3 个 + 侧栏分组)**:
 
@@ -983,6 +983,208 @@
 
 **本批结论**:只出核查结论,未改组件源码。可直接排期(无需确认):CR2 页码指示、IT1 xs 尺寸档、NS1 整体禁用。待拍板项见 Q7;其余暂缓项按真实需求再立项。
 
+### 3.11 Spinner / Chart / Drawer / Button Group / Context Menu / Trace / Message / Bubble / Marker / Attachment / Message Scroller / Questionnaire(#52 ~ #63)
+
+本批核查前先把本地 shadcn 参考实现缺失的 `chart.tsx` / `button-group.tsx` / `context-menu.tsx` 补齐(base-nova 风格,从官方 registry 取源后适配别名与图标:button-group 的 `@/registry` 改 `@/components/ui`、context-menu 的 `IconPlaceholder` 换 lucide `ChevronRightIcon` / `CheckIcon`,并装 `recharts@3.8.0`),`pnpm build` 通过。本批分两类:#52~#56 是官方索引页 Components 分组的基础/扩展组件,#57~#63 是 New Components(Trace)与 AI/会话相关组件(Message / Bubble / Marker / Attachment / Message Scroller / Questionnaire,官方均有独立 base 文档页)。多数核心特性本库早已覆盖;缺口集中在"官方示例第一档参数"(Chart 的 Tooltip/Legend props、Marker 的纵向布局)与"上游特有触发/语义"(ContextMenu 长按、MessageScroller 交互信号停跟随、Questionnaire 自定义校验)两类。
+
+#### Spinner(#52)
+
+**官方页**:只有 `Spinner`(Loader2 图标 + `size-4 animate-spin`),无变体/状态;Customization 允许换图标(改源码)、Size 用 `size-*` 工具类;Button / Badge / Input Group / Empty 里配合 `data-icon="inline-start/end"` 摆放;含 RTL(排除)。
+
+**已具备**:`NewSpinner` + `WithSpinnerSize`(默认 16)/ `WithSpinnerMuted` / `WithSpinnerColorFunc`;`SetSpinning` / `Spinning`;绘制 Loader2 + `xui.Spin` 取相位(1s/圈,不自起定时器)、paint 回调实时取主题色;作为布局项自带 Fixed 宽高,可直接塞行;按钮内加载走 Button 的 `WithButtonLoading`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| SP1 | 换图标(非 Loader2) | Customization 段 | 图标常量写死 `icons.IconLoader2` | 小:加 `WithSpinnerIcon(path)`,`onPaint` 改取配置图标 | 小 / 低 |
+
+**明确不做**:`data-slot` / `role="status"` / `aria-label` 等 DOM 语义;RTL;`className` 任意覆盖(用 `WithSpinnerSize` / `ColorFunc` 表达)。Button / Badge / Empty 组合由调用方把 Spinner 放进对应槽,不新增专用入口。
+
+#### Chart(#53)
+
+**官方页**:基于 Recharts v3 的"不封装"式包装(`ChartContainer` 内由调用方写 `<BarChart>` 等),从 Your First Chart(Bar)逐节叠加 Grid / Axis / Tooltip / Legend,再讲 ChartConfig / Theming(`--chart-1..5`)/ Colors / Data / Tailwind / Tooltip(Props/Colors/Custom)/ Legend / Accessibility(`accessibilityLayer`)/ RTL(排除);示例库按 Area / Bar / Line / Pie / Radar / Radial 六族,各含 Stacked / Gradient / Icons / Label / Dots / Interactive / Mixed 变体。`ChartTooltipContent` 有正式 Props 表(`labelKey` / `nameKey` / `indicator: dot|line|dashed` / `hideLabel` / `hideIndicator` / `formatter` / `labelFormatter` / `color`);`ChartLegendContent` 有 `nameKey` / `hideIcon` / `verticalAlign`。
+
+**已具备**:七种形态 `ChartBar` / `ChartLine` / `ChartArea` / `ChartPie` / `ChartDonut` / `ChartRadial` / `ChartRadar`(`NewChart` + `WithChartKind`,可 `SetKind`),`ChartSeries{Label,Values,Color}` + `WithChartData`;`WithChartStacked/Curve/Dots/Grid/Tooltip/Legend/BarLabels/YFormat/YDomain/Horizontal/InnerRatio/Center` 及全部 `SetXxx`;绘制侧网格+双轴+悬停线、堆叠柱+柱顶标签、平滑曲线/面积、饼图百分比+悬停外扩、同心弧、雷达网格+轴标签;命中测试+窗口级 MouseMove(绕过 ScrollArea 事件)、悬停提示卡、图例点击隐藏/恢复、`OnPointClick`、nice ticks 与 `Chart1..5` 色板轮转,全逻辑像素绘制。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| CH1 | Tooltip 指示条 `dot/line/dashed` + `hideIndicator` / `hideLabel` | 官方 Tooltip Props | `paintTooltip` 固定 8px 圆点、标题恒显示 | 拆 `indicator` 枚举选项按型画圆点/短竖线/虚线,标题与色块分别可隐 | 小 / 中 |
+| CH2 | Tooltip 标题格式 `labelFormatter` | 官方 Tooltip Props | `WithChartYFormat` 只管数值,标题固定 `labels[hover]` | 加 `WithChartTooltipLabelFormat(fn)`;数值侧已由 `YFormat` 覆盖 | 小 / 中 |
+| CH3 | 图例位置 `verticalAlign = top/bottom` | `ChartLegendContent.verticalAlign` | 布局固定底部居中 | 加 `WithChartLegendTop()` / `SetLegendTop`,`legendH` 改从顶部扣 | 小-中 / 中 |
+| CH4 | 图例/Tooltip 图标(`ChartConfig.icon` / `hideIcon`) | 官方 ChartConfig | 图例与提示卡只有色点 | `ChartSeries` 增图标字段,色点位改画图标,`hideIcon` 回退色点 | 中 / 低 |
+| CH5 | 折线/面积数据点标签(Label) | 官方 Line / Area 的 Label 示例 | `barLabels` 只在 `paintBars` 生效 | 把标志扩到 `paintLines`,每点按 `YFormat` 画值并避让 | 小-中 / 中 |
+| CH6 | 饼图外部标签+引导线(labelLine) | 官方 Pie 的 Label 示例 | 只在扇区内画百分比 | 扇区外缘锚点+折线引导+文字,按角度定左右对齐与防重叠 | 中 / 低 |
+| CH7 | 网格方向开关+轴样式(`vertical/horizontal`、`tickLine/tickMargin`) | 官方 Grid / Axis 段 | `WithChartGrid(on)` 只管开关、方向固定,不画轴线/刻度线 | 拆横竖网格标志,加 `WithChartAxis(tickLine,tickMargin)` | 中 / 低 |
+| CH8 | 线性渐变填充(Area/Bar Gradient) | 官方 Gradient 示例 | 纯色 + `ScaleAlpha(0.22)` | 按数值轴方向采样插值分段填充(不依赖 D2D 渐变 brush) | 中-大 / 低 |
+| CH9 | 阈值参考线/区(ReferenceLine/Area) | Recharts 上游(shadcn 直接暴露) | 无标注层 | `paintAxes` 后加 `paintReferences`,`WithChartReference(v,label)` 画虚线+端点文字 | 中 / 低 |
+| CH10 | 键盘可访问(`accessibilityLayer` 键盘部分) | 官方 Accessibility | 只挂鼠标事件,无焦点/键盘 | 获焦后 ←→/Home/End 调 `setHover`、Enter 触发 `OnPointClick` | 中 / 低 |
+| CH11 | 柱线混合(ComposedChart Mixed) | 官方 Bar 的 Mixed 示例 | 一个 Chart 只能一种 `ChartKind` | `ChartSeries` 增每路形态或引 `ChartComposed`,按路分派绘制 | 大 / 低 |
+
+**明确不做**:RTL(排除);`--chart-*` 仅 5 槽且中性主题灰阶、超 5 类重复取色、无 HTML 响应式容器与 Tooltip 组件联动、横向柱以 `WithChartHorizontal` 表达(均见 DESIGN 第七节);进场动画(逐帧改几何+整窗重绘会排队);纯 Web 概念(`className` / `data-slot` / `ChartStyle` 的 `<style>` 变量注入由 `xui.Theme` 色板替代、`labelKey` / `nameKey` / `render` / `accessibilityLayer` 的 screen reader 部分);圆角裁剪与原生渲染细节(DESIGN 第七节)。
+
+#### Drawer(#54)
+
+**官方页**:已由 vaul 迁到 Base UI Drawer。示例 Custom Sizes、Position(`swipeDirection = up/right/down/left`)、Swipe Handle(`showSwipeHandle`)、Nested(父抽屉堆叠缩小压暗)、Non Modal(`modal={false}` / `modal="trap-focus"` / `disablePointerDismissal`)、Snap Points(`snapPoints` + 受控 `snapPoint` / `onSnapPointChange` / `snapToSequentialPoints`)、Responsive(与 Dialog 组合)、Styling(`--drawer-inset` / `--drawer-bleed-background` / `--drawer-overlay-min-opacity` 与 `data-swipe-*` 属性);API 指向 Base UI。
+
+**已具备**:`NewDrawer` + `WithDrawerDirection`(四向)、`SetDirection` / `Direction`;顶部抓手拖拽关闭(下移超面板 1/3 关闭、否则 `PresenceOnce` 回弹,从当前动画偏移续跑)、遮罩/ESC 关闭;`BindTrigger` / `BindClose`、`Show/Hide/Close/IsOpen/OnClose`、`Content` / `ContentWidth`、`AddFooter`、`SetTitle/Description`、`Refresh`;基于 Sheet 的模态焦点管理与进出场。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| DR1 | Snap Points 吸附档位 | 官方 Snap Points | 只有开/关两态拖拽 | 加档位数组 + 受控当前档,拖拽松手吸附到最近档、阈值关闭 | 中-高 / 低 |
+| DR2 | 非模态 / trap-focus | 官方 Non Modal | 基于 Sheet 恒模态 | 加 `WithDrawerNonModal`,跳过模态焦点与遮罩吞点击 | 中 / 低 |
+| DR3 | Nested 抽屉堆叠 | 官方 Nested | 无堆叠,后开覆盖前者 | 宿主层记录栈,下层缩小压暗露出 peek | 中-高 / 低 |
+| DR4 | `showSwipeHandle` 开关 | 官方 Swipe Handle | 底部方向恒有抓手 | 加选项控制 `addSheetGrabber` | 小 / 低 |
+| DR5 | 自定义面板尺寸(h/max、w) | 官方 Custom Sizes | 无尺寸选项(`ContentWidth` 只读) | 加 `WithDrawerSize(w,h)` 覆盖面板态 | 小-中 / 低 |
+
+**明确不做**:RTL;CSS 变量/data 属性样式钩子、Responsive(Dialog+Drawer 组合,Go 侧按窗口宽度自行选组件);纯 Web 概念(`render` / `asChild`、`disablePointerDismissal` 等);`handleOnly` / `repositionInputs` / `shouldScaleBackground` 等 vaul 专有 props。
+
+#### Button Group(#55)
+
+**官方页**:示例 Orientation、Size(子按钮各自 size)、Nested(嵌套 gap-2)、Separator、Split、Input / Input Group / Dropdown Menu / Select / Popover 组合、RTL(排除);API 仅 `ButtonGroup.orientation` 与 `ButtonGroupSeparator.orientation`,`ButtonGroupText.render`。
+
+**已具备**:`NewButtonGroup` + `WithButtonGroupOrientation`(横/纵)、`SetOrientation` / `Orientation`;相邻边框并一条、首尾外角、嵌套组 gap-2、items-stretch、纵向组消掉按压预留缝;`ButtonGroupText`(`NewButtonGroupText` / `SetText`,按文字量宽,rounded-md)、`ButtonGroupSeparator`(`NewButtonGroupSeparator`,横组竖线/纵组横线,Input 令牌);全主题实时取色。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| BG1 | 与 Select/Input/Dropdown 组合的边界拼接 | 官方对应示例 + tsx 选择器 | 子项各自绘制,组合时相邻圆角与边框可能留缝 | 给组标记相邻 select/input 角色,绘制时按位置收角并去重合边 | 中 / 低 |
+| BG2 | `ButtonGroupText.render`(自定义为 Label 等) | 官方 API | 固定自绘文本,无法挂 `Label` 做 htmlFor | 加"文本槽"返回句柄让调用方放任意控件,或提供 `NewButtonGroupTextSlot` | 小-中 / 低 |
+
+**明确不做**:RTL;`role="group"` / `aria-label` 等无障碍属性;Size 由子按钮各自的 size 表达(本库 Button 已有多档),组本身无 size;组合示例由调用方把已有 Input / Select / Menu 放进组,不新增专用入口。
+
+#### Context Menu(#56)
+
+**官方页**:base/context-menu 独立页,Composition(Trigger/Content/Group/Label/Item/CheckboxItem/RadioGroup/RadioItem/Separator/Shortcut/Sub/SubTrigger/SubContent/Portal)+ Basic / Submenu / Shortcuts / Groups / Icons / Checkboxes / Radio / Destructive / Sides / RTL(排除);每个示例都标 "Right click / Long press" 两种触发;Content 默认 align=start / alignOffset=4 / side=right / sideOffset=0,SubContent 默认 side=right 可覆盖。
+
+**已具备**:`NewContextMenu(hEle, build)` 绑右键(窗口 `RButtonUp` + 矩形命中、覆盖子元素)、`SetEnabled`、`OnOpenChange`、`PopupAtCursor`;与 Dropdown Menu 共用 `menu.go`,部件齐全(`Item/Check/Radio/Label/Separator/Sub/MenuShortcut/MenuIcon/MenuInset/MenuDestructive/MenuDisabled/MenuGroup/MenuOnSelect/MenuOnCheck`),`Side/Align/Offset/Width`、`RadioGroupValue/OnRadioGroupChange`、`SetDisabled` 整菜单禁用、翻转夹紧、destructive 配色、快捷键右对齐均具备。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| CM1 | 长按(Long press)触发 | 官方每例的 "Long press here" | 只绑 `RButtonUp`,无长按路径(ContextMenu 特有缺口) | `LButtonDown` 起 ~500ms 定时器 + `MouseMove` 超阈值取消 + 抬起前触发,复用 `PopupAtCursor` | 中 / 中 |
+| CM2 | 子菜单 side/align 可配 | 官方 Sides | 子菜单恒右侧、Y 自算 | 给 `Sub` 加 side/align,子菜单按 `menuPopupBody` 同款自算 X/Y | 中-高 / 低-中 |
+| CM3 | Root 级受控/高亮回调/焦点循环 | API → Base UI Menu Root | `OnOpenChange` 不可取消,无高亮回调与焦点循环开关 | 与 Dropdown Menu 共用一次改动:`OnOpenChangeVeto` / `OnItemHighlighted` / `WithMenuLoopFocus` | 小-中 / 中 |
+| CM4 | 示例对照 | 官方多张示例卡 | 部件齐全但缺 demo | 只补 demo | 小 / 低(非功能缺口) |
+
+**明确不做**:RTL / `side="inline-end"` 等方向性;`modal=false` 与横向菜单(原生菜单恒模态/竖向,DESIGN 第七节能力边界,同 DM);Portal / `render` / `handle` 等 DOM 概念;弹层 zoom/slide 动画(DESIGN 第七节)。触发区内原生控件吃掉自身右键消息属实现约束,以用法说明告知。
+
+#### Trace(#57)
+
+**官方页**:独立页且索引页标 New。行 = `TraceIcon` + `TraceTitle` + 可选 `TraceDescription` + `status`(running/error/pending,running 微光);可展开、嵌套、行链接/弹层包装、对接 AI SDK 的 reasoning/tool/source part、`open ?? running` 流式自动展开。部件 `Trace/TraceLine/TraceIcon/TraceTitle/TraceDescription/TraceCollapsible`。
+
+**已具备**:`NewTrace` / `NewTraceLine`(`[图标][标题 Weight][描述][尾图标]`)、`TraceStatus`(None/Running/Error/Pending,running `SetShimmer`、error `Destructive`、pending 60% 透明)、`WithTraceIcon/Title/Description/TrailingIcon/OnClick`;`TraceCollapsible` + `WithTraceCollapsibleOpen/Trigger/OnOpen`,chevron `Presence` 200ms 旋转,`Trigger()/Content()/ContentStack()`(缩进 24)、受控 `Open/SetOpen/OnOpenChange/OnOpenChangeVeto`,嵌套往 `Content()` 放子行即可。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| TR1 | AI SDK reasoning/tool/source 便捷工厂 + `open ?? running` 自动展开 | 官方 Features / Open State | 无专用工厂,受控能力已具备 | 封装 `NewReasoningTrace` / `NewToolTrace` 等(组合现有行+状态+`SetOpen`) | 低 / 低 |
+
+**明确不做**:RTL;`className`/`data-*`/aria/role/tabstop/sr-only 等 DOM 语义;`keepMounted`(xcgui 子常驻仅隐藏);行链接/弹层由 `WithTraceOnClick` 交调用方组合;圆角裁剪等能力边界。
+
+#### Message(#58)
+
+**官方页**:独立页。Message 负责行布局(头像/对齐/页眉/页脚),可见消息面用 Bubble;MessageGroup 堆叠同一发送者;align start/end;头像贴底避开 footer;footer 随消息侧、header 固定 start。部件 `Message/MessageGroup/MessageAvatar/MessageContent/MessageHeader/MessageFooter`。
+
+**已具备**:`NewMessageGroup`、align + `WithMessageAlign`、Message 三段式(页眉/正文行/页脚,end 整行镜像、头像 `Layout_Align_Bottom`)、`Header()/Content()/AvatarSlot()/Footer()` 按需创建、`newMessageContent` 自动 reflow 锁宽、`syncMetaIndent` 页眉页脚按头像槽缩进、`SetMetaFlush` / `NewMessageMeta`;内容列可放 Bubble/Attachment/Trace/Marker。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| MSG1 | Group 里空头像占位让连续消息对齐 | 官方 Group 示例 | `AvatarSlot()` 一调用即显示,无法建空占位 | 加空占位选项或 `EmptyAvatarSlot()` | 低 / 低 |
+| MSG2 | Header 固定 start 对齐 | 官方 API "stays aligned to start regardless of align" | 本库 header 随 align 右对齐(与上游有差异) | header 的 `alignEnd` 恒传 false,与 footer 解耦 | 低 / 低 |
+
+**明确不做**:RTL;`className`/`data-*`;aria/role 与键盘焦点由承载内容决定;复制/重试/反馈等业务动作由调用方在 `Footer()` 放 Button。
+
+#### Bubble(#59)
+
+**官方页**:独立页。七变体、align start/end、`BubbleReactions` 叠边(side/align)、内容按文字量测上限父宽 80%、ghost 全宽、`BubbleContent.render` 做链接/按钮、可组合 Collapsible(Show more)/Tooltip/Popover、`BubbleGroup`。
+
+**已具备**:`BubbleVariant` 七档(含 hover 深一档、暗色 destructive 20%、tinted 亮暗各一档)、align + `WithBubbleAlign`、`WithBubbleMaxWidth`(默认 0.8、ghost 恒 1)、`WithBubbleOnClick`、`NewBubble`(文字量测+80% 折行、主题/父尺寸变化自动重排、流式 `SetText`)、反应条 `AddReaction` / `SetReactionsSide/Align` / `chipAt` 命中、`NewBubbleGroup`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| BUB1 | ghost 气泡承载富内容(markdown/code/结构化) | 官方 Variants | Bubble 仅纯文本(文件头已收窄范围) | 扩展内容模型或给 ghost 放富文本元素容器,复用 `Message.Content()` 锁宽 | 中 / 中 |
+| BUB2 | 长内容 Show more / 折叠 | 官方 Show More | 无内容折叠 | Collapsible + 富内容容器组合,或加截断+展开按钮 | 中 / 低 |
+
+**明确不做**:RTL;`className`/`data-*`;render 多态、focus ring、aria 语义(点击/跳转已由 `WithBubbleOnClick` 覆盖);Tooltip/Popover 包装由已有组件组合;圆角裁剪等能力边界。
+
+#### Marker(#60)
+
+**官方页**:独立页。行内状态/系统备注/带边框行/居中分隔标签,variant default/border/separator;`MarkerIcon` 装饰槽;配 shimmer 做流式文本;通过 render 做链接/按钮;flex-col 可把图标堆到内容上方。部件 `Marker/MarkerIcon/MarkerContent`。
+
+**已具备**:`MarkerVariant` 三档 + `WithMarkerVariant`、`WithMarkerIcon` / `NewMarkerIcon`(16px muted)、`NewMarker`(gap 8、border 底边框+pb 8、separator 两侧横线居中且做了窗口→元素坐标修正)、`Content(text)`(separator 按文字宽、其余铺满截断)。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| MK1 | 图标上置的纵向堆叠 | 官方 With Icon(flex-col) | 固定横向 | 加 `WithMarkerVertical`,根改竖排、图标在上 | 低 / 低 |
+| MK2 | 流式文本 shimmer 开关 | 官方 Features/Shimmer | `Content()` 返回的 `chatText` 已有 `SetShimmer`,未封装 | 加 `WithMarkerShimmer(bool)` 自动调 `SetShimmer` | 低 / 低 |
+
+**明确不做**:RTL;`className`/`data-*`;render 多态与 role/aria;Checkpoint(separator+恢复按钮)属 AI Elements 独立组件;圆角裁剪等能力边界。
+
+#### Attachment(#61)
+
+**官方页**:独立页。state(idle/uploading/processing/error/done,进行时标题 shimmer)、size 三档、orientation 横/竖;`AttachmentMedia` 有 icon/image 两变体;`AttachmentContent`(Title/Description)、Actions/Action、Trigger(整卡可点且 action 独立)、Group(横向滚动+吸附+边缘渐隐)。
+
+**已具备**:`AttachmentState` 五态 + `WithAttachmentState`(idle 虚线框、uploading/processing 标题 shimmer、error 红框/红媒体/红描述)、`AttachmentSize` 三档、`AttachmentOrientation` 横竖、`WithAttachmentIcon` / `Media()` / `MediaSlot()` / `WithAttachmentWidth`、`SetText` / `Title` / `Description` / `Actions` / `Action(icon,onClick)`、`WithAttachmentOnClick` + `bindChild`(整卡点击、动作独立)、`SetState` / `State`、`NewAttachmentGroup`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| ATT1 | `AttachmentMedia` 的 image 图片预览变体 | 官方 Image 段/API | 仅图标,图片需 `MediaSlot()` 手动叠 | 给 Media 加 image 变体封装图片元素填充媒体块 | 中 / 中 |
+
+**明确不做**:RTL;`className`/`data-*`/aria;Group 原生横向滚动(xcgui 无横向滚动容器,源码已用自动换行替代)、snapping 与边缘渐隐(CSS 概念,能力边界);进度百分比由 `SetText` 更新描述承载;圆角裁剪等能力边界。
+
+#### Message Scroller(#62)
+
+**官方页**:独立页。Core Concepts(轮次锚定、贴底跟随、`scrollPreviousItemPeek=64`、`defaultScrollPosition="last-anchor"`、前置历史不跳、跟随 live edge)、Avoiding a Flash on Reload、Loading Earlier Messages、Animating New Messages、Jumping to Messages、Tracking Reader's Position、Reading Scroll State、Performance/Virtualization、Accessibility;三个 hook 对应能力。
+
+**已具备**:`NewMessageScroller` + `AddItem/PrependItem/RemoveItem/Item/Content/ContentStack/SetViewPadding`;锚点 `ScrollAnchor/SetScrollAnchor/CurrentAnchorID`;跟随 `WithMessageScrollerAutoScroll/SetAutoScroll/noteUserScroll`(离底放手、回底重跟随)、`WithMessageScrollerPreviousItemPeek`(默认 64);前置保位(`applyMutation`)、`ScrollToMessage/Aligned` + 四档 Align(含挂起)、`ScrollState/OnScrollStateChange`、`VisibleMessageIDs/OnVisibilityChange`、`WithEdgeThreshold/ScrollMargin`;浮动按钮方向+淡入滑出 200/400ms+220ms 平滑滚动。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| MSC1 | 非滚动交互信号(选择文本/键盘/链接/搜索)停止跟随 | 官方原则 03 + Following the Live Edge | `noteUserScroll` 只由 onScroll/MouseWheel 驱动 | 挂 `LButtonUp`/`KeyDown`/链接点击命中 transcript 时调 `noteUserScroll(false)` | 中 / 中-高(跟随意图是核心卖点) |
+| MSC2 | `preserveScrollOnPrepend` 可关 | 官方 Loading Earlier Messages | 前置保位硬编码 | 加 `WithMessageScrollerPreserveOnPrepend(bool)`,关闭走 append 落点 | 小 / 低 |
+| MSC3 | 浮动按钮 variant/size 可配 | 本地 tsx `MessageScrollerButton` | 固定 Outline + IconSm | 加 `WithMessageScrollerButtonStyle(variant,size)` 透传 | 小 / 低 |
+| MSC4 | 新消息入场动画 | 官方 Animating New Messages | item 无内建过渡 | 新增项用 `xui.Presence` 做 opacity/位移,注意不干扰锚点测量 | 中 / 低 |
+
+**明确不做**:RTL;`data-*` 样式钩子与 SSR inline script(桌面无 SSR 首帧);`role`/`aria`/`inert`/`tabIndex`(已用可聚焦滚动区+`Show(false)` 等价);`content-visibility`/虚拟化(官方虚拟化外置,xcgui 无对应,DESIGN 第七节)。
+
+#### Questionnaire(#63)
+
+**官方页**:独立页。Composition(Root/Progress/Item/Title/Description/Choices/Choice/ChoiceInput/ChoiceLabel/ChoiceShortcut/ChoiceDescription/Input/Error/Actions/Previous/Skip/Next/Submit)+ Multiple Selection / Freeform Answer / Explicit Skip / Shortcuts / Custom Validation(外部 schema)/ Controlled / Resume / Conditional Items / Navigation State / Custom Progress / Animated Items / Card / Dialog / Accessibility;一次一题、必答校验、可选题显式跳过、字母数字快捷键、条件题禁用、受控当前题。
+
+**已具备**:`NewQuestionnaire` + `QuestionnaireItem`(Name/Title/Description/Required/Multiple/Disabled/Choices/Input/DefaultChoices/DefaultInput/ErrorText);单多选、选项描述/禁用、自由输入、快捷键(`QuestionnaireShortcutsLetters/Numbers` + 角标)、Skip、`QuestionnaireItemStatus` 三态 + `Status`/`OnStatusChange`、校验 `validate/syncInvalid/ErrorText`、导航 `SetItem/Item/Reset/Answers`、`SetProgressFormat` / `WithActionLabels` / `WithBackdrop`;键盘 ↑↓ 移焦点、←→ 切题、Space 选择、Enter 继续、Ctrl+Enter 校验提交、字母数字快捷键(输入框内交还原生 Edit)、`OnSubmit/OnItemChange`、自绘选项各态配色。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| QN1 | 自定义校验回调(外部 schema) | 官方 Custom Validation | 只有 Required + `ErrorText` 文案 | 加 `WithQuestionnaireValidate(func(item,answers) string)`,内置必填后跑回调写入 errorLabel | 小-中 / 中 |
+| QN2 | 输入框可见 label | 官方 Usage/Accessibility("placeholder is not a label") | `QuestionnaireInput` 只有 Placeholder | 加 `Label string`,input 上方加 Label 元素(Go 侧以可见 label 等价) | 小 / 中 |
+| QN3 | 切题动画(Animated Items) | 官方 Animated Items | `syncFlow` 直接 Show/Hide | 对 `it.root` 用 `xui.Presence` 切出淡出/切入淡入+位移,progress/actions 不动 | 中 / 低 |
+| QN4 | 动作按钮 size/variant 可配 | 官方 Previous/Skip/Next/Submit | prev/skip 固定 Outline | 加 `WithQuestionnaireActionStyle(variant,size)` | 小 / 低 |
+| QN5 | 未作答时禁用 Next | 官方 Navigation State | Next 恒可点,点击后校验报错 | 加 `WithQuestionnaireDisableNextUntilAnswered()`,`syncActions` 按 status 决定 | 小 / 低 |
+
+**明确不做**:RTL;Server Rendering(HTML form/SSR,以 `OnSubmit` + `Answers()` 等价);aria/fieldset-legend/render/data-*/Slot 等 DOM 概念;Dialog/Card 宿主关闭、持久化、transport、分支逻辑(官方明确归宿主,本库 `WithBackdrop` 只解决底色跟随)。
+
+**本批结论**:只出核查结论,未改组件源码。核查前已补齐三份缺失 tsx 参照并通过构建。可直接排期(无需确认):CH1/CH2/CH3(Chart Tooltip/Legend props)、CM3(菜单受控/高亮/焦点循环,与 Dropdown Menu 共用)、QN1/QN2(Questionnaire 校验/输入框 label)、MSG2(Message Header 对齐差异)、MSC2/MSC3、MK1/MK2、DR4、SP1 等小改。待拍板项见 Q8;其余中-大改与全"低"优先项按真实需求再立项。
+
 ## 四、实现顺序建议(Input / Select 批次,已执行完)
 
 1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化 —— **已全部落地**(见第五节)。
@@ -1174,7 +1376,7 @@
 | Q3(SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3) | 不做 | 推挤碰撞、单滑块禁用、横向 ScrollArea、非模态对话框、Popover 模态与定位策略、表格列宽拖拽: 桌面收益存疑, 有场景再立项 |
 | Q4(C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2) | 部分排期 | C4 只做"直角图片槽 + 自适应高"(不做圆角), 排在本批之后; 五组纯 demo 示例不单独立项, 随对应组件下次改动补 |
 
-下一轮**核查**(不是实现)从 #52 Spinner 起。
+#52~#63 已核查完毕(结论见 3.11),63 个可核查组件全部完成,无待核查项;余下为实现(见下方 Q8 与可直接排期项)。
 
 **待确认需求(本轮已拍板)**:
 
@@ -1211,4 +1413,17 @@
 | Q7-5 | OTP1 | InputOTP readOnly 只读态(本地参照实现有示例):拦改写但保留焦点与选中复制,与 disabled 语义分开 | 已落地(第十四批) |
 | Q7-6 | CR4 / KB1~KB3 / EM1 / IT4 / IT5 / OTP2 / OTP3 | 按钮几何 / Tooltip 键帽反色 / 键帽图标与几何覆盖 / Empty 边框背景 / 头尾行 space-between / 动作行 gap / InputOTP 文本对齐与粘贴转换:都是小改动,等真实场景随组件下次改动补 | 暂缓 |
 
-**可直接排期(无需确认)**: 当前无待排期项, Q6 / Q7 已收口;第十五批(SB2 / RS1 / RS4)已落地。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
+**可直接排期(无需确认, Q6 / Q7 批)**: 当前无待排期项, Q6 / Q7 已收口;第十五批(SB2 / RS1 / RS4)已落地。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
+
+**已拍板需求(第十六批核查, Q8 — #52~#63)**:
+
+| # | 涉及条目 | 建议 | 状态 |
+|---|---|---|---|
+| Q8-1 | CH1 / CH2 / CH3 | Chart Tooltip 指示条样式与隐藏开关、标题 formatter、图例 top/bottom:都是官方 Props 表里的现成项,改动局限在 `paintTooltip` / `layoutLegend` | 可直接排期 |
+| Q8-2 | CM3 | 菜单根级 `OnOpenChangeVeto` / `OnItemHighlighted` / `WithMenuLoopFocus`:与 Dropdown Menu 共用 `menu.go`,一次改动两处生效 | 可直接排期 |
+| Q8-3 | QN1 / QN2 | Questionnaire 自定义校验回调 + 输入框可见 label:对齐官方 Custom Validation / Accessibility | 可直接排期 |
+| Q8-4 | MSG2 | Message Header 固定 start 对齐(与上游一致,修正本库随 align 右对齐的差异) | 可直接排期(行为微调) |
+| Q8-5 | MSC1 | Message Scroller 非滚动交互信号(选择/键盘/链接)停止跟随:是官方"跟随意图"核心卖点,但要挂多处事件 | 待拍板(收益高、回归面较大) |
+| Q8-6 | CH4~CH11 / DR1~DR5 / BUB1~BUB2 / ATT1 / TR1 / MSG1 / MK1 / MK2 / MSC2~MSC4 / QN3~QN5 / BG1~BG2 / SP1 | 其余均为中-大改或"低"优先小改 | 暂缓:按真实需求随组件下次改动补 |
+
+**可直接排期(无需确认, Q8 批)**: CH1 / CH2 / CH3、CM3、QN1 / QN2、MSG2、MSC2 / MSC3、MK1 / MK2、DR4、SP1 为小改,可按"高优先、小改动"另起一批落地;MSC1 单列待拍板。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。

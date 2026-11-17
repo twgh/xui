@@ -8,9 +8,10 @@
 
 `github.com/twgh/xui`:为 xcgui(炫彩界面库)提供 **shadcn-ui 风格**的自绘组件——主题令牌、变体系统、源码拷贝分发(copy-not-install)。交互语义以本地 shadcn 参考实现(`D:\GOProject\src\ui\shadcn`)的源码为唯一权威; 该项目已切到 **base-nova** 风格(`components.json`), 新组件/新交互对照 base, 旧组件的 `radix-nova` 出处只作历史记录。
 
-## 当前状态(截至 2026-11-16)
+## 当前状态(截至 2026-11-17)
 
 - **阶段**: P0 运行时 + P1/P2/P3 组件已完成并视觉验收; P4(文档站、主题画廊)未开始。
+- **最近核查(2026-11-17)**: 组件特性核查第十六批(#52~#63)完成,63 个可核查组件全部核查完毕,无待核查项。核查前补齐本地 shadcn 参考缺失的 `chart.tsx` / `button-group.tsx` / `context-menu.tsx`(base-nova,官方 registry 取源 + 适配别名/图标 + `recharts@3.8.0`,`pnpm build` 通过)。结论见台账 3.11 与第五节 Q8;下一步按 Q8 落地可直接排期项(CH1~CH3 / CM3 / QN1~QN2 / MSG2 / MSC2~MSC3 / MK1~MK2 / DR4 / SP1),MSC1 单列待拍板;本批只出结论,未改组件源码。
 - **发布**: v0.14.0(2026-11-15, GitHub Release 已建)。自 v0.13.0 以来: 组件特性核查八批落地 + Combobox 三种形态 + Field 必填/校验基础设施 + 裸 `xui update` 漏更修复; 组件/API 变更走 minor, `runtime` / `cliChange` 都抬到 v0.14.0。发布记录见 CHANGELOG, notes 草稿在 `.verify/v0.14.0.md`。
 - **组件覆盖**: 77 个可安装名(`registry.json` / `xui list`, 本地与镜像一致)= 63 个 shadcn 官方组件(上游 Components 侧栏 66 个名字, 其余 3 个明确不做)+ 14 个桌面扩展(color-picker / file-dialog / time-picker / tree / tray / window / screen-popup / screen-toast / radio / rating / steps / timeline / tag-input / status-bar); context-menu 在 `menu`, form 在 `field`。上游可安装组件已全部覆盖; 剩余 3 项与侧栏 AI Elements 的不做理由见 DESIGN 第七节, 完整清单见 README / DESIGN 第七节。
 - **参照项目**: `D:\GOProject\src\ui\shadcn` 已从 `radix-nova` 切到 `base-nova`: 39 个已装组件按 base 重装(`@base-ui/react`), App.tsx 迁移 `asChild→render` / Tabs `forceMount→keepMounted` / Accordion `type→multiple` + 数组值 / Slider 值类型 / Collapsible 箭头 `data-[panel-open]`; 补装 `combobox` / `questionnaire` / `message-scroller`(`@shadcn/react`)。`pnpm build` 通过, 基础/表单/反馈三页 headless 渲染正常; 既有 xui 组件不重审。切换前的 radix 版本留在该目录的 git 历史(`dc71d82`), 详情见 CHANGELOG。
@@ -39,7 +40,7 @@
 
 ## 待办
 
-- ⬜ **组件特性核查与实现(按台账顺序推进)**: 核查台账在 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) —— 官方侧栏 66 个组件按常用性排序(63 个可核查 + 3 个范围外), RTL 明确不做。核查已完成 #1..#51(逐组件结论见台账), **下一轮核查从 #52 Spinner 起**。实现进度见台账第五节: 第一~十一批、第十三~十五批已落地;第十二批只出核查结论, 可直接排期项已全部落地。Q5 / Q6 / Q7 已全部拍板并落地(Q7 的 EM2 / OTP1 在第十四批, Q6-2 的 SB2 与 Q6-4 的 RS1 / RS4 在第十五批);其余暂缓/不做项的结论见台账第五节末。核查只出结论, 实现按下面的固定流程走。
+- ⬜ **组件特性核查与实现(按台账顺序推进)**: 核查台账在 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) —— 官方侧栏 66 个组件按常用性排序(63 个可核查 + 3 个范围外), RTL 明确不做。**63 个可核查组件已全部核查完毕(#1..#63, 逐组件结论见台账第三节),无待核查项**。核查 #52~#63 前先补齐了本地 shadcn 参考实现缺失的 `chart.tsx` / `button-group.tsx` / `context-menu.tsx`(base-nova 风格,从官方 registry 取源 + 适配别名/图标 + 装 `recharts@3.8.0`,`pnpm build` 通过)。实现进度见台账第五节: 第一~十一批、第十三~十五批已落地;第十二、十六批只出核查结论。**下一步 = 按 Q8 落地第十六批**: 可直接排期 CH1/CH2/CH3(Chart Tooltip/Legend props)、CM3(菜单受控/高亮/焦点循环)、QN1/QN2(Questionnaire 校验/输入框 label)、MSG2(Message Header 对齐)、MSC2/MSC3、MK1/MK2、DR4、SP1;MSC1(非滚动交互停跟随)单列待拍板。Q5 / Q6 / Q7 已全部拍板并落地(Q7 的 EM2 / OTP1 在第十四批, Q6-2 的 SB2 与 Q6-4 的 RS1 / RS4 在第十五批);其余暂缓/不做项的结论见台账第五节末。核查只出结论, 实现按下面的固定流程走。
 - ⬜ **P4(发布后, 非阻塞)**: 文档站、主题画廊(把 shadcn 社区主题批量转译成 Go 令牌)。
 - ⬜ **可选(不阻塞)**: 补齐本地 shadcn 参考实现中旧批次组件的 tsx 与 App.tsx 对照卡(alert / alert-dialog / aspect-ratio / breadcrumb / button-group / calendar / chart / context-menu / empty / field / item / sonner / toggle / toggle-group); 对应 Go 组件均已实现并验收, 仅用于逐像素视觉对照。calendar / chart / sonner 需要额外 npm 依赖。Data Table 是组合模式, 无独立 tsx; Combobox 在 base 变体里已有独立 tsx(已装)。
 
