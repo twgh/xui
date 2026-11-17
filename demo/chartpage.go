@@ -20,10 +20,11 @@ func buildChartPage(body *widget.LayoutEle) {
 	r := row(body.Handle, 0, gap)
 	_, v := autoCard(xui.VStack(r.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "柱状图", v.Handle))
-	xui.ItemFill(desc(v.Handle, "分组柱 + 柱顶数值, 数值轴自动取整齐刻度。"))
+	xui.ItemFill(desc(v.Handle, "分组柱 + 柱顶数值, 图例在顶部(WithChartLegendTop)。"))
 	bar := ui.NewChart(0, 0, 0, 240, v.Handle,
 		ui.WithChartData(months, desktop, mobile),
-		ui.WithChartBarLabels())
+		ui.WithChartBarLabels(),
+		ui.WithChartLegendTop())
 	xui.ItemFill(bar)
 
 	_, v = autoCard(xui.VStack(r.Handle, 1, gap).Handle, 10)
@@ -38,12 +39,14 @@ func buildChartPage(body *widget.LayoutEle) {
 	r = row(body.Handle, 0, gap)
 	_, v = autoCard(xui.VStack(r.Handle, 1, gap).Handle, 10)
 	xui.ItemFill(ui.NewCardTitle(0, 0, 0, "折线图", v.Handle))
-	xui.ItemFill(desc(v.Handle, "WithChartCurve + WithChartDots: 平滑曲线与数据点。"))
+	xui.ItemFill(desc(v.Handle, "平滑曲线 + 数据点, 提示卡竖线色块与标题格式化。"))
 	line := ui.NewChart(0, 0, 0, 240, v.Handle,
 		ui.WithChartKind(ui.ChartLine),
 		ui.WithChartData(months, desktop, mobile),
 		ui.WithChartCurve(),
-		ui.WithChartDots())
+		ui.WithChartDots(),
+		ui.WithChartTooltipIndicator(ui.ChartIndicatorLine),
+		ui.WithChartTooltipLabelFormat(func(s string) string { return s + " 访问量" }))
 	xui.ItemFill(line)
 
 	_, v = autoCard(xui.VStack(r.Handle, 1, gap).Handle, 10)

@@ -194,9 +194,9 @@ func TestChartPieSlices(t *testing.T) {
 
 func TestChartSmooth(t *testing.T) {
 	pts := []xc.POINTF{{X: 0, Y: 0}, {X: 10, Y: 10}, {X: 20, Y: 0}}
-	out := chartSmooth(pts, 12)
-	if want := (len(pts)-1)*12 + 1; len(out) != want {
-		t.Fatalf("采样点数 = %d, want %d", len(out), want)
+	out := chartSmooth(pts)
+	if len(out) < len(pts) {
+		t.Fatalf("采样点数 = %d, 不应少于原始点数 %d", len(out), len(pts))
 	}
 	if out[0] != pts[0] || out[len(out)-1] != pts[len(pts)-1] {
 		t.Fatalf("首尾必须落在原数据点上, got %v .. %v", out[0], out[len(out)-1])
@@ -207,10 +207,33 @@ func TestChartSmooth(t *testing.T) {
 			t.Fatalf("平滑后 x 应单调递增, 第 %d 点 %v < %v", i, out[i].X, out[i-1].X)
 		}
 	}
+	// 单调三次不允许过冲: 曲线必须落在数据值域内
+	for i, p := range out {
+		if p.Y < -1e-3 || p.Y > 10+1e-3 {
+			t.Fatalf("第 %d 点 y=%v 超出数据值域 [0,10]", i, p.Y)
+		}
+	}
 	// 少于 3 点不采样
 	two := []xc.POINTF{{X: 0, Y: 0}, {X: 10, Y: 10}}
-	if got := chartSmooth(two, 12); len(got) != 2 {
+	if got := chartSmooth(two); len(got) != 2 {
 		t.Fatalf("两点应原样返回, got %v", got)
+	}
+}
+
+func TestChartStrokePolygon(t *testing.T) {
+	pts := []xc.POINTF{{X: 0, Y: 10}, {X: 10, Y: 10}, {X: 20, Y: 10}}
+	poly := chartStrokePolygon(pts, 2)
+	if len(poly) != len(pts)*2 {
+		t.Fatalf("描边带应有 %d 个顶点, got %d", len(pts)*2, len(poly))
+	}
+	// 水平线上下各偏移半个线宽
+	for i, q := range poly {
+		if d := math.Abs(float64(q.Y) - 10); math.Abs(d-1) > 1e-4 {
+			t.Fatalf("第 %d 个顶点偏离中线 %v, want 1", i, d)
+		}
+	}
+	if chartStrokePolygon(pts[:1], 2) != nil {
+		t.Fatal("单点不应生成描边带")
 	}
 }
 

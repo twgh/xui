@@ -5,6 +5,18 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **修复: Chart 平滑折线的峰值附近有"膝点"、放大后能看出直线段拼接**(2026-11-17, 用户反馈, DESIGN 第八节 159):
+  - **现象**: `WithChartCurve` 的折线在峰谷附近先陡后折, 像被掰了一下; 图表拉宽后整条曲线由可见的短直线段拼成。
+  - **根因**: ① Catmull-Rom 的极值点切线取相邻两点割线平均, 峰顶切线不归零, 曲线进峰/出峰斜率突变; ② 每段固定采样 12 点, 段宽 100+ 逻辑像素时弦长约 9px, 放大或高 DPI 下棱角明显。加密采样后又暴露出第三处: 2px 宽、1.5px 一采样的短线段用 `DrawLineF` 逐段描边, 相邻段的端帽在斜线上互相覆盖, 边缘呈贝壳状起伏(放大看"凹凸不平")。
+  - **修法**: 平滑改为单调三次 Hermite(d3.curveMonotoneX 同口径): 极值点切线钉成 0、其余切线按 Fritsch-Carlson 限幅(不过冲), 采样数按弦长自适应(约 1.5 逻辑像素一点, 8~512 点/段); 描边不再逐段 `DrawLineF`, 改为把曲线转成"描边带"多边形(左右各偏移半个线宽)交给 `fillPolygonSmooth` 一次抗锯齿填充(GDI 回落仍逐段描边); 面积填充与描线共用同一组点。
+  - **验收**: `go build ./...` / `go test ./components -run TestChart` 全绿(测试校验首尾落点、x 单调、不过冲与描边带偏移); demo 图表页折线图 6x 放大核对 —— 2月峰值圆滑对称、无膝点, 下降段边缘连续无贝壳状起伏; 数据点仍精确落在曲线上。
+
+- ✅ **组件特性核查第十六批: Chart 提示卡指示条 / 标题格式化 / 图例置顶**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q8-1):
+  - **Chart(CH1)**: 提示卡每行色块可选样式 `WithChartTooltipIndicator` / `SetTooltipIndicator`(`ChartIndicatorDot` 圆点默认 / `ChartIndicatorLine` 整行高竖条 / `ChartIndicatorDashed` 3px 实段 + 3px 空档虚线)与 `WithChartTooltipHideIndicator` / `SetTooltipHideIndicator`; 色块宽度参与提示卡量宽, 隐藏时文字左移贴内边距。
+  - **Chart(CH2)**: `WithChartTooltipLabelFormat` / `SetTooltipLabelFormat`(对应 `labelFormatter`, 入参分类名)与 `WithChartTooltipHideLabel` / `SetTooltipHideLabel`; 隐藏标题时提示卡高度不再保留标题行与行间距。
+  - **Chart(CH3)**: `WithChartLegendTop()` / `SetLegendTop(bool)`(对应 `ChartLegendContent.verticalAlign="top"`): 图例行画在内容区顶部, 绘图区上沿扣除图例高度; 默认仍是底部居中、只缩底边。极坐标 / 横向柱 / 直角坐标三种布局共用同一上沿。
+  - **验收**: `go build ./...` / `go vet ./components` / `go test ./...` 全绿; demo 图表页改为柱状图图例置顶、折线图用竖线色块 + 标题追加" 访问量", 亮暗两套主题 PrintWindow 抓图核对 —— 顶部图例在绘图区上方且底部图例的堆叠柱不受影响, 折线图悬停提示卡标题为"3月 访问量"、两行均为竖条色块, 暗色下卡片底色/边框/文字正常。`registry.json` 的 `runtime` / `cliChange` 未动。
+
 - ✅ **组件特性核查第十五批: Sidebar 菜单按钮内容槽 / Resizable 折叠与面板级禁用**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 第五节 Q6-2 / Q6-4):
   - **Sidebar(SB2)**: `SidebarMenuButton.Content()` 返回自定义内容槽(横向布局、子项垂直居中、间距 8), 替代默认图标 + 文字, 用于团队切换器 / 用户卡(头像 + 两行文字 + 尾部图标); 内容槽占按钮内边距盒(四周 8, SizeLg 可用高 32), 点内容任意位置等同点整行(原生按钮截获子元素事件); 徽章 / 动作 / 子菜单 chevron 仍画在内容之上; 图标栏形态内容整体隐藏、回落居中图标。有内容槽的行, 悬停改由宿主窗口坐标命中 —— 内容子元素会挡住原生按钮的 hover, 不兜底时只有鼠标落在行内空白处才亮。
   - **Resizable(RS1)**: 面板级 `WithResizableCollapsible()` / `WithResizableCollapsedSize(percent)` 与 `SetCollapsible` / `SetCollapsedSize` / `SetCollapsed` / `Collapse` / `Expand` / `Collapsed()`; 分隔条聚焦后 Enter 折叠/展开相邻面板(优先前一个, 不可折叠时看后一个), 折叠尺寸默认跟随 min、显式 0 合法; 折叠释放的份额按比例分给其它面板, 展开恢复折叠前百分比(不低于 min); 折叠态拖出/方向键先恢复再调整, 双击复位前先展开相邻折叠面板。

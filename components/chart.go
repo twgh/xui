@@ -22,8 +22,9 @@ import (
 //     饼/环(ChartPie / ChartDonut)、径向(ChartRadial, 同心弧层)、雷达(ChartRadar);
 //   - 柱状/面积支持堆叠(`WithChartStacked`), 折线/面积支持平滑(`WithChartCurve`);
 //   - 数值轴自动取"整齐刻度"(1/2/2.5/5 × 10^n), 也可显式给值域(`WithChartYDomain`);
-//   - 图例默认在底部居中, 点击可临时隐藏/恢复一项(饼图隐藏的是一块扇区);
+//   - 图例默认在底部居中(`WithChartLegendTop` 放顶部), 点击可临时隐藏/恢复一项(饼图隐藏的是一块扇区);
 //   - 悬停出提示卡(分类名 + 每路数值), 直角坐标系还画一条竖向指示线;
+//     提示卡每行的色块可按 shadcn 口径换成圆点/竖线/虚线(`WithChartTooltipIndicator`);
 //   - 颜色默认取主题 `Chart1..5` 轮转, 每路数据也可显式指定(ChartSeries.Color)。
 //
 // 绘制坐标全部是逻辑像素(见 DESIGN 第六节): 元素被布局拉伸时只按新宽高重算几何,
@@ -47,11 +48,17 @@ type Chart struct {
 	showTip    bool
 	legend     bool
 	legendSet  bool
+	legendTop  bool // 图例放内容区顶部(默认底部)
 	barLabels  bool
 	horizontal bool // 柱状图横向(分类轴在 y、数值轴在 x)
 	yMin, yMax float64
 	innerRatio float64
 	innerSet   bool
+
+	tipIndicator   ChartTooltipIndicator // 提示卡每行色块样式(默认圆点)
+	tipNoIndicator bool                  // 不画色块
+	tipNoLabel     bool                  // 不画标题行
+	tipLabelFormat func(string) string   // 标题格式化(nil = 原样)
 
 	centerTitle string
 	centerSub   string
@@ -156,6 +163,43 @@ func WithChartLegend(on bool) ChartOption {
 		c.legend = on
 		c.legendSet = true
 	}
+}
+
+// ChartTooltipIndicator 是提示卡每行色块的样式(对应 shadcn ChartTooltipContent 的 indicator)。
+type ChartTooltipIndicator int
+
+const (
+	// ChartIndicatorDot 圆点(默认)。
+	ChartIndicatorDot ChartTooltipIndicator = iota
+	// ChartIndicatorLine 竖条(整行高)。
+	ChartIndicatorLine
+	// ChartIndicatorDashed 虚线竖条。
+	ChartIndicatorDashed
+)
+
+// WithChartTooltipIndicator 指定提示卡色块样式: 圆点 / 竖条 / 虚线。
+func WithChartTooltipIndicator(k ChartTooltipIndicator) ChartOption {
+	return func(c *Chart) { c.tipIndicator = k }
+}
+
+// WithChartTooltipHideIndicator 不画提示卡每行的色块(对应 hideIndicator)。
+func WithChartTooltipHideIndicator() ChartOption {
+	return func(c *Chart) { c.tipNoIndicator = true }
+}
+
+// WithChartTooltipHideLabel 不画提示卡标题行(对应 hideLabel)。
+func WithChartTooltipHideLabel() ChartOption {
+	return func(c *Chart) { c.tipNoLabel = true }
+}
+
+// WithChartTooltipLabelFormat 自定义提示卡标题文本(对应 labelFormatter); 传 nil 恢复原样。
+func WithChartTooltipLabelFormat(fn func(string) string) ChartOption {
+	return func(c *Chart) { c.tipLabelFormat = fn }
+}
+
+// WithChartLegendTop 图例放到内容区顶部(默认底部居中, 对应 verticalAlign="top")。
+func WithChartLegendTop() ChartOption {
+	return func(c *Chart) { c.legendTop = true }
 }
 
 // WithChartBarLabels 柱顶显示数值(shadcn 的 "Label" 示例)。
@@ -398,6 +442,41 @@ func (c *Chart) SetTooltip(v bool) *Chart {
 // SetLegend 切换图例(同时视为显式设置, 不再按数据路数自动判断)。
 func (c *Chart) SetLegend(v bool) *Chart {
 	c.legend, c.legendSet = v, true
+	c.Redraw(false)
+	return c
+}
+
+// SetLegendTop 图例改到内容区顶部(默认底部)。
+func (c *Chart) SetLegendTop(v bool) *Chart {
+	c.legendTop = v
+	c.Redraw(false)
+	return c
+}
+
+// SetTooltipIndicator 运行时切换提示卡色块样式。
+func (c *Chart) SetTooltipIndicator(k ChartTooltipIndicator) *Chart {
+	c.tipIndicator = k
+	c.Redraw(false)
+	return c
+}
+
+// SetTooltipHideIndicator 是否隐藏提示卡的色块。
+func (c *Chart) SetTooltipHideIndicator(v bool) *Chart {
+	c.tipNoIndicator = v
+	c.Redraw(false)
+	return c
+}
+
+// SetTooltipHideLabel 是否隐藏提示卡的标题行。
+func (c *Chart) SetTooltipHideLabel(v bool) *Chart {
+	c.tipNoLabel = v
+	c.Redraw(false)
+	return c
+}
+
+// SetTooltipLabelFormat 自定义提示卡标题文本; 传 nil 恢复原样。
+func (c *Chart) SetTooltipLabelFormat(fn func(string) string) *Chart {
+	c.tipLabelFormat = fn
 	c.Redraw(false)
 	return c
 }
@@ -697,22 +776,34 @@ func (c *Chart) layout(ox, oy, w, h int32, t *xui.Theme) chartLayout {
 	}
 	f := xui.FontHandle(xui.FontSpec{Family: t.FontDefault.Family, Size: chartLabelPx})
 
-	// 图例: 底部居中一行, 宽度不够时裁掉末尾项(宁可少显示也不换行)。
+	// 图例: 底部居中一行(WithChartLegendTop 改到顶部), 宽度不够时裁掉末尾项(宁可少显示也不换行)。
 	legendH := int32(0)
 	if c.legend {
-		slots, _ := c.layoutLegend(ox+chartPad, oy+h-chartPad-chartLegendH, ox+w-chartPad, f)
+		legendY := oy + h - chartPad - chartLegendH
+		if c.legendTop {
+			legendY = oy + chartPad
+		}
+		slots, _ := c.layoutLegend(ox+chartPad, legendY, ox+w-chartPad, f)
 		if len(slots) > 0 {
 			lay.legend = slots
 			legendH = chartLegendH + chartLegendGap
 		}
 	}
+	// 绘图区上沿: 图例在顶部时整体下移, 在底部时只缩底边。
+	contentTop := oy + chartPad
+	plotBottom := oy + h - chartPad
+	if c.legendTop {
+		contentTop += legendH
+	} else {
+		plotBottom -= legendH
+	}
 
 	if c.isPolar() {
 		box := xc.RECT{
 			Left:   ox + chartPad,
-			Top:    oy + chartPad,
+			Top:    contentTop,
 			Right:  ox + w - chartPad,
-			Bottom: oy + h - chartPad - legendH,
+			Bottom: plotBottom,
 		}
 		bw, bh := box.Right-box.Left, box.Bottom-box.Top
 		r := bw
@@ -761,9 +852,9 @@ func (c *Chart) layout(ox, oy, w, h int32, t *xui.Theme) chartLayout {
 		}
 		plot := xc.RECT{
 			Left:   ox + chartPad + maxCatW + chartAxisGap,
-			Top:    oy + chartPad,
+			Top:    contentTop,
 			Right:  ox + w - chartPad,
-			Bottom: oy + h - chartPad - legendH - chartXLabelH,
+			Bottom: plotBottom - chartXLabelH,
 		}
 		if plot.Right-plot.Left < 24 || plot.Bottom-plot.Top < 24 {
 			return lay
@@ -788,13 +879,13 @@ func (c *Chart) layout(ox, oy, w, h int32, t *xui.Theme) chartLayout {
 		return lay
 	}
 
-	bottom := oy + h - chartPad - legendH
+	bottom := plotBottom
 	if len(c.labels) > 1 || c.hasXLabels() {
 		bottom -= chartXLabelH
 	}
 	plot := xc.RECT{
 		Left:   ox + chartPad + maxLabelW + chartAxisGap,
-		Top:    oy + chartPad,
+		Top:    contentTop,
 		Right:  ox + w - chartPad,
 		Bottom: bottom,
 	}
@@ -1189,7 +1280,7 @@ func (c *Chart) paintLines(p *xui.Painter, t *xui.Theme, lay chartLayout, vis []
 		}
 		line := pts
 		if c.curved {
-			line = chartSmooth(pts, 12)
+			line = chartSmooth(pts)
 		}
 		if c.kind == ChartArea {
 			poly := make([]xc.POINTF, 0, len(line)*2+2)
@@ -1197,7 +1288,7 @@ func (c *Chart) paintLines(p *xui.Painter, t *xui.Theme, lay chartLayout, vis []
 			if c.stacked {
 				under := lower
 				if c.curved {
-					under = chartSmooth(lower, 12)
+					under = chartSmooth(lower)
 				}
 				for i := len(under) - 1; i >= 0; i-- {
 					poly = append(poly, under[i])
@@ -1215,9 +1306,20 @@ func (c *Chart) paintLines(p *xui.Painter, t *xui.Theme, lay chartLayout, vis []
 		}
 
 		p.Draw.SetLineWidth(chartLineW)
-		p.Draw.SetBrushColor(uint32(c.seriesColor(t, s)))
-		for i := 1; i < len(line); i++ {
-			p.Draw.DrawLineF(line[i-1].X, line[i-1].Y, line[i].X, line[i].Y)
+		lineCol := c.seriesColor(t, s)
+		done := false
+		if c.curved {
+			// 平滑曲线用一次抗锯齿的"描边带"填充, 不逐段 DrawLineF: 2px 宽、约 1.5px
+			// 一采样的短线段端帽互相覆盖, 斜线上会留下贝壳状边缘(放大看凹凸不平)。
+			if poly := chartStrokePolygon(line, float64(chartLineW)); len(poly) >= 3 {
+				done = fillPolygonSmooth(p, c.Handle, lineCol, poly)
+			}
+		}
+		if !done {
+			p.Draw.SetBrushColor(uint32(lineCol))
+			for i := 1; i < len(line); i++ {
+				p.Draw.DrawLineF(line[i-1].X, line[i-1].Y, line[i].X, line[i].Y)
+			}
 		}
 		if c.dots {
 			for i := 0; i < n; i++ {
@@ -1564,6 +1666,9 @@ func (c *Chart) paintTooltip(p *xui.Painter, t *xui.Theme, lay chartLayout, f in
 		value string
 	}
 	title := c.labels[c.hover]
+	if c.tipLabelFormat != nil {
+		title = c.tipLabelFormat(title)
+	}
 	var rows []row
 	if c.keyedByCat() {
 		val := c.value(c.hover, 0)
@@ -1596,16 +1701,33 @@ func (c *Chart) paintTooltip(p *xui.Painter, t *xui.Theme, lay chartLayout, f in
 		}
 	}
 
-	// 量宽: 标题与每行(圆点 + 名称 + 间距 + 值)取最大者。
-	bw := xui.TextWidth(title, f)
+	// 量宽: 标题与每行(色块 + 名称 + 间距 + 值)取最大者; hide 开关参与量宽。
+	indW, indGap := int32(8), int32(6)
+	switch c.tipIndicator {
+	case ChartIndicatorLine:
+		indW = 4
+	case ChartIndicatorDashed:
+		indW = 2
+	}
+	if c.tipNoIndicator {
+		indW, indGap = 0, 0
+	}
+	bw := int32(0)
+	if !c.tipNoLabel {
+		bw = xui.TextWidth(title, f)
+	}
 	for _, r := range rows {
-		w := 8 + 6 + xui.TextWidth(r.label, f) + 12 + xui.TextWidth(r.value, f)
+		w := indW + indGap + xui.TextWidth(r.label, f) + 12 + xui.TextWidth(r.value, f)
 		if w > bw {
 			bw = w
 		}
 	}
 	bw += chartTipPad * 2
-	bh := chartTipPad*2 + 16 + 4 + int32(len(rows))*chartTipRowH
+	headerH := int32(0)
+	if !c.tipNoLabel {
+		headerH = 16 + 4
+	}
+	bh := chartTipPad*2 + headerH + int32(len(rows))*chartTipRowH
 
 	// 默认放在光标右下, 放不下就翻到左上, 再夹进元素矩形。
 	x := c.hoverX + 14
@@ -1626,26 +1748,47 @@ func (c *Chart) paintTooltip(p *xui.Painter, t *xui.Theme, lay chartLayout, f in
 	p.FillRound(&rc, t.Popover, t.RadiusMd())
 	p.StrokeRound(&rc, t.Border, t.RadiusMd(), 1)
 
-	trc := xc.RECT{
-		Left:   rc.Left + chartTipPad,
-		Top:    rc.Top + chartTipPad,
-		Right:  rc.Right - chartTipPad,
-		Bottom: rc.Top + chartTipPad + 16,
+	if !c.tipNoLabel {
+		trc := xc.RECT{
+			Left:   rc.Left + chartTipPad,
+			Top:    rc.Top + chartTipPad,
+			Right:  rc.Right - chartTipPad,
+			Bottom: rc.Top + chartTipPad + 16,
+		}
+		p.Text(title, &trc, t.Foreground, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 	}
-	p.Text(title, &trc, t.Foreground, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 
-	ry := rc.Top + chartTipPad + 16 + 4
+	ry := rc.Top + chartTipPad + headerH
 	for _, r := range rows {
 		cy := ry + chartTipRowH/2
-		dot := xc.RECTF{
-			Left:   float32(rc.Left + chartTipPad),
-			Top:    float32(cy - 4),
-			Right:  float32(rc.Left + chartTipPad + 8),
-			Bottom: float32(cy + 4),
+		ix := rc.Left + chartTipPad
+		if !c.tipNoIndicator {
+			switch c.tipIndicator {
+			case ChartIndicatorLine:
+				// 竖条: 整行高(上下各留 1px), 与上游 items-stretch 的口径一致。
+				bar := xc.RECT{Left: ix, Top: ry + 1, Right: ix + indW, Bottom: ry + chartTipRowH - 1}
+				p.FillRound(&bar, r.col, 2)
+			case ChartIndicatorDashed:
+				// 虚线: 3px 实段 + 3px 空档, 近似 border-dashed 的观感。
+				for y := ry + 1; y < ry+chartTipRowH-1; y += 6 {
+					y2 := y + 3
+					if y2 > ry+chartTipRowH-1 {
+						y2 = ry + chartTipRowH - 1
+					}
+					p.Line(ix+1, y, ix+1, y2, r.col, 2)
+				}
+			default:
+				dot := xc.RECTF{
+					Left:   float32(ix),
+					Top:    float32(cy - 4),
+					Right:  float32(ix + 8),
+					Bottom: float32(cy + 4),
+				}
+				p.Draw.SetBrushColor(uint32(r.col))
+				p.Draw.FillEllipseF(&dot)
+			}
 		}
-		p.Draw.SetBrushColor(uint32(r.col))
-		p.Draw.FillEllipseF(&dot)
-		lrc := xc.RECT{Left: rc.Left + chartTipPad + 14, Top: ry, Right: rc.Right - chartTipPad, Bottom: ry + chartTipRowH}
+		lrc := xc.RECT{Left: ix + indW + indGap, Top: ry, Right: rc.Right - chartTipPad, Bottom: ry + chartTipRowH}
 		p.Text(r.label, &lrc, t.MutedForeground, xcc.TextAlignFlag_Left|xcc.TextAlignFlag_Vcenter)
 		p.Text(r.value, &lrc, t.Foreground, xcc.TextAlignFlag_Right|xcc.TextAlignFlag_Vcenter)
 		ry += chartTipRowH
@@ -2039,42 +2182,111 @@ func chartRoundTo(v, step float64) float64 {
 	return math.Round(v*p) / p
 }
 
-// chartSmooth 用 Catmull-Rom 把折线采样成平滑曲线。
+// chartSmooth 用单调三次 Hermite(d3.curveMonotoneX 同口径)把折线采样成平滑曲线。
 //
 // 为什么不直接用 `Draw.DrawCurve`: drawx 的注释写明它在 D2D 下是空实现(见
-// xcgui/drawx 的 DrawCurve), 画出来什么都看不到。这里自己按 Catmull-Rom 采样成
-// 折线段, 平滑后的折线仍走 DrawLineF / FillPolygonF, 与直线路径共用同一套绘制。
-func chartSmooth(pts []xc.POINTF, samples int) []xc.POINTF {
-	if len(pts) < 3 || samples < 2 {
+// xcgui/drawx 的 DrawCurve), 画出来什么都看不到。这里自己采样成折线段, 平滑后的
+// 折线仍走 DrawLineF / FillPolygonF, 与直线路径共用同一套绘制。
+//
+// 为什么不用 Catmull-Rom: 它的极值点切线取相邻两点割线的平均, 峰值处切线不归零,
+// 放大后是一段先陡后折的"膝点"; 而且会超出数据范围过冲。单调三次把极值点切线钉成 0,
+// 峰谷自然圆滑, 且采样点按弦长自适应(约 1.5 逻辑像素一个),
+// 图表拉宽 / 高 DPI 下也不会看出直线段拼接。
+func chartSmooth(pts []xc.POINTF) []xc.POINTF {
+	n := len(pts)
+	if n < 3 {
 		return pts
 	}
-	out := make([]xc.POINTF, 0, (len(pts)-1)*samples+1)
-	for i := 0; i < len(pts)-1; i++ {
-		p0 := pts[i]
-		if i > 0 {
-			p0 = pts[i-1]
-		}
-		p1, p2 := pts[i], pts[i+1]
-		p3 := p2
-		if i+2 < len(pts) {
-			p3 = pts[i+2]
-		}
-		for s := 0; s < samples; s++ {
-			out = append(out, chartCatmullPoint(p0, p1, p2, p3, float64(s)/float64(samples)))
+	// 段斜率与各点切线(横轴不一定等距, 切线用 dy/dx 表示)。
+	d := make([]float64, n-1)
+	for i := 0; i < n-1; i++ {
+		if dx := float64(pts[i+1].X - pts[i].X); dx != 0 {
+			d[i] = float64(pts[i+1].Y-pts[i].Y) / dx
 		}
 	}
-	return append(out, pts[len(pts)-1])
+	m := make([]float64, n)
+	m[0], m[n-1] = d[0], d[n-2]
+	for i := 1; i < n-1; i++ {
+		if d[i-1]*d[i] <= 0 {
+			// 极值点: 切线水平, 否则峰谷会左右不对称、看起来像折角。
+			m[i] = 0
+			continue
+		}
+		m[i] = (d[i-1] + d[i]) / 2
+		// Fritsch-Carlson 限幅: 保证相邻段不超出数据的单调区间(无过冲)。
+		lim := 3 * math.Min(math.Abs(d[i-1]), math.Abs(d[i]))
+		if math.Abs(m[i]) > lim {
+			if m[i] > 0 {
+				m[i] = lim
+			} else {
+				m[i] = -lim
+			}
+		}
+	}
+
+	out := make([]xc.POINTF, 0, (n-1)*12+1)
+	for i := 0; i < n-1; i++ {
+		x0, y0 := float64(pts[i].X), float64(pts[i].Y)
+		x1, y1 := float64(pts[i+1].X), float64(pts[i+1].Y)
+		dx, dy := x1-x0, y1-y0
+		steps := int(math.Ceil(math.Hypot(dx, dy) / 1.5))
+		if steps < 8 {
+			steps = 8
+		}
+		if steps > 512 {
+			steps = 512
+		}
+		for s := 0; s < steps; s++ {
+			t := float64(s) / float64(steps)
+			t2, t3 := t*t, t*t*t
+			h00 := 2*t3 - 3*t2 + 1
+			h10 := t3 - 2*t2 + t
+			h01 := -2*t3 + 3*t2
+			h11 := t3 - t2
+			out = append(out, xc.POINTF{
+				X: float32(x0 + dx*t),
+				// 切线 dy/dx 乘 dx 换成以 t 为参数的尺度。
+				Y: float32(h00*y0 + h10*m[i]*dx + h01*y1 + h11*m[i+1]*dx),
+			})
+		}
+	}
+	return append(out, pts[n-1])
 }
 
-func chartCatmullPoint(p0, p1, p2, p3 xc.POINTF, t float64) xc.POINTF {
-	t2, t3 := t*t, t*t*t
-	f := func(a, b, c, d float64) float64 {
-		return 0.5 * (2*b + (-a+c)*t + (2*a-5*b+4*c-d)*t2 + (-a+3*b-3*c+d)*t3)
+// chartStrokePolygon 把折线转成描边带多边形(左侧偏移正向 + 右侧偏移反向, 首尾平头),
+// 交给 fillPolygonSmooth 一次填充出抗锯齿的线。逐段 DrawLineF 在斜线上会留下贝壳状边缘。
+func chartStrokePolygon(pts []xc.POINTF, w float64) []xc.POINTF {
+	n := len(pts)
+	if n < 2 || w <= 0 {
+		return nil
 	}
-	return xc.POINTF{
-		X: float32(f(float64(p0.X), float64(p1.X), float64(p2.X), float64(p3.X))),
-		Y: float32(f(float64(p0.Y), float64(p1.Y), float64(p2.Y), float64(p3.Y))),
+	h := w / 2
+	left := make([]xc.POINTF, 0, n)
+	right := make([]xc.POINTF, 0, n)
+	for i := 0; i < n; i++ {
+		var tx, ty float64
+		switch {
+		case i == 0:
+			tx, ty = float64(pts[1].X-pts[0].X), float64(pts[1].Y-pts[0].Y)
+		case i == n-1:
+			tx, ty = float64(pts[n-1].X-pts[n-2].X), float64(pts[n-1].Y-pts[n-2].Y)
+		default:
+			tx, ty = float64(pts[i+1].X-pts[i-1].X), float64(pts[i+1].Y-pts[i-1].Y)
+		}
+		l := math.Hypot(tx, ty)
+		if l < 1e-6 {
+			continue
+		}
+		nx, ny := -ty/l*h, tx/l*h
+		left = append(left, xc.POINTF{X: pts[i].X + float32(nx), Y: pts[i].Y + float32(ny)})
+		right = append(right, xc.POINTF{X: pts[i].X - float32(nx), Y: pts[i].Y - float32(ny)})
 	}
+	poly := make([]xc.POINTF, 0, len(left)*2)
+	poly = append(poly, left...)
+	for i := len(right) - 1; i >= 0; i-- {
+		poly = append(poly, right[i])
+	}
+	return poly
 }
 
 // chartArcPoints 生成一块扇区(或扇环)的多边形顶点。

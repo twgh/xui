@@ -1195,7 +1195,7 @@
 
 ## 五、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三批已落地(第十二批只出核查结论)。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批、第十三~十六批已落地(第十二批只出核查结论)。
 
 **第一批**:
 
@@ -1367,7 +1367,15 @@
 | RS1 | Resizable | 面板级 `WithResizableCollapsible()` / `WithResizableCollapsedSize(percent)` / `SetCollapsible` / `SetCollapsedSize` / `SetCollapsed` / `Collapse` / `Expand` / `Collapsed()`: 折叠尺寸默认跟随 min、显式 0 合法(可低于 min); 折叠释放的份额按比例给其它面板, 展开恢复折叠前百分比(不低于 min); 分隔条聚焦后 Enter 折叠/展开相邻面板(优先前一个, 不可折叠时看后一个); 折叠态下拖出/方向键先恢复再调整; 双击复位前先展开相邻折叠面板 |
 | RS4 | Resizable | 面板级 `WithResizablePanelDisabled()` / `SetDisabled` / `Disabled()` 与分隔条级 `WithResizableHandleDisabled()` / `SetDisabled` / `Disabled()`: 相邻任一面板禁用 → 该分隔条不可拖/不可聚焦/不画抓手与焦点环, 双击与 Enter 一起失效; 与组级 `SetDisabled` 叠加; 面板内容本身不受影响 |
 
-**下一批建议**: 当前无待排期项, Q6 / Q7 已收口; 剩余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
+**第十六批**(Q8 可直接排期项的第一组, Chart; 已全部落地):
+
+| # | 组件 | 落地内容 |
+|---|---|---|
+| CH1 | Chart | 提示卡每行色块样式 `WithChartTooltipIndicator` / `SetTooltipIndicator`(`ChartIndicatorDot` / `ChartIndicatorLine` / `ChartIndicatorDashed`, 对应 recharts `indicator`: 竖条整行高、虚线 3px 实段 + 3px 空档)与隐藏开关 `WithChartTooltipHideIndicator` / `SetTooltipHideIndicator` |
+| CH2 | Chart | 标题格式化 `WithChartTooltipLabelFormat` / `SetTooltipLabelFormat`(对应 `labelFormatter`)与 `WithChartTooltipHideLabel` / `SetTooltipHideLabel`(对应 `hideLabel`); 隐藏标题时提示卡高度同步收缩 |
+| CH3 | Chart | `WithChartLegendTop()` / `SetLegendTop(bool)`(对应 `ChartLegendContent.verticalAlign="top"`): 图例画在内容区顶部, 绘图区上沿扣除图例高度; 底部模式仍是底边扣减, 默认不变 |
+
+**下一批建议**: 当前无待排期项, Q6 / Q7 已收口; Q8 的 CH1~CH3 已在第十六批落地, 剩余可直接排期项(CM3 / QN1 / QN2 / MSG2 / MSC2 / MSC3 / MK1 / MK2 / DR4 / SP1)按「高优先、小改动」另起一批; MSC1 单列待拍板。其余均为**已明确暂缓/不做**的项, 有真实需求再单独立项:
 
 | # | 决定 | 说明 |
 |---|---|---|
@@ -1419,11 +1427,11 @@
 
 | # | 涉及条目 | 建议 | 状态 |
 |---|---|---|---|
-| Q8-1 | CH1 / CH2 / CH3 | Chart Tooltip 指示条样式与隐藏开关、标题 formatter、图例 top/bottom:都是官方 Props 表里的现成项,改动局限在 `paintTooltip` / `layoutLegend` | 可直接排期 |
+| Q8-1 | CH1 / CH2 / CH3 | Chart Tooltip 指示条样式与隐藏开关、标题 formatter、图例 top/bottom:都是官方 Props 表里的现成项,改动局限在 `paintTooltip` / `layoutLegend` | 已落地(第十六批) |
 | Q8-2 | CM3 | 菜单根级 `OnOpenChangeVeto` / `OnItemHighlighted` / `WithMenuLoopFocus`:与 Dropdown Menu 共用 `menu.go`,一次改动两处生效 | 可直接排期 |
 | Q8-3 | QN1 / QN2 | Questionnaire 自定义校验回调 + 输入框可见 label:对齐官方 Custom Validation / Accessibility | 可直接排期 |
 | Q8-4 | MSG2 | Message Header 固定 start 对齐(与上游一致,修正本库随 align 右对齐的差异) | 可直接排期(行为微调) |
 | Q8-5 | MSC1 | Message Scroller 非滚动交互信号(选择/键盘/链接)停止跟随:是官方"跟随意图"核心卖点,但要挂多处事件 | 待拍板(收益高、回归面较大) |
 | Q8-6 | CH4~CH11 / DR1~DR5 / BUB1~BUB2 / ATT1 / TR1 / MSG1 / MK1 / MK2 / MSC2~MSC4 / QN3~QN5 / BG1~BG2 / SP1 | 其余均为中-大改或"低"优先小改 | 暂缓:按真实需求随组件下次改动补 |
 
-**可直接排期(无需确认, Q8 批)**: CH1 / CH2 / CH3、CM3、QN1 / QN2、MSG2、MSC2 / MSC3、MK1 / MK2、DR4、SP1 为小改,可按"高优先、小改动"另起一批落地;MSC1 单列待拍板。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
+**可直接排期(无需确认, Q8 批)**: CH1 / CH2 / CH3 已落地(第十六批); 剩余 CM3、QN1 / QN2、MSG2、MSC2 / MSC3、MK1 / MK2、DR4、SP1 为小改,可按"高优先、小改动"另起一批落地;MSC1 单列待拍板。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
