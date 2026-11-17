@@ -10,7 +10,7 @@
 >
 > **状态**:`已核查` = 已逐条比对(备注区分「补齐已落地」与「清单待确认」);`待核查` = 按序等待;`范围外` = 明确不做。
 >
-> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#44(逐组件结论见第三节,实现进度见第五节),**下一轮核查从 #45 Carousel 起**。
+> **排序口径**:人工按桌面应用中的使用频次排序 —— 表单输入与基础操作 > 反馈/浮层 > 导航 > 数据展示 > 辅助/装饰 > 聊天等新组件;同一档内按官方示例出现频次。这是**可调整的执行顺序**,不是客观统计。核查按序号推进,跳过 `已核查` 与 `范围外`;已完成 #1..#51(逐组件结论见第三节,实现进度见第五节),**下一轮核查从 #52 Spinner 起**。
 
 ## 一、按常用性排序的总表
 
@@ -60,13 +60,13 @@
 | 42 | Menubar | `menubar` | 已核查 | 结论见 3.9;MB1 整条禁用/开合通知、MB4 单选组值已落地;MB2/MB3 几何与指示器待确认 |
 | 43 | Sidebar | `sidebar` | 已核查 | 结论见 3.9;SB1 骨架行已落地;SB2 自定义按钮内容待确认 |
 | 44 | Resizable | `resizable` | 已核查 | 结论见 3.9;文档示例已覆盖;RS1/RS2/RS4 待确认 |
-| 45 | Carousel | `carousel` | 待核查 | |
-| 46 | Aspect Ratio | `aspect-ratio` | 待核查 | |
-| 47 | Kbd | `kbd` | 待核查 | |
-| 48 | Empty | `empty` | 待核查 | |
-| 49 | Item | `item` | 待核查 | |
-| 50 | Native Select | `native-select` | 待核查 | |
-| 51 | Input OTP | `input-otp` | 待核查 | |
+| 45 | Carousel | `carousel` | 已核查 | 结论见 3.10;循环 / 自动播放 / 拖拽已具备;CR1 多页同屏待确认、CR2 页码指示可直接排期 |
+| 46 | Aspect Ratio | `aspect-ratio` | 已核查 | 结论见 3.10;唯一 prop `ratio` 已覆盖,圆角裁剪是能力边界 |
+| 47 | Kbd | `kbd` | 已核查 | 结论见 3.10;键帽 / 组 / 量宽已具备;KB1~KB3 暂缓 |
+| 48 | Empty | `empty` | 已核查 | 结论见 3.10;三槽 + 两种媒体已具备;EM2 最大宽待确认 |
+| 49 | Item | `item` | 已核查 | 结论见 3.10;三变体 / 两档 / 五槽已具备;IT1 xs 可直接排期,IT2 / IT3 待确认 |
+| 50 | Native Select | `native-select` | 已核查 | 结论见 3.10;value 语义已具备;NS1 禁用可直接排期,NS2 / NS3 分组与 value 分离待确认 |
+| 51 | Input OTP | `input-otp` | 已核查 | 结论见 3.10;文档示例全部覆盖;OTP1 readOnly 待确认,OTP2 / OTP3 暂缓,跨格选择为能力边界 |
 | 52 | Spinner | `spinner` | 待核查 | |
 | 53 | Chart | `chart` | 待核查 | |
 | 54 | Drawer | `drawer` | 待核查 | |
@@ -867,6 +867,122 @@
 
 **本批实现顺序**:HC1 → CL1 → BC1 / BC2 → NM1 → MB1 / MB4 → SB1(本批已全部落地);其余按 Q6 分流:MB2 / MB3、CL2 / SB2、BC3 / NM2、RS1 / RS2 / RS4 需先拍板;HC2、NM3~NM5、CL3、SB3、RS3 暂缓;能力边界见各组件"明确不做"。
 
+### 3.10 Carousel / Aspect Ratio / Kbd / Empty / Item / Native Select / Input OTP(#45 ~ #51)
+
+上游取自 base-nova:`carousel.tsx`(embla-carousel-react)、`aspect-ratio` 文档(Base UI AspectRatio,本地无 tsx)、`kbd.tsx`、`empty` 文档(本地无 tsx)、`item` 文档(本地无 tsx)、`native-select.tsx`、`input-otp.tsx`(input-otp 包)。本批多数核心特性已具备(Carousel 的循环 / 自动播放 / 拖拽吸附、InputOTP 的过滤 / 粘贴 / 完成回调均早于本轮落地);缺口集中在"官方示例第一档参数"(Carousel 的 basis、Item 的 xs、NativeSelect 的分组)与"DOM 组合能力"(render / children、头像图片媒体)两类。
+
+#### Carousel(#45)
+
+**官方页**:Basic(5 页 + 左右圆形按钮)、Sizes(`basis-1/3`、`md:basis-1/2 lg:basis-1/3`)、Spacing(`-ml-4` + `pl-4`)、Orientation(`horizontal` / `vertical`)、Options(`opts.align` / `opts.loop`)、API(`setApi` + `scrollSnapList()` / `selectedScrollSnap()` / `on("select")`)、Events、Plugins(embla autoplay)。tsx 是 embla 薄封装:`orientation` 选 axis、捕获阶段 ←/→ 翻页、到边界禁用按钮;`overflow-hidden` 视口 + `basis-full` 页;按钮 outline + icon-sm + rounded-full,横向在 `-left-12` / `-right-12`,纵向 `rotate-90` 放上下。
+
+**已具备**:横 / 纵向;整页位移、gap 默认 16、循环无回卷跳帧;拖拽跟手 + 最近页吸附 + 两端阻尼、←/→ 在轮播内任意控件聚焦时翻页;上一张 / 下一张圆钮到边界禁用(loop 常可用),`PrevButton()` / `NextButton()` 可改体;初始页、300ms 过渡、`Index()` / `SlideCount()` / `OnChange` / `SetIndex` / `Next` / `Prev`;自动播放 `WithCarouselAutoplay`(用户交互后停、页面不可见不跑);按钮槽 48×2;主题令牌实时取色。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| CR1 | 多页同屏(`basis-1/2` / `basis-1/3`) | Sizes 示例 | 一页 = 视口宽 − gap,步进 = 视口宽 | 待确认:加"每屏页数"配置,页宽 = 视口/每屏页数 − gap、步进 = 视口/每屏页数;循环位移折回与边界按钮要同步改 | 中 / 中 |
+| CR2 | 页码指示(current / count) | API 示例的 `setApi` + selectedScrollSnap / scrollSnapList | `Index()` / `SlideCount()` / `OnChange` 已有,无内置点状指示器 | 可直接排期:新增 `Carousel.Dots()` 返回自绘圆点行,跟随 `OnChange` 换当前页 | 小-中 / 中 |
+| CR3 | 页对齐(`opts.align: start / center / end`) | Options 示例 | 固定 start(整页左 / 上对齐) | 暂缓:与 CR1 一起设计;单页铺满时 center / end 与 start 等价 | 中 / 低 |
+| CR4 | 按钮变体/几何覆盖 | tsx 的 Previous / Next 透传 Button props | 按钮对象已暴露,位置固定在 48 槽 | 暂缓:不要按钮用 `WithCarouselControls(false)` 自放;槽宽可变要重排根几何 | 小 / 低 |
+
+**明确不做**:任意 embla `opts` / `plugins` 透传(Go 侧没有插件生态,loop / autoplay / gap / duration / 初始页已逐项做成选项);velocity 惯性 / wheel / 触摸手势(DESIGN 第七节已记桌面口径);高度按内容自撑(xcgui 无可靠离屏量高,构造时显式给);`setApi` / DOM `data-*` / RTL。
+
+#### Aspect Ratio(#46)
+
+**官方页**:Usage(`ratio={16/9}` + 任意子元素)、Square(1/1)、Portrait(9/16);API 只有必填 `ratio: number` 与 `className`。tsx 是 Base UI AspectRatio 薄封装,容器按 ratio 定高,内容铺满。
+
+**已具备**:`NewAspectRatio(..., ratio, ...)` / `SetRatio` / `Ratio`、`Content()` / `ContentStack(space)`;宽由布局项决定、高 = 宽 / ratio;尺寸事件排队到下一轮,同批先写完全部高度再统一重排祖先(避免多块逐帧展开与 335↔0 自激);构造 `cy > 0` 或布局项声明 Fill / Weight 时比例不生效(调用方自管高);非法比例收 1:1。
+
+**未实现但可实现**:无。上游唯一 prop 已覆盖;比例框内圆角图片裁剪不是组件能补的(见下)。
+
+**明确不做**:圆角裁剪 / `overflow-hidden`(xcgui 按父矩形裁剪但没有圆角裁剪,见 DESIGN 第七节与第八节 97);任意 children / `render` / DOM 属性;RTL。
+
+#### Kbd(#47)
+
+**官方页**:只有 `Kbd` 与 `KbdGroup` 两个组件,无变体 / 状态。`h-5 min-w-5 w-fit px-1 rounded-sm bg-muted text-xs font-medium text-muted-foreground`,`pointer-events-none select-none`;组合键用 KbdGroup 的 `gap-1` 分隔;Tooltip 内容里反色(`bg-background/20 text-background`);内嵌 SVG 取 12px。
+
+**已具备**:`NewKbd(hParent, text)` / `SetText`,20 高 + 按文字量宽(最小 20)+ rounded-sm + `Muted` 底 / `MutedForeground` 字 + 4px 内距 + 主题字号 -2 / medium;`NewKbdGroup` 4px 间距;纯展示、不聚焦、不接鼠标;换主题与改文字都重新量宽。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| KB1 | Tooltip 内容里反色 | `in-data-[slot=tooltip-content]:bg-background/20` | `WithTipShortcut` 已在气泡里放 Kbd,但仍是常规 muted 键帽 | 暂缓:给 Kbd 加 `SetContrast(true)`(按气泡底取前景 / 半透明底),由 Tooltip 组合时开启 | 小 / 低 |
+| KB2 | 键帽内嵌 12px 图标 | `[&_svg:not([class*='size-'])]:size-3` | 只接受文字,图标只能并排放进 KbdGroup | 暂缓:给 `NewKbd` 加图标参数(字 + 12px 图标一起量宽) | 小 / 低 |
+| KB3 | 几何覆盖(h / min-w / px / 字号) | `className` 可覆盖工具类 | 常量固定 | 暂缓:加 `WithKbdHeight/Padding/FontSize` 等选项;现场景用默认 20 足够 | 小 / 低 |
+
+**明确不做**:`data-slot` / `aria-*` 等 DOM 属性、任意 `children` / `render`、RTL、按键点击语义(纯展示)。
+
+#### Empty(#48)
+
+**官方页**:Composition(`Empty > Header(Media / Title / Description) + Content`)、Outline(`border` 工具类)、Background(`bg-*` / `bg-gradient-*`)、Avatar 与 Avatar Group(放进 `EmptyMedia`)、InputGroup(放进 `EmptyContent`);API 只有 `className`,Media 的 `variant = default | icon`。
+
+**已具备**:`NewEmpty` + `Body()` / `Header()` / `Content()` 三槽(预建隐藏,不用的槽不占间距);媒体 `NewEmptyMedia` + `WithEmptyMediaVariant`(default 透明 / icon = 40 圆角 `Muted` 底板 + 24 图标);标题 `NewEmptyTitle`(18 / medium)、描述 `NewEmptyDescription`(14 / muted);竖向居中、p-6 / gap-6 / Header gap-2 / Content gap-4;不画边框(上游 `border-dashed` 无宽度);头像 / 头像组 / InputGroup 直接往 `Header()` / `Content()` 加元素即可;描述多行由调用方对返回 Label 调 `SetAutoWrap()`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| EM1 | Outline / Background 选项 | 官方两页示例用 `border` / `bg-*` 工具类 | 不画边框、无背景选项 | 暂缓:官方就是让用户自己加类;Go 侧放进 Card 或给 `Body()` 自绘即可,做选项只省一行;渐变背景另议 | 小 / 低 |
+| EM2 | Header 最大宽 384 | 上游 Header `max-w-[384px]` | Header 整宽(描述长文本会铺得很宽) | 待确认:要给 Header 加"最大 384 且窄容器取父宽"的钳制,需要在尺寸事件里量父宽 | 中 / 低 |
+| EM3 | 响应式 md:p-12 | 上游 `md:` 断点 | 统一用基础档 p-6 | 不做:xcgui 没有容器查询,窗口宽度断点与上游容器断点不是一回事 | 不做 |
+
+**明确不做**:DOM `className` / `data-*`、任意 `children` / `render`、RTL;Media 的 Avatar / InputGroup 组合已由槽位承载,不新增专用变体。
+
+#### Item(#49)
+
+**官方页**:Basic(Media + Content + Action)、Variant(default / outline / muted)、Size(default / sm / xs)、Icon / Avatar / Image(`ItemMedia` 的 `variant = default | icon | image`)、Group / Separator、Header / Footer、Link(`render={<a/>}`)、Dropdown;Composition 是 `ItemGroup > Item > ItemHeader / ItemMedia / ItemContent(Title / Description) / ItemActions / ItemFooter`。
+
+**已具备**:`NewItem(... WithItemVariant(ItemDefault/Outline/Muted), WithItemSize(ItemSizeDefault/Sm))`;`Media()` / `Content()` / `Actions()` / `Header()` / `Footer()` 五槽(不用不占布局);整宽 1px `NewItemSeparator` 与 `NewItemGroup`;`NewItemTitle` / `NewItemDescription`、`NewItemMedia` + `WithItemMediaVariant(Default/Icon)`;列举与链接型内容都可直接往槽里放任意控件;变体 / 尺寸几何(default gap-16 / p-16,sm gap-10 / px-16 py-12)、Content 按媒体/动作实测宽锁 Fixed(见第八节 104)、主题实时取色。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| IT1 | xs 尺寸档 | Size 示例(default / sm / xs) | 只有 default / sm | 可直接排期:补 `ItemSizeXs`,把 gap / padX / padY 抽成按档查表,媒体尺寸同步 | 小 / 中 |
+| IT2 | Media 的 image / avatar 内建变体 | Image / Avatar 示例 | 只有 default / icon,图标是自绘 path;`Media()` 是布局槽,可直接挂 `NewAvatar` 或图片元素,只是没有内建变体 | 待确认:新增 `WithItemMediaImage(...)` 走本地图片 / `image.Image`;圆角裁剪是 xcgui 边界,只能矩形或自己裁 | 中 / 中 |
+| IT3 | 整行链接(render)的 hover / 焦点语义 | Link 示例 | 行是自绘容器,鼠标可点但链接焦点 / Enter 语义由调用方在子按钮上做 | 待确认:整行进 Tab 链并给 Enter / 空格激活,会改页面 Tab 顺序(同 BC3) | 中 / 低 |
+| IT4 | Header / Footer 自动 space-between | 官方布局 | 没有 justify-between | 暂缓:自动给首个可见子项加 Weight(1) 会改变现有调用方的布局;现用 `xui.ItemWeight` 撑开已能表达,有真实需求再做选项 | 小-中 / 低 |
+| IT5 | Actions 内部 gap-2 | 官方 `ItemActions` 的 gap-2 | 动作之间用 Item 行间距(default 16) | 暂缓:嵌套 Auto 宽量不到原生按钮(第八节 104),单独做动作行会引入另一套布局 | 中 / 低 |
+| IT6 | 描述多行 | 文档示例长说明 | Label 默认单行,需调用方 `SetWrap` 并给高 | 已记 DESIGN 第七节:由调用方 `SetAutoWrap()` 处理 | 不做 |
+
+**明确不做**:`render` / 任意 React children、DOM `data-*`、RTL;Dropdown 示例由 `ui.Menu` 组合,不新增专用入口。
+
+#### Native Select(#50)
+
+**官方页**:Basic(status)、Groups(`NativeSelectOptGroup label / disabled`)、Disabled(整体禁用,外壳 `opacity-50`)、Invalid(`aria-invalid` 红边红环);tsx 外壳 `h-8 w-fit rounded-lg border border-input pl-2.5 pr-8`,`size="sm"` 改 28 / 更小圆角,右侧 16px ChevronDown;选项 `value` 与显示文本分离,可单独 `disabled`。
+
+**已具备**:`NewNativeSelect(..., values []string, WithNativeSelectPlaceholder/Size/Value/Invalid)` + `Value()` / `SetValue()` / `OnValueChange()`;载体是原生 ComboBox 弹窗(触发区自绘 + 系统下拉),默认 h-32 / sm h-28、红边红环校验态、占位文本;未选中 `Value()` 返回空串,`SetValue` 匹配不到会取消选中;原生弹层工作区夹取与滚动条复用 `scrollbar.go`。
+
+**未实现但可实现**:
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| NS1 | 整体禁用 | `disabled` prop + `has-[select:disabled]:opacity-50` | 绘制与 Field 级联已就绪(`combobox.go` 的 `SetFieldState` 会禁焦点 / 禁 Tab,`onPaint` 有 `st.Disabled` 置灰分支),只缺 NativeSelect 的语义化公开开关 | 可直接排期:`WithNativeSelectDisabled()` / `SetDisabled(bool)` 转调内嵌 `SetFieldState`/`Enable`,不必重画 | 小 / 中 |
+| NS2 | 分组(OptGroup) | Groups 示例 | `values []string` 平铺;原生 ComboBox / ListBox 弹层对分组标题支持有限,组标题更接近自绘弹层(Select)的能力 | 待确认:换 `[]NativeSelectItem{Value, Text, Group, Disabled}` 并保住 `[]string` 调用方;先拍板是否接受为此偏离"原生弹层"定位(富条目本就分工给 Select,见 `native_select.go` 文件头) | 中-高 / 低 |
+| NS3 | `value` 与显示文本分离 / 单选项禁用 | `NativeSelectOption` 的 `value` / `disabled` | 用显示文本直接当 value | 待确认:与 NS2 同批换数据结构;否则只能显示值即数据值 | 中 / 中 |
+
+**明确不做**:HTML `form` / `name` / `required` 提交语义(Go 侧由 `Field` 与调用方校验接管);`size` 档超过 default / sm;DOM `data-*` / RTL。
+
+#### Input OTP(#51)
+
+**官方页**:Basic(6 格)、Pattern(`REGEXP_ONLY_DIGITS` / `REGEXP_ONLY_DIGITS_AND_CHARS`)、Separator、Disabled、Controlled(`value` / `onChange`)、Invalid(`aria-invalid` 红环)、Four Digits、Alphanumeric、Form;Composition = `InputOTP > InputOTPGroup(Slot) / InputOTPSeparator / InputOTPGroup(Slot)`;格 32×32、激活格 `ring-3`、分隔符 Minus 16、`has-disabled:opacity-50`。
+
+**已具备**:`NewInputOTP(..., WithInputOTPLength/SeparatorAfter/Value/Invalid/Disabled/Pattern)` + `Value()` / `SetValue()` / `Clear()` / `Focus()` / `SetInvalid()` / `SetDisabled()` / `OnChange()` / `OnComplete()`;预置 `InputOTPPatternDigit/Alphanumeric/Any`;键入替换并前进、非法字符不入格;←/→/Home/End 移动、Backspace 清当前格 / 空格退前一格、Delete 清当前格;Ctrl+V 从当前格起分发粘贴;全满触发完成回调;32 格 + 16 分隔符按内容自撑;激活 / 校验 / 禁用态、原生真光标居中、共享边逐边绘制;实现 `FieldValueProvider` / `FieldControl` 可挂 Field 校验。
+
+**未实现但可实现**(官方文档示例里的格数 / 过滤 / 分隔符 / 禁用 / 受控 / 校验 / 粘贴 / 完成回调均已覆盖;以下三项来自本地参照实现的 `readOnly` 示例与 API Reference 指向的上游包 props):
+
+| # | 特性 | 上游依据 | 本库现状 | 实现路径 | 代价 / 优先级 |
+|---:|---|---|---|---|---|
+| OTP1 | readOnly 只读态 | 本地 `App.tsx` 的 `value="240815" readOnly` 示例;上游继承 `InputHTMLAttributes.readOnly` | 无,预填值后仍可键入 / 退格 / 粘贴 | 待确认:在 `onChar` / `onKeyDown` / `paste` 里拦截改写但保留焦点与原生选中复制,禁用语义与 `disabled` 区分(同 Input 的 readOnly 先例) | 小-中 / 低 |
+| OTP2 | 文本对齐 `textAlign` | 上游 `textAlign?: left / center / right` | 固定居中 | 暂缓:加 `WithInputOTPTextAlign`,要与 `syncInset` 的空格 caret 居中逻辑协同 | 小 / 低 |
+| OTP3 | `pasteTransformer` 粘贴转换 | 上游 `pasteTransformer?: (pasted) => string` | 只按 pattern 过滤非法字符 | 暂缓:核心粘贴与过滤已覆盖,去空格 / 格式化等定制有真实需求再加 | 小 / 低 |
+
+**明确不做**:跨格拖动选择 / Ctrl+A 全选 / 复制剪切整段(每格是独立原生 Edit,见 DESIGN 第七节);假光标动画(这里用真光标);DOM `render` / `data-*` / RTL。
+
+**本批结论**:只出核查结论,未改组件源码。可直接排期(无需确认):CR2 页码指示、IT1 xs 尺寸档、NS1 整体禁用。待拍板项见 Q7;其余暂缓项按真实需求再立项。
+
 ## 四、实现顺序建议(Input / Select 批次,已执行完)
 
 1. **小改动、一致性收益**:S3 `OnOpenChange` → I2 `readOnly` → I7 `SetDisabled` → S4 `readOnly` → S8 `Value` 格式化 —— **已全部落地**(见第五节)。
@@ -877,7 +993,7 @@
 
 ## 五、实现进度(已落地条目)
 
-按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十批已落地。
+按「高优先、小改动」选的跨组件一致性条目,分批落地(验收记录见 CHANGELOG,语义写进 DESIGN 第四节末与差异表)。当前进度:第一~十一批已落地。
 
 **第一批**:
 
@@ -1035,7 +1151,7 @@
 | Q3(SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3) | 不做 | 推挤碰撞、单滑块禁用、横向 ScrollArea、非模态对话框、Popover 模态与定位策略、表格列宽拖拽: 桌面收益存疑, 有场景再立项 |
 | Q4(C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2) | 部分排期 | C4 只做"直角图片槽 + 自适应高"(不做圆角), 排在本批之后; 五组纯 demo 示例不单独立项, 随对应组件下次改动补 |
 
-下一轮**核查**(不是实现)从 #45 Carousel 起。
+下一轮**核查**(不是实现)从 #52 Spinner 起。
 
 **待确认需求(本轮已拍板)**:
 
@@ -1061,4 +1177,15 @@
 | Q6-5 | HC2 / NM3 / NM4 / NM5 / CL3 / RS3 | 暂缓: 弹层 zoom/slide 动画深度、纵向导航、视口尺寸过渡、两行说明、展开态根底色、F6 跳分隔条 | 暂缓 |
 | Q6-6 | CL4 / BC4 / SB4 / RS5 / Menubar Alt | 不做或组合式: keepMounted 卸载语义、富内容面包屑、移动端 Sheet / Provider 上下文、布局持久化、Menubar Alt/typeahead | 不做 |
 
-**可直接排期(无需确认)**: 已全部落地(第八批 / 第十批 / 第十一批, 见第五节)。其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。
+**待确认需求(第十二批, Q7)**:
+
+| # | 涉及条目 | 建议 | 状态 |
+|---|---|---|---|
+| Q7-1 | CR1 / CR3 | Carousel 多页同屏(`basis-1/3`)与页对齐:会改页宽 / 步进 / 循环位移公式,不做默认变更;常见单页铺满已对齐 | 待拍板 |
+| Q7-2 | NS2 / NS3 | NativeSelect 分组标题 / 选项禁用 / `value` 与显示文本分离:需要换数据结构(`[]NativeSelectItem`),同时保住现有 `[]string` 调用方 | 待拍板 |
+| Q7-3 | IT2 / IT3 | Item 的 image / avatar 内建媒体态(圆角裁剪受限)与整行链接焦点 / Enter(会改 Tab 顺序) | 待拍板 |
+| Q7-4 | EM2 | Empty Header 最大宽 384:需按父宽钳制,窄容器口径先确认 | 待拍板 |
+| Q7-5 | OTP1 | InputOTP readOnly 只读态(本地参照实现有示例):拦改写但保留焦点与选中复制,与 disabled 语义分开 | 待拍板 |
+| Q7-6 | CR4 / KB1~KB3 / EM1 / IT4 / IT5 / OTP2 / OTP3 | 按钮几何 / Tooltip 键帽反色 / 键帽图标与几何覆盖 / Empty 边框背景 / 头尾行 space-between / 动作行 gap / InputOTP 文本对齐与粘贴转换:都是小改动,等真实场景随组件下次改动补 | 暂缓 |
+
+**可直接排期(无需确认)**: 第十二批的 CR2(Carousel 页码指示)、IT1(Item xs 尺寸档)、NS1(NativeSelect 整体禁用)。第八~十一批的清单已全部落地,其中 I1 文件输入 / I6 原生 Edit 覆盖 / DM2 菜单定位参数为本批最有价值的几项。AL2(Alert 描述多行)经核对由 `reflow` + `SetWrap` 覆盖(量高按 `WrappedHeight` 写回, 不与折行冲突), 本轮无需改代码。

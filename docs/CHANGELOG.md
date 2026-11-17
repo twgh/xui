@@ -5,6 +5,13 @@
 
 **已完成(括号里是根因/踩坑所在的 DESIGN 第八节条目号)**:
 
+- ✅ **组件特性核查第十二批: Carousel / Aspect Ratio / Kbd / Empty / Item / Native Select / Input OTP(只核查, 未改源码)**(2026-11-17, 依据 [COMPONENT-AUDIT.md](COMPONENT-AUDIT.md) 的 3.10 与 Q7):
+  - **核查范围**: #45~#51 按台账顺序逐条比对 base-nova 文档 / 本地 `carousel.tsx` `kbd.tsx` `native-select.tsx` `input-otp.tsx` 与 xui 对应源码;逐组件结论(官方页 / 已具备 / 未实现但可实现 / 明确不做)写进台账 3.10, 顶部总表与 HANDOFF 待办指针同步到 #52 Spinner。
+  - **可直接排期**: CR2(Carousel 页码指示, `Index()` / `SlideCount()` / `OnChange` 已具备, 加自绘圆点行)、IT1(Item xs 尺寸档, 几何按档查表)、NS1(NativeSelect 整体禁用, 加 `WithNativeSelectDisabled()` / `SetDisabled()` 与置灰)。三项本批未落地, 按固定流程排期。
+  - **待拍板(Q7)**: CR1 / CR3(Carousel 多页同屏与页对齐, 改页宽 / 步进 / 循环位移公式)、NS2 / NS3(NativeSelect 分组标题 / 选项禁用 / `value` 与文本分离, 要换 `[]NativeSelectItem` 并兼容 `[]string`;原生弹层对分组标题支持有限, 富条目本就分工给 Select)、IT2 / IT3(Item image / avatar 媒体态与整行链接焦点, 后者改 Tab 顺序)、EM2(Empty Header 最大宽 384 的窄容器口径)、OTP1(InputOTP readOnly, 本地参照实现有示例;拦改写但保留焦点与选中复制)。
+  - **已覆盖 / 不涉及**: AspectRatio 唯一 prop `ratio` 已完整覆盖;InputOTP 文档示例里的格数 / 过滤 / 分隔符 / 禁用 / 受控 / 校验 / 粘贴 / 完成回调均已覆盖, 额外 props(textAlign / pasteTransformer)列为暂缓;跨格选择、圆角裁剪、DOM `render` / `data-*` 与 RTL 记为能力边界或范围外, 不计入可实现项。
+  - **验收**: 本批只改台账 / HANDOFF / CHANGELOG 三份内部文档, 未动组件源码与 `registry.json`; `go test ./...` 全绿(基线, 五个包均通过)。
+
 - ✅ **修复: `WithCalendarCellSize` 只放大了字, 格子/宽高没变**(2026-11-16, 用户反馈):
   - **现象**: 日历配 `WithCalendarCellSize(36)` 后, 字号/内边距明显变大, 但格子宽度与整卡宽高跟默认 28 时一样, 看着像"只放大了字"。
   - **根因**: `calMetricsFor` 里格子宽一直是"按元素可用宽度均分"算出来的, `cellPx` 只进了缩放比 `s`(影响内边距/标题/星期行/字号), 从没影响格子本身。而演示卡片又把宽度锁在包级 `CalWidth()`(212, 不知道元素自己配了多大格子), 于是格子被压回 28、字却按 36/28 放大。
