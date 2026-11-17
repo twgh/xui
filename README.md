@@ -194,7 +194,7 @@ demo 的标题栏调色板与「基础1 → 主题色」卡片演示了这套做
 | ScreenPopup | 屏幕弹窗:固定在屏幕工作区右下角的**常驻**面板 —— 不是通知(默认不自动关闭、不堆叠),内容任意 xui 控件、高度自撑;默认不抢焦点,`WithScreenPopupFocusable(true)` 改为点击后键盘可用 |
 | Tray | 系统托盘:左键还原/前台化绑定窗口(可覆盖),右键弹 themed Menu,资源图标可直接用 `.syso` 里的 HICON;监听 `TaskbarCreated`,Explorer 重启后自动恢复图标。⚠️ 同一进程只应创建一个托盘图标(xcgui 的托盘 API 是全局状态) |
 | AppWindow | 主窗口封装:圆角阴影 + 自绘标题栏(最小化/最大化/关闭、双击最大化/还原、最大化图标自动切换)+ 主题化底色;`NewAppWindow("标题", 640, 480)` 后往 `Content()` 放内容,`AddCaptionButton` 加标题栏按钮 |
-| Label / Card / Badge / Separator | 静态展示组件:Label 的 `SetWrap` 只换行、`SetAutoWrap` 按宽度自动折行并让高度自撑(窗口缩放 / `SetText` 后重排);Badge 6 变体(含 ghost/link)、行内图标、加载指示器、自定义配色与点击回调,`cx` 传 0 按内容量宽、`SetText` 后自动重量;Card 有 `sm` 尺寸与卡片头(标题 + 说明 + 右上动作区)/ 说明 / 页脚;Separator 支持垂直 |
+| Label / Card / Badge / Separator | 静态展示组件:Label 的 `SetWrap` 只换行、`SetAutoWrap` 按宽度自动折行并让高度自撑(窗口缩放 / `SetText` 后重排);Badge 6 变体(含 ghost/link)、行内图标、加载指示器、自定义配色与点击回调,`cx` 传 0 按内容量宽、`SetText` 后自动重量;Card 有 `sm` 尺寸与卡片头(标题 + 说明 + 右上动作区)/ 说明 / 页脚,`card.Image(path)` / `card.ImageData(img)` 放通栏直角图片槽(高度按图片比例随卡宽自适应,在 `ContentStack` 之前创建即在内容上方);Separator 支持垂直 |
 
 交互类组件默认带齐 4 态: 正常 / hover / 按下 / 禁用, 外加键盘焦点环(静态展示与容器类组件没有按下态)。
 

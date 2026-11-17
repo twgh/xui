@@ -65,20 +65,20 @@
 | 47 | Kbd | `kbd` | 已核查 | 结论见 3.10;键帽 / 组 / 量宽已具备;KB1~KB3 暂缓 |
 | 48 | Empty | `empty` | 已核查 | 结论见 3.10;三槽 + 两种媒体已具备;EM2 最大宽待确认 |
 | 49 | Item | `item` | 已核查 | 结论见 3.10;三变体 / 两档 / 五槽已具备;IT1 xs 已落地(第十三批),IT2 / IT3 待确认 |
-| 50 | Native Select | `native-select` | 已核查 | 结论见 3.10;value 语义已具备;NS1 禁用已落地(第十三批),NS2 / NS3 分组与 value 分离待确认 |
-| 51 | Input OTP | `input-otp` | 已核查 | 结论见 3.10;文档示例全部覆盖;OTP1 readOnly 待确认,OTP2 / OTP3 暂缓,跨格选择为能力边界 |
+| 50 | Native Select | `native-select` | 已核查 | 结论见 3.10;value 语义已具备;NS1 禁用已落地(第十三批),NS2 / NS3 分组与 value 分离不做(富条目由 Select 承担) |
+| 51 | Input OTP | `input-otp` | 已核查 | 结论见 3.10;文档示例全部覆盖;OTP1 readOnly 已落地(第十四批),OTP2 / OTP3 暂缓,跨格选择为能力边界 |
 | 52 | Spinner | `spinner` | 已核查 | 结论见 3.11;SP1 换图标已落地(第十八批) |
-| 53 | Chart | `chart` | 已核查 | 结论见 3.11;七形态+交互齐全,缺口在 Tooltip/Legend props 与参考线等 |
+| 53 | Chart | `chart` | 已核查 | 结论见 3.11;七形态+交互齐全;CH1~CH3 Tooltip/Legend props 已落地(第十六批),参考线等暂缓 |
 | 54 | Drawer | `drawer` | 已核查 | 结论见 3.11;四向+拖拽关闭就绪;DR4 抓手开关已落地(第十九批);缺 snapPoints/非模态/嵌套 |
 | 55 | Button Group | `button-group` | 已核查 | 结论见 3.11;横纵/嵌套/文本/分隔条齐,组合拼接边界待确认 |
 | 56 | Context Menu | `menu` | 已核查 | 结论见 3.11;与 Dropdown Menu 同一实现;CM3 否决/高亮已落地(第二十批),键盘循环为能力边界;特有缺口=长按触发(CM1) |
 | 57 | Trace | `trace` | 已核查 | 结论见 3.11;索引页 New;状态/折叠/嵌套齐,仅 AI SDK 便捷工厂(TR1) |
-| 58 | Message | `message` | 已核查 | 结论见 3.11;三段布局齐;Header 对齐与上游有差异(MSG2) |
+| 58 | Message | `message` | 已核查 | 结论见 3.11;三段布局齐;MSG2 Header 固定 start 对齐已落地(第十七批) |
 | 59 | Bubble | `bubble` | 已核查 | 结论见 3.11;七变体+反应齐;ghost 富内容(BUB1)待确认 |
 | 60 | Marker | `marker` | 已核查 | 结论见 3.11;三变体齐;MK2 shimmer 已落地(第十八批),MK1 纵向布局已落地(第十九批) |
 | 61 | Attachment | `attachment` | 已核查 | 结论见 3.11;五态三档齐;缺 image 媒体变体(ATT1) |
 | 62 | Message Scroller | `message-scroller` | 已核查 | 结论见 3.11;锚定/跟随/前置保位齐;MSC2 / MSC3 已落地(第十八批),MSC1 交互信号停跟随已落地(第二十批) |
-| 63 | Questionnaire | `questionnaire` | 已核查 | 结论见 3.11;单多选/快捷键/校验齐;自定义校验(QN1)与输入框 label(QN2) |
+| 63 | Questionnaire | `questionnaire` | 已核查 | 结论见 3.11;单多选/快捷键/校验齐;QN1 自定义校验与 QN2 输入框 label 已落地(第十七批) |
 
 **范围外(官方侧栏 66 个中的另 3 个 + 侧栏分组)**:
 
@@ -1419,7 +1419,7 @@
 | Q1 余项(ACC4 / TT3 / TBL3) | 暂缓 | 内容槽统一形态已在 Dialog / Sheet / AlertDialog 落地; 手风琴触发区、Tooltip 内容、Table 单元格按需再做 |
 | Q2 余项(S5 / S7) | 暂缓 | Select 多选(触发区摘要 + chips + 与只读/否决组合, 成本最高)与悬停自动滚(内容区上下命中带 + 逐帧滚动)等真实需求 |
 | Q3(SL4 / SL5 / SA2 / D6 / PO6 / PO4 / DT3) | 不做 | 推挤碰撞、单滑块禁用、横向 ScrollArea、非模态对话框、Popover 模态与定位策略、表格列宽拖拽: 桌面收益存疑, 有场景再立项 |
-| Q4(C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2) | 部分排期 | C4 只做"直角图片槽 + 自适应高"(不做圆角), 排在本批之后; 五组纯 demo 示例不单独立项, 随对应组件下次改动补 |
+| Q4(C4 / I8 / TA4 / DM5 / ACC5 / SEP3 / SK2) | 余项暂缓 | C4 直角图片槽 + 自适应高已落地(第二十一批, 不做圆角); 五组纯 demo 示例不单独立项, 随对应组件下次改动补 |
 
 #52~#63 已核查完毕(结论见 3.11),63 个可核查组件全部完成,无待核查项;余下为实现(见下方 Q8 与可直接排期项)。
 
@@ -1469,6 +1469,6 @@
 | Q8-3 | QN1 / QN2 | Questionnaire 自定义校验回调 + 输入框可见 label:对齐官方 Custom Validation / Accessibility | 已落地(第十七批) |
 | Q8-4 | MSG2 | Message Header 固定 start 对齐(与上游一致,修正本库随 align 右对齐的差异) | 已落地(第十七批) |
 | Q8-5 | MSC1 | Message Scroller 非滚动交互信号(选择/键盘/链接)停止跟随:是官方"跟随意图"核心卖点,但要挂多处事件 | 已落地(第二十批):窗口级点击命中 + 容器内键盘滚动键 |
-| Q8-6 | CH4~CH11 / DR1~DR5 / BUB1~BUB2 / ATT1 / TR1 / MSG1 / MK1 / MK2 / MSC2~MSC4 / QN3~QN5 / BG1~BG2 / SP1 | 其余均为中-大改或"低"优先小改 | 暂缓:按真实需求随组件下次改动补 |
+| Q8-6 | CH4~CH11 / DR1~DR3 / DR5 / BUB1~BUB2 / ATT1 / TR1 / MSG1 / MSC4 / QN3~QN5 / BG1~BG2 | 其余均为中-大改或"低"优先小改(已落地的 MK1 / MK2 / MSC2 / MSC3 / SP1 / DR4 不再计入) | 暂缓:按真实需求随组件下次改动补 |
 
-**可直接排期(无需确认, Q8 批)**: 全部收口 —— CH1 / CH2 / CH3(第十六批), QN1 / QN2 / MSG2(第十七批), SP1 / MK2 / MSC2 / MSC3(第十八批), MK1 / DR4(第十九批), CM3 否决/高亮与 MSC1(第二十批);`WithMenuLoopFocus` 记入 DESIGN 差异表(原生菜单能力边界)。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
+**可直接排期(无需确认, Q8 批)**: 全部收口 —— CH1 / CH2 / CH3(第十六批), QN1 / QN2 / MSG2(第十七批), SP1 / MK2 / MSC2 / MSC3(第十八批), MK1 / DR4(第十九批), CM3 否决/高亮与 MSC1(第二十批);Q4 的 C4 在第二十一批落地。`WithMenuLoopFocus` 记入 DESIGN 差异表(原生菜单能力边界)。FIXME 提醒:落地前先对照 DESIGN 第四节末语义表与本地 `*.tsx`,改完补 DESIGN 语义/差异表、CHANGELOG,跑 `go build` / `go vet` / `go test`、逐组件单独安装 + 编译,再上 demo 做亮暗与 150% DPI 视觉验收。
